@@ -13,6 +13,7 @@
 
 namespace contra {
 
+using AllocaInst = llvm::AllocaInst;
 using Function = llvm::Function;
 using Value = llvm::Value;
 
@@ -25,13 +26,18 @@ public:
   llvm::LLVMContext TheContext;
   llvm::IRBuilder<> Builder;
   std::unique_ptr<llvm::Module> TheModule;
-  std::map<std::string, Value *> NamedValues;
+  std::map<std::string, AllocaInst *> NamedValues;
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 
   CodeGen () : Builder(TheContext) {}
 
   Function *getFunction(std::string Name); 
+
+  /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+  /// the function.  This is used for mutable variables etc.
+  AllocaInst *CreateEntryBlockAlloca(Function *TheFunction,
+    const std::string &VarName);
   
 };
 

@@ -53,5 +53,5 @@ int main() {
   // Run the main "interpreter loop" now.
   MainLoop(TheParser, TheCG, TheJIT);
 
-  return 0;
+  return llvm_compile( *TheCG.TheModule );
 }

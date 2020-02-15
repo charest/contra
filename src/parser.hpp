@@ -15,7 +15,7 @@ namespace contra {
 class Parser {
 
   // A lexer object
-  Lexer L;
+  Lexer TheLex;
 
 public:
 
@@ -31,18 +31,19 @@ public:
   Parser() {
     // Install standard binary operators.
     // 1 is lowest precedence.
-    BinopPrecedence[op_lt] = 10;
-    BinopPrecedence[op_add] = 20;
-    BinopPrecedence[op_sub] = 20;
-    BinopPrecedence[op_mul] = 40;
-    BinopPrecedence[op_div] = 50;
+    BinopPrecedence[tok_eq] = 2;
+    BinopPrecedence[tok_lt] = 10;
+    BinopPrecedence[tok_add] = 20;
+    BinopPrecedence[tok_sub] = 20;
+    BinopPrecedence[tok_mul] = 40;
+    BinopPrecedence[tok_div] = 50;
     // highest.
   }
 
   /// CurTok/getNextToken - Provide a simple token buffer.  CurTok is the current
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
-  int getNextToken() { return CurTok = L.gettok(); }
+  int getNextToken() { return CurTok = TheLex.gettok(); }
 
   /// GetTokPrecedence - Get the precedence of the pending binary operator token.
   int GetTokPrecedence() {
@@ -50,9 +51,9 @@ public:
       return -1;
 
     // Make sure it's a declared binop.
-    int TokPrec = BinopPrecedence[CurTok];
-    if (TokPrec <= 0) return -1;
-    return TokPrec;
+    auto TokPrecIt = BinopPrecedence.find(CurTok);
+    if (TokPrecIt == BinopPrecedence.end()) return -1;
+    return TokPrecIt->second;
   }
   
   /// numberexpr ::= number
@@ -91,6 +92,8 @@ public:
   
   /// prototype
   ///   ::= id '(' id* ')'
+  ///   ::= binary LETTER number? (id, id)
+  ///   ::= unary LETTER (id)
   std::unique_ptr<PrototypeAST> ParsePrototype();
   
   /// definition ::= 'def' prototype expression
@@ -101,6 +104,15 @@ public:
   
   /// external ::= 'extern' prototype
   std::unique_ptr<PrototypeAST> ParseExtern();
+
+  /// unary
+  ///   ::= primary
+  ///   ::= '!' unary
+  std::unique_ptr<ExprAST> ParseUnary();
+
+  /// varexpr ::= 'var' identifier ('=' expression)?
+  ///                    (',' identifier ('=' expression)?)* 'in' expression
+  std::unique_ptr<ExprAST> ParseVarExpr();
 
 };
 

@@ -35,7 +35,8 @@ target_compile_definitions(contra PUBLIC ${LLVM_DEFINITIONS})
 
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
-llvm_map_components_to_libnames(llvm_libs core mcjit orcjit native)
+llvm_map_components_to_libnames(llvm_libs core mcjit native orcjit objcarcopts)
+set( llvm_libs LLVM )
 target_link_libraries(contra PUBLIC ${llvm_libs})
 
 #------------------------------------------------------------------------------#

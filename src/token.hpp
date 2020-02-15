@@ -21,19 +21,22 @@ enum Token {
   tok_then = -7,
   tok_else = -8,
   tok_for = -9,
-  tok_in = -10
-};
+  tok_in = -10,
 
-// operators
-enum Operator {
+  // operators
+  tok_binary = -11,
+  tok_unary = -12,
 
+  // variables
+  tok_var = -13,
+  
   // binary
-  op_lt = '<',
-  op_add = '+',
-  op_sub = '-',
-  op_mul = '*',
-  op_div = '/'
-
+  tok_eq = '=',
+  tok_lt = '<',
+  tok_add = '+',
+  tok_sub = '-',
+  tok_mul = '*',
+  tok_div = '/'
 };
 
 } // namespace

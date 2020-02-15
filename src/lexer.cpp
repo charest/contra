@@ -3,12 +3,11 @@
 
 #include <cstdio>
 
-//==============================================================================
-// Lexer
-//==============================================================================
 namespace contra {
 
+//==============================================================================
 /// gettok - Return the next token from standard input.
+//==============================================================================
 int Lexer::gettok() {
 
   // Skip any whitespace.
@@ -34,6 +33,12 @@ int Lexer::gettok() {
       return tok_for;
     if (IdentifierStr == "in")
       return tok_in;
+    if (IdentifierStr == "binary")
+      return tok_binary;
+    if (IdentifierStr == "unary")
+      return tok_unary;
+    if (IdentifierStr == "var")
+      return tok_var;
     return tok_identifier;
   }
 

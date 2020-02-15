@@ -7,7 +7,7 @@ namespace contra {
 
 /// LogError* - These are little helper functions for error handling.
 inline void LogError(const char *Str) {
-  std::cerr << "Error: " << Str << std::endl;
+  std::cerr << "Error: " << Str << "\n";
 }
 
 } // namespace 

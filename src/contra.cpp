@@ -1,5 +1,6 @@
 #include "contra.hpp"
 
+#include "llvm/LinkAllPasses.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
@@ -28,6 +29,8 @@ void InitializeModuleAndPassManager(CodeGen & TheCG, ContraJIT & TheJIT) {
   // Create a new pass manager attached to it.
   TheFPM = std::make_unique<legacy::FunctionPassManager>(TheModule.get());
 
+  // Promote allocas to registers.
+  TheFPM->add(createPromoteMemoryToRegisterPass());
   // Do simple "peephole" optimizations and bit-twiddling optzns.
   TheFPM->add(createInstructionCombiningPass());
   // Reassociate expressions.
@@ -43,10 +46,10 @@ void InitializeModuleAndPassManager(CodeGen & TheCG, ContraJIT & TheJIT) {
 void HandleDefinition(Parser & TheParser, CodeGen & TheCG, ContraJIT & TheJIT)
 {
   if (auto FnAST = TheParser.ParseDefinition()) {
-    if (auto *FnIR = FnAST->codegen(TheCG)) {
+    if (auto *FnIR = FnAST->codegen(TheCG, TheParser)) {
       std::cerr << "Read function definition:";
       FnIR->print(errs());
-      std::cerr << std::endl;
+      std::cerr << "\n";
       TheJIT.addModule(std::move(TheCG.TheModule));
       InitializeModuleAndPassManager(TheCG, TheJIT);
     }
@@ -61,7 +64,7 @@ static void HandleExtern(Parser & TheParser, CodeGen & TheCG) {
     if (auto *FnIR = ProtoAST->codegen(TheCG)) {
       std::cerr << "Read extern: ";
       FnIR->print(errs());
-      std::cerr << std::endl;
+      std::cerr << "\n";
       TheCG.FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
   } else {
@@ -70,10 +73,10 @@ static void HandleExtern(Parser & TheParser, CodeGen & TheCG) {
   }
 }
 
-static void HandleTopLevelExpression(Parser & TheParser, CodeGen & TheCG, ContraJIT & TheJIT) {
+void HandleTopLevelExpression(Parser & TheParser, CodeGen & TheCG, ContraJIT & TheJIT) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = TheParser.ParseTopLevelExpr()) {
-    if (FnAST->codegen(TheCG)) {
+    if (FnAST->codegen(TheCG, TheParser)) {
       // JIT the module containing the anonymous expression, keeping a handle so
       // we can free it later.
       auto H = TheJIT.addModule(std::move(TheCG.TheModule));
@@ -86,7 +89,7 @@ static void HandleTopLevelExpression(Parser & TheParser, CodeGen & TheCG, Contra
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.
       double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-      std::cerr << "Evaluated to " << FP() << std::endl;
+      std::cerr << "Evaluated to " << FP() << "\n";
 
       // Delete the anonymous expression module from the JIT.
       TheJIT.removeModule(H);

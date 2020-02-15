@@ -10,8 +10,11 @@
 
 namespace contra {
 
+class Parser;
 
+//==============================================================================
 /// ExprAST - Base class for all expression nodes.
+//==============================================================================
 class ExprAST {
 public:
   virtual ~ExprAST() = default;
@@ -19,28 +22,35 @@ public:
   virtual Value *codegen(CodeGen &) = 0;
 };
 
+//==============================================================================
 /// NumberExprAST - Expression class for numeric literals like "1.0".
+//==============================================================================
 class NumberExprAST : public ExprAST {
   double Val;
 
 public:
   NumberExprAST(double Val) : Val(Val) {}
 
-  Value *codegen(CodeGen & cg) override;
+  Value *codegen(CodeGen &) override;
   
 };
 
+//==============================================================================
 /// VariableExprAST - Expression class for referencing a variable, like "a".
+//==============================================================================
 class VariableExprAST : public ExprAST {
   std::string Name;
 
 public:
   VariableExprAST(const std::string &Name) : Name(Name) {}
 
-  Value *codegen(CodeGen & cg) override;
+  Value *codegen(CodeGen &) override;
+  const std::string &getName() const { return Name; }
 };
 
+//==============================================================================
 /// BinaryExprAST - Expression class for a binary operator.
+//==============================================================================
 class BinaryExprAST : public ExprAST {
   char Op;
   std::unique_ptr<ExprAST> LHS, RHS;
@@ -50,11 +60,13 @@ public:
                 std::unique_ptr<ExprAST> RHS)
       : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
 
-  Value *codegen(CodeGen & cg) override;
+  Value *codegen(CodeGen &) override;
   
 };
 
+//==============================================================================
 /// CallExprAST - Expression class for function calls.
+//==============================================================================
 class CallExprAST : public ExprAST {
   std::string Callee;
   std::vector<std::unique_ptr<ExprAST>> Args;
@@ -64,11 +76,13 @@ public:
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(Callee), Args(std::move(Args)) {}
 
-  Value *codegen(CodeGen & cg) override;
+  Value *codegen(CodeGen &) override;
   
 };
 
+//==============================================================================
 /// IfExprAST - Expression class for if/then/else.
+//==============================================================================
 class IfExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Cond, Then, Else;
 
@@ -77,10 +91,12 @@ public:
             std::unique_ptr<ExprAST> Else)
       : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
 
-  Value *codegen(CodeGen & cg) override;
+  Value *codegen(CodeGen &) override;
 };
 
-/// ForExprAST - Expression class for for/in.
+//==============================================================================
+// ForExprAST - Expression class for for/in.
+//==============================================================================
 class ForExprAST : public ExprAST {
   std::string VarName;
   std::unique_ptr<ExprAST> Start, End, Step, Body;
@@ -107,27 +123,78 @@ public:
   //   endcond = endexpr
   //   br endcond, loop, endloop
   // outloop:
-  Value *codegen(CodeGen & cg) override;
+  Value *codegen(CodeGen &) override;
 };
 
+//==============================================================================
+/// UnaryExprAST - Expression class for a unary operator.
+//==============================================================================
+class UnaryExprAST : public ExprAST {
+  char Opcode;
+  std::unique_ptr<ExprAST> Operand;
+
+public:
+  UnaryExprAST(char Opcode, std::unique_ptr<ExprAST> Operand)
+    : Opcode(Opcode), Operand(std::move(Operand)) {}
+
+  Value *codegen(CodeGen &) override;
+};
+
+//==============================================================================
+/// VarExprAST - Expression class for var/in
+//==============================================================================
+class VarExprAST : public ExprAST {
+  std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
+  std::unique_ptr<ExprAST> Body;
+
+public:
+  VarExprAST(std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames,
+             std::unique_ptr<ExprAST> Body)
+    : VarNames(std::move(VarNames)), Body(std::move(Body)) {}
+
+  Value *codegen(CodeGen &) override;
+};
+
+//==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function,
 /// which captures its name, and its argument names (thus implicitly the number
 /// of arguments the function takes).
+//==============================================================================
 class PrototypeAST {
   std::string Name;
   std::vector<std::string> Args;
+  bool IsOperator;
+  unsigned Precedence;  // Precedence if a binary op.
 
 public:
-  PrototypeAST(const std::string &Name, std::vector<std::string> Args)
-      : Name(Name), Args(std::move(Args)) {}
+  PrototypeAST(
+    const std::string &Name,
+    std::vector<std::string> Args,
+    bool IsOperator = false,
+    unsigned Prec = 0)
+      : Name(Name), Args(std::move(Args)), IsOperator(IsOperator),
+        Precedence(Prec)
+  {}
 
   
-  Function *codegen(CodeGen & cg);
+  Function *codegen(CodeGen &);
 
   const std::string &getName() const { return Name; }
+
+  bool isUnaryOp() const { return IsOperator && Args.size() == 1; }
+  bool isBinaryOp() const { return IsOperator && Args.size() == 2; }
+
+  char getOperatorName() const {
+    assert(isUnaryOp() || isBinaryOp());
+    return Name[Name.size() - 1];
+  }
+
+  unsigned getBinaryPrecedence() const { return Precedence; }
 };
 
+//==============================================================================
 /// FunctionAST - This class represents a function definition itself.
+//==============================================================================
 class FunctionAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<ExprAST> Body;
@@ -137,7 +204,7 @@ public:
               std::unique_ptr<ExprAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
 
-  Function *codegen(CodeGen & cg);
+  Function *codegen(CodeGen &, Parser &);
 
 };
 
