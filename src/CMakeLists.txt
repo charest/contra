@@ -1,8 +1,13 @@
 
+target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/args.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/ast.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/codegen.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/contra.cpp )
+target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/debug.cpp )
+target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/jit.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/lexer.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/llvm.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/parser.cpp )
+target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/string_utils.cpp )
+target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/token.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp )

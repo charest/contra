@@ -2,6 +2,7 @@
 #define CONTRA_AST_HPP
 
 #include "codegen.hpp"
+#include "sourceloc.hpp"
 
 #include <iostream>
 #include <memory>
@@ -11,15 +12,24 @@
 namespace contra {
 
 class Parser;
+using llvm::raw_ostream;
 
 //==============================================================================
 /// ExprAST - Base class for all expression nodes.
 //==============================================================================
 class ExprAST {
-public:
-  virtual ~ExprAST() = default;
 
+  SourceLocation Loc;
+
+public:
+  ExprAST(SourceLocation Loc) : Loc(Loc) {}
+  virtual ~ExprAST() = default;
   virtual Value *codegen(CodeGen &) = 0;
+  int getLine() const { return Loc.Line; }
+  int getCol() const { return Loc.Col; }
+  virtual raw_ostream &dump(raw_ostream &out, int ind) {
+    return out << ':' << getLine() << ':' << getCol() << '\n';
+  }
 };
 
 //==============================================================================
@@ -29,9 +39,10 @@ class NumberExprAST : public ExprAST {
   double Val;
 
 public:
-  NumberExprAST(double Val) : Val(Val) {}
+  NumberExprAST(SourceLocation Loc, double Val) : ExprAST(Loc), Val(Val) {}
 
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
 
@@ -42,10 +53,12 @@ class VariableExprAST : public ExprAST {
   std::string Name;
 
 public:
-  VariableExprAST(const std::string &Name) : Name(Name) {}
+  VariableExprAST(SourceLocation Loc, const std::string &Name) :
+    ExprAST(Loc), Name(Name) {}
 
   Value *codegen(CodeGen &) override;
   const std::string &getName() const { return Name; }
+  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
@@ -56,11 +69,14 @@ class BinaryExprAST : public ExprAST {
   std::unique_ptr<ExprAST> LHS, RHS;
 
 public:
-  BinaryExprAST(char Op, std::unique_ptr<ExprAST> LHS,
-                std::unique_ptr<ExprAST> RHS)
-      : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+  BinaryExprAST(SourceLocation Loc, 
+      char Op, std::unique_ptr<ExprAST> LHS,
+      std::unique_ptr<ExprAST> RHS)
+    : ExprAST(Loc), Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS))
+  {}
 
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
 
@@ -72,11 +88,14 @@ class CallExprAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> Args;
 
 public:
-  CallExprAST(const std::string &Callee,
-              std::vector<std::unique_ptr<ExprAST>> Args)
-      : Callee(Callee), Args(std::move(Args)) {}
+  CallExprAST(SourceLocation Loc,
+      const std::string &Callee,
+      std::vector<std::unique_ptr<ExprAST>> Args)
+    : ExprAST(Loc), Callee(Callee), Args(std::move(Args))
+  {}
 
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
 
@@ -87,11 +106,15 @@ class IfExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Cond, Then, Else;
 
 public:
-  IfExprAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<ExprAST> Then,
-            std::unique_ptr<ExprAST> Else)
-      : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
+  IfExprAST(SourceLocation Loc,
+      std::unique_ptr<ExprAST> Cond,
+      std::unique_ptr<ExprAST> Then,
+      std::unique_ptr<ExprAST> Else)
+    : ExprAST(Loc), Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else))
+  {}
 
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
@@ -102,28 +125,18 @@ class ForExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Start, End, Step, Body;
 
 public:
-  ForExprAST(const std::string &VarName, std::unique_ptr<ExprAST> Start,
-             std::unique_ptr<ExprAST> End, std::unique_ptr<ExprAST> Step,
-             std::unique_ptr<ExprAST> Body)
-      : VarName(VarName), Start(std::move(Start)), End(std::move(End)),
-        Step(std::move(Step)), Body(std::move(Body)) {}
+  ForExprAST(SourceLocation Loc,
+      const std::string &VarName,
+      std::unique_ptr<ExprAST> Start,
+      std::unique_ptr<ExprAST> End,
+      std::unique_ptr<ExprAST> Step,
+      std::unique_ptr<ExprAST> Body)
+    : ExprAST(Loc), VarName(VarName), Start(std::move(Start)), End(std::move(End)),
+    Step(std::move(Step)), Body(std::move(Body))
+  {}
 
-  // Output for-loop as:
-  //   ...
-  //   start = startexpr
-  //   goto loop
-  // loop:
-  //   variable = phi [start, loopheader], [nextvariable, loopend]
-  //   ...
-  //   bodyexpr
-  //   ...
-  // loopend:
-  //   step = stepexpr
-  //   nextvariable = variable + step
-  //   endcond = endexpr
-  //   br endcond, loop, endloop
-  // outloop:
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
@@ -134,10 +147,13 @@ class UnaryExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Operand;
 
 public:
-  UnaryExprAST(char Opcode, std::unique_ptr<ExprAST> Operand)
-    : Opcode(Opcode), Operand(std::move(Operand)) {}
+  UnaryExprAST(SourceLocation Loc,
+      char Opcode,
+      std::unique_ptr<ExprAST> Operand)
+    : ExprAST(Loc), Opcode(Opcode), Operand(std::move(Operand)) {}
 
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
@@ -148,11 +164,14 @@ class VarExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Body;
 
 public:
-  VarExprAST(std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames,
-             std::unique_ptr<ExprAST> Body)
-    : VarNames(std::move(VarNames)), Body(std::move(Body)) {}
+  VarExprAST(SourceLocation Loc,
+      std::vector<std::pair<std::string,
+      std::unique_ptr<ExprAST>>> VarNames,
+      std::unique_ptr<ExprAST> Body)
+    : ExprAST(Loc), VarNames(std::move(VarNames)), Body(std::move(Body)) {}
 
   Value *codegen(CodeGen &) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
@@ -165,15 +184,17 @@ class PrototypeAST {
   std::vector<std::string> Args;
   bool IsOperator;
   unsigned Precedence;  // Precedence if a binary op.
+  int Line;
 
 public:
   PrototypeAST(
+    SourceLocation Loc,
     const std::string &Name,
     std::vector<std::string> Args,
     bool IsOperator = false,
     unsigned Prec = 0)
       : Name(Name), Args(std::move(Args)), IsOperator(IsOperator),
-        Precedence(Prec)
+        Precedence(Prec), Line(Loc.Line)
   {}
 
   
@@ -190,6 +211,7 @@ public:
   }
 
   unsigned getBinaryPrecedence() const { return Precedence; }
+  int getLine() const { return Line; }
 };
 
 //==============================================================================
@@ -205,6 +227,7 @@ public:
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
 
   Function *codegen(CodeGen &, Parser &);
+  raw_ostream &dump(raw_ostream &out, int ind);
 
 };
 

@@ -21,7 +21,7 @@ std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
 // numberexpr ::= number
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::ParseNumberExpr() {
-  auto Result = std::make_unique<NumberExprAST>(TheLex.NumVal);
+  auto Result = std::make_unique<NumberExprAST>(TheLex.CurLoc, TheLex.NumVal);
   getNextToken(); // consume the number
   return std::move(Result);
 }
@@ -43,16 +43,18 @@ std::unique_ptr<ExprAST> Parser::ParseParenExpr() {
 
 //==============================================================================
 // identifierexpr
-//   ::= identifier
+//   ::= 
 //   ::= identifier '(' expression* ')'
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::ParseIdentifierExpr() {
   std::string IdName = TheLex.IdentifierStr;
 
+  SourceLocation LitLoc = TheLex.CurLoc;
+
   getNextToken(); // eat identifier.
 
   if (CurTok != '(') // Simple variable ref.
-    return std::make_unique<VariableExprAST>(IdName);
+    return std::make_unique<VariableExprAST>(LitLoc, IdName);
 
   // Call.
   getNextToken(); // eat (
@@ -76,13 +78,15 @@ std::unique_ptr<ExprAST> Parser::ParseIdentifierExpr() {
   // Eat the ')'.
   getNextToken();
 
-  return std::make_unique<CallExprAST>(IdName, std::move(Args));
+  return std::make_unique<CallExprAST>(LitLoc, IdName, std::move(Args));
 }
 
 //==============================================================================
 // ifexpr ::= 'if' expression 'then' expression 'else' expression
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::ParseIfExpr() {
+  SourceLocation IfLoc = TheLex.CurLoc;
+
   getNextToken(); // eat the if.
 
   // condition.
@@ -107,8 +111,8 @@ std::unique_ptr<ExprAST> Parser::ParseIfExpr() {
   if (!Else)
     return nullptr;
 
-  return std::make_unique<IfExprAST>(std::move(Cond), std::move(Then),
-                                      std::move(Else));
+  return std::make_unique<IfExprAST>(IfLoc, std::move(Cond),
+      std::move(Then), std::move(Else));
 }
 
 //==============================================================================
@@ -155,8 +159,8 @@ std::unique_ptr<ExprAST> Parser::ParseForExpr() {
   if (!Body)
     return nullptr;
 
-  return std::make_unique<ForExprAST>(IdName, std::move(Start), std::move(End), 
-      std::move(Step), std::move(Body));
+  return std::make_unique<ForExprAST>(TheLex.CurLoc, IdName, std::move(Start),
+      std::move(End), std::move(Step), std::move(Body));
 }
 
 //==============================================================================
@@ -204,6 +208,7 @@ std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
 
     // Okay, we know this is a binop.
     int BinOp = CurTok;
+    SourceLocation BinLoc = TheLex.CurLoc;
     getNextToken(); // eat binop
 
     // Parse the unary expression after the binary operator.
@@ -221,8 +226,8 @@ std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
     }
 
     // Merge LHS/RHS.
-    LHS =
-        std::make_unique<BinaryExprAST>(BinOp, std::move(LHS), std::move(RHS));
+    LHS = std::make_unique<BinaryExprAST>(BinLoc, BinOp, std::move(LHS),
+        std::move(RHS));
   }
 }
 
@@ -247,6 +252,8 @@ std::unique_ptr<ExprAST> Parser::ParseExpression() {
 //==============================================================================
 std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
   std::string FnName;
+
+  SourceLocation FnLoc = TheLex.CurLoc;
 
   unsigned Kind = 0;  // 0 = identifier, 1 = unary, 2 = binary.
   unsigned BinaryPrecedence = 30;
@@ -303,8 +310,8 @@ std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
   if (Kind && ArgNames.size() != Kind)
     return LogErrorP("Invalid number of operands for operator");
 
-  return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames), Kind != 0,
-      BinaryPrecedence);
+  return std::make_unique<PrototypeAST>(FnLoc, FnName,
+      std::move(ArgNames), Kind != 0, BinaryPrecedence);
 }
 
 //==============================================================================
@@ -325,10 +332,11 @@ std::unique_ptr<FunctionAST> Parser::ParseDefinition() {
 // toplevelexpr ::= expression
 //==============================================================================
 std::unique_ptr<FunctionAST> Parser::ParseTopLevelExpr() {
+  SourceLocation FnLoc = TheLex.CurLoc;
   if (auto E = ParseExpression()) {
     // Make an anonymous proto.
-    auto Proto = std::make_unique<PrototypeAST>("__anon_expr",
-                                                 std::vector<std::string>());
+    auto Proto = std::make_unique<PrototypeAST>(FnLoc, 
+        "__anon_expr", std::vector<std::string>());
     return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
   }
   return nullptr;
@@ -356,7 +364,7 @@ std::unique_ptr<ExprAST> Parser::ParseUnary() {
   int Opc = CurTok;
   getNextToken();
   if (auto Operand = ParseUnary())
-    return std::make_unique<UnaryExprAST>(Opc, std::move(Operand));
+    return std::make_unique<UnaryExprAST>(TheLex.CurLoc, Opc, std::move(Operand));
   return nullptr;
 }
 
@@ -405,8 +413,8 @@ std::unique_ptr<ExprAST> Parser::ParseVarExpr() {
     if (!Body)
       return nullptr;
   
-    return std::make_unique<VarExprAST>(std::move(VarNames),
-                                         std::move(Body));
+    return std::make_unique<VarExprAST>(TheLex.CurLoc, std::move(VarNames),
+        std::move(Body));
   }
 
 } // namespace

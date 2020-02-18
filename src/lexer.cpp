@@ -2,8 +2,27 @@
 #include "token.hpp"
 
 #include <cstdio>
+#include <iostream>
 
 namespace contra {
+
+
+//==============================================================================
+// Get the next char
+//==============================================================================
+int Lexer::advance() {
+  int LastChar = readchar();
+
+  if (LastChar == '\n' || LastChar == '\r') {
+    LexLoc.Line++;
+    LexLoc.Col = 0;
+  }
+  else {
+    LexLoc.Col++;
+  }
+  return LastChar;
+}
+
 
 //==============================================================================
 /// gettok - Return the next token from standard input.
@@ -12,11 +31,13 @@ int Lexer::gettok() {
 
   // Skip any whitespace.
   while (isspace(LastChar))
-    LastChar = getchar();
+    LastChar = advance();
+  
+  CurLoc = LexLoc;
 
   if (isalpha(LastChar)) { // identifier: [a-zA-Z][a-zA-Z0-9]*
     IdentifierStr = LastChar;
-    while (isalnum((LastChar = getchar())))
+    while (isalnum((LastChar = advance())))
       IdentifierStr += LastChar;
 
     if (IdentifierStr == "def")
@@ -46,7 +67,7 @@ int Lexer::gettok() {
     std::string NumStr;
     do {
       NumStr += LastChar;
-      LastChar = getchar();
+      LastChar = advance();
     } while (isdigit(LastChar) || LastChar == '.');
 
     NumVal = strtod(NumStr.c_str(), nullptr);
@@ -56,20 +77,20 @@ int Lexer::gettok() {
   if (LastChar == '#') {
     // Comment until end of line.
     do
-      LastChar = getchar();
-    while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+      LastChar = advance();
+    while (LastChar != eof() && LastChar != '\n' && LastChar != '\r');
 
-    if (LastChar != EOF)
+    if (LastChar != eof())
       return gettok();
   }
 
   // Check for end of file.  Don't eat the EOF.
-  if (LastChar == EOF)
+  if (LastChar == eof())
     return tok_eof;
 
   // Otherwise, just return the character as its ascii value.
   int ThisChar = LastChar;
-  LastChar = getchar();
+  LastChar = advance();
   return ThisChar;
 }
 

@@ -9,7 +9,7 @@ class Module;
 namespace contra {
 
 void llvm_start();
-int llvm_compile(llvm::Module &);
+int llvm_compile(llvm::Module &, const std::string &);
 
 }
 

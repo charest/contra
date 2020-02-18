@@ -29,6 +29,15 @@ public:
   std::map<char, int> BinopPrecedence;
   
   Parser() {
+    setBinopPrecedence();
+  }
+
+  Parser( const std::string & filename ) : TheLex(filename)
+  {
+    setBinopPrecedence();
+  }
+
+  void setBinopPrecedence() {
     // Install standard binary operators.
     // 1 is lowest precedence.
     BinopPrecedence[tok_eq] = 2;

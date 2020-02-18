@@ -13,6 +13,7 @@ using namespace llvm;
 
 namespace contra {
 
+//==============================================================================
 void llvm_start() {
 
   InitializeNativeTarget();
@@ -21,7 +22,8 @@ void llvm_start() {
 
 }
 
-int llvm_compile(Module & TheModule) {
+//==============================================================================
+int llvm_compile(Module & TheModule, const std::string & Filename) {
   
   // Initialize the target registry etc.
   InitializeAllTargetInfos();
@@ -54,7 +56,6 @@ int llvm_compile(Module & TheModule) {
 
   TheModule.setDataLayout(TheTargetMachine->createDataLayout());
 
-  auto Filename = "output.o";
   std::error_code EC;
   raw_fd_ostream dest(Filename, EC, sys::fs::OF_None);
 

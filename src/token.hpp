@@ -1,10 +1,14 @@
 #ifndef CONTRA_TOKEN_HPP
 #define CONTRA_TOKEN_HPP
 
+#include <string>
+
 namespace contra {
 
+//==============================================================================
 // The lexer returns tokens [0-255] if it is an unknown character, otherwise one
 // of these for known things.
+//==============================================================================
 enum Token {
   tok_eof = -1,
 
@@ -38,6 +42,9 @@ enum Token {
   tok_mul = '*',
   tok_div = '/'
 };
+
+// Get a tokens name
+std::string getTokName(int Tok);
 
 } // namespace
 
