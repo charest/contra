@@ -56,12 +56,12 @@ void HandleExtern(Parser & TheParser, CodeGen & TheCG) {
 //==============================================================================
 // Top-Level expression handler
 //==============================================================================
-void HandleTopLevelExpression(Parser & TheParser, CodeGen & TheCG) {
+int HandleTopLevelExpression(Parser & TheParser, CodeGen & TheCG, bool is_interactive) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = TheParser.ParseTopLevelExpr()) {
     auto FnIR = FnAST->codegen(TheCG, TheParser);
-    if (!TheCG.isDebug()) {
-      if (FnIR) {
+    if (FnIR) {
+      if (!TheCG.isDebug()) {
         // JIT the module containing the anonymous expression, keeping a handle so
         // we can free it later.
         auto H = TheCG.doJIT();
@@ -79,24 +79,27 @@ void HandleTopLevelExpression(Parser & TheParser, CodeGen & TheCG) {
         TheCG.removeJIT( H );
       }
     }
-    else {
-      if (!FnIR) std::cerr << "Error generating code for top level expr";
+    else if (!is_interactive) {
+      return -1;
     }
-  } else {
+  }
+  else {
     // Skip token for error recovery.
     TheParser.getNextToken();
   }
+  return 0;
 }
 
 //==============================================================================
 /// top ::= definition | external | expression | ';'
 //==============================================================================
-void MainLoop( Parser & TheParser, CodeGen & TheCG, bool is_interactive ) {
+int MainLoop( Parser & TheParser, CodeGen & TheCG, bool is_interactive ) {
   while (true) {
+    int res = 0;
     if (is_interactive) std::cerr << "ready> ";
     switch (TheParser.CurTok) {
     case tok_eof:
-      return;
+      return 0;
     case ';': // ignore top-level semicolons.
       TheParser.getNextToken();
       break;
@@ -107,9 +110,10 @@ void MainLoop( Parser & TheParser, CodeGen & TheCG, bool is_interactive ) {
       HandleExtern(TheParser, TheCG);
       break;
     default:
-      HandleTopLevelExpression(TheParser, TheCG);
+      res = HandleTopLevelExpression(TheParser, TheCG, is_interactive);
       break;
     }
+    if (res) return res;
   }
 }
 

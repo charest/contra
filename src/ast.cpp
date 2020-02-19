@@ -45,8 +45,11 @@ Value *VariableExprAST::codegen(CodeGen & TheCG)
 {
   // Look this variable up in the function.
   Value *V = TheCG.NamedValues[Name];
-  if (!V)
-    return LogErrorV("Unknown variable name");
+  if (!V) {
+    std::stringstream ss;
+    ss << "Unknown specifier '" << Name << "'";
+    return LogErrorV(ss.str().c_str());
+  }
   TheCG.emitLocation(this);
   // Load the value.
   return TheCG.Builder.CreateLoad(V, Name.c_str());

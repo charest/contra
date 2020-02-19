@@ -7,7 +7,7 @@
 namespace contra {
 
 // top ::= definition | external | expression | ';'
-void MainLoop( Parser &, CodeGen &, bool );
+int MainLoop( Parser &, CodeGen &, bool );
 
 }
 

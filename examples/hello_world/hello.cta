@@ -1,0 +1,8 @@
+# This is a comment, and is ignored by the compiler
+
+# This is the main function
+function main()
+  println("Hello World!")
+end
+
+main()

@@ -45,3 +45,9 @@ target_link_libraries(contra PUBLIC ${llvm_libs})
 
 add_subdirectory(src)
 
+#------------------------------------------------------------------------------#
+# Add examples
+#------------------------------------------------------------------------------#
+
+enable_testing()
+add_subdirectory(examples)

@@ -33,6 +33,9 @@ enum Token {
 
   // variables
   tok_var = -13,
+
+  // new
+  tok_function = -14,
   
   // binary
   tok_eq = '=',

@@ -13,6 +13,8 @@ std::string getTokName(int Tok) {
     return "def";
   case tok_extern:
     return "extern";
+  case tok_function:
+    return "function";
   case tok_identifier:
     return "identifier";
   case tok_number:

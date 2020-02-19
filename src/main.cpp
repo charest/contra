@@ -90,13 +90,14 @@ int main(int argc, char** argv) {
   CodeGen TheCG(is_debug);
 
   // Run the main "interpreter loop" now.
-  MainLoop(*TheParser, TheCG, is_interactive);
+  auto ret = MainLoop(*TheParser, TheCG, is_interactive);
+  if (ret) return ret;
 
   // Finalize whatever needs to be
   TheCG.finalize();
 
   // Print out all of the generated code.
-  TheCG.TheModule->print(llvm::errs(), nullptr);
+  //TheCG.TheModule->print(llvm::errs(), nullptr);
 
   // pile if necessary
   if (do_compile)
