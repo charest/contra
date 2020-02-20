@@ -9,10 +9,14 @@ std::string getTokName(int Tok) {
   switch (Tok) {
   case tok_binary:
     return "binary";
+  case tok_by:
+    return "by";
   case tok_eof:
     return "eof";
   case tok_def:
     return "def";
+  case tok_do:
+    return "do";
   case tok_else:
     return "else";
   case tok_end:
@@ -35,6 +39,8 @@ std::string getTokName(int Tok) {
     return "return";
   case tok_then:
     return "then";
+  case tok_to:
+    return "to";
   case tok_unary:
     return "unary";
   case tok_var:

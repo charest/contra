@@ -38,6 +38,9 @@ enum Token {
   tok_function = -14,
   tok_end = -15,
   tok_return = -16,
+  tok_to = -17,
+  tok_by = -18,
+  tok_do = -19,
 
   tok_sep = ';',
   
@@ -55,7 +58,9 @@ std::string getTokName(int Tok);
  
 const Token tok_keywords[] = {
   tok_binary,
+  tok_by,
   tok_def,
+  tok_do,
   tok_else,
   tok_end,
   tok_extern,
@@ -65,6 +70,7 @@ const Token tok_keywords[] = {
   tok_in,
   tok_return,
   tok_then,
+  tok_to,
   tok_unary,
   tok_var
 };

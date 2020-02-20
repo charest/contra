@@ -104,36 +104,47 @@ std::unique_ptr<ExprAST> Parser::parseForExpr(int Depth) {
 
   if (CurTok != tok_identifier)
     THROW_SYNTAX_ERROR("Expected identifier after 'for'", getLine());
-
   std::string IdName = TheLex.IdentifierStr;
   getNextToken(); // eat identifier.
-
-  if (CurTok != '=')
-    THROW_SYNTAX_ERROR("Expected '=' after 'for'", getLine());
-  getNextToken(); // eat '='.
+  
+  if (CurTok != tok_in)
+    THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getLine());
+  getNextToken(); // eat in
 
   auto Start = parseExpression(Depth);
-  if (CurTok != ',')
-    THROW_SYNTAX_ERROR("Expected ',' after for start value in 'for' loop", getLine());
-  getNextToken();
+
+  if (CurTok != tok_to)
+    THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", getLine());
+  getNextToken(); // eat to
 
   auto End = parseExpression(Depth);
 
   // The step value is optional.
   std::unique_ptr<ExprAST> Step;
-  if (CurTok == ',') {
+  if (CurTok == tok_by) {
     getNextToken();
     Step = parseExpression(Depth);
   }
 
-  if (CurTok != tok_in)
-    THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getLine());
-  getNextToken(); // eat 'in'.
+  if (CurTok != tok_do)
+    THROW_SYNTAX_ERROR("Expected 'do' after 'for'", getLine());
+  getNextToken(); // eat 'do'.
+  
+  // make a for loop
+  auto F = std::make_unique<ForExprAST>(TheLex.CurLoc, IdName, std::move(Start),
+      std::move(End), std::move(Step));
 
-  auto Body = parseExpression(Depth);
+  // add statements
+  while (CurTok != tok_end) {
+    auto E = parseExpression(Depth);
+    F->Body.emplace_back( std::move(E) );
+    if (CurTok == tok_sep) getNextToken();
+  }
+  
+  // eat end
+  getNextToken();
 
-  return std::make_unique<ForExprAST>(TheLex.CurLoc, IdName, std::move(Start),
-      std::move(End), std::move(Step), std::move(Body));
+  return F;
 }
 
 //==============================================================================

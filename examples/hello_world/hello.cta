@@ -11,6 +11,9 @@ function main(x)
   var y = 1 + x
   printd(y)
   #print("Hello World!\n")
+  for i in 1 to 2 do
+    printd(i)
+  end
 end
 
 # is this a global variable

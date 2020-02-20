@@ -266,6 +266,10 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
+  for ( auto & stmt : Body ) {
+    stmt->codegen(TheCG, Depth);
+  }
+
 
   // Emit the step value.
   Value *StepVal = nullptr;
@@ -286,8 +290,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheCG.Builder.CreateStore(NextVar, Alloca);
 
   // Convert condition to a bool by comparing non-equal to 0.0.
-  EndCond = TheCG.Builder.CreateFCmpONE(
-      EndCond, ConstantFP::get(TheCG.TheContext, APFloat(0.0)), "loopcond");
+  EndCond = TheCG.Builder.CreateFCmpONE(EndCond, CurVar, "loopcond");
 
   // Create the "after loop" block and insert it.
   BasicBlock *AfterBB =
@@ -314,7 +317,9 @@ raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
   Start->dump(indent(out, ind) << "Cond:", ind + 1);
   End->dump(indent(out, ind) << "End:", ind + 1);
   Step->dump(indent(out, ind) << "Step:", ind + 1);
-  Body->dump(indent(out, ind) << "Body:", ind + 1);
+  indent(out, ind+1) << "Body:\n";
+  for ( auto & B : Body )
+    B->dump(out, ind+2);
   return out;
 }
 
@@ -534,11 +539,10 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
 raw_ostream &FunctionAST::dump(raw_ostream &out, int ind) {
   indent(out, ind) << "FunctionAST\n";
   ++ind;
-  indent(out, ind) << "Body:";
-  if (Body.empty())
-    return out << "null\n";
-  else
-    return Body[0]->dump(out, ind);
+  indent(out, ind) << "Body:\n";
+  for ( auto & B : Body )
+    B->dump(out, ind+1);
+  return out;
 }
 
 } // namespace
