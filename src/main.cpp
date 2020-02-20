@@ -25,7 +25,7 @@ extern "C" DLLEXPORT double putchard(double X) {
 
 /// printd - printf that takes a double prints it as "%f\n", returning 0.
 extern "C" DLLEXPORT double printd(double X) {
-  fprintf(stderr, "%f\n", X);
+  fprintf(stderr, "printing %f\n", X);
   return 0;
 }
 
@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
 
   // get arguments
   std::map<std::string, std::string> args;
-  auto res = process_arguments( argc, argv, args );  
+  auto res = processArguments( argc, argv, args );  
   if ( args.count("h") ) return 0;
   if ( res ) return res;
 
@@ -73,25 +73,20 @@ int main(int argc, char** argv) {
   } // interactive
 
   // initialize llvm
-  llvm_start();
+  startLLVM();
 
   // create the parser
   std::unique_ptr<Parser> TheParser;
   if (!source_filename.empty())
-    TheParser = std::make_unique<Parser>(source_filename);
+    TheParser = std::make_unique<Parser>(source_filename, is_verbose);
   else
-    TheParser = std::make_unique<Parser>();
-
-  // Prime the first token.
-  if (is_interactive) std::cerr << "ready> ";
-  TheParser->getNextToken();
+    TheParser = std::make_unique<Parser>(is_verbose);
 
   // create the JIT and Code generator
   CodeGen TheCG(is_debug);
 
   // Run the main "interpreter loop" now.
-  auto ret = MainLoop(*TheParser, TheCG, is_interactive);
-  if (ret) return ret;
+  mainLoop(*TheParser, TheCG, is_interactive, is_verbose);
 
   // Finalize whatever needs to be
   TheCG.finalize();
@@ -101,7 +96,7 @@ int main(int argc, char** argv) {
 
   // pile if necessary
   if (do_compile)
-    res = llvm_compile( *TheCG.TheModule, output_filename );
+    res = compileLLVM( *TheCG.TheModule, output_filename );
 
   return res;
 

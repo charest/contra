@@ -40,26 +40,9 @@ int Lexer::gettok() {
     while (isalnum((LastChar = advance())))
       IdentifierStr += LastChar;
 
-    if (IdentifierStr == "def")
-      return tok_def;
-    if (IdentifierStr == "extern")
-      return tok_extern;
-    if (IdentifierStr == "if")
-      return tok_if;
-    if (IdentifierStr == "then")
-      return tok_then;
-    if (IdentifierStr == "else")
-      return tok_else;
-    if (IdentifierStr == "for")
-      return tok_for;
-    if (IdentifierStr == "in")
-      return tok_in;
-    if (IdentifierStr == "binary")
-      return tok_binary;
-    if (IdentifierStr == "unary")
-      return tok_unary;
-    if (IdentifierStr == "var")
-      return tok_var;
+    for ( int i=0; i<num_keywords; ++i )
+      if (IdentifierStr == getTokName(tok_keywords[i]))
+        return tok_keywords[i];
     return tok_identifier;
   }
 

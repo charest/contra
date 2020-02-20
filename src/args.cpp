@@ -10,7 +10,7 @@ namespace contra {
 ///////////////////////////////////////////////////////////////////////////////
 //! \brief Parse the argument list
 ///////////////////////////////////////////////////////////////////////////////
-auto parse_arguments(
+auto parseArguments(
   int argc,
   char** argv,
   const option * long_options,
@@ -59,7 +59,7 @@ auto parse_arguments(
 ///////////////////////////////////////////////////////////////////////////////
 // Process the argument list for this app.
 ///////////////////////////////////////////////////////////////////////////////
-int process_arguments(
+int processArguments(
     int argc,
     char** argv,
     std::map<std::string, std::string> & args) 
@@ -95,7 +95,7 @@ int process_arguments(
   const char * short_options = "ghco:v";
 
   // parse the arguments
-  auto ret = parse_arguments(argc, argv, long_options, short_options, args);
+  auto ret = parseArguments(argc, argv, long_options, short_options, args);
 
   // process the simple ones
   if ( args.count("h") ) print_usage();

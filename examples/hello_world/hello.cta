@@ -1,8 +1,23 @@
 # This is a comment, and is ignored by the compiler
 
-# This is the main function
-function main()
-  println("Hello World!")
+extern printd(x)
+printd(1)
+
+function empty()
 end
 
-main()
+# This is the main function
+function main(x) 
+  var y = 1 + x
+  printd(y)
+  #print("Hello World!\n")
+end
+
+# is this a global variable
+#var y = 1
+# printd(y)
+
+empty()
+main(2)
+
+1+4

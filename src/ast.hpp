@@ -15,16 +15,35 @@ class Parser;
 using llvm::raw_ostream;
 
 //==============================================================================
+/// BaseAST - Base class for all AST nodes
+//==============================================================================
+class BaseAST {
+public:
+  // verbosity is on
+  static bool IsVerbose;
+  
+  void echo(const std::string & msg, int Depth) {
+    if (IsVerbose) {
+      std::cerr << std::string(2*Depth, '+');
+      std::cerr << msg << std::endl;
+    }
+  }
+};
+
+//==============================================================================
 /// ExprAST - Base class for all expression nodes.
 //==============================================================================
-class ExprAST {
+class ExprAST : public BaseAST {
 
   SourceLocation Loc;
-
+  
 public:
+
   ExprAST(SourceLocation Loc) : Loc(Loc) {}
+
   virtual ~ExprAST() = default;
-  virtual Value *codegen(CodeGen &) = 0;
+
+  virtual Value *codegen(CodeGen &, int) = 0;
   int getLine() const { return Loc.Line; }
   int getCol() const { return Loc.Col; }
   virtual raw_ostream &dump(raw_ostream &out, int ind) {
@@ -41,7 +60,7 @@ class NumberExprAST : public ExprAST {
 public:
   NumberExprAST(SourceLocation Loc, double Val) : ExprAST(Loc), Val(Val) {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -56,7 +75,7 @@ public:
   VariableExprAST(SourceLocation Loc, const std::string &Name) :
     ExprAST(Loc), Name(Name) {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   const std::string &getName() const { return Name; }
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
@@ -75,7 +94,7 @@ public:
     : ExprAST(Loc), Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS))
   {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -94,7 +113,7 @@ public:
     : ExprAST(Loc), Callee(Callee), Args(std::move(Args))
   {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -113,7 +132,7 @@ public:
     : ExprAST(Loc), Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else))
   {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -135,7 +154,7 @@ public:
     Step(std::move(Step)), Body(std::move(Body))
   {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -152,7 +171,7 @@ public:
       std::unique_ptr<ExprAST> Operand)
     : ExprAST(Loc), Opcode(Opcode), Operand(std::move(Operand)) {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -161,16 +180,14 @@ public:
 //==============================================================================
 class VarExprAST : public ExprAST {
   std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
-  std::unique_ptr<ExprAST> Body;
 
 public:
   VarExprAST(SourceLocation Loc,
       std::vector<std::pair<std::string,
-      std::unique_ptr<ExprAST>>> VarNames,
-      std::unique_ptr<ExprAST> Body)
-    : ExprAST(Loc), VarNames(std::move(VarNames)), Body(std::move(Body)) {}
+      std::unique_ptr<ExprAST>>> VarNames)
+    : ExprAST(Loc), VarNames(std::move(VarNames)) {}
 
-  Value *codegen(CodeGen &) override;
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -179,7 +196,7 @@ public:
 /// which captures its name, and its argument names (thus implicitly the number
 /// of arguments the function takes).
 //==============================================================================
-class PrototypeAST {
+class PrototypeAST : public BaseAST {
   std::string Name;
   std::vector<std::string> Args;
   bool IsOperator;
@@ -198,7 +215,7 @@ public:
   {}
 
   
-  Function *codegen(CodeGen &);
+  Function *codegen(CodeGen &, int Depth=0);
 
   const std::string &getName() const { return Name; }
 
@@ -217,16 +234,21 @@ public:
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
 //==============================================================================
-class FunctionAST {
+class FunctionAST : public BaseAST {
   std::unique_ptr<PrototypeAST> Proto;
-  std::unique_ptr<ExprAST> Body;
 
 public:
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-              std::unique_ptr<ExprAST> Body)
-      : Proto(std::move(Proto)), Body(std::move(Body)) {}
+  std::vector<std::unique_ptr<ExprAST>> Body;
+  std::unique_ptr<ExprAST> Return;
 
-  Function *codegen(CodeGen &, Parser &);
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto)
+      : Proto(std::move(Proto)) {}
+
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<ExprAST> Body)
+      : Proto(std::move(Proto)), Return(std::move(Body))
+  {}
+
+  Function *codegen(CodeGen &, std::map<char, int> &, int Depth=0);
   raw_ostream &dump(raw_ostream &out, int ind);
 
 };

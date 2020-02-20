@@ -36,6 +36,10 @@ enum Token {
 
   // new
   tok_function = -14,
+  tok_end = -15,
+  tok_return = -16,
+
+  tok_sep = ';',
   
   // binary
   tok_eq = '=',
@@ -48,6 +52,24 @@ enum Token {
 
 // Get a tokens name
 std::string getTokName(int Tok);
+ 
+const Token tok_keywords[] = {
+  tok_binary,
+  tok_def,
+  tok_else,
+  tok_end,
+  tok_extern,
+  tok_for,
+  tok_function,
+  tok_if,
+  tok_in,
+  tok_return,
+  tok_then,
+  tok_unary,
+  tok_var
+};
+
+const int num_keywords = sizeof(tok_keywords) / sizeof(Token);
 
 } // namespace
 

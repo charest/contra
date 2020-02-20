@@ -14,7 +14,7 @@ using namespace llvm;
 namespace contra {
 
 //==============================================================================
-void llvm_start() {
+void startLLVM() {
 
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
@@ -23,7 +23,7 @@ void llvm_start() {
 }
 
 //==============================================================================
-int llvm_compile(Module & TheModule, const std::string & Filename) {
+int compileLLVM(Module & TheModule, const std::string & Filename) {
   
   // Initialize the target registry etc.
   InitializeAllTargetInfos();

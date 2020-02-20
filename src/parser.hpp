@@ -17,6 +17,9 @@ class Parser {
   // A lexer object
   Lexer TheLex;
 
+  // verbosity is on
+  bool IsVerbose = false;
+
 public:
 
   /// CurTok/getNextToken - Provide a simple token buffer.  CurTok is the current
@@ -28,11 +31,12 @@ public:
   /// defined.
   std::map<char, int> BinopPrecedence;
   
-  Parser() {
+  Parser(bool IsVerbose = false) : IsVerbose(IsVerbose) {
     setBinopPrecedence();
   }
 
-  Parser( const std::string & filename ) : TheLex(filename)
+  Parser( const std::string & filename, bool IsVerbose = false )
+    : TheLex(filename), IsVerbose(IsVerbose)
   {
     setBinopPrecedence();
   }
@@ -52,10 +56,17 @@ public:
   /// CurTok/getNextToken - Provide a simple token buffer.  CurTok is the current
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
-  int getNextToken() { return CurTok = TheLex.gettok(); }
+  int getNextToken() {
+    CurTok = TheLex.gettok();
+    //if ( CurTok == tok_identifier )
+    //  std::cerr << "echo> " << getTokName(CurTok) << " value " << TheLex.IdentifierStr << std::endl;
+    //else
+    //  std::cerr << "echo> " << getTokName(CurTok) << std::endl;
+    return CurTok;
+  }
 
   /// GetTokPrecedence - Get the precedence of the pending binary operator token.
-  int GetTokPrecedence() {
+  int getTokPrecedence() {
     if (!isascii(CurTok))
       return -1;
 
@@ -64,23 +75,32 @@ public:
     if (TokPrecIt == BinopPrecedence.end()) return -1;
     return TokPrecIt->second;
   }
+
+  int getLine() { return TheLex.CurLoc.Line; }
   
+  void echo(const std::string & msg, int Depth) {
+    if (IsVerbose) {
+      std::cerr << std::string(2*Depth, '.');
+      std::cerr << msg << std::endl;
+    }
+  }
+
   /// numberexpr ::= number
-  std::unique_ptr<ExprAST> ParseNumberExpr();
+  std::unique_ptr<ExprAST> parseNumberExpr(int Depth = 0);
   
   /// parenexpr ::= '(' expression ')'
-  std::unique_ptr<ExprAST> ParseParenExpr();
+  std::unique_ptr<ExprAST> parseParenExpr(int Depth = 0);
   
   /// identifierexpr
   ///   ::= identifier
   ///   ::= identifier '(' expression* ')'
-  std::unique_ptr<ExprAST> ParseIdentifierExpr();
+  std::unique_ptr<ExprAST> parseIdentifierExpr(int Depth = 0);
   
   /// ifexpr ::= 'if' expression 'then' expression 'else' expression
-  std::unique_ptr<ExprAST> ParseIfExpr();
+  std::unique_ptr<ExprAST> parseIfExpr(int Depth = 0);
   
   /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
-  std::unique_ptr<ExprAST> ParseForExpr();
+  std::unique_ptr<ExprAST> parseForExpr(int Depth = 0);
   
   /// primary
   ///   ::= identifierexpr
@@ -88,41 +108,41 @@ public:
   ///   ::= parenexpr
   ///   ::= ifexpr
   ///   ::= forexpr
-  std::unique_ptr<ExprAST> ParsePrimary();
+  std::unique_ptr<ExprAST> parsePrimary(int Depth = 0);
   
   /// binoprhs
   ///   ::= ('+' primary)*
-  std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS);
+  std::unique_ptr<ExprAST> parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS, int Depth = 0);
   
   /// expression
   ///   ::= primary binoprhs
   ///
-  std::unique_ptr<ExprAST> ParseExpression();
-  
-  /// prototype
-  ///   ::= id '(' id* ')'
-  ///   ::= binary LETTER number? (id, id)
-  ///   ::= unary LETTER (id)
-  std::unique_ptr<PrototypeAST> ParsePrototype();
-  
+  std::unique_ptr<ExprAST> parseExpression(int Depth = 0);
+
   /// definition ::= 'def' prototype expression
-  std::unique_ptr<FunctionAST> ParseDefinition();
+  std::unique_ptr<FunctionAST> parseDefinition(int Depth = 0);
   
+
   /// toplevelexpr ::= expression
-  std::unique_ptr<FunctionAST> ParseTopLevelExpr();
+  std::unique_ptr<FunctionAST> parseTopLevelExpr(int Depth = 0);
   
   /// external ::= 'extern' prototype
-  std::unique_ptr<PrototypeAST> ParseExtern();
+  std::unique_ptr<PrototypeAST> parseExtern(int Depth = 0);
 
   /// unary
   ///   ::= primary
   ///   ::= '!' unary
-  std::unique_ptr<ExprAST> ParseUnary();
+  std::unique_ptr<ExprAST> parseUnary(int Depth = 0);
 
   /// varexpr ::= 'var' identifier ('=' expression)?
   ///                    (',' identifier ('=' expression)?)* 'in' expression
-  std::unique_ptr<ExprAST> ParseVarExpr();
+  std::unique_ptr<ExprAST> parseVarExpr(int Depth = 0);
 
+  /// Top level function parser 
+  std::unique_ptr<FunctionAST> parseFunction(int Depth = 0);
+  
+  /// prototype
+  std::unique_ptr<PrototypeAST> parsePrototype(int Depth = 0);
 };
 
 } // namespace

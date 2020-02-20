@@ -7,7 +7,7 @@
 namespace contra {
 
 //! \brief Process the argument list for this app.
-int process_arguments(
+int processArguments(
     int argc,
     char** argv,
     std::map<std::string, std::string> & key_value_pair); 

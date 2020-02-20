@@ -8,8 +8,8 @@ class Module;
 /// start llvm
 namespace contra {
 
-void llvm_start();
-int llvm_compile(llvm::Module &, const std::string &);
+void startLLVM();
+int compileLLVM(llvm::Module &, const std::string &);
 
 }
 

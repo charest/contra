@@ -3,24 +3,12 @@
 
 namespace contra {
 
-//==============================================================================
-// Utility error functions
-//==============================================================================
-std::unique_ptr<ExprAST> LogErrorE(const char *Str) {
-  LogError(Str);
-  return nullptr;
-}
-
-std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
-  LogError(Str);
-  return nullptr;
-}
-
   
 //==============================================================================
 // numberexpr ::= number
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseNumberExpr() {
+std::unique_ptr<ExprAST> Parser::parseNumberExpr(int Depth) {
+  echo( Formatter() << "Parsing number expression '" << TheLex.NumVal << "'", Depth++ );
   auto Result = std::make_unique<NumberExprAST>(TheLex.CurLoc, TheLex.NumVal);
   getNextToken(); // consume the number
   return std::move(Result);
@@ -29,14 +17,13 @@ std::unique_ptr<ExprAST> Parser::ParseNumberExpr() {
 //==============================================================================
 // parenexpr ::= '(' expression ')'
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseParenExpr() {
+std::unique_ptr<ExprAST> Parser::parseParenExpr(int Depth) {
+  echo( "Parsing parenthases expression", Depth++ ); 
   getNextToken(); // eat (.
-  auto V = ParseExpression();
-  if (!V)
-    return nullptr;
+  auto V = parseExpression(++Depth);
 
   if (CurTok != ')')
-    return LogErrorE("expected ')'");
+    THROW_SYNTAX_ERROR("Expected ')'", getLine());
   getNextToken(); // eat ).
   return V;
 }
@@ -46,8 +33,9 @@ std::unique_ptr<ExprAST> Parser::ParseParenExpr() {
 //   ::= 
 //   ::= identifier '(' expression* ')'
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseIdentifierExpr() {
+std::unique_ptr<ExprAST> Parser::parseIdentifierExpr(int Depth) {
   std::string IdName = TheLex.IdentifierStr;
+  echo( Formatter() << "Parsing identifyer expression '" << IdName << "'", Depth++ ); 
 
   SourceLocation LitLoc = TheLex.CurLoc;
 
@@ -61,55 +49,47 @@ std::unique_ptr<ExprAST> Parser::ParseIdentifierExpr() {
   std::vector<std::unique_ptr<ExprAST>> Args;
   if (CurTok != ')') {
     while (true) {
-      if (auto Arg = ParseExpression())
+      if (auto Arg = parseExpression(Depth))
         Args.push_back(std::move(Arg));
-      else
-        return nullptr;
 
       if (CurTok == ')')
         break;
 
       if (CurTok != ',')
-        return LogErrorE("Expected ')' or ',' in argument list");
+        THROW_SYNTAX_ERROR("Expected ')' or ',' in argument list", getLine());
       getNextToken();
     }
   }
 
   // Eat the ')'.
   getNextToken();
-
   return std::make_unique<CallExprAST>(LitLoc, IdName, std::move(Args));
 }
 
 //==============================================================================
 // ifexpr ::= 'if' expression 'then' expression 'else' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseIfExpr() {
+std::unique_ptr<ExprAST> Parser::parseIfExpr(int Depth) {
+  echo( "Parsing conditional expression", Depth++ ); 
   SourceLocation IfLoc = TheLex.CurLoc;
 
   getNextToken(); // eat the if.
 
   // condition.
-  auto Cond = ParseExpression();
-  if (!Cond)
-    return nullptr;
+  auto Cond = parseExpression(Depth);
 
   if (CurTok != tok_then)
-    return LogErrorE("expected then");
+    THROW_SYNTAX_ERROR("Expected 'then'", getLine());
   getNextToken(); // eat the then
 
-  auto Then = ParseExpression();
-  if (!Then)
-    return nullptr;
+  auto Then = parseExpression(Depth);
 
   if (CurTok != tok_else)
-    return LogErrorE("expected else");
+    THROW_SYNTAX_ERROR("Expected 'else'", getLine());
 
   getNextToken();
 
-  auto Else = ParseExpression();
-  if (!Else)
-    return nullptr;
+  auto Else = parseExpression(Depth);
 
   return std::make_unique<IfExprAST>(IfLoc, std::move(Cond),
       std::move(Then), std::move(Else));
@@ -118,46 +98,39 @@ std::unique_ptr<ExprAST> Parser::ParseIfExpr() {
 //==============================================================================
 // forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseForExpr() {
+std::unique_ptr<ExprAST> Parser::parseForExpr(int Depth) {
+  echo( "Parsing for expression", Depth++ ); 
   getNextToken(); // eat the for.
 
   if (CurTok != tok_identifier)
-    return LogErrorE("expected identifier after for");
+    THROW_SYNTAX_ERROR("Expected identifier after 'for'", getLine());
 
   std::string IdName = TheLex.IdentifierStr;
   getNextToken(); // eat identifier.
 
   if (CurTok != '=')
-    return LogErrorE("expected '=' after for");
+    THROW_SYNTAX_ERROR("Expected '=' after 'for'", getLine());
   getNextToken(); // eat '='.
 
-  auto Start = ParseExpression();
-  if (!Start)
-    return nullptr;
+  auto Start = parseExpression(Depth);
   if (CurTok != ',')
-    return LogErrorE("expected ',' after for start value");
+    THROW_SYNTAX_ERROR("Expected ',' after for start value in 'for' loop", getLine());
   getNextToken();
 
-  auto End = ParseExpression();
-  if (!End)
-    return nullptr;
+  auto End = parseExpression(Depth);
 
   // The step value is optional.
   std::unique_ptr<ExprAST> Step;
   if (CurTok == ',') {
     getNextToken();
-    Step = ParseExpression();
-    if (!Step)
-      return nullptr;
+    Step = parseExpression(Depth);
   }
 
   if (CurTok != tok_in)
-    return LogErrorE("expected 'in' after for");
+    THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getLine());
   getNextToken(); // eat 'in'.
 
-  auto Body = ParseExpression();
-  if (!Body)
-    return nullptr;
+  auto Body = parseExpression(Depth);
 
   return std::make_unique<ForExprAST>(TheLex.CurLoc, IdName, std::move(Start),
       std::move(End), std::move(Step), std::move(Body));
@@ -172,22 +145,30 @@ std::unique_ptr<ExprAST> Parser::ParseForExpr() {
 //   ::= forexpr
 //   ::= varexpr
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParsePrimary() {
+std::unique_ptr<ExprAST> Parser::parsePrimary(int Depth) {
+  echo( "Parsing primary expression", Depth++ ); 
+  
   switch (CurTok) {
-  default:
-    return LogErrorE("unknown token when expecting an expression");
   case tok_identifier:
-    return ParseIdentifierExpr();
+    return parseIdentifierExpr(Depth);
   case tok_number:
-    return ParseNumberExpr();
+    return parseNumberExpr(Depth);
   case '(':
-    return ParseParenExpr();
+    return parseParenExpr(Depth);
   case tok_if:
-    return ParseIfExpr();
+    return parseIfExpr(Depth);
   case tok_for:
-    return ParseForExpr();
+    return parseForExpr(Depth);
   case tok_var:
-    return ParseVarExpr();
+    return parseVarExpr(Depth);
+  case tok_end:
+  case tok_return:
+    std::cerr << "HERHERHEHER "<< getTokName(CurTok) << std::endl;
+    abort();
+    //return ParseReturnExpr();
+  default:
+    THROW_SYNTAX_ERROR("Unknown token '" <<  getTokName(CurTok)
+        << "' when expecting an expression", getLine());
   }
 }
 
@@ -195,12 +176,15 @@ std::unique_ptr<ExprAST> Parser::ParsePrimary() {
 // binoprhs
 //   ::= ('+' primary)*
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
-    std::unique_ptr<ExprAST> LHS) {
+std::unique_ptr<ExprAST> Parser::parseBinOpRHS(int ExprPrec,
+    std::unique_ptr<ExprAST> LHS, int Depth) {
+
+  echo( "Parsing binary expression", Depth++ ); 
+  
   // If this is a binop, find its precedence.
   while (true) {
-    int TokPrec = GetTokPrecedence();
-
+    int TokPrec = getTokPrecedence();
+    
     // If this is a binop that binds at least as tightly as the current binop,
     // consume it, otherwise we are done.
     if (TokPrec < ExprPrec)
@@ -212,17 +196,13 @@ std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
     getNextToken(); // eat binop
 
     // Parse the unary expression after the binary operator.
-    auto RHS = ParseUnary();
-    if (!RHS)
-      return nullptr;
+    auto RHS = parseUnary(Depth);
 
     // If BinOp binds less tightly with RHS than the operator after RHS, let
     // the pending operator take RHS as its LHS.
-    int NextPrec = GetTokPrecedence();
+    int NextPrec = getTokPrecedence();
     if (TokPrec < NextPrec) {
-      RHS = ParseBinOpRHS(TokPrec + 1, std::move(RHS));
-      if (!RHS)
-        return nullptr;
+      RHS = parseBinOpRHS(TokPrec + 1, std::move(RHS), Depth);
     }
 
     // Merge LHS/RHS.
@@ -236,118 +216,49 @@ std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
 //   ::= primary binoprhs
 //
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseExpression() {
-  auto LHS = ParseUnary();
-  if (!LHS)
-    return nullptr;
+std::unique_ptr<ExprAST> Parser::parseExpression(int Depth) {
+  echo( "Parsing general expression", Depth++ ); 
+  
+  auto LHS = parseUnary(Depth);
 
-  return ParseBinOpRHS(0, std::move(LHS));
-}
-
-//==============================================================================
-// prototype
-//   ::= id '(' id* ')'
-//   ::= binary LETTER number? (id, id)
-//   ::= unary LETTER (id)
-//==============================================================================
-std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
-  std::string FnName;
-
-  SourceLocation FnLoc = TheLex.CurLoc;
-
-  unsigned Kind = 0;  // 0 = identifier, 1 = unary, 2 = binary.
-  unsigned BinaryPrecedence = 30;
-
-  switch (CurTok) {
-  default:
-    return LogErrorP("Expected function name in prototype");
-  case tok_identifier:
-    FnName = TheLex.IdentifierStr;
-    Kind = 0;
-    getNextToken();
-    break;
-  case tok_unary:
-    getNextToken();
-    if (!isascii(CurTok))
-      return LogErrorP("Expected unary operator");
-    FnName = "unary";
-    FnName += (char)CurTok;
-    Kind = 1;
-    getNextToken();
-    break;
-  case tok_binary:
-    getNextToken();
-    if (!isascii(CurTok))
-      return LogErrorP("Expected binary operator");
-    FnName = "binary";
-    FnName += (char)CurTok;
-    Kind = 2;
-    getNextToken();
-
-    // Read the precedence if present.
-    if (CurTok == tok_number) {
-      if (TheLex.NumVal < 1 || TheLex.NumVal > 100)
-        return LogErrorP("Invalid precedence: must be 1..100");
-      BinaryPrecedence = (unsigned) TheLex.NumVal;
-      getNextToken();
-    }
-    break;
-  }
-
-  if (CurTok != '(')
-    return LogErrorP("Expected '(' in prototype");
-
-  std::vector<std::string> ArgNames;
-  while (getNextToken() == tok_identifier)
-    ArgNames.push_back(TheLex.IdentifierStr);
-  if (CurTok != ')')
-    return LogErrorP("Expected ')' in prototype");
-
-  // success.
-  getNextToken(); // eat ')'.
-
-  // Verify right number of names for operator.
-  if (Kind && ArgNames.size() != Kind)
-    return LogErrorP("Invalid number of operands for operator");
-
-  return std::make_unique<PrototypeAST>(FnLoc, FnName,
-      std::move(ArgNames), Kind != 0, BinaryPrecedence);
+  auto RHS = parseBinOpRHS(0, std::move(LHS), Depth);
+  return std::move(RHS);
 }
 
 //==============================================================================
 // definition ::= 'def' prototype expression
 //==============================================================================
-std::unique_ptr<FunctionAST> Parser::ParseDefinition() {
-  getNextToken(); // eat def.
-  auto Proto = ParsePrototype();
-  if (!Proto)
-    return nullptr;
+std::unique_ptr<FunctionAST> Parser::parseDefinition(int Depth) {
+  echo( "Parsing definition", Depth++ ); 
 
-  if (auto E = ParseExpression())
-    return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
-  return nullptr;
+  getNextToken(); // eat def.
+  auto Proto = parsePrototype(Depth);
+
+  auto E = parseExpression(Depth);
+  return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 }
 
 //==============================================================================
 // toplevelexpr ::= expression
 //==============================================================================
-std::unique_ptr<FunctionAST> Parser::ParseTopLevelExpr() {
+std::unique_ptr<FunctionAST> Parser::parseTopLevelExpr(int Depth) {
+  echo( "Parsing top level expression", Depth++ ); 
+
   SourceLocation FnLoc = TheLex.CurLoc;
-  if (auto E = ParseExpression()) {
-    // Make an anonymous proto.
-    auto Proto = std::make_unique<PrototypeAST>(FnLoc, 
-        "__anon_expr", std::vector<std::string>());
-    return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
-  }
-  return nullptr;
+  auto E = parseExpression(Depth);
+  // Make an anonymous proto.
+  auto Proto = std::make_unique<PrototypeAST>(FnLoc, 
+      "__anon_expr", std::vector<std::string>());
+  return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 }
 
 //==============================================================================
 // external ::= 'extern' prototype
 //==============================================================================
-std::unique_ptr<PrototypeAST> Parser::ParseExtern() {
+std::unique_ptr<PrototypeAST> Parser::parseExtern(int Depth) {
+  echo( "Parsing extern expression", Depth++ ); 
   getNextToken(); // eat extern.
-  return ParsePrototype();
+  return parsePrototype(Depth);
 }
 
 //==============================================================================
@@ -355,31 +266,36 @@ std::unique_ptr<PrototypeAST> Parser::ParseExtern() {
 //   ::= primary
 //   ::= '!' unary
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseUnary() {
+std::unique_ptr<ExprAST> Parser::parseUnary(int Depth) {
+  echo( "Parsing unary expression", Depth++ );
+
   // If the current token is not an operator, it must be a primary expr.
-  if (!isascii(CurTok) || CurTok == '(' || CurTok == ',')
-    return ParsePrimary();
+  if (!isascii(CurTok) || CurTok == '(' || CurTok == ',') {
+    auto P = parsePrimary(Depth);
+    return std::move(P);
+  }
 
   // If this is a unary operator, read it.
   int Opc = CurTok;
   getNextToken();
-  if (auto Operand = ParseUnary())
-    return std::make_unique<UnaryExprAST>(TheLex.CurLoc, Opc, std::move(Operand));
-  return nullptr;
+  auto Operand = parseUnary(Depth);
+  return std::make_unique<UnaryExprAST>(TheLex.CurLoc, Opc, std::move(Operand));
 }
 
 //==============================================================================
 // varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::ParseVarExpr() {
+std::unique_ptr<ExprAST> Parser::parseVarExpr(int Depth) {
+  echo( "Parsing variable expression", Depth++ );
+
   getNextToken();  // eat the var.
 
   std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
 
   // At least one variable name is required.
   if (CurTok != tok_identifier)
-    return LogErrorE("expected identifier after var");
+    THROW_SYNTAX_ERROR("Expected identifier after var", getLine());
 
   while (1) {
     std::string Name = TheLex.IdentifierStr;
@@ -390,8 +306,7 @@ std::unique_ptr<ExprAST> Parser::ParseVarExpr() {
     if (CurTok == '=') {
       getNextToken(); // eat the '='.
   
-      Init = ParseExpression();
-      if (!Init) return nullptr;
+      Init = parseExpression(Depth);
     }
   
     VarNames.push_back(std::make_pair(Name, std::move(Init)));
@@ -401,20 +316,109 @@ std::unique_ptr<ExprAST> Parser::ParseVarExpr() {
     getNextToken(); // eat the ','.
   
     if (CurTok != tok_identifier)
-      return LogErrorE("expected identifier list after var");
+      THROW_SYNTAX_ERROR("Expected identifier list after var", getLine());
   }
   
-    // At this point, we have to have 'in'.
-    if (CurTok != tok_in)
-      return LogErrorE("expected 'in' keyword after 'var'");
-    getNextToken();  // eat 'in'.
+
+  return std::make_unique<VarExprAST>(TheLex.CurLoc, std::move(VarNames));
+}
+
+
+
+//==============================================================================
+// Toplevel function parser
+//==============================================================================
+std::unique_ptr<FunctionAST> Parser::parseFunction(int Depth) {
+  echo( "Parsing function", Depth++ );
+
+  getNextToken(); // eat def.
+  auto Proto = parsePrototype(Depth);
   
-    auto Body = ParseExpression();
-    if (!Body)
-      return nullptr;
-  
-    return std::make_unique<VarExprAST>(TheLex.CurLoc, std::move(VarNames),
-        std::move(Body));
+  auto F = std::make_unique<FunctionAST>(std::move(Proto));
+
+  while (CurTok != tok_end) {
+    auto E = parseExpression(Depth);
+
+    F->Body.emplace_back( std::move(E) );
+
+    if (CurTok == tok_sep) getNextToken();
   }
+  
+  // eat end
+  getNextToken();
+
+  return std::move(F);
+}
+
+//==============================================================================
+// prototype
+//==============================================================================
+std::unique_ptr<PrototypeAST> Parser::parsePrototype(int Depth) {
+  echo( "Parsing function prototype", Depth++ );
+
+  std::string FnName;
+
+  SourceLocation FnLoc = TheLex.CurLoc;
+
+  unsigned Kind = 0;  // 0 = identifier, 1 = unary, 2 = binary.
+  unsigned BinaryPrecedence = 30;
+
+  switch (CurTok) {
+  default:
+    THROW_SYNTAX_ERROR("Expected function name in prototype", getLine());
+  case tok_identifier:
+    FnName = TheLex.IdentifierStr;
+    Kind = 0;
+    getNextToken();
+    break;
+  case tok_unary:
+    getNextToken();
+    if (!isascii(CurTok))
+      THROW_SYNTAX_ERROR("Expected unary operator", getLine());
+    FnName = "unary";
+    FnName += (char)CurTok;
+    Kind = 1;
+    getNextToken();
+    break;
+  case tok_binary:
+    getNextToken();
+    if (!isascii(CurTok))
+      THROW_SYNTAX_ERROR("Expected binrary operator", getLine());
+    FnName = "binary";
+    FnName += (char)CurTok;
+    Kind = 2;
+    getNextToken();
+
+    // Read the precedence if present.
+    if (CurTok == tok_number) {
+      if (TheLex.NumVal < 1 || TheLex.NumVal > 100)
+        THROW_SYNTAX_ERROR("Invalid precedence of '" << TheLex.NumVal
+            << "' must be between 1 and 100", getLine());
+      BinaryPrecedence = (unsigned) TheLex.NumVal;
+      getNextToken();
+    }
+    break;
+  }
+  
+  if (CurTok != '(')
+    THROW_SYNTAX_ERROR("Expected '(' in prototype", getLine());
+
+  std::vector<std::string> ArgNames;
+  while (getNextToken() == tok_identifier)
+    ArgNames.push_back(TheLex.IdentifierStr);
+  if (CurTok != ')')
+    THROW_SYNTAX_ERROR("Expected ')' in prototype", getLine());
+
+  // success.
+  getNextToken(); // eat ')'.
+
+  // Verify right number of names for operator.
+  if (Kind && ArgNames.size() != Kind)
+    THROW_SYNTAX_ERROR("Invalid number of operands for operator: "
+        << Kind << " expected, but got " << ArgNames.size(), getLine());
+
+  return std::make_unique<PrototypeAST>(FnLoc, FnName,
+      std::move(ArgNames), Kind != 0, BinaryPrecedence);
+}
 
 } // namespace

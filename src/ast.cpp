@@ -11,25 +11,24 @@ using namespace llvm;
 namespace contra {
 
 //==============================================================================
-// Error Utility
-//==============================================================================
-Value *LogErrorV(const char *Str) {
-  LogError(Str);
-  return nullptr;
-}
-
-//==============================================================================
 // Insert 'size' spaces.
 //==============================================================================
 raw_ostream &indent(raw_ostream &O, int size) {
   return O << std::string(size, ' ');
 }
 
+
+//==============================================================================
+// Static initialization
+//==============================================================================
+bool BaseAST::IsVerbose = false;
+
 //==============================================================================
 // NumberExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-Value *NumberExprAST::codegen(CodeGen & TheCG)
+Value *NumberExprAST::codegen(CodeGen & TheCG, int Depth)
 {
+  echo( Formatter() << "CodeGen number '" << Val << "'", Depth++ );
   TheCG.emitLocation(this);
   return ConstantFP::get(TheCG.TheContext, APFloat(Val));
 }
@@ -41,15 +40,13 @@ raw_ostream &NumberExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
-Value *VariableExprAST::codegen(CodeGen & TheCG)
+Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
 {
+  echo( Formatter() << "CodeGen variable expression '" << Name << "'", Depth++ );
   // Look this variable up in the function.
   Value *V = TheCG.NamedValues[Name];
-  if (!V) {
-    std::stringstream ss;
-    ss << "Unknown specifier '" << Name << "'";
-    return LogErrorV(ss.str().c_str());
-  }
+  if (!V) 
+    THROW_NAME_ERROR(Name, getLine());
   TheCG.emitLocation(this);
   // Load the value.
   return TheCG.Builder.CreateLoad(V, Name.c_str());
@@ -62,7 +59,8 @@ raw_ostream &VariableExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
-Value *BinaryExprAST::codegen(CodeGen & TheCG) {
+Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen binary expression", Depth++ );
   TheCG.emitLocation(this);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
@@ -73,25 +71,22 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
     // dynamic_cast for automatic error checking.
     VariableExprAST *LHSE = static_cast<VariableExprAST *>(LHS.get());
     if (!LHSE)
-      return LogErrorV("destination of '=' must be a variable");
+      THROW_SYNTAX_ERROR("destination of '=' must be a variable", LHSE->getLine());
     // Codegen the RHS.
-    Value *Val = RHS->codegen(TheCG);
-    if (!Val)
-      return nullptr;
+    Value *Val = RHS->codegen(TheCG, Depth);
 
     // Look up the name.
-    Value *Variable = TheCG.NamedValues[LHSE->getName()];
+    const auto & VarName = LHSE->getName();
+    Value *Variable = TheCG.NamedValues[VarName];
     if (!Variable)
-      return LogErrorV("Unknown variable name");
+      THROW_NAME_ERROR(VarName, LHSE->getLine());
 
     TheCG.Builder.CreateStore(Val, Variable);
     return Val;
   }
 
-  Value *L = LHS->codegen(TheCG);
-  Value *R = RHS->codegen(TheCG);
-  if (!L || !R)
-    return nullptr;
+  Value *L = LHS->codegen(TheCG, Depth);
+  Value *R = RHS->codegen(TheCG, Depth);
 
   switch (Op) {
   case tok_add:
@@ -127,23 +122,26 @@ raw_ostream &BinaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // CallExprAST - Expression class for function calls.
 //==============================================================================
-Value *CallExprAST::codegen(CodeGen & TheCG) {
+Value *CallExprAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen call expression '" << Callee << "'", Depth++ );
   TheCG.emitLocation(this);
 
   // Look up the name in the global module table.
   Function *CalleeF = TheCG.getFunction(Callee);
   if (!CalleeF)
-    return LogErrorV("Unknown function referenced");
+    THROW_NAME_ERROR(Callee, getLine());
 
   // If argument mismatch error.
-  if (CalleeF->arg_size() != Args.size())
-    return LogErrorV("Incorrect # arguments passed");
+  if (CalleeF->arg_size() != Args.size()) {
+    THROW_SYNTAX_ERROR(
+        "Expected " << CalleeF->arg_size()  << " but got "
+        << Args.size() << Formatter::to_str, getLine() );
+  }
 
   std::vector<Value *> ArgsV;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
-    ArgsV.push_back(Args[i]->codegen(TheCG));
-    if (!ArgsV.back())
-      return nullptr;
+    auto A = Args[i]->codegen(TheCG, Depth);
+    ArgsV.push_back(A);
   }
 
   return TheCG.Builder.CreateCall(CalleeF, ArgsV, "calltmp");
@@ -159,12 +157,11 @@ raw_ostream &CallExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
-Value *IfExprAST::codegen(CodeGen & TheCG) {
+Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen if expression", Depth++ );
   TheCG.emitLocation(this);
 
-  Value *CondV = Cond->codegen(TheCG);
-  if (!CondV)
-    return nullptr;
+  Value *CondV = Cond->codegen(TheCG, Depth);
 
   // Convert condition to a bool by comparing non-equal to 0.0.
   CondV = TheCG.Builder.CreateFCmpONE(
@@ -183,9 +180,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG) {
   // Emit then value.
   TheCG.Builder.SetInsertPoint(ThenBB);
 
-  Value *ThenV = Then->codegen(TheCG);
-  if (!ThenV)
-    return nullptr;
+  Value *ThenV = Then->codegen(TheCG, Depth);
 
   TheCG.Builder.CreateBr(MergeBB);
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
@@ -195,9 +190,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG) {
   TheFunction->getBasicBlockList().push_back(ElseBB);
   TheCG.Builder.SetInsertPoint(ElseBB);
 
-  Value *ElseV = Else->codegen(TheCG);
-  if (!ElseV)
-    return nullptr;
+  Value *ElseV = Else->codegen(TheCG, Depth);
 
   TheCG.Builder.CreateBr(MergeBB);
   // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
@@ -240,7 +233,8 @@ raw_ostream &IfExprAST::dump(raw_ostream &out, int ind) {
 //   br endcond, loop, endloop
 // outloop:
 //==============================================================================
-Value *ForExprAST::codegen(CodeGen & TheCG) {
+Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen for expression", Depth++ );
   Function *TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
@@ -249,9 +243,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
 
   // Emit the start code first, without 'variable' in scope.
-  Value *StartVal = Start->codegen(TheCG);
-  if (!StartVal)
-    return nullptr;
+  Value *StartVal = Start->codegen(TheCG, Depth);
 
   // Store the value into the alloca.
   TheCG.Builder.CreateStore(StartVal, Alloca);
@@ -274,24 +266,18 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
-  if (!Body->codegen(TheCG))
-    return nullptr;
 
   // Emit the step value.
   Value *StepVal = nullptr;
   if (Step) {
-    StepVal = Step->codegen(TheCG);
-    if (!StepVal)
-      return nullptr;
+    StepVal = Step->codegen(TheCG, Depth);
   } else {
     // If not specified, use 1.0.
     StepVal = ConstantFP::get(TheCG.TheContext, APFloat(1.0));
   }
 
   // Compute the end condition.
-  Value *EndCond = End->codegen(TheCG);
-  if (!EndCond)
-    return nullptr;
+  Value *EndCond = End->codegen(TheCG, Depth);
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
@@ -335,14 +321,13 @@ raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
-Value *UnaryExprAST::codegen(CodeGen & TheCG) {
-  Value *OperandV = Operand->codegen(TheCG);
-  if (!OperandV)
-    return nullptr;
+Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen unary expression", Depth++ );
+  Value *OperandV = Operand->codegen(TheCG, Depth);
 
   Function *F = TheCG.getFunction(std::string("unary") + Opcode);
   if (!F)
-    return LogErrorV("Unknown unary operator");
+    THROW_SYNTAX_ERROR("Unknown unary operator", getLine());
 
   TheCG.emitLocation(this);
   return TheCG.Builder.CreateCall(F, OperandV, "unop");
@@ -357,7 +342,8 @@ raw_ostream &UnaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // VarExprAST - Expression class for var/in
 //==============================================================================
-Value *VarExprAST::codegen(CodeGen & TheCG) {
+Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen var expression", Depth++ );
   std::vector<AllocaInst *> OldBindings;
 
   Function *TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
@@ -374,9 +360,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
     //    var a = a in ...   # refers to outer 'a'.
     Value *InitVal;
     if (Init) {
-      InitVal = Init->codegen(TheCG);
-      if (!InitVal)
-        return nullptr;
+      InitVal = Init->codegen(TheCG, Depth);
     } else { // If not specified, use 0.0.
       InitVal = ConstantFP::get(TheCG.TheContext, APFloat(0.0));
     }
@@ -394,6 +378,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
   
   TheCG.emitLocation(this);
 
+#if 0
   // Codegen the body, now that all vars are in scope.
   Value *BodyVal = Body->codegen(TheCG);
   if (!BodyVal)
@@ -405,20 +390,23 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
 
   // Return the body computation.
   return BodyVal;
+#endif
+
+  return nullptr;
 }
 
 raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "var", ind);
   for (const auto &NamedVar : VarNames)
     NamedVar.second->dump(indent(out, ind) << NamedVar.first << ':', ind + 1);
-  Body->dump(indent(out, ind) << "Body:", ind + 1);
   return out;
 }
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
-Function *PrototypeAST::codegen(CodeGen & TheCG) {
+Function *PrototypeAST::codegen(CodeGen & TheCG, int Depth) {
+  echo( Formatter() << "CodeGen prototype expression", Depth++ );
   // Make the function type:  double(double,double) etc.
   std::vector<Type *> Doubles(Args.size(), Type::getDoubleTy(TheCG.TheContext));
   FunctionType *FT =
@@ -438,18 +426,20 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
 //==============================================================================
-Function *FunctionAST::codegen(CodeGen & TheCG, Parser & TheParser) {
+Function *FunctionAST::codegen(CodeGen & TheCG,
+    std::map<char, int> & BinopPrecedence, int Depth)
+{
+  echo( Formatter() << "CodeGen function expression", Depth++ );
+  
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
   auto &P = *Proto;
   TheCG.FunctionProtos[Proto->getName()] = std::move(Proto);
   Function *TheFunction = TheCG.getFunction(P.getName());
-  if (!TheFunction)
-    return nullptr;
 
   // If this is an operator, install it.
   if (P.isBinaryOp())
-    TheParser.BinopPrecedence[P.getOperatorName()] = P.getBinaryPrecedence();
+    BinopPrecedence[P.getOperatorName()] = P.getBinaryPrecedence();
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(TheCG.TheContext, "entry", TheFunction);
@@ -488,13 +478,35 @@ Function *FunctionAST::codegen(CodeGen & TheCG, Parser & TheParser) {
     // Add arguments to variable symbol table.
     TheCG.NamedValues[Arg.getName()] = Alloca;
   }
-  
-  TheCG.emitLocation(Body.get());
+ 
 
-  if (Value *RetVal = Body->codegen(TheCG)) {
-    // Finish off the function.
+  for ( auto & stmt : Body )
+  {
+    TheCG.emitLocation(stmt.get());
+    auto RetVal = stmt->codegen(TheCG, Depth);
+  }
+
+  // Finish off the function.
+  if ( Return ) {
+    auto RetVal = Return->codegen(TheCG, Depth);
     TheCG.Builder.CreateRet(RetVal);
     
+  }
+  else {  
+    TheCG.Builder.CreateRetVoid();
+  }
+    
+  // Validate the generated code, checking for consistency.
+  verifyFunction(*TheFunction);
+
+  // Run the optimizer on the function.
+  TheCG.TheFPM->run(*TheFunction);
+  
+  return TheFunction;
+
+#if 0
+
+  if (Value *RetVal = Body->codegen(TheCG)) {
     // Pop off the lexical block for the function.
     TheCG.popLexicalBlock();
 
@@ -516,15 +528,17 @@ Function *FunctionAST::codegen(CodeGen & TheCG, Parser & TheParser) {
   // Pop off the lexical block for the function since we added it
   // unconditionally.
   TheCG.popLexicalBlock();
-
-  return nullptr;
+#endif
 }
   
 raw_ostream &FunctionAST::dump(raw_ostream &out, int ind) {
   indent(out, ind) << "FunctionAST\n";
   ++ind;
   indent(out, ind) << "Body:";
-  return Body ? Body->dump(out, ind) : out << "null\n";
+  if (Body.empty())
+    return out << "null\n";
+  else
+    return Body[0]->dump(out, ind);
 }
 
 } // namespace
