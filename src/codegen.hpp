@@ -9,7 +9,6 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Value.h"
 
 #include <map>
 #include <memory>
@@ -17,16 +16,16 @@
 
 namespace contra {
 
-using AllocaInst = llvm::AllocaInst;
-using Function = llvm::Function;
-using Value = llvm::Value;
-
 class ExprAST;
 class PrototypeAST;
 class JIT;
 class DebugInfo;
 
 class CodeGen {
+
+  using AllocaInst = llvm::AllocaInst;
+  using Function = llvm::Function;
+
 
 public:
 
@@ -46,7 +45,7 @@ public:
   // Constructor
   CodeGen (bool);
 
-  Function *getFunction(std::string Name); 
+  Function *getFunction(std::string Name, int Line, int Depth=0); 
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.

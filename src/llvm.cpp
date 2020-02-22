@@ -1,3 +1,5 @@
+#include "errors.hpp"
+
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/FileSystem.h"
@@ -23,7 +25,7 @@ void startLLVM() {
 }
 
 //==============================================================================
-int compileLLVM(Module & TheModule, const std::string & Filename) {
+void compileLLVM(Module & TheModule, const std::string & Filename) {
   
   // Initialize the target registry etc.
   InitializeAllTargetInfos();
@@ -42,8 +44,7 @@ int compileLLVM(Module & TheModule, const std::string & Filename) {
   // This generally occurs if we've forgotten to initialise the
   // TargetRegistry or we have a bogus target triple.
   if (!Target) {
-    std::cerr << Error;
-    return 1;
+    THROW_CONTRA_ERROR( Error );
   }
 
   auto CPU = "generic";
@@ -59,25 +60,20 @@ int compileLLVM(Module & TheModule, const std::string & Filename) {
   std::error_code EC;
   raw_fd_ostream dest(Filename, EC, sys::fs::OF_None);
 
-  if (EC) {
-    std::cerr << "Could not open file: " << EC.message();
-    return 1;
-  }
+  if (EC)
+    THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
 
   legacy::PassManager pass;
   auto FileType = TargetMachine::CGFT_ObjectFile;
 
   if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
-    std::cerr << "TheTargetMachine can't emit a file of this type";
-    return 1;
+    THROW_CONTRA_ERROR( "TheTargetMachine can't emit a file of this type" );
   }
 
   pass.run(TheModule);
   dest.flush();
 
   std::cout << "Wrote " << Filename << "\n";
-
-  return 0;
 
 }
 

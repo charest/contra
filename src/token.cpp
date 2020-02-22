@@ -37,6 +37,8 @@ std::string getTokName(int Tok) {
     return "number";
   case tok_return:
     return "return";
+  case tok_string:
+    return "string";
   case tok_then:
     return "then";
   case tok_to:

@@ -2,6 +2,7 @@
 #define CONTRA_LLVM_HPP
 
 namespace llvm {
+class LLVMContext;
 class Module;
 }
 
@@ -9,7 +10,7 @@ class Module;
 namespace contra {
 
 void startLLVM();
-int compileLLVM(llvm::Module &, const std::string &);
+void compileLLVM(llvm::Module &, const std::string &);
 
 }
 

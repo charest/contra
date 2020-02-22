@@ -42,6 +42,8 @@ enum Token {
   tok_by = -18,
   tok_do = -19,
 
+  tok_string = -20,
+
   tok_sep = ';',
   
   // binary

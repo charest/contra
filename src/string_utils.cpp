@@ -1,5 +1,7 @@
 #include "string_utils.hpp"
 
+#include <iostream>
+
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,6 +65,58 @@ std::vector<std::string> split(const std::string& s, char delimiter)
       tokens.push_back(token);
    }
    return tokens;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// convert remove the extra \ on quoted strings
+////////////////////////////////////////////////////////////////////////////////
+std::string unescape(const std::string& s)
+{
+  std::string res;
+  std::string::const_iterator it = s.begin();
+  while (it != s.end())
+  {
+    char c = *it++;
+    if (c == '\\' && it != s.end())
+    {
+      switch (*it++) {
+      case '\\': c = '\\'; break;
+      case 'n': c = '\n'; break;
+      case 't': c = '\t'; break;
+      // all other escapes
+      default: 
+        // invalid escape sequence - skip it. alternatively you can copy
+        // it as is, throw an exception...
+        continue;
+      }
+    }
+    res += c;
+  }
+
+  return res;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// add the extra \ on quoted strings
+////////////////////////////////////////////////////////////////////////////////
+std::string escape(const std::string& s)
+{
+  std::string res;
+  std::string::const_iterator it = s.begin();
+
+  while (it != s.end())
+  {
+    auto c = *it++;
+    std::string str(1, c);
+    switch (c) {
+    case '\n': str = "\\n"; break;
+    case '\t': str = "\\t"; break;
+    case '\\': str = "\\\\"; break;
+    }
+    res += str;
+  }
+
+  return res;
 }
 
 } // namespace

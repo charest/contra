@@ -1,11 +1,11 @@
 #include "lexer.hpp"
+#include "string_utils.hpp"
 #include "token.hpp"
 
 #include <cstdio>
 #include <iostream>
 
 namespace contra {
-
 
 //==============================================================================
 // Get the next char
@@ -65,6 +65,16 @@ int Lexer::gettok() {
 
     if (LastChar != eof())
       return gettok();
+  }
+
+  if (LastChar == '\"') {
+    std::string quoted;
+    while ((LastChar = advance()) != '\"')
+      quoted += LastChar;
+    IdentifierStr = unescape(quoted);
+    LastChar = advance();
+    // string literal
+    return tok_string;
   }
 
   // Check for end of file.  Don't eat the EOF.

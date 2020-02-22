@@ -68,6 +68,15 @@ public:
   } while(0)
 
 
+////////////////////////////////////////////////////////////////////////////////
+//! \brief Raise a general runtime error.
+////////////////////////////////////////////////////////////////////////////////
+#define THROW_CONTRA_ERROR(msg)                                                \
+  do {                                                                         \
+    std::cerr << "General runtime error:" << std::endl;                        \
+    throw ::contra::ContraError(Formatter() << msg  );                         \
+  } while(0)
+
 
 } // namespace 
 

@@ -18,6 +18,12 @@ using llvm::raw_ostream;
 /// BaseAST - Base class for all AST nodes
 //==============================================================================
 class BaseAST {
+
+protected:
+  using Value = llvm::Value;
+  using Function = llvm::Function;
+  using FunctionCallee = llvm::FunctionCallee;
+
 public:
   // verbosity is on
   static bool IsVerbose;
@@ -59,6 +65,20 @@ class NumberExprAST : public ExprAST {
 
 public:
   NumberExprAST(SourceLocation Loc, double Val) : ExprAST(Loc), Val(Val) {}
+
+  Value *codegen(CodeGen &, int Depth=0) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+};
+
+//==============================================================================
+/// NumberExprAST - Expression class for numeric literals like "1.0".
+//==============================================================================
+class StringExprAST : public ExprAST {
+  std::string Val;
+
+public:
+  StringExprAST(SourceLocation Loc, std::string Val) : ExprAST(Loc), Val(Val) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -122,14 +142,13 @@ public:
 /// IfExprAST - Expression class for if/then/else.
 //==============================================================================
 class IfExprAST : public ExprAST {
-  std::unique_ptr<ExprAST> Cond, Then, Else;
+  std::unique_ptr<ExprAST> Cond;
 
 public:
-  IfExprAST(SourceLocation Loc,
-      std::unique_ptr<ExprAST> Cond,
-      std::unique_ptr<ExprAST> Then,
-      std::unique_ptr<ExprAST> Else)
-    : ExprAST(Loc), Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else))
+  std::vector<std::unique_ptr<ExprAST>> Then, Else;
+
+  IfExprAST(SourceLocation Loc, std::unique_ptr<ExprAST> Cond)
+    : ExprAST(Loc), Cond(std::move(Cond))
   {}
 
   Value *codegen(CodeGen &, int Depth=0) override;

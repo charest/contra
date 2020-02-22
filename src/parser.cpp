@@ -1,5 +1,8 @@
 #include "errors.hpp"
 #include "parser.hpp"
+#include "string_utils.hpp"
+
+#include <iomanip>
 
 namespace contra {
 
@@ -10,6 +13,17 @@ namespace contra {
 std::unique_ptr<ExprAST> Parser::parseNumberExpr(int Depth) {
   echo( Formatter() << "Parsing number expression '" << TheLex.NumVal << "'", Depth++ );
   auto Result = std::make_unique<NumberExprAST>(TheLex.CurLoc, TheLex.NumVal);
+  getNextToken(); // consume the number
+  return std::move(Result);
+}
+
+//==============================================================================
+// stringexpr ::= string
+//==============================================================================
+std::unique_ptr<ExprAST> Parser::parseStringExpr(int Depth) {
+  echo( Formatter() << "Parsing string expression '"
+      << escape(TheLex.IdentifierStr) << "'", Depth++ );
+  auto Result = std::make_unique<StringExprAST>(TheLex.CurLoc, TheLex.IdentifierStr);
   getNextToken(); // consume the number
   return std::move(Result);
 }
@@ -49,8 +63,8 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr(int Depth) {
   std::vector<std::unique_ptr<ExprAST>> Args;
   if (CurTok != ')') {
     while (true) {
-      if (auto Arg = parseExpression(Depth))
-        Args.push_back(std::move(Arg));
+      auto Arg = parseExpression(Depth);
+      Args.push_back(std::move(Arg));
 
       if (CurTok == ')')
         break;
@@ -77,22 +91,33 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr(int Depth) {
 
   // condition.
   auto Cond = parseExpression(Depth);
+  auto If = std::make_unique<IfExprAST>(IfLoc, std::move(Cond));
 
   if (CurTok != tok_then)
     THROW_SYNTAX_ERROR("Expected 'then'", getLine());
   getNextToken(); // eat the then
 
-  auto Then = parseExpression(Depth);
+  // then
+  while (CurTok != tok_end && CurTok != tok_else) {
+    auto E = parseExpression(Depth);
+    If->Then.emplace_back( std::move(E) );
+    if (CurTok == tok_sep) getNextToken();
+  }
 
-  if (CurTok != tok_else)
-    THROW_SYNTAX_ERROR("Expected 'else'", getLine());
+  if (CurTok == tok_else) {
+    getNextToken(); // eat else
 
-  getNextToken();
+    while (CurTok != tok_end) {
+      auto E = parseExpression(Depth);
+      If->Else.emplace_back( std::move(E) );
+      if (CurTok == tok_sep) getNextToken();
+    }
 
-  auto Else = parseExpression(Depth);
+  }
+    
+  getNextToken(); // eat end
 
-  return std::make_unique<IfExprAST>(IfLoc, std::move(Cond),
-      std::move(Then), std::move(Else));
+  return If;
 }
 
 //==============================================================================
@@ -177,6 +202,8 @@ std::unique_ptr<ExprAST> Parser::parsePrimary(int Depth) {
     std::cerr << "HERHERHEHER "<< getTokName(CurTok) << std::endl;
     abort();
     //return ParseReturnExpr();
+  case tok_string:
+    return parseStringExpr(Depth);
   default:
     THROW_SYNTAX_ERROR("Unknown token '" <<  getTokName(CurTok)
         << "' when expecting an expression", getLine());
@@ -318,6 +345,10 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr(int Depth) {
       getNextToken(); // eat the '='.
   
       Init = parseExpression(Depth);
+    }
+    else {
+      THROW_SYNTAX_ERROR("Variable definition for '" << Name << "'"
+          << " has no initializer", getLine());
     }
   
     VarNames.push_back(std::make_pair(Name, std::move(Init)));

@@ -17,9 +17,9 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, bool is_interactive,
 
   try {
     auto FnAST = TheParser.parseFunction(1);
-    auto *FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence, 1);
+    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence, 1);
+    if (is_verbose) FnIR->print(errs());
     if (!TheCG.isDebug()) {
-      FnIR->print(errs());
       TheCG.doJIT();
     }
   }
@@ -46,9 +46,9 @@ void handleDefinition(Parser & TheParser, CodeGen & TheCG, bool is_interactive,
 
   try {
     auto FnAST = TheParser.parseDefinition(1);
-    auto *FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence, 1);
+    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence, 1);
+    if (is_verbose) FnIR->print(errs());
     if (!TheCG.isDebug()) {
-      FnIR->print(errs());
       TheCG.doJIT();
     }
   }
@@ -76,8 +76,8 @@ void handleExtern(Parser & TheParser, CodeGen & TheCG, bool is_interactive,
   try {
     auto ProtoAST = TheParser.parseExtern(1);
     auto FnIR = ProtoAST->codegen(TheCG);
+    if (is_verbose) FnIR->print(errs());
     if (!TheCG.isDebug()) {
-      FnIR->print(errs());
       TheCG.FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
   }
@@ -106,6 +106,7 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
   try {
     auto FnAST = TheParser.parseTopLevelExpr(1);
     auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
+    if (is_verbose) FnIR->print(errs());
     if (!TheCG.isDebug()) {
       // JIT the module containing the anonymous expression, keeping a handle so
       // we can free it later.
@@ -118,7 +119,10 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.
       double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-      std::cerr << "Evaluated to " << FP() << "\n";
+      if (is_verbose) std::cerr << "---Begin Result--- " <<  "\n";
+      auto ans = FP();
+      std::cerr << "Ans = " << ans << "\n";
+      if (is_verbose) std::cerr << "---End Result--- " <<  "\n";
 
       // Delete the anonymous expression module from the JIT.
       TheCG.removeJIT( H );
@@ -156,24 +160,27 @@ void mainLoop( Parser & TheParser, CodeGen & TheCG, bool is_interactive,
       return;
     }
 
-    if (is_interactive) std::cerr << "contra> " << std::flush;
-
     switch (TheParser.CurTok) {
     case tok_sep: // ignore top-level semicolons.
       TheParser.getNextToken();
       break;
     case tok_def:
       handleDefinition(TheParser, TheCG, is_interactive, is_verbose);
+      if (is_interactive) std::cerr << "contra> " << std::flush;
       break;
     case tok_function:
       handleFunction(TheParser, TheCG, is_interactive, is_verbose);
+      if (is_interactive) std::cerr << "contra> " << std::flush;
       break;
     case tok_extern:
       handleExtern(TheParser, TheCG, is_interactive, is_verbose);
+      if (is_interactive) std::cerr << "contra> " << std::flush;
       break;
     default:
-      handleTopLevelExpression(TheParser, TheCG, is_interactive, is_verbose);
+      handleTopLevelExpression(TheParser, TheCG, is_interactive, is_verbose); 
+      if (is_interactive) std::cerr << "contra> " << std::flush;
     }
+
   }
 }
 

@@ -25,6 +25,12 @@ std::string remove_extension(const std::string & str);
 //! Split a string s by a delimeter
 std::vector<std::string> split(const std::string& s, char delimiter);
 
+//! remove the extra \ in quoted strings
+std::string unescape(const std::string& s);
+
+//! add the extra \ in quoted strings
+std::string escape(const std::string& s);
+
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief Convert a value to a string.
 //! \param [in] x The value to convert to a string.

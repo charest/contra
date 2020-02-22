@@ -2,6 +2,7 @@
 #include "errors.hpp"
 #include "parser.hpp"
 #include "token.hpp"
+#include "string_utils.hpp"
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Verifier.h"
@@ -34,6 +35,27 @@ Value *NumberExprAST::codegen(CodeGen & TheCG, int Depth)
 }
 
 raw_ostream &NumberExprAST::dump(raw_ostream &out, int ind) {
+  return ExprAST::dump(out << Val, ind);
+}
+
+//==============================================================================
+// StringExprAST - Expression class for string literals like "hello".
+//==============================================================================
+Value *StringExprAST::codegen(CodeGen & TheCG, int Depth)
+{
+  echo( Formatter() << "CodeGen string '" << escape(Val) << "'", Depth++ );
+  TheCG.emitLocation(this);
+  auto & TheContext = TheCG.TheContext;
+  auto & TheModule = *TheCG.TheModule;
+  auto ConstantArray = ConstantDataArray::getString(TheContext, Val);
+  auto GVStr = new GlobalVariable(TheModule, ConstantArray->getType(), true,
+      GlobalValue::InternalLinkage, ConstantArray);
+  Constant* zero = Constant::getNullValue(IntegerType::getInt32Ty(TheContext));
+  Constant* strVal = ConstantExpr::getGetElementPtr(IntegerType::getInt8Ty(TheContext), GVStr, zero, true);
+  return strVal;
+}
+
+raw_ostream &StringExprAST::dump(raw_ostream &out, int ind) {
   return ExprAST::dump(out << Val, ind);
 }
 
@@ -105,8 +127,8 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  Function *F = TheCG.getFunction(std::string("binary") + Op);
-  assert(F && "binary operator not found!");
+  auto F = TheCG.getFunction(std::string("binary") + Op, getLine(), Depth);
+  if (!F) THROW_CONTRA_ERROR("binary operator not found!");
 
   Value *Ops[] = { L, R };
   return TheCG.Builder.CreateCall(F, Ops, "binop");
@@ -127,15 +149,15 @@ Value *CallExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheCG.emitLocation(this);
 
   // Look up the name in the global module table.
-  Function *CalleeF = TheCG.getFunction(Callee);
+  auto CalleeF = TheCG.getFunction(Callee, getLine(), Depth);
   if (!CalleeF)
     THROW_NAME_ERROR(Callee, getLine());
 
   // If argument mismatch error.
-  if (CalleeF->arg_size() != Args.size()) {
+  if (CalleeF->arg_size() != Args.size() && !CalleeF->isVarArg()) {
     THROW_SYNTAX_ERROR(
-        "Expected " << CalleeF->arg_size()  << " but got "
-        << Args.size() << Formatter::to_str, getLine() );
+        "Incorrect number of arguments, expected " << CalleeF->arg_size() 
+        << " but got " << Args.size() << Formatter::to_str, getLine() );
   }
 
   std::vector<Value *> ArgsV;
@@ -167,7 +189,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   CondV = TheCG.Builder.CreateFCmpONE(
       CondV, ConstantFP::get(TheCG.TheContext, APFloat(0.0)), "ifcond");
 
-  Function *TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
@@ -180,7 +202,9 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   // Emit then value.
   TheCG.Builder.SetInsertPoint(ThenBB);
 
-  Value *ThenV = Then->codegen(TheCG, Depth);
+  for ( auto & stmt : Then ) {
+    stmt->codegen(TheCG, Depth);
+  }
 
   TheCG.Builder.CreateBr(MergeBB);
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
@@ -190,7 +214,9 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheFunction->getBasicBlockList().push_back(ElseBB);
   TheCG.Builder.SetInsertPoint(ElseBB);
 
-  Value *ElseV = Else->codegen(TheCG, Depth);
+  for ( auto & stmt : Else ) {
+    stmt->codegen(TheCG, Depth);
+  }
 
   TheCG.Builder.CreateBr(MergeBB);
   // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
@@ -201,16 +227,18 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheCG.Builder.SetInsertPoint(MergeBB);
   PHINode *PN = TheCG.Builder.CreatePHI(Type::getDoubleTy(TheCG.TheContext), 2, "iftmp");
 
-  PN->addIncoming(ThenV, ThenBB);
-  PN->addIncoming(ElseV, ElseBB);
+  //PN->addIncoming(ThenV, ThenBB);
+  //PN->addIncoming(ElseV, ElseBB);
   return PN;
 }
   
 raw_ostream &IfExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "if", ind);
   Cond->dump(indent(out, ind) << "Cond:", ind + 1);
-  Then->dump(indent(out, ind) << "Then:", ind + 1);
-  Else->dump(indent(out, ind) << "Else:", ind + 1);
+  indent(out, ind+1) << "Then:\n";
+  for ( auto & I : Then ) I->dump(out, ind+2);
+  indent(out, ind+1) << "Else:\n";
+  for ( auto & I : Else ) I->dump(out, ind+2);
   return out;
 }
 
@@ -235,7 +263,7 @@ raw_ostream &IfExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen for expression", Depth++ );
-  Function *TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
   AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName);
@@ -330,7 +358,7 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen unary expression", Depth++ );
   Value *OperandV = Operand->codegen(TheCG, Depth);
 
-  Function *F = TheCG.getFunction(std::string("unary") + Opcode);
+  auto F = TheCG.getFunction(std::string("unary") + Opcode, getLine(), Depth);
   if (!F)
     THROW_SYNTAX_ERROR("Unknown unary operator", getLine());
 
@@ -351,7 +379,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen var expression", Depth++ );
   std::vector<AllocaInst *> OldBindings;
 
-  Function *TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Register all variables and emit their initializer.
   for (unsigned i = 0, e = VarNames.size(); i != e; ++i) {
@@ -411,7 +439,7 @@ raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
 Function *PrototypeAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen prototype expression", Depth++ );
+  echo( Formatter() << "CodeGen prototype expression '" << Name << "'", Depth++ );
   // Make the function type:  double(double,double) etc.
   std::vector<Type *> Doubles(Args.size(), Type::getDoubleTy(TheCG.TheContext));
   FunctionType *FT =
@@ -440,7 +468,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   // reference to it for use below.
   auto &P = *Proto;
   TheCG.FunctionProtos[Proto->getName()] = std::move(Proto);
-  Function *TheFunction = TheCG.getFunction(P.getName());
+  auto TheFunction = TheCG.getFunction(P.getName(), P.getLine(), Depth);
 
   // If this is an operator, install it.
   if (P.isBinaryOp())

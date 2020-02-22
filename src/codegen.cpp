@@ -1,4 +1,6 @@
 #include "ast.hpp"
+#include "errors.hpp"
+#include "rtlib.hpp"
 
 #include "llvm/IR/Type.h"
 #include "llvm/LinkAllPasses.h"
@@ -79,18 +81,25 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 // Get the function
 //==============================================================================
-Function * CodeGen::getFunction(std::string Name) {
+Function *CodeGen::getFunction(std::string Name, int Line, int Depth) {
+
   // First, see if the function has already been added to the current module.
-  if (auto *F = TheModule->getFunction(Name))
+  if (auto F = TheModule->getFunction(Name))
+    return F;
+  
+  // see if this is an available intrinsic, try installing it first
+  if (auto F = RunTimeLib::tryInstall(TheContext, *TheModule, Name))
     return F;
 
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
   auto FI = FunctionProtos.find(Name);
   if (FI != FunctionProtos.end())
-    return FI->second->codegen(*this);
+    return FI->second->codegen(*this, Depth);
 
   // If no existing prototype exists, return null.
+  THROW_SYNTAX_ERROR("'" << Name << "' does not have a valid prototype", Line);
+
   return nullptr;
 }
 
