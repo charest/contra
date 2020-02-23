@@ -1,0 +1,21 @@
+# This is the main function
+function main(x) 
+
+  # this is an if statement
+  var y = 0
+  if x < 2 then
+    print("Inside if\n")
+    y = -x
+  elif x < 3 then
+    print("Inside else if\n")
+    y = x - 3
+  else
+    print("Inside else\n")
+    y = x - 4
+  end
+  print("y = %f\n", y)
+end
+
+main(1)
+main(2)
+main(3)

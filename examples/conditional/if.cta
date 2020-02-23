@@ -1,0 +1,13 @@
+# This is the main function
+function main(x) 
+
+  # this is an if statement
+  var y = x
+  if x < 0 then
+    y = -x
+  end
+  print("y = %f\n", y)
+end
+
+main(-1)
+main(1)

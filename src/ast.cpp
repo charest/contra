@@ -34,6 +34,7 @@ Value *NumberExprAST::codegen(CodeGen & TheCG, int Depth)
   return ConstantFP::get(TheCG.TheContext, APFloat(Val));
 }
 
+//------------------------------------------------------------------------------
 raw_ostream &NumberExprAST::dump(raw_ostream &out, int ind) {
   return ExprAST::dump(out << Val, ind);
 }
@@ -55,6 +56,7 @@ Value *StringExprAST::codegen(CodeGen & TheCG, int Depth)
   return strVal;
 }
 
+//------------------------------------------------------------------------------
 raw_ostream &StringExprAST::dump(raw_ostream &out, int ind) {
   return ExprAST::dump(out << Val, ind);
 }
@@ -74,6 +76,7 @@ Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
   return TheCG.Builder.CreateLoad(V, Name.c_str());
 }
 
+//------------------------------------------------------------------------------
 raw_ostream &VariableExprAST::dump(raw_ostream &out, int ind) {
   return ExprAST::dump(out << Name, ind);
 }
@@ -134,6 +137,7 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
   return TheCG.Builder.CreateCall(F, Ops, "binop");
 }
 
+//------------------------------------------------------------------------------
 raw_ostream &BinaryExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "binary" << Op, ind);
   LHS->dump(indent(out, ind) << "LHS:", ind + 1);
@@ -169,6 +173,7 @@ Value *CallExprAST::codegen(CodeGen & TheCG, int Depth) {
   return TheCG.Builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
   
+//------------------------------------------------------------------------------
 raw_ostream &CallExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "call " << Callee, ind);
   for (const auto &Arg : Args)
@@ -239,6 +244,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   return PN;
 }
   
+//------------------------------------------------------------------------------
 raw_ostream &IfExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "if", ind);
   Cond->dump(indent(out, ind) << "Cond:", ind + 1);
@@ -247,6 +253,29 @@ raw_ostream &IfExprAST::dump(raw_ostream &out, int ind) {
   indent(out, ind+1) << "Else:\n";
   for ( auto & I : Else ) I->dump(out, ind+2);
   return out;
+}
+
+//------------------------------------------------------------------------------
+std::unique_ptr<ExprAST> IfExprAST::make( 
+  std::list< std::pair< SourceLocation, std::unique_ptr<ExprAST> > > & Conds,
+  std::list< std::vector< std::unique_ptr<ExprAST> > > & Blocks )
+{
+  auto TopPair = std::move(Conds.front());
+  Conds.pop_front();
+
+  auto TopIf = std::make_unique<IfExprAST>( TopPair.first, std::move(TopPair.second) );
+
+  TopIf->Then = std::move( Blocks.front() );
+  Blocks.pop_front();
+
+  if ( !Blocks.empty() ) {
+    if ( Conds.empty() )
+      TopIf->Else = std::move(Blocks.back());
+    else
+      TopIf->Else.emplace_back( IfExprAST::make( Conds, Blocks ) );
+  }
+
+  return std::move(TopIf);
 }
 
 //==============================================================================
@@ -347,6 +376,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   return Constant::getNullValue(Type::getDoubleTy(TheCG.TheContext));
 }
 
+//------------------------------------------------------------------------------
 raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "for", ind);
   Start->dump(indent(out, ind) << "Cond:", ind + 1);
@@ -378,6 +408,7 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
   return TheCG.Builder.CreateCall(F, OperandV, "unop");
 }
   
+//------------------------------------------------------------------------------
 raw_ostream &UnaryExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "unary" << Opcode, ind);
   Operand->dump(out, ind + 1);
@@ -440,6 +471,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   return nullptr;
 }
 
+//------------------------------------------------------------------------------
 raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "var", ind);
   for (const auto &NamedVar : VarNames)
@@ -576,6 +608,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
 #endif
 }
   
+//------------------------------------------------------------------------------
 raw_ostream &FunctionAST::dump(raw_ostream &out, int ind) {
   indent(out, ind) << "FunctionAST\n";
   ++ind;
