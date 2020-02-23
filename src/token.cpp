@@ -17,6 +17,8 @@ std::string getTokName(int Tok) {
     return "def";
   case tok_do:
     return "do";
+  case tok_elif:
+    return "elif";
   case tok_else:
     return "else";
   case tok_end:

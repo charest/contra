@@ -12,9 +12,6 @@ class Module;
 
 namespace contra {
 
-// install the print function
-llvm::Function* installPrint(llvm::LLVMContext &, llvm::Module &);
-
 //==============================================================================
 // Class to keep track of available runtime functions
 //==============================================================================

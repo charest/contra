@@ -41,8 +41,8 @@ enum Token {
   tok_to = -17,
   tok_by = -18,
   tok_do = -19,
-
   tok_string = -20,
+  tok_elif = -21,
 
   tok_sep = ';',
   
@@ -63,6 +63,7 @@ const Token tok_keywords[] = {
   tok_by,
   tok_def,
   tok_do,
+  tok_elif,
   tok_else,
   tok_end,
   tok_extern,

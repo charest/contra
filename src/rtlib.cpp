@@ -36,12 +36,6 @@ namespace contra {
 using namespace llvm;
 
 //==============================================================================
-// install the library functions available by default
-//==============================================================================
-std::map<std::string, RunTimeLib::InstallFunctionPointer>
-  RunTimeLib::InstallMap = { {"print",installPrint} };
-
-//==============================================================================
 // Installs the print function
 //==============================================================================
 Function *installPrint(LLVMContext & TheContext, Module & TheModule)
@@ -56,5 +50,23 @@ Function *installPrint(LLVMContext & TheContext, Module & TheModule)
       "print", TheModule);
   return PrintFun;
 }
+
+//==============================================================================
+// Installs the unary minus
+//==============================================================================
+Function *installUnaryNegate(LLVMContext & TheContext, Module & TheModule)
+{
+  abort();
+  return nullptr;
+}
+
+//==============================================================================
+// install the library functions available by default
+//==============================================================================
+std::map<std::string, RunTimeLib::InstallFunctionPointer>
+  RunTimeLib::InstallMap = {
+    {"print",installPrint},
+    {"unary-",installUnaryNegate}
+  };
 
 }

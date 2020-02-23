@@ -3,6 +3,9 @@
 #include "string_utils.hpp"
 
 #include <iomanip>
+#include <list>
+#include <utility>
+#include <vector>
 
 namespace contra {
 
@@ -77,6 +80,7 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr(int Depth) {
 
   // Eat the ')'.
   getNextToken();
+
   return std::make_unique<CallExprAST>(LitLoc, IdName, std::move(Args));
 }
 
@@ -85,39 +89,91 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr(int Depth) {
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::parseIfExpr(int Depth) {
   echo( "Parsing conditional expression", Depth++ ); 
-  SourceLocation IfLoc = TheLex.CurLoc;
 
-  getNextToken(); // eat the if.
+  using block_t = std::vector< std::unique_ptr<ExprAST> >;
+  std::list< std::pair< SourceLocation, std::unique_ptr<ExprAST> > > Conds;
+  std::list< block_t > BBlocks;
+  
+  //---------------------------------------------------------------------------
+  // If
+  {
 
-  // condition.
-  auto Cond = parseExpression(Depth);
-  auto If = std::make_unique<IfExprAST>(IfLoc, std::move(Cond));
+    auto IfLoc = TheLex.CurLoc;
+    getNextToken(); // eat the if.
 
-  if (CurTok != tok_then)
-    THROW_SYNTAX_ERROR("Expected 'then'", getLine());
-  getNextToken(); // eat the then
+    // condition.
+    auto Cond = parseExpression(Depth);
+    Conds.emplace_back( std::make_pair(IfLoc, std::move(Cond)) );
 
-  // then
-  while (CurTok != tok_end && CurTok != tok_else) {
-    auto E = parseExpression(Depth);
-    If->Then.emplace_back( std::move(E) );
-    if (CurTok == tok_sep) getNextToken();
-  }
+    if (CurTok != tok_then)
+      THROW_SYNTAX_ERROR("Expected 'then' after 'if'", getLine());
+    getNextToken(); // eat the then
 
-  if (CurTok == tok_else) {
-    getNextToken(); // eat else
+    // make a new block
+    auto Then = BBlocks.emplace( BBlocks.end(), block_t{} );
 
-    while (CurTok != tok_end) {
+    // then
+    while (CurTok != tok_end && CurTok != tok_elif && CurTok != tok_else) {
       auto E = parseExpression(Depth);
-      If->Else.emplace_back( std::move(E) );
+      Then->emplace_back( std::move(E) );
       if (CurTok == tok_sep) getNextToken();
     }
 
   }
-    
-  getNextToken(); // eat end
+  
+  //---------------------------------------------------------------------------
+  // Else if
 
-  return If;
+  while (CurTok == tok_elif) {
+  
+    auto ElifLoc = TheLex.CurLoc;
+    getNextToken(); // eat elif
+
+    // condition.
+    auto Cond = parseExpression(Depth);
+    Conds.emplace_back( std::make_pair(ElifLoc, std::move(Cond)) );
+  
+    if (CurTok != tok_then)
+      THROW_SYNTAX_ERROR("Expected 'then' after 'elif'", getLine());
+    getNextToken(); // eat the then
+  
+    // make a new block
+    auto Then = BBlocks.emplace( BBlocks.end(), block_t{} );
+
+    while (CurTok != tok_end && CurTok != tok_elif && CurTok != tok_else) {
+      auto E = parseExpression(Depth);
+      Then->emplace_back( std::move(E) );
+      if (CurTok == tok_sep) getNextToken();
+    }
+
+  }
+
+
+  //---------------------------------------------------------------------------
+  // Else
+
+  if (CurTok == tok_else) {
+
+    auto ElseLoc = TheLex.CurLoc;
+    getNextToken(); // eat else
+    
+    // make a new block
+    auto Else = BBlocks.emplace( BBlocks.end(), block_t{} );
+
+    while (CurTok != tok_end) {
+      auto E = parseExpression(Depth);
+      Else->emplace_back( std::move(E) );
+      if (CurTok == tok_sep) getNextToken();
+    }
+
+  }
+   
+  getNextToken(); // eat end
+  
+  //---------------------------------------------------------------------------
+  // Construct If Else Then tree
+
+  return IfExprAST::make( Conds, BBlocks );
 }
 
 //==============================================================================

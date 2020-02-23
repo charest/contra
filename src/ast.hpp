@@ -5,8 +5,10 @@
 #include "sourceloc.hpp"
 
 #include <iostream>
+#include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace contra {
@@ -153,6 +155,27 @@ public:
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
+
+  static std::unique_ptr<ExprAST> make( 
+    std::list< std::pair< SourceLocation, std::unique_ptr<ExprAST> > > & Conds,
+    std::list< std::vector< std::unique_ptr<ExprAST> > > & Blocks )
+  {
+    auto TopPair = std::move(Conds.front());
+    Conds.pop_front();
+
+    auto TopIf = std::make_unique<IfExprAST>( TopPair.first, std::move(TopPair.second) );
+
+    TopIf->Then = std::move( Blocks.front() );
+    Blocks.pop_front();
+
+    if ( Conds.empty() ) {
+      TopIf->Else = std::move(Blocks.back());
+    }
+    else
+      TopIf->Else.emplace_back( IfExprAST::make( Conds, Blocks ) );
+
+    return std::move(TopIf);
+  }
 };
 
 //==============================================================================

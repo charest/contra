@@ -206,7 +206,11 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
     stmt->codegen(TheCG, Depth);
   }
 
+  // get first non phi instruction
+  auto ThenV = ThenBB->getFirstNonPHI();
+
   TheCG.Builder.CreateBr(MergeBB);
+
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
   ThenBB = TheCG.Builder.GetInsertBlock();
 
@@ -218,6 +222,9 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
     stmt->codegen(TheCG, Depth);
   }
 
+  // get first non phi
+  auto ElseV = ElseBB->getFirstNonPHI();
+
   TheCG.Builder.CreateBr(MergeBB);
   // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
   ElseBB = TheCG.Builder.GetInsertBlock();
@@ -227,8 +234,8 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheCG.Builder.SetInsertPoint(MergeBB);
   PHINode *PN = TheCG.Builder.CreatePHI(Type::getDoubleTy(TheCG.TheContext), 2, "iftmp");
 
-  //PN->addIncoming(ThenV, ThenBB);
-  //PN->addIncoming(ElseV, ElseBB);
+  if (ThenV) PN->addIncoming(ThenV, ThenBB);
+  if (ElseV) PN->addIncoming(ElseV, ElseBB);
   return PN;
 }
   
@@ -356,7 +363,12 @@ raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen unary expression", Depth++ );
-  Value *OperandV = Operand->codegen(TheCG, Depth);
+  auto OperandV = Operand->codegen(TheCG, Depth);
+  
+  switch (Opcode) {
+  case tok_sub:
+    return TheCG.Builder.CreateFNeg(OperandV, "negtmp");
+  }
 
   auto F = TheCG.getFunction(std::string("unary") + Opcode, getLine(), Depth);
   if (!F)
