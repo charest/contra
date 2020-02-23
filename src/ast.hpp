@@ -60,13 +60,13 @@ public:
 };
 
 //==============================================================================
-/// NumberExprAST - Expression class for numeric literals like "1.0".
+/// IntegerExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-class NumberExprAST : public ExprAST {
-  double Val;
+class IntegerExprAST : public ExprAST {
+  int Val;
 
 public:
-  NumberExprAST(SourceLocation Loc, double Val) : ExprAST(Loc), Val(Val) {}
+  IntegerExprAST(SourceLocation Loc, int Val) : ExprAST(Loc), Val(Val) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -74,7 +74,21 @@ public:
 };
 
 //==============================================================================
-/// NumberExprAST - Expression class for numeric literals like "1.0".
+/// RealExprAST - Expression class for numeric literals like "1.0".
+//==============================================================================
+class RealExprAST : public ExprAST {
+  double Val;
+
+public:
+  RealExprAST(SourceLocation Loc, double Val) : ExprAST(Loc), Val(Val) {}
+
+  Value *codegen(CodeGen &, int Depth=0) override;
+  raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+};
+
+//==============================================================================
+/// StringExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
 class StringExprAST : public ExprAST {
   std::string Val;
@@ -205,13 +219,13 @@ public:
 /// VarExprAST - Expression class for var/in
 //==============================================================================
 class VarExprAST : public ExprAST {
-  std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
+  std::vector<std::string> VarNames;
+  std::unique_ptr<ExprAST> Init;
 
 public:
-  VarExprAST(SourceLocation Loc,
-      std::vector<std::pair<std::string,
-      std::unique_ptr<ExprAST>>> VarNames)
-    : ExprAST(Loc), VarNames(std::move(VarNames)) {}
+  VarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
+      std::unique_ptr<ExprAST> Init)
+    : ExprAST(Loc), VarNames(VarNames), Init(std::move(Init)) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;

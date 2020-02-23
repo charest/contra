@@ -10,40 +10,45 @@ namespace contra {
 // of these for known things.
 //==============================================================================
 enum Token {
-  tok_eof = -1,
 
   // commands
-  tok_def = -2,
-  tok_extern = -3,
+  tok_def = -100,
+  tok_extern,
 
   // primary
-  tok_identifier = -4,
-  tok_number = -5,
+  tok_identifier,
 
   // control
-  tok_if = -6,
-  tok_then = -7,
-  tok_else = -8,
-  tok_for = -9,
-  tok_in = -10,
+  tok_if,
+  tok_then,
+  tok_elif,
+  tok_else,
+
+  // loops
+  tok_for,
+  tok_in,
+  tok_do,
+  tok_to,
+  tok_by,
 
   // operators
-  tok_binary = -11,
-  tok_unary = -12,
+  tok_binary,
+  tok_unary,
 
   // variables
-  tok_var = -13,
+  tok_var,
+  tok_int,
+  tok_real,
+  tok_string,
 
-  // new
-  tok_function = -14,
-  tok_end = -15,
-  tok_return = -16,
-  tok_to = -17,
-  tok_by = -18,
-  tok_do = -19,
-  tok_string = -20,
-  tok_elif = -21,
-
+  // functions
+  tok_function,
+  tok_end,
+  tok_return,
+  
+  
+  // file seperators
+  tok_eof = -1,
   tok_sep = ';',
   
   // binary
@@ -71,6 +76,8 @@ const Token tok_keywords[] = {
   tok_function,
   tok_if,
   tok_in,
+  tok_int,
+  tok_real,
   tok_return,
   tok_then,
   tok_to,

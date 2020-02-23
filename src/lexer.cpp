@@ -1,3 +1,4 @@
+#include "errors.hpp"
 #include "lexer.hpp"
 #include "string_utils.hpp"
 #include "token.hpp"
@@ -47,14 +48,36 @@ int Lexer::gettok() {
   }
 
   if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
-    std::string NumStr;
+    bool is_float = (LastChar == '.');
+    IdentifierStr.clear();
     do {
-      NumStr += LastChar;
+      IdentifierStr += LastChar;
       LastChar = advance();
+      if (LastChar == '.') is_float = true;
     } while (isdigit(LastChar) || LastChar == '.');
 
-    NumVal = strtod(NumStr.c_str(), nullptr);
-    return tok_number;
+    if (LastChar == 'e' || LastChar == 'E') {
+      is_float = true;
+      // eat e/E
+      IdentifierStr += LastChar;
+      LastChar = advance();
+      // make sure next character is sign or number
+      if (LastChar != '+' && LastChar != '-' && !isdigit(LastChar))
+        THROW_SYNTAX_ERROR( "Digit or +/- must follow exponent", LexLoc.Line );
+      // eat sign or number
+      IdentifierStr += LastChar;
+      LastChar = advance();
+      // only numbers should follow
+      do {
+        IdentifierStr += LastChar;
+        LastChar = advance();
+      } while (isdigit(LastChar) );
+    }
+
+    if (is_float)
+      return tok_real;
+    else
+      return tok_int;
   }
 
   if (LastChar == '#') {

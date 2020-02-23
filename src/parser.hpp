@@ -86,7 +86,8 @@ public:
   }
 
   /// numberexpr ::= number
-  std::unique_ptr<ExprAST> parseNumberExpr(int Depth = 0);
+  std::unique_ptr<ExprAST> parseIntegerExpr(int Depth = 0);
+  std::unique_ptr<ExprAST> parseRealExpr(int Depth = 0);
   
   /// stringexpr ::= string
   std::unique_ptr<ExprAST> parseStringExpr(int Depth = 0);

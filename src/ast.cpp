@@ -25,17 +25,32 @@ raw_ostream &indent(raw_ostream &O, int size) {
 bool BaseAST::IsVerbose = false;
 
 //==============================================================================
-// NumberExprAST - Expression class for numeric literals like "1.0".
+// IntegerExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-Value *NumberExprAST::codegen(CodeGen & TheCG, int Depth)
+Value *IntegerExprAST::codegen(CodeGen & TheCG, int Depth)
 {
-  echo( Formatter() << "CodeGen number '" << Val << "'", Depth++ );
+  echo( Formatter() << "CodeGen integer '" << Val << "'", Depth++ );
+  TheCG.emitLocation(this);
+  return ConstantInt::get(TheCG.TheContext, APInt(64, Val, true));
+}
+
+//------------------------------------------------------------------------------
+raw_ostream &IntegerExprAST::dump(raw_ostream &out, int ind) {
+  return ExprAST::dump(out << Val, ind);
+}
+
+//==============================================================================
+// RealExprAST - Expression class for numeric literals like "1.0".
+//==============================================================================
+Value *RealExprAST::codegen(CodeGen & TheCG, int Depth)
+{
+  echo( Formatter() << "CodeGen real '" << Val << "'", Depth++ );
   TheCG.emitLocation(this);
   return ConstantFP::get(TheCG.TheContext, APFloat(Val));
 }
 
 //------------------------------------------------------------------------------
-raw_ostream &NumberExprAST::dump(raw_ostream &out, int ind) {
+raw_ostream &RealExprAST::dump(raw_ostream &out, int ind) {
   return ExprAST::dump(out << Val, ind);
 }
 
@@ -420,28 +435,23 @@ raw_ostream &UnaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen var expression", Depth++ );
-  std::vector<AllocaInst *> OldBindings;
 
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+    
+  // Emit the initializer before adding the variable to scope, this prevents
+  // the initializer from referencing the variable itself, and permits stuff
+  // like this:
+  //  var a = 1 in
+  //    var a = a in ...   # refers to outer 'a'.
+  auto InitVal = Init->codegen(TheCG, Depth);
+  
+  std::vector<AllocaInst *> OldBindings;
 
   // Register all variables and emit their initializer.
-  for (unsigned i = 0, e = VarNames.size(); i != e; ++i) {
-    const std::string &VarName = VarNames[i].first;
-    ExprAST *Init = VarNames[i].second.get();
+  for (const auto & VarName : VarNames) {
 
-    // Emit the initializer before adding the variable to scope, this prevents
-    // the initializer from referencing the variable itself, and permits stuff
-    // like this:
-    //  var a = 1 in
-    //    var a = a in ...   # refers to outer 'a'.
-    Value *InitVal;
-    if (Init) {
-      InitVal = Init->codegen(TheCG, Depth);
-    } else { // If not specified, use 0.0.
-      InitVal = ConstantFP::get(TheCG.TheContext, APFloat(0.0));
-    }
   
-    AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName);
+    auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName);
     TheCG.Builder.CreateStore(InitVal, Alloca);
   
     // Remember the old variable binding so that we can restore the binding when
@@ -468,14 +478,14 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   return BodyVal;
 #endif
 
-  return nullptr;
+  return InitVal;
 }
 
 //------------------------------------------------------------------------------
 raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
   ExprAST::dump(out << "var", ind);
   for (const auto &NamedVar : VarNames)
-    NamedVar.second->dump(indent(out, ind) << NamedVar.first << ':', ind + 1);
+    Init->dump(indent(out, ind) << NamedVar << ':', ind + 1);
   return out;
 }
 

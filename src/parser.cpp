@@ -13,9 +13,21 @@ namespace contra {
 //==============================================================================
 // numberexpr ::= number
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseNumberExpr(int Depth) {
-  echo( Formatter() << "Parsing number expression '" << TheLex.NumVal << "'", Depth++ );
-  auto Result = std::make_unique<NumberExprAST>(TheLex.CurLoc, TheLex.NumVal);
+std::unique_ptr<ExprAST> Parser::parseIntegerExpr(int Depth) {
+  auto NumVal = std::atoi( TheLex.IdentifierStr.c_str() );
+  echo( Formatter() << "Parsing integer expression '" << NumVal << "'", Depth++ );
+  auto Result = std::make_unique<IntegerExprAST>(TheLex.CurLoc, NumVal);
+  getNextToken(); // consume the number
+  return std::move(Result);
+}
+
+//==============================================================================
+// numberexpr ::= number
+//==============================================================================
+std::unique_ptr<ExprAST> Parser::parseRealExpr(int Depth) {
+  auto NumVal = std::atof( TheLex.IdentifierStr.c_str() );
+  echo( Formatter() << "Parsing real expression '" << NumVal << "'", Depth++ );
+  auto Result = std::make_unique<RealExprAST>(TheLex.CurLoc, NumVal);
   getNextToken(); // consume the number
   return std::move(Result);
 }
@@ -243,8 +255,10 @@ std::unique_ptr<ExprAST> Parser::parsePrimary(int Depth) {
   switch (CurTok) {
   case tok_identifier:
     return parseIdentifierExpr(Depth);
-  case tok_number:
-    return parseNumberExpr(Depth);
+  case tok_real:
+    return parseRealExpr(Depth);
+  case tok_int:
+    return parseIntegerExpr(Depth);
   case '(':
     return parseParenExpr(Depth);
   case tok_if:
@@ -384,41 +398,50 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr(int Depth) {
   echo( "Parsing variable expression", Depth++ );
 
   getNextToken();  // eat the var.
-
-  std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
-
   // At least one variable name is required.
   if (CurTok != tok_identifier)
     THROW_SYNTAX_ERROR("Expected identifier after var", getLine());
 
-  while (1) {
-    std::string Name = TheLex.IdentifierStr;
-    getNextToken();  // eat identifier.
-  
-    // Read the optional initializer.
-    std::unique_ptr<ExprAST> Init;
-    if (CurTok == '=') {
-      getNextToken(); // eat the '='.
-  
-      Init = parseExpression(Depth);
+  std::vector<std::string> VarNames(1, TheLex.IdentifierStr);
+  getNextToken();  // eat identifier.
+
+  // get additional variables
+  while (CurTok == ',') {
+    getNextToken();  // eat ','  
+    if (CurTok != tok_identifier)
+      THROW_SYNTAX_ERROR("Only variable names are allowed in definition.", getLine());
+    VarNames.push_back( TheLex.IdentifierStr );
+    getNextToken();  // eat identifier
+  }
+
+  // read modifiers
+  if (CurTok == ':') {
+    getNextToken(); // eat the ':'.
+    if (CurTok == tok_int) {
+      getNextToken(); // eat the 'int'.
+    }
+    else if (CurTok == tok_real) {
+      getNextToken(); // eat the 'real'.
     }
     else {
-      THROW_SYNTAX_ERROR("Variable definition for '" << Name << "'"
-          << " has no initializer", getLine());
+      THROW_SYNTAX_ERROR("Variable type '" << TheLex.IdentifierStr
+          << "' not supported for '" << VarNames[0] << "'", getLine());
     }
-  
-    VarNames.push_back(std::make_pair(Name, std::move(Init)));
-  
-    // End of var list, exit loop.
-    if (CurTok != ',') break;
-    getNextToken(); // eat the ','.
-  
-    if (CurTok != tok_identifier)
-      THROW_SYNTAX_ERROR("Expected identifier list after var", getLine());
   }
   
-
-  return std::make_unique<VarExprAST>(TheLex.CurLoc, std::move(VarNames));
+  // Read the optional initializer.
+  std::unique_ptr<ExprAST> Init;
+  if (CurTok == '=') {
+    getNextToken(); // eat the '='.
+  
+    Init = parseExpression(Depth);
+  }
+  else {
+    THROW_SYNTAX_ERROR("Variable definition for '" << VarNames[0] << "'"
+        << " has no initializer", getLine());
+  }
+ 
+  return std::make_unique<VarExprAST>(TheLex.CurLoc, VarNames, std::move(Init));
 }
 
 
@@ -488,12 +511,16 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype(int Depth) {
     getNextToken();
 
     // Read the precedence if present.
-    if (CurTok == tok_number) {
-      if (TheLex.NumVal < 1 || TheLex.NumVal > 100)
-        THROW_SYNTAX_ERROR("Invalid precedence of '" << TheLex.NumVal
+    if (CurTok == tok_int) {
+      auto NumVal = std::atoi(TheLex.IdentifierStr.c_str());
+      if (NumVal < 1 || NumVal > 100)
+        THROW_SYNTAX_ERROR("Invalid precedence of '" << NumVal
             << "' must be between 1 and 100", getLine());
-      BinaryPrecedence = (unsigned) TheLex.NumVal;
+      BinaryPrecedence = NumVal;
       getNextToken();
+    }
+    else {
+      THROW_SYNTAX_ERROR("Precedence must be an integer number", getLine());
     }
     break;
   }
