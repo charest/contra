@@ -15,10 +15,13 @@ function main()
   print("This is an real %f\n", a)
 
   var b : i64 = 1.
-  print("This is an real %f\n", b)
+  print("This is an int %d\n", b)
 
   var c : f64 = 1
-  print("This is an int %d\n", c)
+  print("This is a real %f\n", c)
+
+  var d = c
+  print("This should be a real %f\n", d)
 
 end
 

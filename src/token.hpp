@@ -41,6 +41,10 @@ enum Token {
   tok_real,
   tok_string,
 
+  // numbers
+  tok_int_number,
+  tok_real_number,
+
   // functions
   tok_function,
   tok_end,

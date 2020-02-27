@@ -3,6 +3,7 @@
 
 #include "debug.hpp"
 #include "jit.hpp"
+#include "vartype.hpp"
 
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Function.h"
@@ -50,7 +51,13 @@ public:
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
   AllocaInst *createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName);
+    const std::string &VarName, VarTypes type, int Line, bool IsPointer=false);
+
+  /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+  /// the function.  This is used for mutable variables etc.
+  llvm::Value *createArray(
+    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line);
+
 
   /// Top-Level parsing and JIT Driver
   void initializeModuleAndPassManager();

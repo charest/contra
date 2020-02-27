@@ -74,7 +74,6 @@ void CodeGen::initializePassManager() {
   TheFPM->add(createGVNPass());
   // Simplify the control flow graph (deleting unreachable blocks, etc).
   TheFPM->add(createCFGSimplificationPass());
-
   TheFPM->doInitialization();
 }
 
@@ -108,11 +107,79 @@ Function *CodeGen::getFunction(std::string Name, int Line, int Depth) {
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName)
+    const std::string &VarName, VarTypes type, int Line, bool IsPointer)
 {
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
-  return TmpB.CreateAlloca(Type::getDoubleTy(TheContext), nullptr, VarName.c_str());
+
+  Type* LLType;       
+  if (type == VarTypes::Int)
+    LLType = Type::getInt64Ty(TheContext);
+  else if (type == VarTypes::Real)
+    LLType = Type::getDoubleTy(TheContext);
+  else {
+    THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
+    return nullptr;
+  }
+
+  //LLType = PointerType::get(LLType, 0);
+  LLType = PointerType::get(Type::getInt8Ty(TheContext), 0);
+  
+
+  return TmpB.CreateAlloca(LLType, nullptr, VarName.c_str());
 }
+
+//==============================================================================
+/// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+/// the function.  This is used for mutable variables etc.
+//==============================================================================
+Value *CodeGen::createArray(
+    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line)
+{
+
+  Function *F; 
+  F = TheModule->getFunction("allocate");
+  if (!F) F = RunTimeLib::tryInstall(TheContext, *TheModule, "allocate");
+
+  Type* LLType;       
+  std::size_t SizeOf; 
+  if (type == VarTypes::Int) {
+    LLType = Type::getInt64Ty(TheContext);
+    SizeOf = sizeof(std::uint64_t);
+  }
+  else if (type == VarTypes::Real) {
+    LLType = Type::getDoubleTy(TheContext);
+    SizeOf = sizeof(double);
+  }
+  else {
+    THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
+    return nullptr;
+  }
+
+  //LLType = PointerType::get(LLType, 0);
+  LLType = PointerType::get(Type::getInt8Ty(TheContext), 0);
+
+  auto TotalSize = ConstantInt::get(TheContext, APInt(64, SizeOf*NumVals, true));
+
+  Value* CallInst = Builder.CreateCall(F, TotalSize, "allocatetmp");
+  auto ResType = CallInst->getType();
+  //auto GlobVar = new GlobalVariable(*TheModule, ResType, true,
+  //    GlobalVariable::ExternalLinkage, UndefValue::get(ResType), "allocate");
+  auto AllocInst = Builder.CreateAlloca(ResType, 0, "alloctmp");
+  Builder.CreateStore(CallInst, AllocInst);
+  //GlobVar->print(outs()); outs() << "\n";
+
+  std::vector<Value*> MemberIndices(2);
+  MemberIndices[0] = llvm::ConstantInt::get(TheContext, llvm::APInt(32, 0, true));
+  MemberIndices[1] = llvm::ConstantInt::get(TheContext, llvm::APInt(32, 0, true));
+
+  auto GEPInst = Builder.CreateGEP(ResType, AllocInst, MemberIndices);
+  //GEPInst->print(outs()); outs() << "\n";
+  auto LoadedInst = Builder.CreateLoad(GEPInst, "loadtmp");
+  //LoadedInst->print(outs()); outs() << "\n";
+  
+  return LoadedInst;
+}
+
 
 //==============================================================================
 // JIT the current module

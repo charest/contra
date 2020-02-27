@@ -1,5 +1,5 @@
 # This is the main function
-function main(x) 
+function main(x : i64) 
 
   # this is an if statement
   var y = 0
@@ -8,7 +8,7 @@ function main(x)
   else
     y = x
   end
-  print("y = %f\n", y)
+  print("y = %d\n", y)
 end
 
 main(-1)

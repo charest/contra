@@ -38,6 +38,7 @@ public:
 
   /// read the next character
   int readchar() { return In->get(); };
+  int peek() { return In->peek(); };
   auto eof() { return In->eof(); }
 
   /// gettok - Return the next token from standard input.

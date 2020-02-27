@@ -1,13 +1,30 @@
 # This is the main function
-function main(x) 
+function main() 
 
-  print("I'm inside a function!!\n")
-  print("Argument x = %f\n", x)
-    
-  # this is a for loop
-  for i in 1 to 2 do
-    print("For loop with counter = %f\n", i)
+  # should not execute
+  for i in 2 to 1 do
+    print("Should not execute\n")
   end
+
+  # this is a regular for loop
+  for i in 1 to 2 do
+    print("For loop with counter = %d\n", i)
+  end
+  
+  # this is a for loop with a larger counter
+  for i in 1 to 4 by 2 do
+    print("For loop step by 2 with counter = %d\n", i)
+  end
+
+  # this is a nested for loop
+  var k = 1
+  for i in 1 to 2 do
+    for j in 1 to 3 do
+      print("Nested for loop with i=%d, j=%d, k=%d\n", i, j, k)
+      k = k + 1
+    end
+  end
+
 end
 
-main(1)
+main()

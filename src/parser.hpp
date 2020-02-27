@@ -27,6 +27,9 @@ public:
   /// lexer and updates CurTok with its results.
   int CurTok;
 
+  // A symbol table to infer types in the parser
+  std::map<std::string, VarTypes> NamedValues;
+
   /// BinopPrecedence - This holds the precedence for each binary operator that is
   /// defined.
   std::map<char, int> BinopPrecedence;
@@ -58,10 +61,6 @@ public:
   /// lexer and updates CurTok with its results.
   int getNextToken() {
     CurTok = TheLex.gettok();
-    //if ( CurTok == tok_identifier )
-    //  std::cerr << "echo> " << getTokName(CurTok) << " value " << TheLex.IdentifierStr << std::endl;
-    //else
-    //  std::cerr << "echo> " << getTokName(CurTok) << std::endl;
     return CurTok;
   }
 
@@ -105,6 +104,8 @@ public:
   
   /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
   std::unique_ptr<ExprAST> parseForExpr(int Depth = 0);
+
+  std::unique_ptr<ExprAST> parseArrayExpr(VarTypes VarType, int Depth = 0);
   
   /// primary
   ///   ::= identifierexpr

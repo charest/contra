@@ -70,13 +70,17 @@ int processArguments(
     std::cout << "Usage: " << argv[0]
               << " [--compile,-c]"
               << " [--debug,-g]"
+              << " [--ir,-i]"
               << " [--help,-h]"
+              << " [--optimize,-O]"
               << " [--output,-o OUTPUT_FILE]"
               << " [--verbose,-v]"
               << " [SOURCE_FILE]"
               << std::endl << std::endl;
     std::cout << "\t--compile:\t Compile provided SOURCE_FILE." << std::endl;
     std::cout << "\t--debug:\t Turn off optimizations." << std::endl;
+    std::cout << "\t--ir:\t Dump IR." << std::endl;
+    std::cout << "\t--optimize:\t Optimize." << std::endl;
     std::cout << "\t--output:\t Output object file to OUTPUT_FILE." << std::endl;
     std::cout << "\t--verbose:\t Print debug information." << std::endl;
     std::cout << "\t--help:\t\t Print a help message." << std::endl;
@@ -86,13 +90,15 @@ int processArguments(
   struct option long_options[] =
     {
       {"debug",           no_argument, 0, 'g'},
-      {"help",            no_argument, 0, 'h'},
       {"compile",         no_argument, 0, 'c'},
+      {"help",            no_argument, 0, 'h'},
+      {"ir",              no_argument, 0, 'i'},
       {"output",    required_argument, 0, 'o'},
+      {"optimize",  required_argument, 0, 'O'},
       {"verbose",         no_argument, 0, 'v'},
       {0, 0, 0, 0}
     };
-  const char * short_options = "ghco:v";
+  const char * short_options = "ghicOo:v";
 
   // parse the arguments
   auto ret = parseArguments(argc, argv, long_options, short_options, args);

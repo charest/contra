@@ -77,6 +77,16 @@ public:
     throw ::contra::ContraError(Formatter() << msg  );                         \
   } while(0)
 
+////////////////////////////////////////////////////////////////////////////////
+//! \brief Raise a general runtime error.
+////////////////////////////////////////////////////////////////////////////////
+#define THROW_IMPLEMENTED_ERROR(msg)                                           \
+  do {                                                                         \
+    std::cerr << "Implementation error:" << std::endl;                         \
+    throw ::contra::ContraError(Formatter() << msg  );                         \
+  } while(0)
+
+
 
 } // namespace 
 

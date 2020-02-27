@@ -1,12 +1,13 @@
 # This is the main function
-function main(x) 
+function main(x : i64) 
 
   # this is an if statement
-  var y = x
+  #var y = x
   if x < 0 then
-    y = -x
+    #y = -x
+    print("inside\n")
   end
-  print("y = %f\n", y)
+  #print("y = %f\n", y)
 end
 
 main(-1)

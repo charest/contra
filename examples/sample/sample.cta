@@ -8,7 +8,7 @@ function empty()
 end
 
 # This is the main function
-function main(x) 
+function main(x : f64) 
 
   print("I'm inside a function!!\n")
   print("Argument x = %f\n", x)
@@ -30,12 +30,12 @@ function main(x)
     
   # this is a for loop
   for i in 1 to 2 do
-    print("For loop with counter = %f\n", i)
+    print("For loop with counter = %d\n", i)
   end
 end
 
 empty()
-main(-3)
+main(-3.)
 main(-1)
 main(2)
 

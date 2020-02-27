@@ -47,14 +47,35 @@ int Lexer::gettok() {
     return tok_identifier;
   }
 
-  if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
-    bool is_float = (LastChar == '.');
+  // Number: [0-9.]+
+  if (isdigit(LastChar) || LastChar == '.' || LastChar == '+' || LastChar == '-') {
+
     IdentifierStr.clear();
+
+    // peak if this is a unary or number
+    if (LastChar == '+' || LastChar == '-') {
+      auto NextChar = peek();
+      if ( !isdigit(NextChar) && NextChar != '.' ) {
+        int ThisChar = LastChar;
+        LastChar = advance();
+        return ThisChar;
+      }
+    }
+
+    // read first part of number
+    bool is_float = (LastChar == '.');
     do {
       IdentifierStr += LastChar;
       LastChar = advance();
-      if (LastChar == '.') is_float = true;
-    } while (isdigit(LastChar) || LastChar == '.');
+      if (LastChar == '.') {
+        if (is_float)
+          THROW_SYNTAX_ERROR( "Multiple '.' encountered in real", LexLoc.Line );
+        is_float = true;
+        // eat '.'
+        IdentifierStr += LastChar;
+        LastChar = advance();
+      }
+    } while (isdigit(LastChar));
 
     if (LastChar == 'e' || LastChar == 'E') {
       is_float = true;
@@ -75,9 +96,9 @@ int Lexer::gettok() {
     }
 
     if (is_float)
-      return tok_real;
+      return tok_real_number;
     else
-      return tok_int;
+      return tok_int_number;
   }
 
   if (LastChar == '#') {

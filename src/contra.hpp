@@ -6,8 +6,10 @@
 
 namespace contra {
 
+struct InputsType;
+
 // top ::= definition | external | expression | ';'
-void mainLoop( Parser &, CodeGen &, bool, bool );
+void mainLoop( Parser &, CodeGen &, const InputsType & );
 
 }
 

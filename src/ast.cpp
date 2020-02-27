@@ -3,6 +3,7 @@
 #include "parser.hpp"
 #include "token.hpp"
 #include "string_utils.hpp"
+#include "vartype.hpp"
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Verifier.h"
@@ -87,8 +88,20 @@ Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
   if (!V) 
     THROW_NAME_ERROR(Name, getLine());
   TheCG.emitLocation(this);
+  
   // Load the value.
-  return TheCG.Builder.CreateLoad(V, Name.c_str());
+  auto Ty = V->getType();
+  if (!Ty->isPointerTy()) THROW_CONTRA_ERROR("why are you NOT a pointer");
+  Ty = Ty->getPointerElementType();
+    
+  auto Load = TheCG.Builder.CreateLoad(Ty, V, Name.c_str());
+
+  if ( !Index )
+    return Load;
+  else {
+    auto IndexVal = Index->codegen(TheCG, Depth);
+    return TheCG.Builder.CreateExtractElement(Load, IndexVal, Name);
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -128,19 +141,53 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
   Value *L = LHS->codegen(TheCG, Depth);
   Value *R = RHS->codegen(TheCG, Depth);
 
-  switch (Op) {
-  case tok_add:
-    return TheCG.Builder.CreateFAdd(L, R, "addtmp");
-  case tok_sub:
-    return TheCG.Builder.CreateFSub(L, R, "subtmp");
-  case tok_mul:
-    return TheCG.Builder.CreateFMul(L, R, "multmp");
-  case tok_div:
-    return TheCG.Builder.CreateFDiv(L, R, "divtmp");
-  case tok_lt:
-    L = TheCG.Builder.CreateFCmpULT(L, R, "cmptmp");
-    // Convert bool 0/1 to double 0.0 or 1.0
-    return TheCG.Builder.CreateUIToFP(L, Type::getDoubleTy(TheCG.TheContext), "booltmp");
+  auto l_is_double = L->getType()->isDoubleTy();
+  auto r_is_double = R->getType()->isDoubleTy();
+  bool is_double =  (l_is_double || r_is_double);
+
+  if (is_double) {
+    auto TheBlock = TheCG.Builder.GetInsertBlock();
+    if (!l_is_double) {
+      auto cast = CastInst::Create(Instruction::SIToFP, L, Type::getDoubleTy(TheCG.TheContext), "castl", TheBlock);
+      L = cast;
+    }
+    else if (!r_is_double) {
+      auto cast = CastInst::Create(Instruction::SIToFP, R, Type::getDoubleTy(TheCG.TheContext), "castr", TheBlock);
+      R = cast;
+    }
+  }
+
+  if (is_double) {
+    switch (Op) {
+    case tok_add:
+      return TheCG.Builder.CreateFAdd(L, R, "addtmp");
+    case tok_sub:
+      return TheCG.Builder.CreateFSub(L, R, "subtmp");
+    case tok_mul:
+      return TheCG.Builder.CreateFMul(L, R, "multmp");
+    case tok_div:
+      return TheCG.Builder.CreateFDiv(L, R, "divtmp");
+    case tok_lt:
+      return TheCG.Builder.CreateFCmpULT(L, R, "cmptmp");
+    default:
+      THROW_SYNTAX_ERROR( "'" << getTokName(Op) << "' not supported yet for reals", getLine() );
+    } 
+  }
+  else {
+    switch (Op) {
+    case tok_add:
+      return TheCG.Builder.CreateAdd(L, R, "addtmp");
+    case tok_sub:
+      return TheCG.Builder.CreateSub(L, R, "subtmp");
+    case tok_mul:
+      return TheCG.Builder.CreateMul(L, R, "multmp");
+    case tok_div:
+      return TheCG.Builder.CreateSDiv(L, R, "divtmp");
+    case tok_lt:
+      return TheCG.Builder.CreateICmpSLT(L, R, "cmptmp");
+    default:
+      THROW_SYNTAX_ERROR( "'" << getTokName(Op) << "' not supported yet for ints", getLine() );
+    }
   }
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
@@ -179,9 +226,26 @@ Value *CallExprAST::codegen(CodeGen & TheCG, int Depth) {
         << " but got " << Args.size() << Formatter::to_str, getLine() );
   }
 
+  auto FunType = CalleeF->getFunctionType();
+  auto NumFixedArgs = FunType->getNumParams();
+
   std::vector<Value *> ArgsV;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
+    // what is the arg type
     auto A = Args[i]->codegen(TheCG, Depth);
+    if (i < NumFixedArgs) {
+      auto TheBlock = TheCG.Builder.GetInsertBlock();
+      if (FunType->getParamType(i)->isDoubleTy() && A->getType()->isIntegerTy()) {
+        auto cast = CastInst::Create(Instruction::SIToFP, A,
+            Type::getDoubleTy(TheCG.TheContext), "cast", TheBlock);
+        A = cast;
+      }
+      else if (FunType->getParamType(i)->isIntegerTy() && A->getType()->isDoubleTy()) {
+        auto cast = CastInst::Create(Instruction::FPToSI, A,
+            Type::getInt64Ty(TheCG.TheContext), "cast", TheBlock);
+        A = cast;
+      }
+    }
     ArgsV.push_back(A);
   }
 
@@ -203,21 +267,26 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen if expression", Depth++ );
   TheCG.emitLocation(this);
 
-  Value *CondV = Cond->codegen(TheCG, Depth);
+  if ( Then.empty() && Else.empty() )
+    return Constant::getNullValue(Type::getInt64Ty(TheCG.TheContext));
+  else if (Then.empty())
+    THROW_SYNTAX_ERROR( "Can't have else with no if!", getLine() );
 
-  // Convert condition to a bool by comparing non-equal to 0.0.
-  CondV = TheCG.Builder.CreateFCmpONE(
-      CondV, ConstantFP::get(TheCG.TheContext, APFloat(0.0)), "ifcond");
+
+  Value *CondV = Cond->codegen(TheCG, Depth);
 
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
   BasicBlock *ThenBB = BasicBlock::Create(TheCG.TheContext, "then", TheFunction);
-  BasicBlock *ElseBB = BasicBlock::Create(TheCG.TheContext, "else");
+  BasicBlock *ElseBB = Else.empty() ? nullptr : BasicBlock::Create(TheCG.TheContext, "else");
   BasicBlock *MergeBB = BasicBlock::Create(TheCG.TheContext, "ifcont");
 
-  TheCG.Builder.CreateCondBr(CondV, ThenBB, ElseBB);
+  if (ElseBB)
+    TheCG.Builder.CreateCondBr(CondV, ThenBB, ElseBB);
+  else
+    TheCG.Builder.CreateCondBr(CondV, ThenBB, MergeBB);
 
   // Emit then value.
   TheCG.Builder.SetInsertPoint(ThenBB);
@@ -234,29 +303,38 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
   ThenBB = TheCG.Builder.GetInsertBlock();
 
-  // Emit else block.
-  TheFunction->getBasicBlockList().push_back(ElseBB);
-  TheCG.Builder.SetInsertPoint(ElseBB);
+  if (ElseBB) {
 
-  for ( auto & stmt : Else ) {
-    stmt->codegen(TheCG, Depth);
-  }
+    // Emit else block.
+    TheFunction->getBasicBlockList().push_back(ElseBB);
+    TheCG.Builder.SetInsertPoint(ElseBB);
 
-  // get first non phi
-  auto ElseV = ElseBB->getFirstNonPHI();
+    for ( auto & stmt : Else ) {
+      stmt->codegen(TheCG, Depth);
+    }
 
-  TheCG.Builder.CreateBr(MergeBB);
-  // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
-  ElseBB = TheCG.Builder.GetInsertBlock();
+    // get first non phi
+    auto ElseV = ElseBB->getFirstNonPHI();
+
+    TheCG.Builder.CreateBr(MergeBB);
+    // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
+    ElseBB = TheCG.Builder.GetInsertBlock();
+
+  } // else
 
   // Emit merge block.
   TheFunction->getBasicBlockList().push_back(MergeBB);
   TheCG.Builder.SetInsertPoint(MergeBB);
-  PHINode *PN = TheCG.Builder.CreatePHI(Type::getDoubleTy(TheCG.TheContext), 2, "iftmp");
+  //ElseV->getType()->print(outs());
+  //outs() << "\n";
+  //PHINode *PN = TheCG.Builder.CreatePHI(ThenV->getType(), 2, "iftmp");
 
-  if (ThenV) PN->addIncoming(ThenV, ThenBB);
-  if (ElseV) PN->addIncoming(ElseV, ElseBB);
-  return PN;
+  //if (ThenV) PN->addIncoming(ThenV, ThenBB);
+  //if (ElseV) PN->addIncoming(ElseV, ElseBB);
+  //return PN;
+  
+  // for expr always returns 0.
+  return Constant::getNullValue(Type::getInt64Ty(TheCG.TheContext));
 }
   
 //------------------------------------------------------------------------------
@@ -317,31 +395,50 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
-  AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName);
+  AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName,
+      VarTypes::Int, getLine());
   
+  // Within the loop, the variable is defined equal to the PHI node.  If it
+  // shadows an existing variable, we have to restore it, so save it now.
+  AllocaInst *OldVal = TheCG.NamedValues[VarName];
+  TheCG.NamedValues[VarName] = Alloca;
   TheCG.emitLocation(this);
 
   // Emit the start code first, without 'variable' in scope.
   Value *StartVal = Start->codegen(TheCG, Depth);
+  if (StartVal->getType()->isDoubleTy())
+    THROW_IMPLEMENTED_ERROR("Cast required for start value");
 
   // Store the value into the alloca.
   TheCG.Builder.CreateStore(StartVal, Alloca);
 
   // Make the new basic block for the loop header, inserting after current
   // block.
-  BasicBlock *LoopBB = BasicBlock::Create(TheCG.TheContext, "loop", TheFunction);
+  BasicBlock *BeforeBB = BasicBlock::Create(TheCG.TheContext, "beforeloop", TheFunction);
+  BasicBlock *LoopBB =   BasicBlock::Create(TheCG.TheContext, "loop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(TheCG.TheContext, "incr", TheFunction);
+  BasicBlock *AfterBB =  BasicBlock::Create(TheCG.TheContext, "afterloop", TheFunction);
 
-  // Insert an explicit fall through from the current block to the LoopBB.
-  TheCG.Builder.CreateBr(LoopBB);
+  TheCG.Builder.CreateBr(BeforeBB);
+  TheCG.Builder.SetInsertPoint(BeforeBB);
+
+  // Load value and check coondition
+  Value *CurVar = TheCG.Builder.CreateLoad(Type::getInt64Ty(TheCG.TheContext), Alloca);
+
+  // Compute the end condition.
+  // Convert condition to a bool by comparing non-equal to 0.0.
+  Value *EndCond = End->codegen(TheCG, Depth);
+  if (EndCond->getType()->isDoubleTy())
+    THROW_IMPLEMENTED_ERROR("Cast required for end condition");
+  EndCond = TheCG.Builder.CreateICmpSLE(CurVar, EndCond, "loopcond");
+
+  // Insert the conditional branch into the end of LoopEndBB.
+  TheCG.Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
 
   // Start insertion in LoopBB.
+  //TheFunction->getBasicBlockList().push_back(LoopBB);
   TheCG.Builder.SetInsertPoint(LoopBB);
-
-  // Within the loop, the variable is defined equal to the PHI node.  If it
-  // shadows an existing variable, we have to restore it, so save it now.
-  AllocaInst *OldVal = TheCG.NamedValues[VarName];
-  TheCG.NamedValues[VarName] = Alloca;
-
+  
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
@@ -349,36 +446,37 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
     stmt->codegen(TheCG, Depth);
   }
 
+  // Insert unconditional branch to increment.
+  TheCG.Builder.CreateBr(IncrBB);
+
+  // Start insertion in LoopBB.
+  //TheFunction->getBasicBlockList().push_back(IncrBB);
+  TheCG.Builder.SetInsertPoint(IncrBB);
+  
 
   // Emit the step value.
   Value *StepVal = nullptr;
   if (Step) {
     StepVal = Step->codegen(TheCG, Depth);
+    if (StepVal->getType()->isDoubleTy())
+      THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
     // If not specified, use 1.0.
-    StepVal = ConstantFP::get(TheCG.TheContext, APFloat(1.0));
+    StepVal = ConstantInt::get(TheCG.TheContext, APInt(64, 1, true));
   }
 
-  // Compute the end condition.
-  Value *EndCond = End->codegen(TheCG, Depth);
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
-  Value *CurVar = TheCG.Builder.CreateLoad(Alloca);
-  Value *NextVar = TheCG.Builder.CreateFAdd(CurVar, StepVal, "nextvar");
+  CurVar = TheCG.Builder.CreateLoad(Type::getInt64Ty(TheCG.TheContext), Alloca);
+  Value *NextVar = TheCG.Builder.CreateAdd(CurVar, StepVal, "nextvar");
   TheCG.Builder.CreateStore(NextVar, Alloca);
 
-  // Convert condition to a bool by comparing non-equal to 0.0.
-  EndCond = TheCG.Builder.CreateFCmpONE(EndCond, CurVar, "loopcond");
-
-  // Create the "after loop" block and insert it.
-  BasicBlock *AfterBB =
-      BasicBlock::Create(TheCG.TheContext, "afterloop", TheFunction);
-
   // Insert the conditional branch into the end of LoopEndBB.
-  TheCG.Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+  TheCG.Builder.CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
+  //TheFunction->getBasicBlockList().push_back(AfterBB);
   TheCG.Builder.SetInsertPoint(AfterBB);
 
   // Restore the unshadowed variable.
@@ -387,8 +485,8 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   else
     TheCG.NamedValues.erase(VarName);
 
-  // for expr always returns 0.0.
-  return Constant::getNullValue(Type::getDoubleTy(TheCG.TheContext));
+  // for expr always returns 0.
+  return Constant::getNullValue(Type::getInt64Ty(TheCG.TheContext));
 }
 
 //------------------------------------------------------------------------------
@@ -410,9 +508,25 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen unary expression", Depth++ );
   auto OperandV = Operand->codegen(TheCG, Depth);
   
-  switch (Opcode) {
-  case tok_sub:
-    return TheCG.Builder.CreateFNeg(OperandV, "negtmp");
+  if (OperandV->getType()->isDoubleTy()) {
+  
+    switch (Opcode) {
+    case tok_sub:
+      return TheCG.Builder.CreateFNeg(OperandV, "negtmp");
+    default:
+      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(Opcode)
+          << "'", getLine() );
+    }
+
+  }
+  else {
+    switch (Opcode) {
+    case tok_sub:
+      return TheCG.Builder.CreateNeg(OperandV, "negtmp");
+    default:
+      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(Opcode)
+          << "'", getLine() );
+    }
   }
 
   auto F = TheCG.getFunction(std::string("unary") + Opcode, getLine(), Depth);
@@ -437,21 +551,58 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen var expression", Depth++ );
 
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
-    
+
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
   // like this:
   //  var a = 1 in
   //    var a = a in ...   # refers to outer 'a'.
   auto InitVal = Init->codegen(TheCG, Depth);
+
+  std::size_t NumVals = 0;
+  auto IType = InitVal->getType();
+
+  if (IsArray) {
+    if (IType->isSingleValueType()) {
+      NumVals = 1;
+    }
+    else {
+      NumVals = IType->getArrayNumElements();
+      IType = IType->getArrayElementType(); 
+    }
+  }
   
   std::vector<AllocaInst *> OldBindings;
 
   // Register all variables and emit their initializer.
   for (const auto & VarName : VarNames) {
 
-  
-    auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName);
+ 
+    auto Array = TheCG.createArray(VarName, VarType, NumVals, getLine());
+    
+    auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
+        getLine());
+
+    TheCG.Builder.CreateStore(Array, Alloca);
+
+#if 0 
+    auto AType = Alloca->getAllocatedType();
+    if (!AType->isSingleValueType())
+      AType = AType->getArrayElementType();
+
+    auto TheBlock = TheCG.Builder.GetInsertBlock();
+    if (VarType == VarTypes::Real && !InitVal->getType()->isDoubleTy()) {
+      auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
+          Type::getDoubleTy(TheCG.TheContext), "cast", TheBlock);
+      InitVal = cast;
+    }
+    else if (VarType == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
+      auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
+          Type::getInt64Ty(TheCG.TheContext), "cast", TheBlock);
+      InitVal = cast;
+    }
+
+#endif
     TheCG.Builder.CreateStore(InitVal, Alloca);
   
     // Remember the old variable binding so that we can restore the binding when
@@ -490,14 +641,64 @@ raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
 }
 
 //==============================================================================
+// ArrayExprAST - Expression class for arrays.
+//==============================================================================
+Value *ArrayExprAST::codegen(CodeGen & TheCG, int Depth)
+{
+  echo( Formatter() << "CodeGen array expression", Depth++ );
+  std::cout << "ERHERHEHREHRE" << std::endl;
+  abort();
+
+  return nullptr;
+}
+
+//------------------------------------------------------------------------------
+raw_ostream &ArrayExprAST::dump(raw_ostream &out, int ind) {
+  return out;
+}
+
+//==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
 Function *PrototypeAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen prototype expression '" << Name << "'", Depth++ );
+
   // Make the function type:  double(double,double) etc.
-  std::vector<Type *> Doubles(Args.size(), Type::getDoubleTy(TheCG.TheContext));
-  FunctionType *FT =
-      FunctionType::get(Type::getDoubleTy(TheCG.TheContext), Doubles, false);
+  
+  std::vector<Type *> ArgTypes;
+  ArgTypes.reserve(Args.size());
+
+  for ( const auto & A : Args ) {
+    switch (A.second) {
+    case VarTypes::Int:
+      ArgTypes.emplace_back( Type::getInt64Ty(TheCG.TheContext) );
+      break;
+    case VarTypes::Real:
+      ArgTypes.emplace_back( Type::getDoubleTy(TheCG.TheContext) );
+      break;
+    default:
+      THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(A.second)
+          << "' in prototype for function '" << Name << "'", Line );
+    }
+  }
+  
+  Type * ReturnType;
+  switch (Return) {
+  case VarTypes::Int:
+    ReturnType = Type::getInt64Ty(TheCG.TheContext);
+    break;
+  case VarTypes::Real:
+    ReturnType = Type::getDoubleTy(TheCG.TheContext);
+    break;
+  case VarTypes::Void:
+    ReturnType = Type::getVoidTy(TheCG.TheContext);
+    break;
+  default:
+    THROW_SYNTAX_ERROR( "Unknown return type of '" << getVarTypeName(Return)
+        << "' in prototype for function '" << Name << "'", Line );
+  }
+
+  FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
   Function *F =
       Function::Create(FT, Function::ExternalLinkage, Name, TheCG.TheModule.get());
@@ -505,7 +706,7 @@ Function *PrototypeAST::codegen(CodeGen & TheCG, int Depth) {
   // Set names for all arguments.
   unsigned Idx = 0;
   for (auto &Arg : F->args())
-    Arg.setName(Args[Idx++]);
+    Arg.setName(Args[Idx++].first);
 
   return F;
 }
@@ -553,8 +754,13 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   TheCG.NamedValues.clear();
   unsigned ArgIdx = 0;
   for (auto &Arg : TheFunction->args()) {
+
+    // get arg type
+    auto ArgType = P.Args[ArgIdx].second;
+    
     // Create an alloca for this variable.
-    AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, Arg.getName());
+    AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, Arg.getName(),
+        ArgType, LineNo);
     
     // Create a debug descriptor for the variable.
     TheCG.createVariable( SP, Arg.getName(), ++ArgIdx, Unit, LineNo, Alloca);
@@ -576,8 +782,10 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   // Finish off the function.
   if ( Return ) {
     auto RetVal = Return->codegen(TheCG, Depth);
-    TheCG.Builder.CreateRet(RetVal);
-    
+    if (RetVal->getType()->isVoidTy() )
+      TheCG.Builder.CreateRetVoid();
+    else
+      TheCG.Builder.CreateRet(RetVal);
   }
   else {  
     TheCG.Builder.CreateRetVoid();
@@ -585,10 +793,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
     
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
-
-  // Run the optimizer on the function.
-  TheCG.TheFPM->run(*TheFunction);
-  
+    
   return TheFunction;
 
 #if 0

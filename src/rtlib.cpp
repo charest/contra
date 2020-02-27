@@ -17,8 +17,10 @@
 #define DLLEXPORT
 #endif
 
+extern "C" {
+
 /// generic c print statement
-extern "C" DLLEXPORT double print(const char *format, ...)
+DLLEXPORT void print(const char *format, ...)
 {
 
    va_list arg;
@@ -28,8 +30,29 @@ extern "C" DLLEXPORT double print(const char *format, ...)
    done = vfprintf (stdout, format, arg);
    va_end (arg);
 
-   return done;
 }
+
+struct dopevector_t {
+  void * data = nullptr;
+  std::uint64_t size = 0;
+};
+
+/// memory allocation
+DLLEXPORT dopevector_t allocate(std::uint64_t size)
+{
+  dopevector_t dv;
+  dv.data = malloc(size);
+  dv.size = size;
+  printf("Allocating %ld\n", size);
+  return dv;
+}
+
+DLLEXPORT void deallocate(dopevector_t dv)
+{
+  free(dv.data);
+}
+
+} // extern
 
 namespace contra {
 
@@ -41,7 +64,7 @@ using namespace llvm;
 Function *installPrint(LLVMContext & TheContext, Module & TheModule)
 {
   auto PrintType = FunctionType::get(
-      Type::getDoubleTy(TheContext),
+      Type::getVoidTy(TheContext),
       PointerType::get(Type::getInt8Ty(TheContext), 0),
       true /* var args */ );
 
@@ -52,13 +75,27 @@ Function *installPrint(LLVMContext & TheContext, Module & TheModule)
 }
 
 //==============================================================================
-// Installs the unary minus
+// Installs the Allocate deallocate function
 //==============================================================================
-Function *installUnaryNegate(LLVMContext & TheContext, Module & TheModule)
+Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
 {
-  abort();
-  return nullptr;
+  auto DopeVectorType = StructType::create( TheContext, "Struct(dopevector)" );
+  auto VoidPointerType = PointerType::get(Type::getInt8Ty(TheContext), 0);
+  auto Int64Type = Type::getInt64Ty(TheContext);
+
+  std::vector<Type*> members{ VoidPointerType, Int64Type}; 
+  DopeVectorType->setBody( members );
+  //DopeVectorType->print(outs()); outs() << "\n";
+
+  std::vector<Type*> Args = {Int64Type};
+  auto AllocateType = FunctionType::get( DopeVectorType, Args, false );
+
+  auto AllocateFun = Function::Create(AllocateType, Function::ExternalLinkage,
+      "allocate", TheModule);
+  //AllocateFun->print(outs()); outs() << "\n";
+  return AllocateFun;
 }
+
 
 //==============================================================================
 // install the library functions available by default
@@ -66,7 +103,7 @@ Function *installUnaryNegate(LLVMContext & TheContext, Module & TheModule)
 std::map<std::string, RunTimeLib::InstallFunctionPointer>
   RunTimeLib::InstallMap = {
     {"print",installPrint},
-    {"unary-",installUnaryNegate}
+    {"allocate",installAllocate},
   };
 
 }

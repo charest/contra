@@ -3,7 +3,7 @@ print("Hello World!\n")
 print("Hello Again!\n")
 
 # print a number
-print("Printing the number %f\n", 1)
+print("Printing the number %d\n", 1)
 
 # do some math
 print("1 + 2 = \n")

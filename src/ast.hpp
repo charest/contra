@@ -2,7 +2,9 @@
 #define CONTRA_AST_HPP
 
 #include "codegen.hpp"
+#include "errors.hpp"
 #include "sourceloc.hpp"
+#include "vartype.hpp"
 
 #include <iostream>
 #include <list>
@@ -46,8 +48,11 @@ class ExprAST : public BaseAST {
   SourceLocation Loc;
   
 public:
+  
+  VarTypes InferredType;
 
-  ExprAST(SourceLocation Loc) : Loc(Loc) {}
+  ExprAST(SourceLocation Loc, VarTypes Type = VarTypes::Void)
+    : Loc(Loc), InferredType(Type) {}
 
   virtual ~ExprAST() = default;
 
@@ -66,7 +71,8 @@ class IntegerExprAST : public ExprAST {
   int Val;
 
 public:
-  IntegerExprAST(SourceLocation Loc, int Val) : ExprAST(Loc), Val(Val) {}
+  IntegerExprAST(SourceLocation Loc, int Val)
+    : ExprAST(Loc, VarTypes::Int), Val(Val) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -80,7 +86,8 @@ class RealExprAST : public ExprAST {
   double Val;
 
 public:
-  RealExprAST(SourceLocation Loc, double Val) : ExprAST(Loc), Val(Val) {}
+  RealExprAST(SourceLocation Loc, double Val)
+    : ExprAST(Loc, VarTypes::Real), Val(Val) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -94,7 +101,8 @@ class StringExprAST : public ExprAST {
   std::string Val;
 
 public:
-  StringExprAST(SourceLocation Loc, std::string Val) : ExprAST(Loc), Val(Val) {}
+  StringExprAST(SourceLocation Loc, std::string Val)
+    : ExprAST(Loc, VarTypes::String), Val(Val) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -106,13 +114,33 @@ public:
 //==============================================================================
 class VariableExprAST : public ExprAST {
   std::string Name;
+  VarTypes Type;
 
 public:
-  VariableExprAST(SourceLocation Loc, const std::string &Name) :
-    ExprAST(Loc), Name(Name) {}
+  std::unique_ptr<ExprAST> Index;
+
+  VariableExprAST(SourceLocation Loc, const std::string &Name,
+      VarTypes Type) : ExprAST(Loc, Type), Name(Name) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   const std::string &getName() const { return Name; }
+  raw_ostream &dump(raw_ostream &out, int ind) override;
+};
+
+//==============================================================================
+/// ArrayExprAST - Expression class for referencing an array.
+//==============================================================================
+class ArrayExprAST : public ExprAST {
+  VarTypes Type;
+
+public:
+  std::vector< std::unique_ptr<ExprAST> > Body;
+  std::unique_ptr<ExprAST> Repeat;
+
+  ArrayExprAST(SourceLocation Loc, VarTypes Type)
+    : ExprAST(Loc, Type) {}
+
+  Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -125,10 +153,20 @@ class BinaryExprAST : public ExprAST {
 
 public:
   BinaryExprAST(SourceLocation Loc, 
-      char Op, std::unique_ptr<ExprAST> LHS,
-      std::unique_ptr<ExprAST> RHS)
-    : ExprAST(Loc), Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS))
-  {}
+      char Op, std::unique_ptr<ExprAST> lhs,
+      std::unique_ptr<ExprAST> rhs)
+    : ExprAST(Loc), Op(Op), LHS(std::move(lhs)), RHS(std::move(rhs))
+  {
+    // promote lesser types
+    if (LHS->InferredType == VarTypes::Real || RHS->InferredType == VarTypes::Real)
+      InferredType = VarTypes::Real;
+    else if (LHS->InferredType != RHS->InferredType)
+      THROW_SYNTAX_ERROR( "Don't know how to handle binary expression with '"
+          << getVarTypeName(LHS->InferredType) << "' and '"
+          << getVarTypeName(RHS->InferredType) << "'", Loc.Line );
+    else
+      InferredType =  LHS->InferredType;
+  }
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -209,7 +247,7 @@ public:
   UnaryExprAST(SourceLocation Loc,
       char Opcode,
       std::unique_ptr<ExprAST> Operand)
-    : ExprAST(Loc), Opcode(Opcode), Operand(std::move(Operand)) {}
+    : ExprAST(Loc, Operand->InferredType), Opcode(Opcode), Operand(std::move(Operand)) {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -220,12 +258,16 @@ public:
 //==============================================================================
 class VarExprAST : public ExprAST {
   std::vector<std::string> VarNames;
+  VarTypes VarType;
+  bool IsArray = false;
   std::unique_ptr<ExprAST> Init;
 
 public:
   VarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
-      std::unique_ptr<ExprAST> Init)
-    : ExprAST(Loc), VarNames(VarNames), Init(std::move(Init)) {}
+      VarTypes VarType, bool IsArray, std::unique_ptr<ExprAST> Init)
+    : ExprAST(Loc, Init->InferredType), VarNames(VarNames), VarType(VarType),
+      IsArray(IsArray), Init(std::move(Init)) 
+  {}
 
   Value *codegen(CodeGen &, int Depth=0) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -238,20 +280,24 @@ public:
 //==============================================================================
 class PrototypeAST : public BaseAST {
   std::string Name;
-  std::vector<std::string> Args;
+  VarTypes Return;
   bool IsOperator;
   unsigned Precedence;  // Precedence if a binary op.
   int Line;
 
 public:
+  
+  std::vector< std::pair<std::string, VarTypes> > Args;
+
   PrototypeAST(
     SourceLocation Loc,
     const std::string &Name,
-    std::vector<std::string> Args,
+    const std::vector< std::pair<std::string, VarTypes> > & Args,
+    VarTypes Return,
     bool IsOperator = false,
     unsigned Prec = 0)
-      : Name(Name), Args(std::move(Args)), IsOperator(IsOperator),
-        Precedence(Prec), Line(Loc.Line)
+      : Name(Name), Return(Return), IsOperator(IsOperator),
+        Precedence(Prec), Line(Loc.Line), Args(Args)
   {}
 
   

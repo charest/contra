@@ -1,5 +1,6 @@
 #include "args.hpp"
 #include "contra.hpp"
+#include "inputs.hpp"
 #include "llvm.hpp"
 #include "string_utils.hpp"
 
@@ -21,23 +22,26 @@ int main(int argc, char** argv) {
   if ( res ) return res;
 
   // santity checks
-  bool is_interactive = args.count("__positional") == 0;
-  bool do_compile = args.count("c");
-  bool is_verbose = args.count("v");
-  bool has_output = args.count("o");
-  bool is_debug = args.count("g");
+  InputsType inp;
+  inp.is_interactive = args.count("__positional") == 0;
+  inp.do_compile = args.count("c");
+  inp.is_verbose = args.count("v");
+  inp.has_output = args.count("o");
+  inp.is_debug = args.count("g");
+  inp.is_optimized = args.count("O");
+  inp.dump_ir = args.count("i");
 
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;
   std::string output_filename;
 
-  if (!is_interactive) {
+  if (!inp.is_interactive) {
     
     source_filename = split( args.at("__positional"), ';' )[0];
-    if (is_verbose) std::cout << "Reading source file:" << source_filename << std::endl;
+    if (inp.is_verbose) std::cout << "Reading source file:" << source_filename << std::endl;
     
-    if (do_compile) {
+    if (inp.do_compile) {
       auto source_extension = file_extension(source_filename);
       if ( source_extension == "cta" )
         output_filename = remove_extension(source_filename);
@@ -54,15 +58,15 @@ int main(int argc, char** argv) {
   // create the parser
   std::unique_ptr<Parser> TheParser;
   if (!source_filename.empty())
-    TheParser = std::make_unique<Parser>(source_filename, is_verbose);
+    TheParser = std::make_unique<Parser>(source_filename, inp.is_verbose);
   else
-    TheParser = std::make_unique<Parser>(is_verbose);
+    TheParser = std::make_unique<Parser>(inp.is_verbose);
 
   // create the JIT and Code generator
-  CodeGen TheCG(is_debug);
+  CodeGen TheCG(inp.is_debug);
 
   // Run the main "interpreter loop" now.
-  mainLoop(*TheParser, TheCG, is_interactive, is_verbose);
+  mainLoop(*TheParser, TheCG, inp);
 
   // Finalize whatever needs to be
   TheCG.finalize();
@@ -71,7 +75,7 @@ int main(int argc, char** argv) {
   //TheCG.TheModule->print(llvm::errs(), nullptr);
 
   // pile if necessary
-  if (do_compile)
+  if (inp.do_compile)
     compileLLVM( *TheCG.TheModule, output_filename );
 
   return 0;

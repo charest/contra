@@ -37,8 +37,12 @@ std::string getTokName(int Tok) {
     return "in";
   case tok_int:
     return "i64";
+  case tok_int_number:
+    return "integer_number";
   case tok_real:
     return "f64";
+  case tok_real_number:
+    return "real_number";
   case tok_return:
     return "return";
   case tok_string:
