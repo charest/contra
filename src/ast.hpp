@@ -57,6 +57,7 @@ public:
   virtual ~ExprAST() = default;
 
   virtual Value *codegen(CodeGen &, int) = 0;
+  auto getLoc() const { return Loc; }
   int getLine() const { return Loc.Line; }
   int getCol() const { return Loc.Col; }
   virtual raw_ostream &dump(raw_ostream &out, int ind) {
@@ -263,6 +264,8 @@ class VarExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Init;
 
 public:
+  std::unique_ptr<ExprAST> Size;
+
   VarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
       VarTypes VarType, bool IsArray, std::unique_ptr<ExprAST> Init)
     : ExprAST(Loc, Init->InferredType), VarNames(VarNames), VarType(VarType),

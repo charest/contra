@@ -1,9 +1,0 @@
-function main() 
-
-  var a : [i64] = 1
-  print("Should be 1, a=%i\n", a)
-  print("Should also be 1, a=%i\n", a[0])
-
-end
-
-main()

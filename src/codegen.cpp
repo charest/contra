@@ -121,8 +121,8 @@ AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
     return nullptr;
   }
 
-  //LLType = PointerType::get(LLType, 0);
-  LLType = PointerType::get(Type::getInt8Ty(TheContext), 0);
+  if (IsPointer)
+    LLType = PointerType::get(LLType, 0);
   
 
   return TmpB.CreateAlloca(LLType, nullptr, VarName.c_str());
@@ -132,9 +132,15 @@ AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-Value *CodeGen::createArray(
-    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line)
+Value *CodeGen::createArray(Function *TheFunction,
+    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line,
+    Value * SizeExpr)
 {
+
+  //----------------------------------------------------------------------------
+  // Create Array
+
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
 
   Function *F; 
   F = TheModule->getFunction("allocate");
@@ -155,29 +161,106 @@ Value *CodeGen::createArray(
     return nullptr;
   }
 
-  //LLType = PointerType::get(LLType, 0);
-  LLType = PointerType::get(Type::getInt8Ty(TheContext), 0);
+  LLType = PointerType::get(LLType, 0);
 
-  auto TotalSize = ConstantInt::get(TheContext, APInt(64, SizeOf*NumVals, true));
+  Value* NumElements = nullptr;
+  Value* TotalSize = nullptr;
+  if (SizeExpr) {
+    auto DataSize = ConstantInt::get(TheContext, APInt(64, SizeOf, true));
+    TotalSize = Builder.CreateMul(SizeExpr, DataSize, "multmp");
+    NumElements = SizeExpr;
+  }
+  else {
+    TotalSize = ConstantInt::get(TheContext, APInt(64, SizeOf*NumVals, true));
+    NumElements = ConstantInt::get(TheContext, APInt(64, NumVals, true));
+  }
 
-  Value* CallInst = Builder.CreateCall(F, TotalSize, "allocatetmp");
+  Value* CallInst = Builder.CreateCall(F, TotalSize, VarName+"vectmp");
   auto ResType = CallInst->getType();
-  //auto GlobVar = new GlobalVariable(*TheModule, ResType, true,
-  //    GlobalVariable::ExternalLinkage, UndefValue::get(ResType), "allocate");
-  auto AllocInst = Builder.CreateAlloca(ResType, 0, "alloctmp");
+  auto AllocInst = TmpB.CreateAlloca(ResType, 0, VarName+"vec");
   Builder.CreateStore(CallInst, AllocInst);
-  //GlobVar->print(outs()); outs() << "\n";
+
+  NamedArrays[VarName] = AllocInst;
 
   std::vector<Value*> MemberIndices(2);
-  MemberIndices[0] = llvm::ConstantInt::get(TheContext, llvm::APInt(32, 0, true));
-  MemberIndices[1] = llvm::ConstantInt::get(TheContext, llvm::APInt(32, 0, true));
+  MemberIndices[0] = ConstantInt::get(TheContext, APInt(32, 0, true));
+  MemberIndices[1] = ConstantInt::get(TheContext, APInt(32, 0, true));
 
-  auto GEPInst = Builder.CreateGEP(ResType, AllocInst, MemberIndices);
-  //GEPInst->print(outs()); outs() << "\n";
-  auto LoadedInst = Builder.CreateLoad(GEPInst, "loadtmp");
-  //LoadedInst->print(outs()); outs() << "\n";
-  
+  auto GEPInst = Builder.CreateGEP(ResType, AllocInst, MemberIndices,
+      VarName+"vec.ptr");
+  Value* LoadedInst = Builder.CreateLoad(GEPInst->getType()->getPointerElementType(),
+      GEPInst, VarName+"vec.val");
+
+  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "casttmp");
+  Cast->print(outs()); outs() << "\n";
+
   return LoadedInst;
+}
+  //----------------------------------------------------------------------------
+  // Initialize Array
+
+ 
+void CodeGen::initArrays( Function *TheFunction,
+    const std::vector<AllocaInst*> & VarList,
+    Value * InitVal,
+    std::size_t NumVals, Value * SizeExpr )
+{
+
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  
+  Value* NumElements = nullptr;
+  if (SizeExpr)
+    NumElements = SizeExpr;
+  else
+    NumElements = ConstantInt::get(TheContext, APInt(64, NumVals, true));
+
+  auto Alloca = TmpB.CreateAlloca(Type::getInt64Ty(TheContext), nullptr, "__i");
+  Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
+  Builder.CreateStore(StartVal, Alloca);
+  
+  auto BeforeBB = BasicBlock::Create(TheContext, "beforeinit", TheFunction);
+  auto LoopBB =   BasicBlock::Create(TheContext, "init", TheFunction);
+  auto AfterBB =  BasicBlock::Create(TheContext, "afterinit", TheFunction);
+  Builder.CreateBr(BeforeBB);
+  Builder.SetInsertPoint(BeforeBB);
+  auto CurVar = Builder.CreateLoad(Type::getInt64Ty(TheContext), Alloca);
+  auto EndCond = Builder.CreateICmpSLT(CurVar, NumElements, "initcond");
+  Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+  Builder.SetInsertPoint(LoopBB);
+
+  for ( auto i : VarList) {
+    auto LoadType = i->getType();
+    auto Load = Builder.CreateLoad(LoadType, i, "ptr"); 
+    auto GEP = Builder.CreateGEP(Load, CurVar, "offset");
+    Builder.CreateStore(InitVal, GEP);
+  }
+
+  auto StepVal = ConstantInt::get(TheContext, APInt(64, 1, true));
+  auto NextVar = Builder.CreateAdd(CurVar, StepVal, "nextvar");
+  Builder.CreateStore(NextVar, Alloca);
+  Builder.CreateBr(BeforeBB);
+  Builder.SetInsertPoint(AfterBB);
+}
+
+//==============================================================================
+// Destroy all arrays
+//==============================================================================
+void CodeGen::destroyArrays() {
+  
+  Function *F; 
+  F = TheModule->getFunction("deallocate");
+  if (!F) F = RunTimeLib::tryInstall(TheContext, *TheModule, "deallocate");
+  
+  for ( auto & [Name, Alloca] : NamedArrays )
+  {
+    auto AllocaT = Alloca->getType()->getPointerElementType();
+    AllocaT->print(outs()); outs() << "\n";
+    auto Vec = Builder.CreateLoad(AllocaT, Alloca, Name+"vec");
+  
+    auto CallInst = Builder.CreateCall(F, Vec, Name+"dealloctmp");
+  }
+
+  NamedArrays.clear();
 }
 
 

@@ -76,7 +76,7 @@ Value *StringExprAST::codegen(CodeGen & TheCG, int Depth)
 raw_ostream &StringExprAST::dump(raw_ostream &out, int ind) {
   return ExprAST::dump(out << Val, ind);
 }
-
+ 
 //==============================================================================
 // VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
@@ -94,13 +94,17 @@ Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
   if (!Ty->isPointerTy()) THROW_CONTRA_ERROR("why are you NOT a pointer");
   Ty = Ty->getPointerElementType();
     
-  auto Load = TheCG.Builder.CreateLoad(Ty, V, Name.c_str());
+  auto Load = TheCG.Builder.CreateLoad(Ty, V, "ptr."+Name);
 
-  if ( !Index )
+  if ( !Index ) {
+    if (TheCG.NamedArrays.count(Name))
+      THROW_SYNTAX_ERROR("Array accesses require explicit indices", getLine());
     return Load;
+  }
   else {
     auto IndexVal = Index->codegen(TheCG, Depth);
-    return TheCG.Builder.CreateExtractElement(Load, IndexVal, Name);
+    auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, Name+"aoffset");
+    return TheCG.Builder.CreateLoad(Ty, GEP, Name+"[i]");
   }
 }
 
@@ -134,7 +138,16 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
     if (!Variable)
       THROW_NAME_ERROR(VarName, LHSE->getLine());
 
-    TheCG.Builder.CreateStore(Val, Variable);
+    if (TheCG.NamedArrays.count(VarName)) {
+      auto Ty = Variable->getType()->getPointerElementType();
+      auto Load = TheCG.Builder.CreateLoad(Ty, Variable, "ptr."+VarName);
+      auto IndexVal = LHSE->Index->codegen(TheCG, Depth);
+      auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, VarName+"aoffset");
+      TheCG.Builder.CreateStore(Val, GEP);
+    }
+    else {
+      TheCG.Builder.CreateStore(Val, Variable);
+    }
     return Val;
   }
 
@@ -488,6 +501,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   // for expr always returns 0.
   return Constant::getNullValue(Type::getInt64Ty(TheCG.TheContext));
 }
+  
 
 //------------------------------------------------------------------------------
 raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
@@ -562,8 +576,13 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   std::size_t NumVals = 0;
   auto IType = InitVal->getType();
 
+  Value * SizeExpr = nullptr;
+
   if (IsArray) {
-    if (IType->isSingleValueType()) {
+    if (Size) {
+      SizeExpr = Size->codegen(TheCG, Depth);
+    }
+    else if (IType->isSingleValueType()) {
       NumVals = 1;
     }
     else {
@@ -571,25 +590,13 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
       IType = IType->getArrayElementType(); 
     }
   }
-  
-  std::vector<AllocaInst *> OldBindings;
+ 
+  std::vector<AllocaInst*> ArrayAllocas;
 
   // Register all variables and emit their initializer.
   for (const auto & VarName : VarNames) {
-
- 
-    auto Array = TheCG.createArray(VarName, VarType, NumVals, getLine());
     
-    auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
-        getLine());
-
-    TheCG.Builder.CreateStore(Array, Alloca);
-
-#if 0 
-    auto AType = Alloca->getAllocatedType();
-    if (!AType->isSingleValueType())
-      AType = AType->getArrayElementType();
-
+    // cast init value if necessary
     auto TheBlock = TheCG.Builder.GetInsertBlock();
     if (VarType == VarTypes::Real && !InitVal->getType()->isDoubleTy()) {
       auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
@@ -602,16 +609,33 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
       InitVal = cast;
     }
 
-#endif
-    TheCG.Builder.CreateStore(InitVal, Alloca);
-  
-    // Remember the old variable binding so that we can restore the binding when
-    // we unrecurse.
-    OldBindings.push_back(TheCG.NamedValues[VarName]);
+    AllocaInst* Alloca;
+
+    // create array of var
+    if (IsArray) {
+   
+      auto Array = TheCG.createArray(TheFunction, VarName, VarType, NumVals, getLine(),
+          SizeExpr);
+    
+      Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
+          getLine(), true);
+      ArrayAllocas.emplace_back(Alloca);
+      
+      TheCG.Builder.CreateStore(Array, Alloca);
+
+    }
+    else {
+
+      Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
+          getLine());
+      TheCG.Builder.CreateStore(InitVal, Alloca);
+    }
   
     // Remember this binding.
     TheCG.NamedValues[VarName] = Alloca;
   }
+
+  if (IsArray) TheCG.initArrays(TheFunction, ArrayAllocas, InitVal, NumVals, SizeExpr);
   
   TheCG.emitLocation(this);
 
@@ -752,6 +776,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
 
   // Record the function arguments in the NamedValues map.
   TheCG.NamedValues.clear();
+  TheCG.NamedArrays.clear();
   unsigned ArgIdx = 0;
   for (auto &Arg : TheFunction->args()) {
 
@@ -779,6 +804,9 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
     auto RetVal = stmt->codegen(TheCG, Depth);
   }
 
+  // garbage collection
+  TheCG.destroyArrays();
+    
   // Finish off the function.
   if ( Return ) {
     auto RetVal = Return->codegen(TheCG, Depth);
@@ -790,7 +818,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   else {  
     TheCG.Builder.CreateRetVoid();
   }
-    
+
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
     

@@ -36,6 +36,7 @@ public:
   llvm::IRBuilder<> Builder;
   std::unique_ptr<llvm::Module> TheModule;
   std::map<std::string, AllocaInst *> NamedValues;
+  std::map<std::string, AllocaInst *> NamedArrays;
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   
@@ -55,8 +56,17 @@ public:
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
-  llvm::Value *createArray(
-    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line);
+  llvm::Value *createArray(Function *TheFunction,
+    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line,
+    llvm::Value * SizeExpr = nullptr );
+
+  void initArrays( Function *TheFunction, 
+      const std::vector<AllocaInst*> & VarList,
+      llvm::Value * InitVal,
+      std::size_t NumVals,
+      llvm::Value * SizeExpr = nullptr );
+
+  void destroyArrays();
 
 
   /// Top-Level parsing and JIT Driver

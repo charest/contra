@@ -455,6 +455,8 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr(int Depth) {
   bool VarDefined = false;
   bool IsArray = false;
 
+  std::unique_ptr<ExprAST> Size;
+
   // get additional variables
   while (CurTok == ',') {
     getNextToken();  // eat ','  
@@ -489,9 +491,20 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr(int Depth) {
     getNextToken(); // eat the 'real'/'int'
 
     if (IsArray) {
-      if (CurTok != ']')
-        THROW_SYNTAX_ERROR("Array definition requires ending ']' instead of '"
+
+
+      if (CurTok != ']' && CurTok != ';')
+        THROW_SYNTAX_ERROR("Array definition expected ']' or ';' instead of '"
             << getTokName(CurTok) << "'", getLine());
+      else if (CurTok == ';') {
+        getNextToken(); // eat ;
+        Size = parseExpression(Depth);
+      }
+      
+      if (CurTok != ']')
+        THROW_SYNTAX_ERROR("Array definition must end with ']' instead of '"
+            << getTokName(CurTok) << "'", getLine());
+
       getNextToken(); // eat [
     }
 
@@ -528,8 +541,12 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr(int Depth) {
   for ( const auto & Name : VarNames )
     NamedValues.emplace( Name, VarType );
   
-  return std::make_unique<VarExprAST>(TheLex.CurLoc, VarNames, VarType, IsArray,
+  auto A = std::make_unique<VarExprAST>(TheLex.CurLoc, VarNames, VarType, IsArray,
       std::move(Init));
+
+  A->Size = std::move(Size);
+
+  return std::move(A);
 }
 
 

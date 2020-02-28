@@ -43,7 +43,6 @@ DLLEXPORT dopevector_t allocate(std::uint64_t size)
   dopevector_t dv;
   dv.data = malloc(size);
   dv.size = size;
-  printf("Allocating %ld\n", size);
   return dv;
 }
 
@@ -79,7 +78,7 @@ Function *installPrint(LLVMContext & TheContext, Module & TheModule)
 //==============================================================================
 Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
 {
-  auto DopeVectorType = StructType::create( TheContext, "Struct(dopevector)" );
+  auto DopeVectorType = StructType::create( TheContext, "dopevector_t" );
   auto VoidPointerType = PointerType::get(Type::getInt8Ty(TheContext), 0);
   auto Int64Type = Type::getInt64Ty(TheContext);
 
@@ -96,6 +95,30 @@ Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
   return AllocateFun;
 }
 
+//==============================================================================
+// Installs the Allocate deallocate function
+//==============================================================================
+Function *installDeAllocate(LLVMContext & TheContext, Module & TheModule)
+{
+  auto DopeVectorType = StructType::create( TheContext, "dopevector_t" );
+  auto VoidPointerType = PointerType::get(Type::getInt64Ty(TheContext), 0);
+  auto Int64Type = Type::getInt64Ty(TheContext);
+
+  std::vector<Type*> members{ VoidPointerType, Int64Type}; 
+  DopeVectorType->setBody( members );
+  //DopeVectorType->print(outs()); outs() << "\n";
+
+  auto VoidType = Type::getVoidTy(TheContext);
+
+  std::vector<Type*> Args = {DopeVectorType};
+  auto DeAllocateType = FunctionType::get( VoidType, Args, false );
+
+  auto DeAllocateFun = Function::Create(DeAllocateType, Function::ExternalLinkage,
+      "deallocate", TheModule);
+  //AllocateFun->print(outs()); outs() << "\n";
+  return DeAllocateFun;
+}
+
 
 //==============================================================================
 // install the library functions available by default
@@ -104,6 +127,7 @@ std::map<std::string, RunTimeLib::InstallFunctionPointer>
   RunTimeLib::InstallMap = {
     {"print",installPrint},
     {"allocate",installAllocate},
+    {"deallocate",installDeAllocate},
   };
 
 }
