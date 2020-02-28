@@ -188,13 +188,13 @@ Value *CodeGen::createArray(Function *TheFunction,
 
   auto GEPInst = Builder.CreateGEP(ResType, AllocInst, MemberIndices,
       VarName+"vec.ptr");
-  Value* LoadedInst = Builder.CreateLoad(GEPInst->getType()->getPointerElementType(),
+  auto LoadedInst = Builder.CreateLoad(GEPInst->getType()->getPointerElementType(),
       GEPInst, VarName+"vec.val");
 
-  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "casttmp");
-  Cast->print(outs()); outs() << "\n";
+  auto TheBlock = Builder.GetInsertBlock();
+  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "cmptmp", TheBlock);
 
-  return LoadedInst;
+  return Cast;
 }
   //----------------------------------------------------------------------------
   // Initialize Array
@@ -254,7 +254,6 @@ void CodeGen::destroyArrays() {
   for ( auto & [Name, Alloca] : NamedArrays )
   {
     auto AllocaT = Alloca->getType()->getPointerElementType();
-    AllocaT->print(outs()); outs() << "\n";
     auto Vec = Builder.CreateLoad(AllocaT, Alloca, Name+"vec");
   
     auto CallInst = Builder.CreateCall(F, Vec, Name+"dealloctmp");

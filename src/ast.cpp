@@ -616,13 +616,12 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
    
       auto Array = TheCG.createArray(TheFunction, VarName, VarType, NumVals, getLine(),
           SizeExpr);
-    
+
       Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
           getLine(), true);
       ArrayAllocas.emplace_back(Alloca);
-      
-      TheCG.Builder.CreateStore(Array, Alloca);
 
+      TheCG.Builder.CreateStore(Array, Alloca);
     }
     else {
 
