@@ -101,7 +101,7 @@ Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
 Function *installDeAllocate(LLVMContext & TheContext, Module & TheModule)
 {
   auto DopeVectorType = StructType::create( TheContext, "dopevector_t" );
-  auto VoidPointerType = PointerType::get(Type::getInt64Ty(TheContext), 0);
+  auto VoidPointerType = PointerType::get(Type::getInt8Ty(TheContext), 0);
   auto Int64Type = Type::getInt64Ty(TheContext);
 
   std::vector<Type*> members{ VoidPointerType, Int64Type}; 

@@ -1,8 +1,14 @@
 function main() 
 
   var a : [i64; 2] = 1
-  print("Should be 1, a=%i\n", a[0])
-  print("Should also be 1, a=%i\n", a[1])
+  print("Should be 1, a=%d\n", a[0])
+  print("Should also be 1, a=%d\n", a[1])
+
+  var i : i64 = 3
+  var b : [f64; i] = 2
+  print("Should be 2., a=%f\n", b[0])
+  print("Should also be 2., a=%f\n", b[2])
+
 
 end
 

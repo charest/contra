@@ -192,7 +192,7 @@ Value *CodeGen::createArray(Function *TheFunction,
       GEPInst, VarName+"vec.val");
 
   auto TheBlock = Builder.GetInsertBlock();
-  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "cmptmp", TheBlock);
+  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "casttmp", TheBlock);
 
   return Cast;
 }
@@ -229,7 +229,7 @@ void CodeGen::initArrays( Function *TheFunction,
   Builder.SetInsertPoint(LoopBB);
 
   for ( auto i : VarList) {
-    auto LoadType = i->getType();
+    auto LoadType = i->getType()->getPointerElementType();
     auto Load = Builder.CreateLoad(LoadType, i, "ptr"); 
     auto GEP = Builder.CreateGEP(Load, CurVar, "offset");
     Builder.CreateStore(InitVal, GEP);

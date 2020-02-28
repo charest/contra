@@ -102,6 +102,7 @@ Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
     return Load;
   }
   else {
+    Ty = Ty->getPointerElementType();
     auto IndexVal = Index->codegen(TheCG, Depth);
     auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, Name+"aoffset");
     return TheCG.Builder.CreateLoad(Ty, GEP, Name+"[i]");
@@ -595,6 +596,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
 
   // Register all variables and emit their initializer.
   for (const auto & VarName : VarNames) {
+  std::cout << "Var " << VarName << " is a " << getVarTypeName(VarType) << std::endl;
     
     // cast init value if necessary
     auto TheBlock = TheCG.Builder.GetInsertBlock();
