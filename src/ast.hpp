@@ -115,7 +115,6 @@ public:
 //==============================================================================
 class VariableExprAST : public ExprAST {
   std::string Name;
-  VarTypes Type;
 
 public:
   std::unique_ptr<ExprAST> Index;
@@ -132,16 +131,22 @@ public:
 /// ArrayExprAST - Expression class for referencing an array.
 //==============================================================================
 class ArrayExprAST : public ExprAST {
-  VarTypes Type;
 
 public:
   std::vector< std::unique_ptr<ExprAST> > Body;
   std::unique_ptr<ExprAST> Repeat;
 
-  ArrayExprAST(SourceLocation Loc, VarTypes Type)
-    : ExprAST(Loc, Type) {}
+  Value* SizeExpr = nullptr;
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  ArrayExprAST(SourceLocation Loc, VarTypes VarType)
+    : ExprAST(Loc, VarType) {}
+
+  Value *codegen(CodeGen &, int Depth=0) override
+  { THROW_CONTRA_ERROR("Should not be called"); };
+
+  std::pair<llvm::AllocaInst*, Value*> special_codegen(const std::string &,
+      CodeGen &, int Depth=0);
+
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 

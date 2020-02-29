@@ -566,78 +566,129 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   echo( Formatter() << "CodeGen var expression", Depth++ );
 
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
-
+  
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
   // like this:
   //  var a = 1 in
   //    var a = a in ...   # refers to outer 'a'.
-  auto InitVal = Init->codegen(TheCG, Depth);
 
-  std::size_t NumVals = 0;
-  auto IType = InitVal->getType();
+  Value* ReturnInit = nullptr;
 
-  Value * SizeExpr = nullptr;
+  //---------------------------------------------------------------------------
+  // Array already on right hand side
+  auto ArrayAST = dynamic_cast<ArrayExprAST*>(Init.get());
+  if (ArrayAST) {
 
-  if (IsArray) {
-    if (Size) {
-      SizeExpr = Size->codegen(TheCG, Depth);
-    }
-    else if (IType->isSingleValueType()) {
-      NumVals = 1;
-    }
-    else {
-      NumVals = IType->getArrayNumElements();
-      IType = IType->getArrayElementType(); 
-    }
-  }
- 
-  std::vector<AllocaInst*> ArrayAllocas;
-
-  // Register all variables and emit their initializer.
-  for (const auto & VarName : VarNames) {
-  std::cout << "Var " << VarName << " is a " << getVarTypeName(VarType) << std::endl;
+    // transfer to first
+    const auto & VarName = VarNames[0];
+    auto InitVal = ArrayAST->special_codegen(VarName, TheCG, Depth);
+    ReturnInit = InitVal.second;
+    auto FirstAlloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType, getLine(), true);
+    TheCG.Builder.CreateStore(InitVal.second, FirstAlloca);
+    TheCG.NamedValues[VarName] = FirstAlloca;
+    TheCG.NamedArrays[VarName] = InitVal.first;
+  
+    auto SizeExpr = ArrayAST->SizeExpr;
+  
+    // more complicated
+    if (VarNames.size() > 1) {
     
-    // cast init value if necessary
-    auto TheBlock = TheCG.Builder.GetInsertBlock();
-    if (VarType == VarTypes::Real && !InitVal->getType()->isDoubleTy()) {
-      auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
-          Type::getDoubleTy(TheCG.TheContext), "cast", TheBlock);
-      InitVal = cast;
+      std::vector<AllocaInst*> ArrayAllocas;
+      ArrayAllocas.reserve(VarNames.size());
+
+      // Register all variables and emit their initializer.
+      for (int i=1; i<VarNames.size(); ++i) {
+        const auto & VarName = VarNames[i];
+        auto Array = TheCG.createArray(TheFunction, VarName, VarType, 0, getLine(), SizeExpr);
+        auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType, getLine(), true);
+        TheCG.Builder.CreateStore(Array.second, Alloca);
+        TheCG.NamedValues[VarName] = Alloca;
+        TheCG.NamedArrays[VarName] = Array.first;
+        ArrayAllocas.emplace_back( Alloca ); 
+      }
+      TheCG.copyArrays(TheFunction, FirstAlloca, ArrayAllocas, SizeExpr );
     }
-    else if (VarType == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
-      auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
-          Type::getInt64Ty(TheCG.TheContext), "cast", TheBlock);
-      InitVal = cast;
-    }
 
-    AllocaInst* Alloca;
-
-    // create array of var
-    if (IsArray) {
-   
-      auto Array = TheCG.createArray(TheFunction, VarName, VarType, NumVals, getLine(),
-          SizeExpr);
-
-      Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
-          getLine(), true);
-      ArrayAllocas.emplace_back(Alloca);
-
-      TheCG.Builder.CreateStore(Array, Alloca);
-    }
-    else {
-
-      Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
-          getLine());
-      TheCG.Builder.CreateStore(InitVal, Alloca);
-    }
-  
-    // Remember this binding.
-    TheCG.NamedValues[VarName] = Alloca;
   }
-
-  if (IsArray) TheCG.initArrays(TheFunction, ArrayAllocas, InitVal, NumVals, SizeExpr);
   
+  //---------------------------------------------------------------------------
+  // Scalar Initializer
+  else {
+  
+    // Emit initializer first
+    auto InitVal = Init->codegen(TheCG, Depth);
+
+    std::size_t NumVals = 0;
+    auto IType = InitVal->getType();
+
+    Value * SizeExpr = nullptr;
+
+    if (IsArray) {
+      if (Size) {
+        SizeExpr = Size->codegen(TheCG, Depth);
+      }
+      else if (IType->isSingleValueType()) {
+        NumVals = 1;
+      }
+      else {
+        NumVals = IType->getArrayNumElements();
+        IType = IType->getArrayElementType(); 
+      }
+    }
+ 
+    std::vector<AllocaInst*> ArrayAllocas;
+
+    // Register all variables and emit their initializer.
+    for (const auto & VarName : VarNames) {
+      
+      // cast init value if necessary
+      auto TheBlock = TheCG.Builder.GetInsertBlock();
+      if (VarType == VarTypes::Real && !InitVal->getType()->isDoubleTy()) {
+        auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
+            Type::getDoubleTy(TheCG.TheContext), "cast", TheBlock);
+        InitVal = cast;
+      }
+      else if (VarType == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
+        auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
+            Type::getInt64Ty(TheCG.TheContext), "cast", TheBlock);
+        InitVal = cast;
+      }
+
+      AllocaInst* Alloca;
+
+      // create array of var
+      if (IsArray) {
+     
+        auto Array = TheCG.createArray(TheFunction, VarName, VarType, NumVals, getLine(),
+            SizeExpr);
+  
+        TheCG.NamedArrays[VarName] = Array.first;
+
+        Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
+            getLine(), true);
+        ArrayAllocas.emplace_back(Alloca);
+
+        TheCG.Builder.CreateStore(Array.second, Alloca);
+      }
+      else {
+
+        Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType,
+            getLine());
+        TheCG.Builder.CreateStore(InitVal, Alloca);
+      }
+    
+      // Remember this binding.
+      TheCG.NamedValues[VarName] = Alloca;
+    }
+
+    if (IsArray) TheCG.initArrays(TheFunction, ArrayAllocas, InitVal, NumVals, SizeExpr);
+
+    ReturnInit = InitVal;
+
+  } // else
+  //---------------------------------------------------------------------------
+
   TheCG.emitLocation(this);
 
 #if 0
@@ -654,7 +705,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   return BodyVal;
 #endif
 
-  return InitVal;
+  return ReturnInit;
 }
 
 //------------------------------------------------------------------------------
@@ -668,13 +719,43 @@ raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
-Value *ArrayExprAST::codegen(CodeGen & TheCG, int Depth)
+std::pair<AllocaInst*, Value*> ArrayExprAST::special_codegen(
+    const std::string & Name, CodeGen & TheCG, int Depth)
 {
   echo( Formatter() << "CodeGen array expression", Depth++ );
-  std::cout << "ERHERHEHREHRE" << std::endl;
-  abort();
+  
+  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();    
 
-  return nullptr;
+  std::size_t NumVals{0};
+  SizeExpr = nullptr;
+  
+  std::vector<Value*> InitVals;
+  InitVals.reserve(Body.size());
+  for ( auto & E : Body ) InitVals.emplace_back( E->codegen(TheCG, Depth) );
+
+  if (Repeat) {
+    SizeExpr = Repeat->codegen(TheCG, Depth);
+    if (Body.size() != 1 )
+      THROW_SYNTAX_ERROR("Only one value expected in [Val; N] syntax", getLine());
+  }
+  else {
+    NumVals = Body.size();
+  }
+
+  auto Array = TheCG.createArray(TheFunction, "__tmp", InferredType, NumVals, getLine(), SizeExpr );
+  auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, "__tmp", InferredType,
+          getLine(), true);
+  TheCG.Builder.CreateStore(Array.second, Alloca);
+
+  if (Repeat) 
+    TheCG.initArrays(TheFunction, {Alloca}, InitVals[0], NumVals, SizeExpr);
+  else
+  {
+    TheCG.initArray(TheFunction, Alloca, InitVals);
+  }
+
+  if (!SizeExpr) SizeExpr = ConstantInt::get(TheCG.TheContext, APInt(64, NumVals, true)); 
+  return {Alloca, Array.second};
 }
 
 //------------------------------------------------------------------------------

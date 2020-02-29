@@ -56,7 +56,8 @@ public:
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
-  llvm::Value *createArray(Function *TheFunction,
+  std::pair<llvm::AllocaInst*, llvm::Value*> 
+  createArray(Function *TheFunction,
     const std::string &VarName, VarTypes type, std::size_t NumVals, int Line,
     llvm::Value * SizeExpr = nullptr );
 
@@ -65,6 +66,15 @@ public:
       llvm::Value * InitVal,
       std::size_t NumVals,
       llvm::Value * SizeExpr = nullptr );
+
+  void initArray( Function *TheFunction, 
+      AllocaInst* Var,
+      const std::vector<llvm::Value *> InitVals );
+  
+  void copyArrays( Function *TheFunction, 
+      AllocaInst* Src,
+      const std::vector<AllocaInst*> Tgts,
+      llvm::Value * SizeExpr);
 
   void destroyArrays();
 

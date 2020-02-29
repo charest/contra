@@ -132,7 +132,8 @@ AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-Value *CodeGen::createArray(Function *TheFunction,
+std::pair<AllocaInst*, Value*> 
+CodeGen::createArray(Function *TheFunction,
     const std::string &VarName, VarTypes type, std::size_t NumVals, int Line,
     Value * SizeExpr)
 {
@@ -158,7 +159,7 @@ Value *CodeGen::createArray(Function *TheFunction,
   }
   else {
     THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
-    return nullptr;
+    return {nullptr, nullptr};
   }
 
   LLType = PointerType::get(LLType, 0);
@@ -180,8 +181,6 @@ Value *CodeGen::createArray(Function *TheFunction,
   auto AllocInst = TmpB.CreateAlloca(ResType, 0, VarName+"vec");
   Builder.CreateStore(CallInst, AllocInst);
 
-  NamedArrays[VarName] = AllocInst;
-
   std::vector<Value*> MemberIndices(2);
   MemberIndices[0] = ConstantInt::get(TheContext, APInt(32, 0, true));
   MemberIndices[1] = ConstantInt::get(TheContext, APInt(32, 0, true));
@@ -194,12 +193,12 @@ Value *CodeGen::createArray(Function *TheFunction,
   auto TheBlock = Builder.GetInsertBlock();
   Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "casttmp", TheBlock);
 
-  return Cast;
+  return {AllocInst, Cast};
 }
-  //----------------------------------------------------------------------------
-  // Initialize Array
-
  
+//==============================================================================
+// Initialize Array
+//==============================================================================
 void CodeGen::initArrays( Function *TheFunction,
     const std::vector<AllocaInst*> & VarList,
     Value * InitVal,
@@ -241,6 +240,91 @@ void CodeGen::initArrays( Function *TheFunction,
   Builder.CreateBr(BeforeBB);
   Builder.SetInsertPoint(AfterBB);
 }
+  
+//==============================================================================
+// Initialize an arrays individual values
+//==============================================================================
+void CodeGen::initArray(
+    Function *TheFunction, 
+    AllocaInst* Var,
+    const std::vector<Value *> InitVals )
+{
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  
+  auto NumVals = InitVals.size();
+  auto TheBlock = Builder.GetInsertBlock();
+
+  auto LoadType = Var->getType()->getPointerElementType();
+  auto ValType = LoadType->getPointerElementType();
+  auto Load = Builder.CreateLoad(LoadType, Var, "ptr"); 
+  
+  for (std::size_t i=0; i<NumVals; ++i) {
+    auto Index = ConstantInt::get(TheContext, APInt(64, i, true));
+    auto GEP = Builder.CreateGEP(Load, Index, "offset");
+    auto Init = InitVals[i];
+    auto InitType = Init->getType();
+    if ( InitType->isDoubleTy() && ValType->isIntegerTy() ) {
+      auto Cast = CastInst::Create(Instruction::FPToSI, Init,
+          Type::getInt64Ty(TheContext), "cast", TheBlock);
+      Init = Cast;
+    }
+    else if ( InitType->isIntegerTy() && ValType->isDoubleTy() ) {
+      auto Cast = CastInst::Create(Instruction::SIToFP, Init,
+          Type::getDoubleTy(TheContext), "cast", TheBlock);
+      Init = Cast;
+    }
+    else if (InitType!=ValType)
+      THROW_CONTRA_ERROR("Unknown cast operation");
+    Builder.CreateStore(Init, GEP);
+  }
+}
+
+//==============================================================================
+// Copy Array
+//==============================================================================
+void CodeGen::copyArrays(
+    Function *TheFunction,
+    AllocaInst* Src,
+    const std::vector<AllocaInst*> Tgts,
+    Value * NumElements)
+{
+
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+
+  auto Alloca = TmpB.CreateAlloca(Type::getInt64Ty(TheContext), nullptr, "__i");
+  Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
+  Builder.CreateStore(StartVal, Alloca);
+  
+  auto BeforeBB = BasicBlock::Create(TheContext, "beforeinit", TheFunction);
+  auto LoopBB =   BasicBlock::Create(TheContext, "init", TheFunction);
+  auto AfterBB =  BasicBlock::Create(TheContext, "afterinit", TheFunction);
+  Builder.CreateBr(BeforeBB);
+  Builder.SetInsertPoint(BeforeBB);
+  auto CurVar = Builder.CreateLoad(Type::getInt64Ty(TheContext), Alloca);
+  auto EndCond = Builder.CreateICmpSLT(CurVar, NumElements, "initcond");
+  Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+  Builder.SetInsertPoint(LoopBB);
+    
+  auto PtrType = Src->getType()->getPointerElementType();
+  auto ValType = PtrType->getPointerElementType();
+
+  auto SrcLoad = Builder.CreateLoad(PtrType, Src, "srcptr"); 
+  auto SrcGEP = Builder.CreateGEP(SrcLoad, CurVar, "srcoffset");
+  auto SrcVal = Builder.CreateLoad(ValType, SrcLoad, "srcval");
+
+  for ( auto T : Tgts ) {
+    auto TgtLoad = Builder.CreateLoad(PtrType, T, "tgtptr"); 
+    auto TgtGEP = Builder.CreateGEP(TgtLoad, CurVar, "tgtoffset");
+    Builder.CreateStore(SrcVal, TgtGEP);
+  }
+
+  auto StepVal = ConstantInt::get(TheContext, APInt(64, 1, true));
+  auto NextVar = Builder.CreateAdd(CurVar, StepVal, "nextvar");
+  Builder.CreateStore(NextVar, Alloca);
+  Builder.CreateBr(BeforeBB);
+  Builder.SetInsertPoint(AfterBB);
+}
+  
 
 //==============================================================================
 // Destroy all arrays
