@@ -28,16 +28,6 @@ protected:
   using Function = llvm::Function;
   using FunctionCallee = llvm::FunctionCallee;
 
-public:
-  // verbosity is on
-  static bool IsVerbose;
-  
-  void echo(const std::string & msg, int Depth) {
-    if (IsVerbose) {
-      std::cerr << std::string(2*Depth, '+');
-      std::cerr << msg << std::endl;
-    }
-  }
 };
 
 //==============================================================================
@@ -56,7 +46,7 @@ public:
 
   virtual ~ExprAST() = default;
 
-  virtual Value *codegen(CodeGen &, int) = 0;
+  virtual Value *codegen(CodeGen &) = 0;
   auto getLoc() const { return Loc; }
   int getLine() const { return Loc.getLine(); }
   int getCol() const { return Loc.getCol(); }
@@ -75,7 +65,7 @@ public:
   IntegerExprAST(SourceLocation Loc, int Val)
     : ExprAST(Loc, VarTypes::Int), Val(Val) {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -90,7 +80,7 @@ public:
   RealExprAST(SourceLocation Loc, double Val)
     : ExprAST(Loc, VarTypes::Real), Val(Val) {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -105,7 +95,7 @@ public:
   StringExprAST(SourceLocation Loc, std::string Val)
     : ExprAST(Loc, VarTypes::String), Val(Val) {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -122,7 +112,7 @@ public:
   VariableExprAST(SourceLocation Loc, const std::string &Name,
       VarTypes Type) : ExprAST(Loc, Type), Name(Name) {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   const std::string &getName() const { return Name; }
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
@@ -141,11 +131,11 @@ public:
   ArrayExprAST(SourceLocation Loc, VarTypes VarType)
     : ExprAST(Loc, VarType) {}
 
-  Value *codegen(CodeGen &, int Depth=0) override
+  Value *codegen(CodeGen &) override
   { THROW_CONTRA_ERROR("Should not be called"); };
 
   std::pair<llvm::AllocaInst*, Value*> special_codegen(const std::string &,
-      CodeGen &, int Depth=0);
+      CodeGen &);
 
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
@@ -174,7 +164,7 @@ public:
       InferredType =  LHS->InferredType;
   }
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -193,7 +183,7 @@ public:
     : ExprAST(Loc), Callee(Callee), Args(std::move(Args))
   {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
@@ -211,7 +201,7 @@ public:
     : ExprAST(Loc), Cond(std::move(Cond))
   {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 
   static std::unique_ptr<ExprAST> make( 
@@ -238,7 +228,7 @@ public:
     Step(std::move(Step))
   {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -255,7 +245,7 @@ public:
       std::unique_ptr<ExprAST> Operand)
     : ExprAST(Loc, Operand->InferredType), Opcode(Opcode), Operand(std::move(Operand)) {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -277,7 +267,7 @@ public:
       IsArray(IsArray), Init(std::move(Init)) 
   {}
 
-  Value *codegen(CodeGen &, int Depth=0) override;
+  Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -309,7 +299,7 @@ public:
   {}
 
   
-  Function *codegen(CodeGen &, int Depth=0);
+  Function *codegen(CodeGen &);
 
   const std::string &getName() const { return Name; }
 
@@ -342,7 +332,7 @@ public:
       : Proto(std::move(Proto)), Return(std::move(Body))
   {}
 
-  Function *codegen(CodeGen &, std::map<char, int> &, int Depth=0);
+  Function *codegen(CodeGen &, std::map<char, int> &);
   raw_ostream &dump(raw_ostream &out, int ind);
 
 };

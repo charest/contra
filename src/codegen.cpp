@@ -80,7 +80,7 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 // Get the function
 //==============================================================================
-Function *CodeGen::getFunction(std::string Name, int Line, int Depth) {
+Function *CodeGen::getFunction(std::string Name, int Line) {
 
   // First, see if the function has already been added to the current module.
   if (auto F = TheModule->getFunction(Name))
@@ -94,7 +94,7 @@ Function *CodeGen::getFunction(std::string Name, int Line, int Depth) {
   // prototype.
   auto FI = FunctionProtos.find(Name);
   if (FI != FunctionProtos.end())
-    return FI->second->codegen(*this, Depth);
+    return FI->second->codegen(*this);
 
   // If no existing prototype exists, return null.
   THROW_SYNTAX_ERROR("'" << Name << "' does not have a valid prototype", Line);

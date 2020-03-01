@@ -58,9 +58,9 @@ int main(int argc, char** argv) {
   // create the parser
   std::unique_ptr<Parser> TheParser;
   if (!source_filename.empty())
-    TheParser = std::make_unique<Parser>(source_filename, inp.is_verbose);
+    TheParser = std::make_unique<Parser>(source_filename);
   else
-    TheParser = std::make_unique<Parser>(inp.is_verbose);
+    TheParser = std::make_unique<Parser>();
 
   // create the JIT and Code generator
   CodeGen TheCG(inp.is_debug);

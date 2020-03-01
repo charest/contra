@@ -19,18 +19,11 @@ raw_ostream &indent(raw_ostream &O, int size) {
   return O << std::string(size, ' ');
 }
 
-
-//==============================================================================
-// Static initialization
-//==============================================================================
-bool BaseAST::IsVerbose = false;
-
 //==============================================================================
 // IntegerExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-Value *IntegerExprAST::codegen(CodeGen & TheCG, int Depth)
+Value *IntegerExprAST::codegen(CodeGen & TheCG)
 {
-  echo( Formatter() << "CodeGen integer '" << Val << "'", Depth++ );
   TheCG.emitLocation(this);
   return ConstantInt::get(TheCG.TheContext, APInt(64, Val, true));
 }
@@ -43,9 +36,8 @@ raw_ostream &IntegerExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // RealExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-Value *RealExprAST::codegen(CodeGen & TheCG, int Depth)
+Value *RealExprAST::codegen(CodeGen & TheCG)
 {
-  echo( Formatter() << "CodeGen real '" << Val << "'", Depth++ );
   TheCG.emitLocation(this);
   return ConstantFP::get(TheCG.TheContext, APFloat(Val));
 }
@@ -58,9 +50,8 @@ raw_ostream &RealExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // StringExprAST - Expression class for string literals like "hello".
 //==============================================================================
-Value *StringExprAST::codegen(CodeGen & TheCG, int Depth)
+Value *StringExprAST::codegen(CodeGen & TheCG)
 {
-  echo( Formatter() << "CodeGen string '" << escape(Val) << "'", Depth++ );
   TheCG.emitLocation(this);
   auto & TheContext = TheCG.TheContext;
   auto & TheModule = *TheCG.TheModule;
@@ -80,9 +71,8 @@ raw_ostream &StringExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
-Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
+Value *VariableExprAST::codegen(CodeGen & TheCG)
 {
-  echo( Formatter() << "CodeGen variable expression '" << Name << "'", Depth++ );
   // Look this variable up in the function.
   Value *V = TheCG.NamedValues[Name];
   if (!V) 
@@ -103,7 +93,7 @@ Value *VariableExprAST::codegen(CodeGen & TheCG, int Depth)
   }
   else {
     Ty = Ty->getPointerElementType();
-    auto IndexVal = Index->codegen(TheCG, Depth);
+    auto IndexVal = Index->codegen(TheCG);
     auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, Name+"aoffset");
     return TheCG.Builder.CreateLoad(Ty, GEP, Name+"[i]");
   }
@@ -117,8 +107,7 @@ raw_ostream &VariableExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
-Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen binary expression", Depth++ );
+Value *BinaryExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
@@ -131,7 +120,7 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
     if (!LHSE)
       THROW_SYNTAX_ERROR("destination of '=' must be a variable", LHSE->getLine());
     // Codegen the RHS.
-    Value *Val = RHS->codegen(TheCG, Depth);
+    Value *Val = RHS->codegen(TheCG);
 
     // Look up the name.
     const auto & VarName = LHSE->getName();
@@ -142,7 +131,7 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
     if (TheCG.NamedArrays.count(VarName)) {
       auto Ty = Variable->getType()->getPointerElementType();
       auto Load = TheCG.Builder.CreateLoad(Ty, Variable, "ptr."+VarName);
-      auto IndexVal = LHSE->Index->codegen(TheCG, Depth);
+      auto IndexVal = LHSE->Index->codegen(TheCG);
       auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, VarName+"aoffset");
       TheCG.Builder.CreateStore(Val, GEP);
     }
@@ -152,8 +141,8 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
     return Val;
   }
 
-  Value *L = LHS->codegen(TheCG, Depth);
-  Value *R = RHS->codegen(TheCG, Depth);
+  Value *L = LHS->codegen(TheCG);
+  Value *R = RHS->codegen(TheCG);
 
   auto l_is_double = L->getType()->isDoubleTy();
   auto r_is_double = R->getType()->isDoubleTy();
@@ -206,7 +195,7 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG, int Depth) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = TheCG.getFunction(std::string("binary") + Op, getLine(), Depth);
+  auto F = TheCG.getFunction(std::string("binary") + Op, getLine());
   if (!F) THROW_CONTRA_ERROR("binary operator not found!");
 
   Value *Ops[] = { L, R };
@@ -224,12 +213,11 @@ raw_ostream &BinaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // CallExprAST - Expression class for function calls.
 //==============================================================================
-Value *CallExprAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen call expression '" << Callee << "'", Depth++ );
+Value *CallExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
 
   // Look up the name in the global module table.
-  auto CalleeF = TheCG.getFunction(Callee, getLine(), Depth);
+  auto CalleeF = TheCG.getFunction(Callee, getLine());
   if (!CalleeF)
     THROW_NAME_ERROR(Callee, getLine());
 
@@ -246,7 +234,7 @@ Value *CallExprAST::codegen(CodeGen & TheCG, int Depth) {
   std::vector<Value *> ArgsV;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
     // what is the arg type
-    auto A = Args[i]->codegen(TheCG, Depth);
+    auto A = Args[i]->codegen(TheCG);
     if (i < NumFixedArgs) {
       auto TheBlock = TheCG.Builder.GetInsertBlock();
       if (FunType->getParamType(i)->isDoubleTy() && A->getType()->isIntegerTy()) {
@@ -277,8 +265,7 @@ raw_ostream &CallExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
-Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen if expression", Depth++ );
+Value *IfExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
 
   if ( Then.empty() && Else.empty() )
@@ -287,7 +274,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
     THROW_SYNTAX_ERROR( "Can't have else with no if!", getLine() );
 
 
-  Value *CondV = Cond->codegen(TheCG, Depth);
+  Value *CondV = Cond->codegen(TheCG);
 
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
@@ -306,7 +293,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheCG.Builder.SetInsertPoint(ThenBB);
 
   for ( auto & stmt : Then ) {
-    stmt->codegen(TheCG, Depth);
+    stmt->codegen(TheCG);
   }
 
   // get first non phi instruction
@@ -324,7 +311,7 @@ Value *IfExprAST::codegen(CodeGen & TheCG, int Depth) {
     TheCG.Builder.SetInsertPoint(ElseBB);
 
     for ( auto & stmt : Else ) {
-      stmt->codegen(TheCG, Depth);
+      stmt->codegen(TheCG);
     }
 
     // get first non phi
@@ -404,8 +391,7 @@ std::unique_ptr<ExprAST> IfExprAST::make(
 //   br endcond, loop, endloop
 // outloop:
 //==============================================================================
-Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen for expression", Depth++ );
+Value *ForExprAST::codegen(CodeGen & TheCG) {
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
@@ -419,7 +405,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   TheCG.emitLocation(this);
 
   // Emit the start code first, without 'variable' in scope.
-  Value *StartVal = Start->codegen(TheCG, Depth);
+  Value *StartVal = Start->codegen(TheCG);
   if (StartVal->getType()->isDoubleTy())
     THROW_IMPLEMENTED_ERROR("Cast required for start value");
 
@@ -441,7 +427,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  Value *EndCond = End->codegen(TheCG, Depth);
+  Value *EndCond = End->codegen(TheCG);
   if (EndCond->getType()->isDoubleTy())
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
   EndCond = TheCG.Builder.CreateICmpSLE(CurVar, EndCond, "loopcond");
@@ -457,7 +443,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
   for ( auto & stmt : Body ) {
-    stmt->codegen(TheCG, Depth);
+    stmt->codegen(TheCG);
   }
 
   // Insert unconditional branch to increment.
@@ -471,7 +457,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG, int Depth) {
   // Emit the step value.
   Value *StepVal = nullptr;
   if (Step) {
-    StepVal = Step->codegen(TheCG, Depth);
+    StepVal = Step->codegen(TheCG);
     if (StepVal->getType()->isDoubleTy())
       THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
@@ -519,9 +505,8 @@ raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
-Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen unary expression", Depth++ );
-  auto OperandV = Operand->codegen(TheCG, Depth);
+Value *UnaryExprAST::codegen(CodeGen & TheCG) {
+  auto OperandV = Operand->codegen(TheCG);
   
   if (OperandV->getType()->isDoubleTy()) {
   
@@ -544,7 +529,7 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG, int Depth) {
     }
   }
 
-  auto F = TheCG.getFunction(std::string("unary") + Opcode, getLine(), Depth);
+  auto F = TheCG.getFunction(std::string("unary") + Opcode, getLine());
   if (!F)
     THROW_SYNTAX_ERROR("Unknown unary operator", getLine());
 
@@ -562,8 +547,7 @@ raw_ostream &UnaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // VarExprAST - Expression class for var/in
 //==============================================================================
-Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen var expression", Depth++ );
+Value *VarExprAST::codegen(CodeGen & TheCG) {
 
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
   
@@ -582,7 +566,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
 
     // transfer to first
     const auto & VarName = VarNames[0];
-    auto InitVal = ArrayAST->special_codegen(VarName, TheCG, Depth);
+    auto InitVal = ArrayAST->special_codegen(VarName, TheCG);
     ReturnInit = InitVal.second;
     auto FirstAlloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType, getLine(), true);
     TheCG.Builder.CreateStore(InitVal.second, FirstAlloca);
@@ -617,7 +601,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
   else {
   
     // Emit initializer first
-    auto InitVal = Init->codegen(TheCG, Depth);
+    auto InitVal = Init->codegen(TheCG);
 
     std::size_t NumVals = 0;
     auto IType = InitVal->getType();
@@ -626,7 +610,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG, int Depth) {
 
     if (IsArray) {
       if (Size) {
-        SizeExpr = Size->codegen(TheCG, Depth);
+        SizeExpr = Size->codegen(TheCG);
       }
       else if (IType->isSingleValueType()) {
         NumVals = 1;
@@ -720,9 +704,8 @@ raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
 std::pair<AllocaInst*, Value*> ArrayExprAST::special_codegen(
-    const std::string & Name, CodeGen & TheCG, int Depth)
+    const std::string & Name, CodeGen & TheCG)
 {
-  echo( Formatter() << "CodeGen array expression", Depth++ );
   
   auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();    
 
@@ -731,10 +714,10 @@ std::pair<AllocaInst*, Value*> ArrayExprAST::special_codegen(
   
   std::vector<Value*> InitVals;
   InitVals.reserve(Body.size());
-  for ( auto & E : Body ) InitVals.emplace_back( E->codegen(TheCG, Depth) );
+  for ( auto & E : Body ) InitVals.emplace_back( E->codegen(TheCG) );
 
   if (Repeat) {
-    SizeExpr = Repeat->codegen(TheCG, Depth);
+    SizeExpr = Repeat->codegen(TheCG);
     if (Body.size() != 1 )
       THROW_SYNTAX_ERROR("Only one value expected in [Val; N] syntax", getLine());
   }
@@ -766,8 +749,7 @@ raw_ostream &ArrayExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
-Function *PrototypeAST::codegen(CodeGen & TheCG, int Depth) {
-  echo( Formatter() << "CodeGen prototype expression '" << Name << "'", Depth++ );
+Function *PrototypeAST::codegen(CodeGen & TheCG) {
 
   // Make the function type:  double(double,double) etc.
   
@@ -821,15 +803,14 @@ Function *PrototypeAST::codegen(CodeGen & TheCG, int Depth) {
 /// FunctionAST - This class represents a function definition itself.
 //==============================================================================
 Function *FunctionAST::codegen(CodeGen & TheCG,
-    std::map<char, int> & BinopPrecedence, int Depth)
+    std::map<char, int> & BinopPrecedence)
 {
-  echo( Formatter() << "CodeGen function expression", Depth++ );
   
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
   auto &P = *Proto;
   TheCG.FunctionProtos[Proto->getName()] = std::move(Proto);
-  auto TheFunction = TheCG.getFunction(P.getName(), P.getLine(), Depth);
+  auto TheFunction = TheCG.getFunction(P.getName(), P.getLine());
 
   // If this is an operator, install it.
   if (P.isBinaryOp())
@@ -883,7 +864,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   for ( auto & stmt : Body )
   {
     TheCG.emitLocation(stmt.get());
-    auto RetVal = stmt->codegen(TheCG, Depth);
+    auto RetVal = stmt->codegen(TheCG);
   }
 
   // garbage collection
@@ -891,7 +872,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
     
   // Finish off the function.
   if ( Return ) {
-    auto RetVal = Return->codegen(TheCG, Depth);
+    auto RetVal = Return->codegen(TheCG);
     if (RetVal->getType()->isVoidTy() )
       TheCG.Builder.CreateRetVoid();
     else

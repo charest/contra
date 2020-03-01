@@ -23,8 +23,8 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
   auto OldNamedValues = TheParser.NamedValues;
 
   try {
-    auto FnAST = TheParser.parseFunction(1);
-    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence, 1);
+    auto FnAST = TheParser.parseFunction();
+    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
     if (is_optimized) TheCG.TheFPM->run(*FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
@@ -58,8 +58,8 @@ void handleDefinition(Parser & TheParser, CodeGen & TheCG, const InputsType & Th
   if (is_verbose) std::cerr << "Handling definition" << std::endl;
 
   try {
-    auto FnAST = TheParser.parseDefinition(1);
-    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence, 1);
+    auto FnAST = TheParser.parseDefinition();
+    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
       TheCG.doJIT();
@@ -90,7 +90,7 @@ void handleExtern(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInp
   if (is_verbose) std::cerr << "Handling extern" << std::endl;
 
   try {
-    auto ProtoAST = TheParser.parseExtern(1);
+    auto ProtoAST = TheParser.parseExtern();
     auto FnIR = ProtoAST->codegen(TheCG);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
@@ -124,7 +124,7 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
 
   // Evaluate a top-level expression into an anonymous function.
   try {
-    auto FnAST = TheParser.parseTopLevelExpr(1);
+    auto FnAST = TheParser.parseTopLevelExpr();
     auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
     auto RetType = FnIR->getReturnType();
     auto is_double = RetType->isDoubleTy();
@@ -191,8 +191,6 @@ void mainLoop( Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs
   auto is_interactive = TheInputs.is_interactive;
   auto is_verbose = TheInputs.is_verbose;
 
-  BaseAST::IsVerbose = is_verbose;
-  
   // Prime the first token.
   if (is_interactive) std::cerr << "contra> " << std::flush;
   TheParser.getNextToken();

@@ -47,7 +47,7 @@ public:
   // Constructor
   CodeGen (bool);
 
-  Function *getFunction(std::string Name, int Line, int Depth=0); 
+  Function *getFunction(std::string Name, int Line); 
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
