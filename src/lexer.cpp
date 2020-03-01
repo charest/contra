@@ -12,16 +12,13 @@ namespace contra {
 // Get the next char
 //==============================================================================
 int Lexer::advance() {
-  int LastChar = readchar();
+  int LastChar_ = readchar();
 
-  if (LastChar == '\n' || LastChar == '\r') {
-    LexLoc.Line++;
-    LexLoc.Col = 0;
-  }
-  else {
-    LexLoc.Col++;
-  }
-  return LastChar;
+  if (LastChar_ == '\n' || LastChar_ == '\r')
+    LexLoc_.newLine();
+  else
+    LexLoc_.incrementCol();
+  return LastChar_;
 }
 
 
@@ -31,68 +28,71 @@ int Lexer::advance() {
 int Lexer::gettok() {
 
   // Skip any whitespace.
-  while (isspace(LastChar))
-    LastChar = advance();
+  while (isspace(LastChar_))
+    LastChar_ = advance();
   
-  CurLoc = LexLoc;
+  CurLoc_ = LexLoc_;
 
-  if (isalpha(LastChar)) { // identifier: [a-zA-Z][a-zA-Z0-9]*
-    IdentifierStr = LastChar;
-    while (isalnum((LastChar = advance())))
-      IdentifierStr += LastChar;
+  //----------------------------------------------------------------------------
+  // identifier: [a-zA-Z][a-zA-Z0-9]*
+  if (isalpha(LastChar_)) {
+    IdentifierStr_ = LastChar_;
+    while (isalnum((LastChar_ = advance())))
+      IdentifierStr_ += LastChar_;
 
     for ( int i=0; i<num_keywords; ++i )
-      if (IdentifierStr == getTokName(tok_keywords[i]))
+      if (IdentifierStr_ == getTokName(tok_keywords[i]))
         return tok_keywords[i];
     return tok_identifier;
   }
 
+  //----------------------------------------------------------------------------
   // Number: [0-9.]+
-  if (isdigit(LastChar) || LastChar == '.' || LastChar == '+' || LastChar == '-') {
+  if (isdigit(LastChar_) || LastChar_ == '.' || LastChar_ == '+' || LastChar_ == '-') {
 
-    IdentifierStr.clear();
+    IdentifierStr_.clear();
 
     // peak if this is a unary or number
-    if (LastChar == '+' || LastChar == '-') {
+    if (LastChar_ == '+' || LastChar_ == '-') {
       auto NextChar = peek();
       if ( !isdigit(NextChar) && NextChar != '.' ) {
-        int ThisChar = LastChar;
-        LastChar = advance();
+        int ThisChar = LastChar_;
+        LastChar_ = advance();
         return ThisChar;
       }
     }
 
     // read first part of number
-    bool is_float = (LastChar == '.');
+    bool is_float = (LastChar_ == '.');
     do {
-      IdentifierStr += LastChar;
-      LastChar = advance();
-      if (LastChar == '.') {
+      IdentifierStr_ += LastChar_;
+      LastChar_ = advance();
+      if (LastChar_ == '.') {
         if (is_float)
-          THROW_SYNTAX_ERROR( "Multiple '.' encountered in real", LexLoc.Line );
+          THROW_SYNTAX_ERROR( "Multiple '.' encountered in real", LexLoc_.getLine() );
         is_float = true;
         // eat '.'
-        IdentifierStr += LastChar;
-        LastChar = advance();
+        IdentifierStr_ += LastChar_;
+        LastChar_ = advance();
       }
-    } while (isdigit(LastChar));
+    } while (isdigit(LastChar_));
 
-    if (LastChar == 'e' || LastChar == 'E') {
+    if (LastChar_ == 'e' || LastChar_ == 'E') {
       is_float = true;
       // eat e/E
-      IdentifierStr += LastChar;
-      LastChar = advance();
+      IdentifierStr_ += LastChar_;
+      LastChar_ = advance();
       // make sure next character is sign or number
-      if (LastChar != '+' && LastChar != '-' && !isdigit(LastChar))
-        THROW_SYNTAX_ERROR( "Digit or +/- must follow exponent", LexLoc.Line );
+      if (LastChar_ != '+' && LastChar_ != '-' && !isdigit(LastChar_))
+        THROW_SYNTAX_ERROR( "Digit or +/- must follow exponent", LexLoc_.getLine() );
       // eat sign or number
-      IdentifierStr += LastChar;
-      LastChar = advance();
+      IdentifierStr_ += LastChar_;
+      LastChar_ = advance();
       // only numbers should follow
       do {
-        IdentifierStr += LastChar;
-        LastChar = advance();
-      } while (isdigit(LastChar) );
+        IdentifierStr_ += LastChar_;
+        LastChar_ = advance();
+      } while (isdigit(LastChar_) );
     }
 
     if (is_float)
@@ -101,33 +101,37 @@ int Lexer::gettok() {
       return tok_int_number;
   }
 
-  if (LastChar == '#') {
-    // Comment until end of line.
+  //----------------------------------------------------------------------------
+  // Comment until end of line.
+  if (LastChar_ == '#') {
     do
-      LastChar = advance();
-    while (LastChar != eof() && LastChar != '\n' && LastChar != '\r');
+      LastChar_ = advance();
+    while (LastChar_ != eof() && LastChar_ != '\n' && LastChar_ != '\r');
 
-    if (LastChar != eof())
+    if (LastChar_ != eof())
       return gettok();
   }
 
-  if (LastChar == '\"') {
+  //----------------------------------------------------------------------------
+  // string literal
+  if (LastChar_ == '\"') {
     std::string quoted;
-    while ((LastChar = advance()) != '\"')
-      quoted += LastChar;
-    IdentifierStr = unescape(quoted);
-    LastChar = advance();
-    // string literal
+    while ((LastChar_ = advance()) != '\"')
+      quoted += LastChar_;
+    IdentifierStr_ = unescape(quoted);
+    LastChar_ = advance();
     return tok_string;
   }
 
+  //----------------------------------------------------------------------------
   // Check for end of file.  Don't eat the EOF.
-  if (LastChar == eof())
+  if (LastChar_ == eof())
     return tok_eof;
 
+  //----------------------------------------------------------------------------
   // Otherwise, just return the character as its ascii value.
-  int ThisChar = LastChar;
-  LastChar = advance();
+  int ThisChar = LastChar_;
+  LastChar_ = advance();
   return ThisChar;
 }
 

@@ -15,17 +15,18 @@ namespace contra {
 class Parser {
 
   // A lexer object
-  Lexer TheLex;
+  Lexer TheLex_;
 
   // verbosity is on
   bool IsVerbose = false;
-
-public:
-
+  
   /// CurTok/getNextToken - Provide a simple token buffer.  CurTok is the current
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
-  int CurTok;
+  int CurTok_;
+
+
+public:
 
   // A symbol table to infer types in the parser
   std::map<std::string, VarTypes> NamedValues;
@@ -39,7 +40,7 @@ public:
   }
 
   Parser( const std::string & filename, bool IsVerbose = false )
-    : TheLex(filename), IsVerbose(IsVerbose)
+    : TheLex_(filename), IsVerbose(IsVerbose)
   {
     setBinopPrecedence();
   }
@@ -56,26 +57,29 @@ public:
     // highest.
   }
 
+  /// get the current token
+  int getCurTok() const { return CurTok_; }
+
   /// CurTok/getNextToken - Provide a simple token buffer.  CurTok is the current
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
   int getNextToken() {
-    CurTok = TheLex.gettok();
-    return CurTok;
+    CurTok_ = TheLex_.gettok();
+    return CurTok_;
   }
 
   /// GetTokPrecedence - Get the precedence of the pending binary operator token.
   int getTokPrecedence() {
-    if (!isascii(CurTok))
+    if (!isascii(CurTok_))
       return -1;
 
     // Make sure it's a declared binop.
-    auto TokPrecIt = BinopPrecedence.find(CurTok);
+    auto TokPrecIt = BinopPrecedence.find(CurTok_);
     if (TokPrecIt == BinopPrecedence.end()) return -1;
     return TokPrecIt->second;
   }
 
-  int getLine() { return TheLex.CurLoc.Line; }
+  int getLine() { return TheLex_.getLexLoc().getLine(); }
   
   void echo(const std::string & msg, int Depth) {
     if (IsVerbose) {

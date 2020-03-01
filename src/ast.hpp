@@ -58,8 +58,8 @@ public:
 
   virtual Value *codegen(CodeGen &, int) = 0;
   auto getLoc() const { return Loc; }
-  int getLine() const { return Loc.Line; }
-  int getCol() const { return Loc.Col; }
+  int getLine() const { return Loc.getLine(); }
+  int getCol() const { return Loc.getCol(); }
   virtual raw_ostream &dump(raw_ostream &out, int ind) {
     return out << ':' << getLine() << ':' << getCol() << '\n';
   }
@@ -169,7 +169,7 @@ public:
     else if (LHS->InferredType != RHS->InferredType)
       THROW_SYNTAX_ERROR( "Don't know how to handle binary expression with '"
           << getVarTypeName(LHS->InferredType) << "' and '"
-          << getVarTypeName(RHS->InferredType) << "'", Loc.Line );
+          << getVarTypeName(RHS->InferredType) << "'", Loc.getLine() );
     else
       InferredType =  LHS->InferredType;
   }
@@ -305,7 +305,7 @@ public:
     bool IsOperator = false,
     unsigned Prec = 0)
       : Name(Name), Return(Return), IsOperator(IsOperator),
-        Precedence(Prec), Line(Loc.Line), Args(Args)
+        Precedence(Prec), Line(Loc.getLine()), Args(Args)
   {}
 
   

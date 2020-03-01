@@ -66,7 +66,8 @@ enum Token {
 
 // Get a tokens name
 std::string getTokName(int Tok);
- 
+
+// the list of keywords to look for
 const Token tok_keywords[] = {
   tok_binary,
   tok_by,
@@ -89,6 +90,7 @@ const Token tok_keywords[] = {
   tok_var
 };
 
+// The number of keywords
 const int num_keywords = sizeof(tok_keywords) / sizeof(Token);
 
 } // namespace

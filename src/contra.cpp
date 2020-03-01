@@ -199,12 +199,12 @@ void mainLoop( Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs
 
   while (true) {
 
-    if (TheParser.CurTok == tok_eof) {
+    if (TheParser.getCurTok() == tok_eof) {
       if (is_interactive) std::cerr << std::endl;
       return;
     }
 
-    switch (TheParser.CurTok) {
+    switch (TheParser.getCurTok()) {
     case tok_sep: // ignore top-level semicolons.
       TheParser.getNextToken();
       break;

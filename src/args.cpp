@@ -49,8 +49,10 @@ auto parseArguments(
     
   // rest of arguments are positional
   if (optind < argc && argc > 1) {
+    auto & positional = key_value_pair["__positional"];
     while (optind < argc)
-      key_value_pair["__positional"] += argv[optind++] + std::string(";");
+      positional += argv[optind++] + std::string(";");
+    if (positional.back() == ';') positional.pop_back();
   }
 
   return 0;
