@@ -758,31 +758,22 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
 
   for ( const auto & A : Args ) {
     auto VarType = A.second.getType();
-    switch (VarType) {
-    case VarTypes::Int:
-      ArgTypes.emplace_back( Type::getInt64Ty(TheCG.TheContext) );
-      break;
-    case VarTypes::Real:
-      ArgTypes.emplace_back( Type::getDoubleTy(TheCG.TheContext) );
-      break;
-    default:
+    Type * LLType;
+    try {
+      LLType = getLLVMType(VarType, TheCG.TheContext);
+    }
+    catch (const ContraError & e) {
       THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(VarType)
           << "' in prototype for function '" << Name << "'", Line );
     }
+    ArgTypes.emplace_back(LLType);
   }
   
   Type * ReturnType;
-  switch (Return) {
-  case VarTypes::Int:
-    ReturnType = Type::getInt64Ty(TheCG.TheContext);
-    break;
-  case VarTypes::Real:
-    ReturnType = Type::getDoubleTy(TheCG.TheContext);
-    break;
-  case VarTypes::Void:
-    ReturnType = Type::getVoidTy(TheCG.TheContext);
-    break;
-  default:
+  try {
+    ReturnType = getLLVMType(Return, TheCG.TheContext);
+  }
+  catch (const ContraError & e) {
     THROW_SYNTAX_ERROR( "Unknown return type of '" << getVarTypeName(Return)
         << "' in prototype for function '" << Name << "'", Line );
   }

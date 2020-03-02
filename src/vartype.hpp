@@ -3,6 +3,11 @@
 
 #include <string>
 
+namespace llvm {
+  class Type;
+  class LLVMContext;
+}
+
 namespace contra {
 
 //==============================================================================
@@ -27,7 +32,13 @@ const VarTypes VarTypesList[] = {
 /// Return the string corresponding to the variable type
 std::string getVarTypeName( VarTypes Type );
 
+// return the LLVM type corresponding with the var type 
+llvm::Type* getLLVMType(VarTypes Type, llvm::LLVMContext & TheContext);
+
+// return the vartype matching the provided string
 VarTypes getVarType( const std::string & );
+
+// return the vartype matching the provided token
 VarTypes getVarType( int tok );
 
 } // namespace
