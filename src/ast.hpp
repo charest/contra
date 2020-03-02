@@ -4,6 +4,7 @@
 #include "codegen.hpp"
 #include "errors.hpp"
 #include "sourceloc.hpp"
+#include "symbols.hpp"
 #include "vartype.hpp"
 
 #include <iostream>
@@ -285,17 +286,17 @@ class PrototypeAST : public BaseAST {
 
 public:
   
-  std::vector< std::pair<std::string, VarTypes> > Args;
+  std::vector< std::pair<std::string, Symbol> > Args;
 
   PrototypeAST(
     SourceLocation Loc,
     const std::string &Name,
-    const std::vector< std::pair<std::string, VarTypes> > & Args,
+    std::vector< std::pair<std::string, Symbol> > && Args,
     VarTypes Return,
     bool IsOperator = false,
     unsigned Prec = 0)
       : Name(Name), Return(Return), IsOperator(IsOperator),
-        Precedence(Prec), Line(Loc.getLine()), Args(Args)
+        Precedence(Prec), Line(Loc.getLine()), Args(std::move(Args))
   {}
 
   

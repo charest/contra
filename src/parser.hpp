@@ -3,6 +3,7 @@
 
 #include "ast.hpp"
 #include "lexer.hpp"
+#include "symbols.hpp"
 #include "token.hpp"
 
 #include <map>
@@ -27,7 +28,7 @@ class Parser {
   std::map<char, int> BinopPrecedence_;
 
   // A symbol table to infer types in the parser
-  std::map<std::string, VarTypes> NamedValues_;
+  SymbolTable NamedValues_;
   
 public:
 
@@ -67,7 +68,7 @@ public:
   }
 
   /// GetTokPrecedence - Get the precedence of the pending binary operator token.
-  int getTokPrecedence() {
+  int getTokPrecedence() const {
     if (!isascii(CurTok_))
       return -1;
 
@@ -77,13 +78,14 @@ public:
     return TokPrecIt->second;
   }
 
-  int getLine() { return TheLex_.getLexLoc().getLine(); }
+  SourceLocation getLoc() const { return TheLex_.getLexLoc(); }
+  int getLine() const { return TheLex_.getLexLoc().getLine(); }
 
   // get the symbol table
   const auto & getSymbols() const
   { return NamedValues_; }
   // set the symbol table
-  void setSymbols( const std::map<std::string, VarTypes> & Symbols )
+  void setSymbols( const SymbolTable & Symbols )
   { NamedValues_ = Symbols; }
 
   /// numberexpr ::= number

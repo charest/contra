@@ -74,7 +74,8 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
         getLine() );
     
     // regular variable load
-    auto Var = std::make_unique<VariableExprAST>(LitLoc, IdName, vit->second);
+    auto VarType = vit->second.getType();
+    auto Var = std::make_unique<VariableExprAST>(LitLoc, IdName, VarType);
 
     // array value load
     if (CurTok_ == '[') {
@@ -210,24 +211,26 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 std::unique_ptr<ExprAST> Parser::parseForExpr() {
   getNextToken(); // eat the for.
 
+  auto IdentLoc = getLoc();
+
   if (CurTok_ != tok_identifier)
     THROW_SYNTAX_ERROR("Expected identifier after 'for'", getLine());
   std::string IdName = TheLex_.getIdentifierStr();
   getNextToken(); // eat identifier.
 
   auto it = NamedValues_.find(IdName);
-  VarTypes OldType;
+  Symbol OldType;
   bool oldsaved = false;
 
   // override type
   if (it != NamedValues_.end() ) {
     OldType = it->second;
     oldsaved = true;
-    it->second = VarTypes::Int;
+    it->second = Symbol(VarTypes::Int, IdentLoc);
   }
   // create var
   else {
-    NamedValues_.emplace( IdName, VarTypes::Int );
+    NamedValues_.addSymbol( IdName, VarTypes::Int, IdentLoc );
   }
   
   if (CurTok_ != tok_in)
@@ -389,7 +392,7 @@ std::unique_ptr<FunctionAST> Parser::parseTopLevelExpr() {
   auto E = parseExpression();
   // Make an anonymous proto.
   auto Proto = std::make_unique<PrototypeAST>(FnLoc, "__anon_expr",
-      std::vector< std::pair<std::string, VarTypes> >{}, E->InferredType);
+      std::vector< std::pair<std::string, Symbol> >{}, E->InferredType);
   return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 }
 
@@ -432,6 +435,7 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   if (CurTok_ != tok_identifier)
     THROW_SYNTAX_ERROR("Expected identifier after var", getLine());
 
+  std::vector<SourceLocation> VarLoc(1, getLoc());
   std::vector<std::string> VarNames(1, TheLex_.getIdentifierStr());
   getNextToken();  // eat identifier.
 
@@ -446,6 +450,7 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
     getNextToken();  // eat ','  
     if (CurTok_ != tok_identifier)
       THROW_SYNTAX_ERROR("Only variable names are allowed in definition.", getLine());
+    VarLoc.push_back(getLoc());
     VarNames.push_back( TheLex_.getIdentifierStr() );
     getNextToken();  // eat identifier
   }
@@ -523,7 +528,8 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   }
   
   for ( const auto & Name : VarNames )
-    NamedValues_.emplace( Name, VarType );
+  for ( int i=0; i<VarNames.size(); ++i )
+    NamedValues_.addSymbol( VarNames[i], VarType, VarLoc[i] );
   
   auto A = std::make_unique<VarExprAST>(TheLex_.getCurLoc(), VarNames, VarType, IsArray,
       std::move(Init));
@@ -653,9 +659,11 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   getNextToken(); // eat "("
 
-  std::vector< std::pair<std::string, VarTypes> > ArgNames;
+  std::vector< std::pair<std::string, Symbol> > Args;
+
   while (CurTok_ == tok_identifier) {
 
+    auto Loc = getLoc();
     auto Name = TheLex_.getIdentifierStr();
     getNextToken(); // eat identifier
     
@@ -669,7 +677,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
           << getVarTypeName(VarType) << "' is not allowed "
           << "in a function prototype", getLine());
 
-    ArgNames.push_back( std::make_pair(Name, VarType) );
+    Args.emplace_back( Name, Symbol(VarType, Loc) );
 
     getNextToken(); // eat vartype
 
@@ -683,16 +691,15 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   getNextToken(); // eat ')'.
 
   // Verify right number of names for operator.
-  if (Kind && ArgNames.size() != Kind)
+  if (Kind && Args.size() != Kind)
     THROW_SYNTAX_ERROR("Invalid number of operands for operator: "
-        << Kind << " expected, but got " << ArgNames.size(), getLine());
+        << Kind << " expected, but got " << Args.size(), getLine());
 
   // add these varaibles to the current parser scope
-  for ( const auto & [Name, Type] : ArgNames )
-  NamedValues_.emplace( Name, Type );
+  NamedValues_.addSymbols( Args );
 
   return std::make_unique<PrototypeAST>(FnLoc, FnName,
-      std::move(ArgNames), VarTypes::Void, Kind != 0, BinaryPrecedence);
+      std::move(Args), VarTypes::Void, Kind != 0, BinaryPrecedence);
 }
 
 } // namespace

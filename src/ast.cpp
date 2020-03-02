@@ -757,7 +757,8 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
   ArgTypes.reserve(Args.size());
 
   for ( const auto & A : Args ) {
-    switch (A.second) {
+    auto VarType = A.second.getType();
+    switch (VarType) {
     case VarTypes::Int:
       ArgTypes.emplace_back( Type::getInt64Ty(TheCG.TheContext) );
       break;
@@ -765,7 +766,7 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
       ArgTypes.emplace_back( Type::getDoubleTy(TheCG.TheContext) );
       break;
     default:
-      THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(A.second)
+      THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(VarType)
           << "' in prototype for function '" << Name << "'", Line );
     }
   }
@@ -844,7 +845,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   for (auto &Arg : TheFunction->args()) {
 
     // get arg type
-    auto ArgType = P.Args[ArgIdx].second;
+    auto ArgType = P.Args[ArgIdx].second.getType();
     
     // Create an alloca for this variable.
     AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, Arg.getName(),
