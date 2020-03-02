@@ -22,15 +22,14 @@ class Parser {
   /// lexer and updates CurTok with its results.
   int CurTok_;
 
+  /// BinopPrecedence - This holds the precedence for each binary operator that is
+  /// defined.
+  std::map<char, int> BinopPrecedence_;
 
 public:
 
   // A symbol table to infer types in the parser
   std::map<std::string, VarTypes> NamedValues;
-
-  /// BinopPrecedence - This holds the precedence for each binary operator that is
-  /// defined.
-  std::map<char, int> BinopPrecedence;
   
   Parser() {
     setBinopPrecedence();
@@ -44,14 +43,17 @@ public:
   void setBinopPrecedence() {
     // Install standard binary operators.
     // 1 is lowest precedence.
-    BinopPrecedence[tok_eq] = 2;
-    BinopPrecedence[tok_lt] = 10;
-    BinopPrecedence[tok_add] = 20;
-    BinopPrecedence[tok_sub] = 20;
-    BinopPrecedence[tok_mul] = 40;
-    BinopPrecedence[tok_div] = 50;
+    BinopPrecedence_[tok_eq] = 2;
+    BinopPrecedence_[tok_lt] = 10;
+    BinopPrecedence_[tok_add] = 20;
+    BinopPrecedence_[tok_sub] = 20;
+    BinopPrecedence_[tok_mul] = 40;
+    BinopPrecedence_[tok_div] = 50;
     // highest.
   }
+
+  auto & getBinopPrecedence()
+  { return BinopPrecedence_; }
 
   /// get the current token
   int getCurTok() const { return CurTok_; }
@@ -70,8 +72,8 @@ public:
       return -1;
 
     // Make sure it's a declared binop.
-    auto TokPrecIt = BinopPrecedence.find(CurTok_);
-    if (TokPrecIt == BinopPrecedence.end()) return -1;
+    auto TokPrecIt = BinopPrecedence_.find(CurTok_);
+    if (TokPrecIt == BinopPrecedence_.end()) return -1;
     return TokPrecIt->second;
   }
 

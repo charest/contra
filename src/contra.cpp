@@ -24,7 +24,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
 
   try {
     auto FnAST = TheParser.parseFunction();
-    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
+    auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     if (is_optimized) TheCG.TheFPM->run(*FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
@@ -59,7 +59,7 @@ void handleDefinition(Parser & TheParser, CodeGen & TheCG, const InputsType & Th
 
   try {
     auto FnAST = TheParser.parseDefinition();
-    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
+    auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
       TheCG.doJIT();
@@ -125,7 +125,7 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
   // Evaluate a top-level expression into an anonymous function.
   try {
     auto FnAST = TheParser.parseTopLevelExpr();
-    auto FnIR = FnAST->codegen(TheCG, TheParser.BinopPrecedence);
+    auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     auto RetType = FnIR->getReturnType();
     auto is_double = RetType->isDoubleTy();
     auto is_int = RetType->isIntegerTy();
