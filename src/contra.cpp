@@ -20,7 +20,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
 
   if (is_verbose) std::cerr << "Handling function" << std::endl;
 
-  auto OldNamedValues = TheParser.NamedValues;
+  auto OldSymbols = TheParser.getSymbols();
 
   try {
     auto FnAST = TheParser.parseFunction();
@@ -43,7 +43,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
     }
   }
 
-  TheParser.NamedValues = OldNamedValues;
+  TheParser.setSymbols( OldSymbols );
 }
 
 //==============================================================================

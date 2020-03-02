@@ -68,8 +68,8 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   if (CurTok_ != '(') {
     
     // get variable type
-    auto vit = NamedValues.find(IdName);
-    if ( vit == NamedValues.end() )
+    auto vit = NamedValues_.find(IdName);
+    if ( vit == NamedValues_.end() )
       THROW_NAME_ERROR( "Variable '" << IdName << "' was referenced but not defined",
         getLine() );
     
@@ -215,19 +215,19 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   std::string IdName = TheLex_.getIdentifierStr();
   getNextToken(); // eat identifier.
 
-  auto it = NamedValues.find(IdName);
+  auto it = NamedValues_.find(IdName);
   VarTypes OldType;
   bool oldsaved = false;
 
   // override type
-  if (it != NamedValues.end() ) {
+  if (it != NamedValues_.end() ) {
     OldType = it->second;
     oldsaved = true;
     it->second = VarTypes::Int;
   }
   // create var
   else {
-    NamedValues.emplace( IdName, VarTypes::Int );
+    NamedValues_.emplace( IdName, VarTypes::Int );
   }
   
   if (CurTok_ != tok_in)
@@ -264,13 +264,13 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     if (CurTok_ == tok_sep) getNextToken();
   }
 
-  it = NamedValues.find(IdName);
-  if (it == NamedValues.end() )
+  it = NamedValues_.find(IdName);
+  if (it == NamedValues_.end() )
     THROW_CONTRA_ERROR( "Iterator somehow removed from symbol table" );
   if (oldsaved)
     it->second = OldType;
   else 
-    NamedValues.erase(it);
+    NamedValues_.erase(it);
   
   // eat end
   getNextToken();
@@ -523,7 +523,7 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   }
   
   for ( const auto & Name : VarNames )
-    NamedValues.emplace( Name, VarType );
+    NamedValues_.emplace( Name, VarType );
   
   auto A = std::make_unique<VarExprAST>(TheLex_.getCurLoc(), VarNames, VarType, IsArray,
       std::move(Init));
@@ -574,7 +574,7 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
 //==============================================================================
 std::unique_ptr<FunctionAST> Parser::parseFunction() {
 
-  NamedValues.clear();
+  NamedValues_.clear();
 
   getNextToken(); // eat def.
   auto Proto = parsePrototype();
@@ -689,7 +689,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   // add these varaibles to the current parser scope
   for ( const auto & [Name, Type] : ArgNames )
-  NamedValues.emplace( Name, Type );
+  NamedValues_.emplace( Name, Type );
 
   return std::make_unique<PrototypeAST>(FnLoc, FnName,
       std::move(ArgNames), VarTypes::Void, Kind != 0, BinaryPrecedence);

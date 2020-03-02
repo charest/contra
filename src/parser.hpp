@@ -26,11 +26,11 @@ class Parser {
   /// defined.
   std::map<char, int> BinopPrecedence_;
 
+  // A symbol table to infer types in the parser
+  std::map<std::string, VarTypes> NamedValues_;
+  
 public:
 
-  // A symbol table to infer types in the parser
-  std::map<std::string, VarTypes> NamedValues;
-  
   Parser() {
     setBinopPrecedence();
   }
@@ -78,6 +78,13 @@ public:
   }
 
   int getLine() { return TheLex_.getLexLoc().getLine(); }
+
+  // get the symbol table
+  const auto & getSymbols() const
+  { return NamedValues_; }
+  // set the symbol table
+  void setSymbols( const std::map<std::string, VarTypes> & Symbols )
+  { NamedValues_ = Symbols; }
 
   /// numberexpr ::= number
   std::unique_ptr<ExprAST> parseIntegerExpr();
