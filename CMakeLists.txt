@@ -19,7 +19,9 @@ set(CMAKE_CXX_EXTENSIONS off)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake")
 
 
+add_library( librt )
 add_executable( contra )
+target_link_libraries(contra PUBLIC librt)
 
 
 #------------------------------------------------------------------------------#
@@ -43,6 +45,8 @@ target_link_libraries(contra PUBLIC ${llvm_libs})
 # build library
 #------------------------------------------------------------------------------#
 
+add_subdirectory(librt)
+target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(src)
 
 #------------------------------------------------------------------------------#

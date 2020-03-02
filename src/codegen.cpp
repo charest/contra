@@ -1,6 +1,7 @@
 #include "ast.hpp"
 #include "errors.hpp"
-#include "rtlib.hpp"
+
+#include "librt/librt.hpp"
 
 #include "llvm/IR/Type.h"
 #include "llvm/LinkAllPasses.h"
@@ -87,7 +88,7 @@ Function *CodeGen::getFunction(std::string Name, int Line) {
     return F;
   
   // see if this is an available intrinsic, try installing it first
-  if (auto F = RunTimeLib::tryInstall(TheContext, *TheModule, Name))
+  if (auto F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, Name))
     return F;
 
   // If not, check whether we can codegen the declaration from some existing
@@ -145,7 +146,7 @@ CodeGen::createArray(Function *TheFunction,
 
   Function *F; 
   F = TheModule->getFunction("allocate");
-  if (!F) F = RunTimeLib::tryInstall(TheContext, *TheModule, "allocate");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, "allocate");
 
   Type* LLType;       
   std::size_t SizeOf; 
@@ -333,7 +334,7 @@ void CodeGen::destroyArrays() {
   
   Function *F; 
   F = TheModule->getFunction("deallocate");
-  if (!F) F = RunTimeLib::tryInstall(TheContext, *TheModule, "deallocate");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, "deallocate");
   
   for ( auto & [Name, Alloca] : NamedArrays )
   {
