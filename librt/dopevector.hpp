@@ -1,6 +1,7 @@
 #ifndef RTLIB_DOPEVECTOR_HPP
 #define RTLIB_DOPEVECTOR_HPP
 
+#include "config.hpp"
 #include "dllexport.h"
 #include "llvm_forwards.hpp"
 
@@ -11,11 +12,11 @@ extern "C" {
 /// simple dopevector type
 struct dopevector_t {
   void * data = nullptr;
-  std::uint64_t size = 0;
+  int_t size = 0;
 };
 
 /// memory allocation
-DLLEXPORT dopevector_t allocate(std::uint64_t size);
+DLLEXPORT dopevector_t allocate(int_t size);
 
 /// memory deallocation
 DLLEXPORT void deallocate(dopevector_t dv);

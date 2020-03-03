@@ -45,7 +45,9 @@ target_link_libraries(contra PUBLIC ${llvm_libs})
 # build library
 #------------------------------------------------------------------------------#
 
+target_include_directories(librt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(librt)
+
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(src)
 

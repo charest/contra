@@ -27,6 +27,8 @@ public:
   {}
 
   VarTypes getType() const { return Type_; }
+
+  bool isArray() const { return IsArray_; }
 };
 
 //==============================================================================

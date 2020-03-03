@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "config.hpp"
 #include "errors.hpp"
 
 #include "librt/librt.hpp"
@@ -113,13 +114,11 @@ AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
 
   Type* LLType;       
-  if (type == VarTypes::Int)
-    LLType = Type::getInt64Ty(TheContext);
-  else if (type == VarTypes::Real)
-    LLType = Type::getDoubleTy(TheContext);
-  else {
+  try {
+    LLType = getLLVMType(type, TheContext);
+  }
+  catch (const ContraError & e) {
     THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
-    return nullptr;
   }
 
   if (IsPointer)
@@ -151,12 +150,12 @@ CodeGen::createArray(Function *TheFunction,
   Type* LLType;       
   std::size_t SizeOf; 
   if (type == VarTypes::Int) {
-    LLType = Type::getInt64Ty(TheContext);
-    SizeOf = sizeof(std::uint64_t);
+    LLType = llvmIntegerType(TheContext);
+    SizeOf = sizeof(int_t);
   }
   else if (type == VarTypes::Real) {
-    LLType = Type::getDoubleTy(TheContext);
-    SizeOf = sizeof(double);
+    LLType = llvmRealType(TheContext);
+    SizeOf = sizeof(real_t);
   }
   else {
     THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
@@ -214,7 +213,7 @@ void CodeGen::initArrays( Function *TheFunction,
   else
     NumElements = ConstantInt::get(TheContext, APInt(64, NumVals, true));
 
-  auto Alloca = TmpB.CreateAlloca(Type::getInt64Ty(TheContext), nullptr, "__i");
+  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext), nullptr, "__i");
   Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
   Builder.CreateStore(StartVal, Alloca);
   
@@ -223,7 +222,7 @@ void CodeGen::initArrays( Function *TheFunction,
   auto AfterBB =  BasicBlock::Create(TheContext, "afterinit", TheFunction);
   Builder.CreateBr(BeforeBB);
   Builder.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder.CreateLoad(Type::getInt64Ty(TheContext), Alloca);
+  auto CurVar = Builder.CreateLoad(llvmIntegerType(TheContext), Alloca);
   auto EndCond = Builder.CreateICmpSLT(CurVar, NumElements, "initcond");
   Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder.SetInsertPoint(LoopBB);
@@ -264,14 +263,14 @@ void CodeGen::initArray(
     auto GEP = Builder.CreateGEP(Load, Index, "offset");
     auto Init = InitVals[i];
     auto InitType = Init->getType();
-    if ( InitType->isDoubleTy() && ValType->isIntegerTy() ) {
+    if ( InitType->isFloatingPointTy() && ValType->isIntegerTy() ) {
       auto Cast = CastInst::Create(Instruction::FPToSI, Init,
-          Type::getInt64Ty(TheContext), "cast", TheBlock);
+          llvmIntegerType(TheContext), "cast", TheBlock);
       Init = Cast;
     }
-    else if ( InitType->isIntegerTy() && ValType->isDoubleTy() ) {
+    else if ( InitType->isIntegerTy() && ValType->isFloatingPointTy() ) {
       auto Cast = CastInst::Create(Instruction::SIToFP, Init,
-          Type::getDoubleTy(TheContext), "cast", TheBlock);
+          llvmRealType(TheContext), "cast", TheBlock);
       Init = Cast;
     }
     else if (InitType!=ValType)
@@ -292,7 +291,7 @@ void CodeGen::copyArrays(
 
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
 
-  auto Alloca = TmpB.CreateAlloca(Type::getInt64Ty(TheContext), nullptr, "__i");
+  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext), nullptr, "__i");
   Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
   Builder.CreateStore(StartVal, Alloca);
   
@@ -301,7 +300,7 @@ void CodeGen::copyArrays(
   auto AfterBB =  BasicBlock::Create(TheContext, "afterinit", TheFunction);
   Builder.CreateBr(BeforeBB);
   Builder.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder.CreateLoad(Type::getInt64Ty(TheContext), Alloca);
+  auto CurVar = Builder.CreateLoad(llvmIntegerType(TheContext), Alloca);
   auto EndCond = Builder.CreateICmpSLT(CurVar, NumElements, "initcond");
   Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder.SetInsertPoint(LoopBB);
@@ -336,8 +335,10 @@ void CodeGen::destroyArrays() {
   F = TheModule->getFunction("deallocate");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, "deallocate");
   
-  for ( auto & [Name, Alloca] : NamedArrays )
+  for ( auto & i : NamedArrays )
   {
+    const auto & Name = i.first;
+    auto & Alloca = i.second;
     auto AllocaT = Alloca->getType()->getPointerElementType();
     auto Vec = Builder.CreateLoad(AllocaT, Alloca, Name+"vec");
   

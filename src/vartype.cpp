@@ -1,3 +1,4 @@
+#include "config.hpp"
 #include "errors.hpp"
 #include "token.hpp"
 #include "vartype.hpp"
@@ -10,6 +11,21 @@ using llvm::Type;
 using llvm::LLVMContext;
 
 namespace contra {
+
+//==============================================================================
+/// Specializations to convert c++ types to vartypes
+//==============================================================================
+template<>
+VarTypes getVarType<int_t>() { return VarTypes::Int; }
+
+template<>
+VarTypes getVarType<real_t>() { return VarTypes::Real; }
+
+template<>
+VarTypes getVarType<std::string>() { return VarTypes::String; }
+
+template<>
+VarTypes getVarType<void>() { return VarTypes::Void; }
 
 //==============================================================================
 /// Return the string corresponding to the variable type
@@ -33,10 +49,10 @@ Type* getLLVMType(VarTypes VarType, LLVMContext & TheContext)
 {
   switch (VarType) {
   case VarTypes::Int:
-    return Type::getInt64Ty(TheContext);
+    return llvmIntegerType(TheContext);
     break;
   case VarTypes::Real:
-    return Type::getDoubleTy(TheContext);
+    return llvmRealType(TheContext);
     break;
   default:
     THROW_CONTRA_ERROR( "Unknown argument type of '" << getVarTypeName(VarType) << "'" );

@@ -130,7 +130,7 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
     if (is_verbose) FnAST->dump(errs(), 1);
     auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     auto RetType = FnIR->getReturnType();
-    auto is_double = RetType->isDoubleTy();
+    auto is_real = RetType->isFloatingPointTy();
     auto is_int = RetType->isIntegerTy();
     auto is_void = RetType->isVoidTy();
     if (is_verbose || dump_ir) FnIR->print(errs());
@@ -145,15 +145,15 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
 
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.
-      if (is_double) {
-        double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-        if (is_verbose) std::cerr << "---Begin Double Result--- " <<  "\n";
+      if (is_real) {
+        real_t (*FP)() = (real_t (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        if (is_verbose) std::cerr << "---Begin Real Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
-        if (is_verbose) std::cerr << "---End Result--- " <<  "\n";
+        if (is_verbose) std::cerr << "---End Real Result--- " <<  "\n";
       }
       else if (is_int) {
-        long long (*FP)() = (long long(*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        int_t (*FP)() = (int_t(*)())(intptr_t)cantFail(ExprSymbol.getAddress());
         if (is_verbose) std::cerr << "---Begin Int Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";

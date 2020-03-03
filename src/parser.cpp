@@ -64,6 +64,7 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 
   getNextToken(); // eat identifier.
 
+  //----------------------------------------------------------------------------
   // Simple variable ref.
   if (CurTok_ != '(') {
     
@@ -73,24 +74,31 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
       THROW_NAME_ERROR( "Variable '" << IdName << "' was referenced but not defined",
         getLine() );
     
-    // regular variable load
-    auto VarType = vit->second.getType();
-    auto Var = std::make_unique<VariableExprAST>(LitLoc, IdName, VarType);
+    // variable type
+    const auto & TheSymbol = vit->second;
+    auto VarType = TheSymbol.getType();
 
     // array value load
     if (CurTok_ == '[') {
+      if (!TheSymbol.isArray())
+        THROW_SYNTAX_ERROR( "Previously defined scalar variable '" << IdName
+            << "' cannot be referenced as an array" , getLine() );
       getNextToken(); // eat [
       auto Arg = parseExpression();
       if (CurTok_ != ']')
         THROW_SYNTAX_ERROR( "Expected ']' at the end of array expression",
             getLine() );
       getNextToken(); // eat ]
-      Var->Index = std::move(Arg);
+      return std::make_unique<VariableExprAST>(LitLoc, IdName, VarType, std::move(Arg));
+    }
+    // scalar load
+    else {
+      return std::make_unique<VariableExprAST>(LitLoc, IdName, VarType);
     }
 
-    return std::move(Var);
-  }
+  } // variable reference
 
+  //----------------------------------------------------------------------------
   // Call.
   getNextToken(); // eat (
   std::vector<std::unique_ptr<ExprAST>> Args;
@@ -119,9 +127,8 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 
-  using block_t = std::vector< std::unique_ptr<ExprAST> >;
-  std::list< std::pair< SourceLocation, std::unique_ptr<ExprAST> > > Conds;
-  std::list< block_t > BBlocks;
+  ExprLocPairList Conds;
+  ExprBlockList BBlocks;
   
   //---------------------------------------------------------------------------
   // If
@@ -132,14 +139,14 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 
     // condition.
     auto Cond = parseExpression();
-    Conds.emplace_back( std::make_pair(IfLoc, std::move(Cond)) );
+    addExpr(Conds, IfLoc, std::move(Cond));
 
     if (CurTok_ != tok_then)
       THROW_SYNTAX_ERROR("Expected 'then' after 'if'", getLine());
     getNextToken(); // eat the then
 
     // make a new block
-    auto Then = BBlocks.emplace( BBlocks.end(), block_t{} );
+    auto Then = createBlock(BBlocks);
 
     // then
     while (CurTok_ != tok_end && CurTok_ != tok_elif && CurTok_ != tok_else) {
@@ -160,14 +167,14 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 
     // condition.
     auto Cond = parseExpression();
-    Conds.emplace_back( std::make_pair(ElifLoc, std::move(Cond)) );
+    addExpr(Conds, ElifLoc, std::move(Cond));
   
     if (CurTok_ != tok_then)
       THROW_SYNTAX_ERROR("Expected 'then' after 'elif'", getLine());
     getNextToken(); // eat the then
   
     // make a new block
-    auto Then = BBlocks.emplace( BBlocks.end(), block_t{} );
+    auto Then = createBlock(BBlocks);
 
     while (CurTok_ != tok_end && CurTok_ != tok_elif && CurTok_ != tok_else) {
       auto E = parseExpression();
@@ -187,7 +194,7 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
     getNextToken(); // eat else
     
     // make a new block
-    auto Else = BBlocks.emplace( BBlocks.end(), block_t{} );
+    auto Else = createBlock(BBlocks);
 
     while (CurTok_ != tok_end) {
       auto E = parseExpression();
@@ -202,7 +209,7 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
   //---------------------------------------------------------------------------
   // Construct If Else Then tree
 
-  return IfExprAST::make( Conds, BBlocks );
+  return IfExprAST::makeNested( Conds, BBlocks );
 }
 
 //==============================================================================
@@ -256,16 +263,18 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     THROW_SYNTAX_ERROR("Expected 'do' after 'for'", getLine());
   getNextToken(); // eat 'do'.
   
-  // make a for loop
-  auto F = std::make_unique<ForExprAST>(TheLex_.getCurLoc(), IdName, std::move(Start),
-      std::move(End), std::move(Step));
-
   // add statements
+  ExprBlock Body;
   while (CurTok_ != tok_end) {
     auto E = parseExpression();
-    F->Body.emplace_back( std::move(E) );
+    Body.emplace_back( std::move(E) );
     if (CurTok_ == tok_sep) getNextToken();
   }
+  
+  // make a for loop
+  auto F = std::make_unique<ForExprAST>(TheLex_.getCurLoc(), IdName, std::move(Start),
+      std::move(End), std::move(Step), std::move(Body));
+
 
   it = NamedValues_.find(IdName);
   if (it == NamedValues_.end() )
@@ -356,6 +365,8 @@ Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS)
     LHS = std::make_unique<BinaryExprAST>(BinLoc, BinOp, std::move(LHS),
         std::move(RHS));
   }
+
+  return nullptr;
 }
 
 //==============================================================================
@@ -391,8 +402,7 @@ std::unique_ptr<FunctionAST> Parser::parseTopLevelExpr() {
   SourceLocation FnLoc = TheLex_.getCurLoc();
   auto E = parseExpression();
   // Make an anonymous proto.
-  auto Proto = std::make_unique<PrototypeAST>(FnLoc, "__anon_expr",
-      std::vector< std::pair<std::string, Symbol> >{}, E->InferredType);
+  auto Proto = std::make_unique<PrototypeAST>(FnLoc, "__anon_expr", E->InferredType);
   return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 }
 
@@ -527,16 +537,15 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
       THROW_SYNTAX_ERROR( "Could not infer variable type for '" << VarNames[0] << "'", getLine() );
   }
   
-  for ( const auto & Name : VarNames )
   for ( int i=0; i<VarNames.size(); ++i )
-    NamedValues_.addSymbol( VarNames[i], VarType, VarLoc[i] );
-  
-  auto A = std::make_unique<VarExprAST>(TheLex_.getCurLoc(), VarNames, VarType, IsArray,
-      std::move(Init));
-
-  A->Size = std::move(Size);
-
-  return std::move(A);
+    NamedValues_.addSymbol( VarNames[i], VarType, VarLoc[i], IsArray );
+ 
+  if (IsArray)
+    return std::make_unique<ArrayVarExprAST>(TheLex_.getCurLoc(), VarNames,
+        VarType, std::move(Init), std::move(Size));
+  else
+    return std::make_unique<VarExprAST>(TheLex_.getCurLoc(), VarNames, VarType,
+        std::move(Init));
 }
 
 
@@ -548,16 +557,17 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
 
   getNextToken(); // eat [.
 
-  auto A = std::make_unique<ArrayExprAST>(TheLex_.getCurLoc(), VarType);
+  ExprBlock ValExprs;
+  std::unique_ptr<ExprAST> SizeExpr;
 
   while (CurTok_ != ']') {
     auto E = parseExpression();
 
-    A->Body.emplace_back( std::move(E) );
+    ValExprs.emplace_back( std::move(E) );
     
     if (CurTok_ == ';') {
       getNextToken(); // eat ;
-      A->Repeat = std::move(parseExpression());
+      SizeExpr = std::move(parseExpression());
       break;
     }
 
@@ -571,7 +581,8 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
   // eat ]
   getNextToken();
 
-  return std::move(A);
+  return std::make_unique<ArrayExprAST>(TheLex_.getCurLoc(), VarType,
+      std::move(ValExprs), std::move(SizeExpr));
 }
 
 
@@ -584,13 +595,13 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
 
   getNextToken(); // eat def.
   auto Proto = parsePrototype();
-  
-  auto F = std::make_unique<FunctionAST>(std::move(Proto));
+
+  ExprBlock Body;
 
   while (CurTok_ != tok_end) {
     auto E = parseExpression();
 
-    F->Body.emplace_back( std::move(E) );
+    Body.emplace_back( std::move(E) );
 
     if (CurTok_ == tok_sep) getNextToken();
   }
@@ -598,7 +609,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
   // eat end
   getNextToken();
 
-  return std::move(F);
+  return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body));
 }
 
 //==============================================================================

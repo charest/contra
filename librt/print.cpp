@@ -1,3 +1,4 @@
+#include "config.hpp"
 #include "llvm_includes.hpp"
 
 #include <cstdarg>
@@ -32,7 +33,7 @@ Function *installPrint(LLVMContext & TheContext, Module & TheModule)
 {
   auto PrintType = FunctionType::get(
       Type::getVoidTy(TheContext),
-      PointerType::get(Type::getInt8Ty(TheContext), 0),
+      llvmVoidPointerType(TheContext),
       true /* var args */ );
 
   //auto PrintFun = TheModule.getOrInsertFunction("print", PrintType);

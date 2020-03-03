@@ -1,6 +1,8 @@
 #ifndef CONTRA_VARTYPE_HPP
 #define CONTRA_VARTYPE_HPP
 
+#include "config.hpp"
+
 #include <string>
 
 namespace llvm {
@@ -10,9 +12,7 @@ namespace llvm {
 
 namespace contra {
 
-//==============================================================================
 // Keep track of variable types
-//==============================================================================
 enum class VarTypes {
   Int,
   Real,
@@ -20,14 +20,17 @@ enum class VarTypes {
   Void
 };
 
+// A list for iteration
 const VarTypes VarTypesList[] = {
   VarTypes::Int,
   VarTypes::Real,
   VarTypes::String,
   VarTypes::Void
 };
-  
 
+/// convert types to vartypes
+template<typename T>
+VarTypes getVarType();
 
 /// Return the string corresponding to the variable type
 std::string getVarTypeName( VarTypes Type );

@@ -2,6 +2,7 @@
 #define CONTRA_AST_HPP
 
 #include "codegen.hpp"
+#include "config.hpp"
 #include "errors.hpp"
 #include "sourceloc.hpp"
 #include "symbols.hpp"
@@ -36,107 +37,118 @@ protected:
 //==============================================================================
 class ExprAST : public BaseAST {
 
-  SourceLocation Loc;
+  SourceLocation Loc_;
   
 public:
   
   VarTypes InferredType;
 
   ExprAST(SourceLocation Loc, VarTypes Type = VarTypes::Void)
-    : Loc(Loc), InferredType(Type) {}
+    : Loc_(Loc), InferredType(Type) {}
 
   virtual ~ExprAST() = default;
 
   virtual Value *codegen(CodeGen &) = 0;
-  auto getLoc() const { return Loc; }
-  int getLine() const { return Loc.getLine(); }
-  int getCol() const { return Loc.getCol(); }
-  virtual raw_ostream &dump(raw_ostream &out, int ind) {
+  auto getLoc() const { return Loc_; }
+  int getLine() const { return Loc_.getLine(); }
+  int getCol() const { return Loc_.getCol(); }
+  virtual raw_ostream &dump(raw_ostream &out, int ind){
     return out << ':' << getLine() << ':' << getCol() << '\n';
   }
 };
 
 //==============================================================================
-/// IntegerExprAST - Expression class for numeric literals like "1.0".
+/// ExprBlock - List of expressions that form a block 
 //==============================================================================
-class IntegerExprAST : public ExprAST {
-  int Val;
+
+struct ExprLocPair {
+  SourceLocation Loc;
+  std::unique_ptr<ExprAST> Expr;
+};
+using ExprLocPairList = std::list< ExprLocPair >;
+
+inline
+void addExpr(ExprLocPairList & l, SourceLocation sl, std::unique_ptr<ExprAST> e)
+{ l.emplace_back( ExprLocPair{sl, std::move(e) } ); }
+
+
+using ExprBlock = std::vector< std::unique_ptr<ExprAST> >;
+using ExprBlockList = std::list<ExprBlock>;
+
+inline auto createBlock( ExprBlockList & list)
+{ return list.emplace( list.end(), ExprBlock{} ); }
+
+//==============================================================================
+/// ValueExprAST - Expression class for numeric literals like "1.0".
+//==============================================================================
+template< typename T >
+class ValueExprAST : public ExprAST {
+  T Val_;
 
 public:
-  IntegerExprAST(SourceLocation Loc, int Val)
-    : ExprAST(Loc, VarTypes::Int), Val(Val) {}
+  ValueExprAST(SourceLocation Loc, T Val)
+    : ExprAST(Loc, getVarType<T>()), Val_(Val) {}
 
   Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
   
 };
 
-//==============================================================================
-/// RealExprAST - Expression class for numeric literals like "1.0".
-//==============================================================================
-class RealExprAST : public ExprAST {
-  double Val;
-
-public:
-  RealExprAST(SourceLocation Loc, double Val)
-    : ExprAST(Loc, VarTypes::Real), Val(Val) {}
-
-  Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
-  
-};
-
-//==============================================================================
-/// StringExprAST - Expression class for numeric literals like "1.0".
-//==============================================================================
-class StringExprAST : public ExprAST {
-  std::string Val;
-
-public:
-  StringExprAST(SourceLocation Loc, std::string Val)
-    : ExprAST(Loc, VarTypes::String), Val(Val) {}
-
-  Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
-  
-};
+// alias for ints
+using IntegerExprAST = ValueExprAST<int_t>;
+// alias for reals
+using RealExprAST = ValueExprAST<real_t>;
+// alias for strings
+using StringExprAST = ValueExprAST<std::string>;
 
 //==============================================================================
 /// VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
 class VariableExprAST : public ExprAST {
-  std::string Name;
+  std::string Name_;
+  std::shared_ptr<ExprAST> Index_;
 
 public:
-  std::unique_ptr<ExprAST> Index;
 
   VariableExprAST(SourceLocation Loc, const std::string &Name,
-      VarTypes Type) : ExprAST(Loc, Type), Name(Name) {}
+      VarTypes Type) : ExprAST(Loc, Type), Name_(Name)
+  {}
+
+  VariableExprAST(SourceLocation Loc, const std::string &Name,
+      VarTypes Type, std::unique_ptr<ExprAST> Index)
+    : ExprAST(Loc, Type), Name_(Name), Index_(std::move(Index))
+  {}
 
   Value *codegen(CodeGen &) override;
-  const std::string &getName() const { return Name; }
   raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+  const std::string &getName() const { return Name_; }
+  
+  bool isArray() const { return static_cast<bool>(Index_); }
+
+  std::shared_ptr<ExprAST> getIndex() const { return Index_; }
 };
 
 //==============================================================================
 /// ArrayExprAST - Expression class for referencing an array.
 //==============================================================================
 class ArrayExprAST : public ExprAST {
+  
+  ExprBlock Vals_;
+  std::unique_ptr<ExprAST> Size_;
 
 public:
-  std::vector< std::unique_ptr<ExprAST> > Body;
-  std::unique_ptr<ExprAST> Repeat;
 
-  Value* SizeExpr = nullptr;
-
-  ArrayExprAST(SourceLocation Loc, VarTypes VarType)
-    : ExprAST(Loc, VarType) {}
+  ArrayExprAST(SourceLocation Loc, VarTypes VarType, ExprBlock Vals,
+      std::unique_ptr<ExprAST> Size)
+    : ExprAST(Loc, VarType), Vals_(std::move(Vals)), Size_(std::move(Size))
+  {}
 
   Value *codegen(CodeGen &) override
   { THROW_CONTRA_ERROR("Should not be called"); };
 
-  std::pair<llvm::AllocaInst*, Value*> special_codegen(const std::string &,
-      CodeGen &);
+  std::tuple<llvm::AllocaInst*, Value*, Value*>
+  special_codegen(const std::string &, CodeGen &);
 
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
@@ -145,24 +157,25 @@ public:
 /// BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
 class BinaryExprAST : public ExprAST {
-  char Op;
-  std::unique_ptr<ExprAST> LHS, RHS;
+  char Op_;
+  std::shared_ptr<ExprAST> LHS_;
+  std::unique_ptr<ExprAST> RHS_;
 
 public:
   BinaryExprAST(SourceLocation Loc, 
       char Op, std::unique_ptr<ExprAST> lhs,
       std::unique_ptr<ExprAST> rhs)
-    : ExprAST(Loc), Op(Op), LHS(std::move(lhs)), RHS(std::move(rhs))
+    : ExprAST(Loc), Op_(Op), LHS_(std::move(lhs)), RHS_(std::move(rhs))
   {
     // promote lesser types
-    if (LHS->InferredType == VarTypes::Real || RHS->InferredType == VarTypes::Real)
+    if (LHS_->InferredType == VarTypes::Real || RHS_->InferredType == VarTypes::Real)
       InferredType = VarTypes::Real;
-    else if (LHS->InferredType != RHS->InferredType)
+    else if (LHS_->InferredType != RHS_->InferredType)
       THROW_SYNTAX_ERROR( "Don't know how to handle binary expression with '"
-          << getVarTypeName(LHS->InferredType) << "' and '"
-          << getVarTypeName(RHS->InferredType) << "'", Loc.getLine() );
+          << getVarTypeName(LHS_->InferredType) << "' and '"
+          << getVarTypeName(RHS_->InferredType) << "'", Loc.getLine() );
     else
-      InferredType =  LHS->InferredType;
+      InferredType =  LHS_->InferredType;
   }
 
   Value *codegen(CodeGen &) override;
@@ -174,14 +187,14 @@ public:
 /// CallExprAST - Expression class for function calls.
 //==============================================================================
 class CallExprAST : public ExprAST {
-  std::string Callee;
-  std::vector<std::unique_ptr<ExprAST>> Args;
+  std::string Callee_;
+  std::vector<std::unique_ptr<ExprAST>> Args_;
 
 public:
   CallExprAST(SourceLocation Loc,
       const std::string &Callee,
       std::vector<std::unique_ptr<ExprAST>> Args)
-    : ExprAST(Loc), Callee(Callee), Args(std::move(Args))
+    : ExprAST(Loc), Callee_(Callee), Args_(std::move(Args))
   {}
 
   Value *codegen(CodeGen &) override;
@@ -193,40 +206,42 @@ public:
 /// IfExprAST - Expression class for if/then/else.
 //==============================================================================
 class IfExprAST : public ExprAST {
-  std::unique_ptr<ExprAST> Cond;
+
+  std::unique_ptr<ExprAST> Cond_;
+  ExprBlock Then_, Else_;
 
 public:
-  std::vector<std::unique_ptr<ExprAST>> Then, Else;
 
-  IfExprAST(SourceLocation Loc, std::unique_ptr<ExprAST> Cond)
-    : ExprAST(Loc), Cond(std::move(Cond))
+  IfExprAST(SourceLocation Loc, std::unique_ptr<ExprAST> Cond,
+       ExprBlock Then)
+    : ExprAST(Loc), Cond_(std::move(Cond)), Then_(std::move(Then))
   {}
 
   Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
 
-  static std::unique_ptr<ExprAST> make( 
-    std::list< std::pair< SourceLocation, std::unique_ptr<ExprAST> > > & Conds,
-    std::list< std::vector< std::unique_ptr<ExprAST> > > & Blocks );
+  static std::unique_ptr<ExprAST> makeNested( 
+    ExprLocPairList & Conds, ExprBlockList & Blocks );
 };
 
 //==============================================================================
 // ForExprAST - Expression class for for/in.
 //==============================================================================
 class ForExprAST : public ExprAST {
-  std::string VarName;
-  std::unique_ptr<ExprAST> Start, End, Step;
+  std::string VarName_;
+  std::unique_ptr<ExprAST> Start_, End_, Step_;
+  ExprBlock Body_;
 
 public:
-  std::vector<std::unique_ptr<ExprAST>> Body;
 
   ForExprAST(SourceLocation Loc,
       const std::string &VarName,
       std::unique_ptr<ExprAST> Start,
       std::unique_ptr<ExprAST> End,
-      std::unique_ptr<ExprAST> Step)
-    : ExprAST(Loc), VarName(VarName), Start(std::move(Start)), End(std::move(End)),
-    Step(std::move(Step))
+      std::unique_ptr<ExprAST> Step,
+      ExprBlock Body)
+    : ExprAST(Loc), VarName_(VarName), Start_(std::move(Start)),
+      End_(std::move(End)), Step_(std::move(Step)), Body_(std::move(Body))
   {}
 
   Value *codegen(CodeGen &) override;
@@ -237,14 +252,15 @@ public:
 /// UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 class UnaryExprAST : public ExprAST {
-  char Opcode;
-  std::unique_ptr<ExprAST> Operand;
+  char Opcode_;
+  std::unique_ptr<ExprAST> Operand_;
 
 public:
   UnaryExprAST(SourceLocation Loc,
       char Opcode,
       std::unique_ptr<ExprAST> Operand)
-    : ExprAST(Loc, Operand->InferredType), Opcode(Opcode), Operand(std::move(Operand)) {}
+    : ExprAST(Loc, Operand->InferredType), Opcode_(Opcode), Operand_(std::move(Operand))
+  {}
 
   Value *codegen(CodeGen &) override;
   raw_ostream &dump(raw_ostream &out, int ind) override;
@@ -254,21 +270,44 @@ public:
 /// VarExprAST - Expression class for var/in
 //==============================================================================
 class VarExprAST : public ExprAST {
-  std::vector<std::string> VarNames;
-  VarTypes VarType;
-  bool IsArray = false;
-  std::unique_ptr<ExprAST> Init;
+
+protected:
+
+  std::vector<std::string> VarNames_;
+  VarTypes VarType_;
+  std::shared_ptr<ExprAST> Init_;
 
 public:
-  std::unique_ptr<ExprAST> Size;
 
   VarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
-      VarTypes VarType, bool IsArray, std::unique_ptr<ExprAST> Init)
-    : ExprAST(Loc, Init->InferredType), VarNames(VarNames), VarType(VarType),
-      IsArray(IsArray), Init(std::move(Init)) 
+      VarTypes VarType, std::unique_ptr<ExprAST> Init)
+    : ExprAST(Loc, Init->InferredType), VarNames_(VarNames), VarType_(VarType),
+      Init_(std::move(Init)) 
   {}
 
   Value *codegen(CodeGen &) override;
+  
+  raw_ostream &dump(raw_ostream &out, int ind) override;
+};
+
+//==============================================================================
+/// ArrayVarExprAST - Expression class for var/in
+//==============================================================================
+class ArrayVarExprAST : public VarExprAST {
+
+  std::unique_ptr<ExprAST> Size_;
+
+public:
+
+  ArrayVarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
+      VarTypes VarType, std::unique_ptr<ExprAST> Init,
+      std::unique_ptr<ExprAST> Size)
+    : VarExprAST(Loc, VarNames, VarType, std::move(Init)),
+      Size_(std::move(Size))
+  {}
+
+  Value *codegen(CodeGen &) override;
+  
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
@@ -278,15 +317,22 @@ public:
 /// of arguments the function takes).
 //==============================================================================
 class PrototypeAST : public BaseAST {
-  std::string Name;
-  VarTypes Return;
-  bool IsOperator;
-  unsigned Precedence;  // Precedence if a binary op.
-  int Line;
+  std::string Name_;
+  VarTypes Return_;
+  bool IsOperator_ = false;
+  unsigned Precedence_ = 0;  // Precedence if a binary op.
+  int Line_;
+  
+  std::vector< std::pair<std::string, Symbol> > Args_;
 
 public:
   
-  std::vector< std::pair<std::string, Symbol> > Args;
+  PrototypeAST(
+    SourceLocation Loc,
+    const std::string &Name,
+    VarTypes Return)
+      : Name_(Name), Return_(Return), Line_(Loc.getLine())
+  {}
 
   PrototypeAST(
     SourceLocation Loc,
@@ -295,42 +341,45 @@ public:
     VarTypes Return,
     bool IsOperator = false,
     unsigned Prec = 0)
-      : Name(Name), Return(Return), IsOperator(IsOperator),
-        Precedence(Prec), Line(Loc.getLine()), Args(std::move(Args))
+      : Name_(Name), Return_(Return), IsOperator_(IsOperator),
+        Precedence_(Prec), Line_(Loc.getLine()), Args_(std::move(Args))
   {}
 
   
   Function *codegen(CodeGen &);
 
-  const std::string &getName() const { return Name; }
+  const std::string &getName() const { return Name_; }
 
-  bool isUnaryOp() const { return IsOperator && Args.size() == 1; }
-  bool isBinaryOp() const { return IsOperator && Args.size() == 2; }
+  bool isUnaryOp() const { return IsOperator_ && Args_.size() == 1; }
+  bool isBinaryOp() const { return IsOperator_ && Args_.size() == 2; }
 
   char getOperatorName() const {
     assert(isUnaryOp() || isBinaryOp());
-    return Name[Name.size() - 1];
+    return Name_[Name_.size() - 1];
   }
 
-  unsigned getBinaryPrecedence() const { return Precedence; }
-  int getLine() const { return Line; }
+  unsigned getBinaryPrecedence() const { return Precedence_; }
+  int getLine() const { return Line_; }
+
+  Symbol getArgSymbol(int i) { return Args_[i].second; }
 };
 
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
 //==============================================================================
 class FunctionAST : public BaseAST {
-  std::unique_ptr<PrototypeAST> Proto;
+  
+  std::unique_ptr<PrototypeAST> Proto_;
+  ExprBlock Body_;
+  std::unique_ptr<ExprAST> Return_;
 
 public:
-  std::vector<std::unique_ptr<ExprAST>> Body;
-  std::unique_ptr<ExprAST> Return;
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto)
-      : Proto(std::move(Proto)) {}
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ExprBlock Body)
+      : Proto_(std::move(Proto)), Body_(std::move(Body)) {}
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<ExprAST> Body)
-      : Proto(std::move(Proto)), Return(std::move(Body))
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<ExprAST> Return)
+      : Proto_(std::move(Proto)), Return_(std::move(Return))
   {}
 
   Function *codegen(CodeGen &, std::map<char, int> &);

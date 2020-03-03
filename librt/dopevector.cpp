@@ -8,7 +8,7 @@ extern "C" {
 //==============================================================================
 /// memory allocation
 //==============================================================================
-dopevector_t allocate(std::uint64_t size)
+dopevector_t allocate(int_t size)
 {
   dopevector_t dv;
   dv.data = malloc(size);
@@ -36,10 +36,10 @@ using namespace llvm;
 Type * createDopeVectorType(LLVMContext & TheContext)
 {
   auto DopeVectorType = StructType::create( TheContext, "dopevector_t" );
-  auto VoidPointerType = PointerType::get(Type::getInt8Ty(TheContext), 0);
-  auto Int64Type = Type::getInt64Ty(TheContext);
+  auto VoidPointerType = llvmVoidPointerType(TheContext);
+  auto IntType = llvmIntegerType(TheContext);
 
-  std::vector<Type*> members{ VoidPointerType, Int64Type}; 
+  std::vector<Type*> members{ VoidPointerType, IntType}; 
   DopeVectorType->setBody( members );
 
   return DopeVectorType;
@@ -51,9 +51,9 @@ Type * createDopeVectorType(LLVMContext & TheContext)
 Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
 {
   auto DopeVectorType = createDopeVectorType(TheContext);
-  auto Int64Type = Type::getInt64Ty(TheContext);
+  auto IntType = llvmIntegerType(TheContext);
 
-  std::vector<Type*> Args = {Int64Type};
+  std::vector<Type*> Args = {IntType};
   auto AllocateType = FunctionType::get( DopeVectorType, Args, false );
 
   auto AllocateFun = Function::Create(AllocateType, Function::ExternalLinkage,
