@@ -27,6 +27,11 @@ class CodeGen {
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
 
+  struct ArrayType {
+    llvm::AllocaInst* Alloca = nullptr;
+    llvm::Value* Data = nullptr;
+  };
+
 
 public:
 
@@ -47,25 +52,26 @@ public:
   // Constructor
   CodeGen (bool);
 
+  llvm::IRBuilder<> & getBuilder() { return Builder; }
+  llvm::LLVMContext & getContext() { return TheContext; }
+
   Function *getFunction(std::string Name, int Line); 
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
   AllocaInst *createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName, VarTypes type, int Line, bool IsPointer=false);
+    const std::string &VarName, llvm::Type* VarType);
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
-  std::pair<llvm::AllocaInst*, llvm::Value*> 
-  createArray(Function *TheFunction,
-    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line,
-    llvm::Value * SizeExpr = nullptr );
+  ArrayType
+  createArray(Function *TheFunction, const std::string &VarName,
+      llvm::Type* PtrType, llvm::Value * SizeExpr );
 
   void initArrays( Function *TheFunction, 
       const std::vector<AllocaInst*> & VarList,
       llvm::Value * InitVal,
-      std::size_t NumVals,
-      llvm::Value * SizeExpr = nullptr );
+      llvm::Value * SizeExpr );
 
   void initArray( Function *TheFunction, 
       AllocaInst* Var,

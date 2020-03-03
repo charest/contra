@@ -27,7 +27,7 @@ template<>
 Value *IntegerExprAST::codegen(CodeGen & TheCG)
 {
   TheCG.emitLocation(this);
-  return ConstantInt::get(TheCG.TheContext, APInt(64, Val_, true));
+  return llvmInteger(TheCG.TheContext, Val_);
 }
 
 //------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ template<>
 Value *RealExprAST::codegen(CodeGen & TheCG)
 {
   TheCG.emitLocation(this);
-  return ConstantFP::get(TheCG.TheContext, APFloat(Val_));
+  return llvmReal(TheCG.TheContext, Val_);
 }
 
 //------------------------------------------------------------------------------
@@ -400,11 +400,14 @@ std::unique_ptr<ExprAST> IfExprAST::makeNested(
 // outloop:
 //==============================================================================
 Value *ForExprAST::codegen(CodeGen & TheCG) {
-  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
+  auto TheFunction = Builder.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
-  AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName_,
-      VarTypes::Int, getLine());
+  auto LLType = llvmIntegerType(TheContext);
+  AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName_, LLType);
   
   // Within the loop, the variable is defined equal to the PHI node.  If it
   // shadows an existing variable, we have to restore it, so save it now.
@@ -418,34 +421,34 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
     THROW_IMPLEMENTED_ERROR("Cast required for start value");
 
   // Store the value into the alloca.
-  TheCG.Builder.CreateStore(StartVal, Alloca);
+  Builder.CreateStore(StartVal, Alloca);
 
   // Make the new basic block for the loop header, inserting after current
   // block.
-  BasicBlock *BeforeBB = BasicBlock::Create(TheCG.TheContext, "beforeloop", TheFunction);
-  BasicBlock *LoopBB =   BasicBlock::Create(TheCG.TheContext, "loop", TheFunction);
-  BasicBlock *IncrBB =   BasicBlock::Create(TheCG.TheContext, "incr", TheFunction);
-  BasicBlock *AfterBB =  BasicBlock::Create(TheCG.TheContext, "afterloop", TheFunction);
+  BasicBlock *BeforeBB = BasicBlock::Create(TheContext, "beforeloop", TheFunction);
+  BasicBlock *LoopBB =   BasicBlock::Create(TheContext, "loop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(TheContext, "incr", TheFunction);
+  BasicBlock *AfterBB =  BasicBlock::Create(TheContext, "afterloop", TheFunction);
 
-  TheCG.Builder.CreateBr(BeforeBB);
-  TheCG.Builder.SetInsertPoint(BeforeBB);
+  Builder.CreateBr(BeforeBB);
+  Builder.SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurVar = TheCG.Builder.CreateLoad(llvmIntegerType(TheCG.TheContext), Alloca);
+  Value *CurVar = Builder.CreateLoad(LLType, Alloca);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
   Value *EndCond = End_->codegen(TheCG);
   if (EndCond->getType()->isFloatingPointTy())
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
-  EndCond = TheCG.Builder.CreateICmpSLE(CurVar, EndCond, "loopcond");
+  EndCond = Builder.CreateICmpSLE(CurVar, EndCond, "loopcond");
 
   // Insert the conditional branch into the end of LoopEndBB.
-  TheCG.Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+  Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(LoopBB);
-  TheCG.Builder.SetInsertPoint(LoopBB);
+  Builder.SetInsertPoint(LoopBB);
   
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
@@ -453,11 +456,11 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
   for ( auto & stmt : Body_ ) stmt->codegen(TheCG);
 
   // Insert unconditional branch to increment.
-  TheCG.Builder.CreateBr(IncrBB);
+  Builder.CreateBr(IncrBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(IncrBB);
-  TheCG.Builder.SetInsertPoint(IncrBB);
+  Builder.SetInsertPoint(IncrBB);
   
 
   // Emit the step value.
@@ -468,22 +471,22 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
       THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
     // If not specified, use 1.0.
-    StepVal = ConstantInt::get(TheCG.TheContext, APInt(64, 1, true));
+    StepVal = llvmInteger(TheContext, 1);
   }
 
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
-  CurVar = TheCG.Builder.CreateLoad(llvmIntegerType(TheCG.TheContext), Alloca);
-  Value *NextVar = TheCG.Builder.CreateAdd(CurVar, StepVal, "nextvar");
-  TheCG.Builder.CreateStore(NextVar, Alloca);
+  CurVar = Builder.CreateLoad(LLType, Alloca);
+  Value *NextVar = Builder.CreateAdd(CurVar, StepVal, "nextvar");
+  Builder.CreateStore(NextVar, Alloca);
 
   // Insert the conditional branch into the end of LoopEndBB.
-  TheCG.Builder.CreateBr(BeforeBB);
+  Builder.CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
   //TheFunction->getBasicBlockList().push_back(AfterBB);
-  TheCG.Builder.SetInsertPoint(AfterBB);
+  Builder.SetInsertPoint(AfterBB);
 
   // Restore the unshadowed variable.
   if (OldVal)
@@ -492,7 +495,7 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
     TheCG.NamedValues.erase(VarName_);
 
   // for expr always returns 0.
-  return Constant::getNullValue(llvmIntegerType(TheCG.TheContext));
+  return Constant::getNullValue(LLType);
 }
   
 
@@ -555,7 +558,9 @@ raw_ostream &UnaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *VarExprAST::codegen(CodeGen & TheCG) {
 
-  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
+  auto TheFunction = Builder.GetInsertBlock()->getParent();
   
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
@@ -567,6 +572,17 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
   auto InitVal = Init_->codegen(TheCG);
   auto IType = InitVal->getType();
 
+  // the llvm variable type
+  Type * VarType;
+  try {
+    VarType = getLLVMType(VarType_, TheContext);
+  }
+  catch (const ContraError & e) {
+    THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(VarType_)
+        << "' for variables '" << VarNames_ << "'", getLine() );
+  }
+
+
   // Register all variables and emit their initializer.
   for (const auto & VarName : VarNames_) {
     
@@ -574,18 +590,17 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
     auto TheBlock = TheCG.Builder.GetInsertBlock();
     if (VarType_ == VarTypes::Real && !InitVal->getType()->isFloatingPointTy()) {
       auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
-          llvmRealType(TheCG.TheContext), "cast", TheBlock);
+          llvmRealType(TheContext), "cast", TheBlock);
       InitVal = cast;
     }
     else if (VarType_ == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
       auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
-          llvmIntegerType(TheCG.TheContext), "cast", TheBlock);
+          llvmIntegerType(TheContext), "cast", TheBlock);
       InitVal = cast;
     }
 
-    auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType_,
-          getLine());
-    TheCG.Builder.CreateStore(InitVal, Alloca);
+    auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType);
+    Builder.CreateStore(InitVal, Alloca);
   
     // Remember this binding.
     TheCG.NamedValues[VarName] = Alloca;
@@ -624,7 +639,9 @@ raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
 
-  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
+  auto TheFunction = Builder.GetInsertBlock()->getParent();
   
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
@@ -633,6 +650,17 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
   //    var a = a in ...   # refers to outer 'a'.
 
   Value* ReturnInit = nullptr;
+  
+  // the llvm variable type
+  Type * VarType;
+  try {
+    VarType = getLLVMType(VarType_, TheContext);
+  }
+  catch (const ContraError & e) {
+    THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(VarType_)
+        << "' for variables '" << VarNames_ << "'", getLine() );
+  }
+  auto VarPointerType = PointerType::get(VarType, 0);
 
   //---------------------------------------------------------------------------
   // Array already on right hand side
@@ -647,8 +675,8 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
     auto SizeExpr = std::get<2>(InitVal);
     ReturnInit = Array;
     auto FirstAlloca = TheCG.createEntryBlockAlloca(TheFunction, VarName,
-        VarType_, getLine(), true);
-    TheCG.Builder.CreateStore(Array, FirstAlloca);
+        VarPointerType);
+    Builder.CreateStore(Array, FirstAlloca);
     TheCG.NamedValues[VarName] = FirstAlloca;
     TheCG.NamedArrays[VarName] = ArrayAlloca;
   
@@ -661,11 +689,11 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
       // Register all variables and emit their initializer.
       for (int i=1; i<VarNames_.size(); ++i) {
         const auto & VarName = VarNames_[i];
-        auto Array = TheCG.createArray(TheFunction, VarName, VarType_, 0, getLine(), SizeExpr);
-        auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType_, getLine(), true);
-        TheCG.Builder.CreateStore(Array.second, Alloca);
+        auto Array = TheCG.createArray(TheFunction, VarName, VarPointerType, SizeExpr);
+        auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarPointerType);
+        Builder.CreateStore(Array.Data, Alloca);
         TheCG.NamedValues[VarName] = Alloca;
-        TheCG.NamedArrays[VarName] = Array.first;
+        TheCG.NamedArrays[VarName] = Array.Alloca;
         ArrayAllocas.emplace_back( Alloca ); 
       }
       TheCG.copyArrays(TheFunction, FirstAlloca, ArrayAllocas, SizeExpr );
@@ -681,7 +709,6 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
     auto InitVal = Init_->codegen(TheCG);
 
     // create a size expr
-    std::size_t NumVals = 0;
     auto IType = InitVal->getType();
     Value * SizeExpr = nullptr;
 
@@ -689,11 +716,10 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
       SizeExpr = Size_->codegen(TheCG);
     }
     else if (IType->isSingleValueType()) {
-      NumVals = 1;
+      SizeExpr = llvmInteger(TheContext, 1);
     }
     else {
-      NumVals = IType->getArrayNumElements();
-      IType = IType->getArrayElementType(); 
+      THROW_SYNTAX_ERROR("Unknown array initialization", getLine()); 
     }
  
     std::vector<AllocaInst*> ArrayAllocas;
@@ -702,37 +728,35 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
     for (const auto & VarName : VarNames_) {
       
       // cast init value if necessary
-      auto TheBlock = TheCG.Builder.GetInsertBlock();
+      auto TheBlock = Builder.GetInsertBlock();
       if (VarType_ == VarTypes::Real && !InitVal->getType()->isFloatingPointTy()) {
         auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
-            llvmRealType(TheCG.TheContext), "cast", TheBlock);
+            llvmRealType(TheContext), "cast", TheBlock);
         InitVal = cast;
       }
       else if (VarType_ == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
         auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
-            llvmIntegerType(TheCG.TheContext), "cast", TheBlock);
+            llvmIntegerType(TheContext), "cast", TheBlock);
         InitVal = cast;
       }
 
       AllocaInst* Alloca;
 
       // create array of var
-      auto Array = TheCG.createArray(TheFunction, VarName, VarType_, NumVals, getLine(),
-          SizeExpr);
+      auto Array = TheCG.createArray(TheFunction, VarName, VarPointerType, SizeExpr);
   
-      TheCG.NamedArrays[VarName] = Array.first;
+      TheCG.NamedArrays[VarName] = Array.Alloca;
 
-      Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarType_,
-          getLine(), true);
+      Alloca = TheCG.createEntryBlockAlloca(TheFunction, VarName, VarPointerType);
       ArrayAllocas.emplace_back(Alloca);
 
-      TheCG.Builder.CreateStore(Array.second, Alloca);
+      Builder.CreateStore(Array.Data, Alloca);
     
       // Remember this binding.
       TheCG.NamedValues[VarName] = Alloca;
     }
 
-    TheCG.initArrays(TheFunction, ArrayAllocas, InitVal, NumVals, SizeExpr);
+    TheCG.initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr);
 
     ReturnInit = InitVal;
 
@@ -761,38 +785,46 @@ std::tuple<AllocaInst*, Value*, Value*>
 ArrayExprAST::special_codegen(const std::string & Name, CodeGen & TheCG)
 {
   
-  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();    
-
-  std::size_t NumVals{0};
-  Value* SizeExpr = nullptr;
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
+  auto TheFunction = Builder.GetInsertBlock()->getParent();
   
+  // the llvm variable type
+  Type * VarType;
+  try {
+    VarType = getLLVMType(InferredType, TheContext);
+  }
+  catch (const ContraError & e) {
+    THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(InferredType)
+        << "' used in array initialization", getLine() );
+  }
+  auto VarPointerType = PointerType::get(VarType, 0);
+
+
   std::vector<Value*> InitVals;
   InitVals.reserve(Vals_.size());
   for ( auto & E : Vals_ ) InitVals.emplace_back( E->codegen(TheCG) );
 
+  Value* SizeExpr = nullptr;
   if (Size_) {
     SizeExpr = Size_->codegen(TheCG);
     if (Vals_.size() != 1 )
       THROW_SYNTAX_ERROR("Only one value expected in [Val; N] syntax", getLine());
   }
   else {
-    NumVals = Vals_.size();
+    SizeExpr = llvmInteger(TheContext, Vals_.size());
   }
 
-  auto Array = TheCG.createArray(TheFunction, "__tmp", InferredType, NumVals, getLine(), SizeExpr );
-  auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, "__tmp", InferredType,
-          getLine(), true);
-  TheCG.Builder.CreateStore(Array.second, Alloca);
+  auto Array = TheCG.createArray(TheFunction, "__tmp", VarPointerType, SizeExpr );
+  auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, "__tmp", VarPointerType);
+  TheCG.Builder.CreateStore(Array.Data, Alloca);
 
   if (Size_) 
-    TheCG.initArrays(TheFunction, {Alloca}, InitVals[0], NumVals, SizeExpr);
+    TheCG.initArrays(TheFunction, {Alloca}, InitVals[0], SizeExpr);
   else
-  {
     TheCG.initArray(TheFunction, Alloca, InitVals);
-  }
 
-  if (!SizeExpr) SizeExpr = ConstantInt::get(TheCG.TheContext, APInt(64, NumVals, true)); 
-  return {Alloca, Array.second, SizeExpr};
+  return {Alloca, Array.Data, SizeExpr};
 }
 
 //------------------------------------------------------------------------------
@@ -851,6 +883,8 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
 Function *FunctionAST::codegen(CodeGen & TheCG,
     std::map<char, int> & BinopPrecedence)
 {
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
   
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
@@ -864,7 +898,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(TheCG.TheContext, "entry", TheFunction);
-  TheCG.Builder.SetInsertPoint(BB);
+  Builder.SetInsertPoint(BB);
 
   // Create a subprogram DIE for this function.
   auto Unit = TheCG.createFile();
@@ -891,16 +925,26 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
 
     // get arg type
     auto ArgType = P.getArgSymbol(ArgIdx).getType();
+  
+    // the llvm variable type
+    Type * LLType;
+    try {
+      LLType = getLLVMType(ArgType, TheContext);
+    }
+    catch (const ContraError & e) {
+      THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(ArgType)
+          << "' used in function prototype for '" << Proto_->getName() << "'",
+          Proto_->getLine() );
+    }
     
     // Create an alloca for this variable.
-    AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, Arg.getName(),
-        ArgType, LineNo);
+    AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, Arg.getName(), LLType);
     
     // Create a debug descriptor for the variable.
     TheCG.createVariable( SP, Arg.getName(), ++ArgIdx, Unit, LineNo, Alloca);
 
     // Store the initial value into the alloca.
-    TheCG.Builder.CreateStore(&Arg, Alloca);
+    Builder.CreateStore(&Arg, Alloca);
 
     // Add arguments to variable symbol table.
     TheCG.NamedValues[Arg.getName()] = Alloca;
@@ -920,12 +964,12 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   if ( Return_ ) {
     auto RetVal = Return_->codegen(TheCG);
     if (RetVal->getType()->isVoidTy() )
-      TheCG.Builder.CreateRetVoid();
+      Builder.CreateRetVoid();
     else
-      TheCG.Builder.CreateRet(RetVal);
+      Builder.CreateRet(RetVal);
   }
   else {  
-    TheCG.Builder.CreateRetVoid();
+    Builder.CreateRetVoid();
   }
 
   // Validate the generated code, checking for consistency.

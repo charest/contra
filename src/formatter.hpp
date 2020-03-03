@@ -2,6 +2,7 @@
 #define CONTRA_FORMATTER_HPP
 
 #include <sstream>
+#include <vector>
 
 namespace contra {
 
@@ -16,6 +17,16 @@ public:
     {
         stream_ << value;
         return *this;
+    }
+    
+    template<typename Type>
+    Formatter & operator << (const std::vector<Type> & values)
+    {
+      if (!values.empty()) {
+        for (int i=0; i<values.size()-1; ++i) stream_ << values[i] << ", ";
+        stream_ << values.back();
+      }
+      return *this;
     }
 
     std::string str() const         { return stream_.str(); }

@@ -109,33 +109,19 @@ Function *CodeGen::getFunction(std::string Name, int Line) {
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName, VarTypes type, int Line, bool IsPointer)
+    const std::string &VarName, Type* VarType)
 {
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
-
-  Type* LLType;       
-  try {
-    LLType = getLLVMType(type, TheContext);
-  }
-  catch (const ContraError & e) {
-    THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
-  }
-
-  if (IsPointer)
-    LLType = PointerType::get(LLType, 0);
-  
-
-  return TmpB.CreateAlloca(LLType, nullptr, VarName.c_str());
+  return TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
 }
 
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-std::pair<AllocaInst*, Value*> 
-CodeGen::createArray(Function *TheFunction,
-    const std::string &VarName, VarTypes type, std::size_t NumVals, int Line,
-    Value * SizeExpr)
+CodeGen::ArrayType
+CodeGen::createArray(Function *TheFunction, const std::string &VarName,
+    Type * PtrType, Value * SizeExpr)
 {
 
   //----------------------------------------------------------------------------
@@ -147,34 +133,16 @@ CodeGen::createArray(Function *TheFunction,
   F = TheModule->getFunction("allocate");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, "allocate");
 
-  Type* LLType;       
-  std::size_t SizeOf; 
-  if (type == VarTypes::Int) {
-    LLType = llvmIntegerType(TheContext);
-    SizeOf = sizeof(int_t);
-  }
-  else if (type == VarTypes::Real) {
-    LLType = llvmRealType(TheContext);
-    SizeOf = sizeof(real_t);
-  }
-  else {
-    THROW_SYNTAX_ERROR( "Unknown variable type for '" << VarName << "'", Line);
-    return {nullptr, nullptr};
-  }
 
-  LLType = PointerType::get(LLType, 0);
+  auto ElementType = PtrType->getPointerElementType();
+  auto TheBlock = Builder.GetInsertBlock();
+  auto Index = ConstantInt::get(TheContext, APInt(32, 1, true));
+  auto Null = Constant::getNullValue(PtrType);
+  auto SizeGEP = Builder.CreateGEP(ElementType, Null, Index, "size");
+  auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
+          llvmIntegerType(TheContext), "sizei", TheBlock);
 
-  Value* NumElements = nullptr;
-  Value* TotalSize = nullptr;
-  if (SizeExpr) {
-    auto DataSize = ConstantInt::get(TheContext, APInt(64, SizeOf, true));
-    TotalSize = Builder.CreateMul(SizeExpr, DataSize, "multmp");
-    NumElements = SizeExpr;
-  }
-  else {
-    TotalSize = ConstantInt::get(TheContext, APInt(64, SizeOf*NumVals, true));
-    NumElements = ConstantInt::get(TheContext, APInt(64, NumVals, true));
-  }
+  auto TotalSize = Builder.CreateMul(SizeExpr, DataSize, "multmp");
 
   Value* CallInst = Builder.CreateCall(F, TotalSize, VarName+"vectmp");
   auto ResType = CallInst->getType();
@@ -190,10 +158,9 @@ CodeGen::createArray(Function *TheFunction,
   auto LoadedInst = Builder.CreateLoad(GEPInst->getType()->getPointerElementType(),
       GEPInst, VarName+"vec.val");
 
-  auto TheBlock = Builder.GetInsertBlock();
-  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, LLType, "casttmp", TheBlock);
+  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, PtrType, "casttmp", TheBlock);
 
-  return {AllocInst, Cast};
+  return ArrayType{AllocInst, Cast};
 }
  
 //==============================================================================
@@ -202,17 +169,11 @@ CodeGen::createArray(Function *TheFunction,
 void CodeGen::initArrays( Function *TheFunction,
     const std::vector<AllocaInst*> & VarList,
     Value * InitVal,
-    std::size_t NumVals, Value * SizeExpr )
+    Value * SizeExpr )
 {
 
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
   
-  Value* NumElements = nullptr;
-  if (SizeExpr)
-    NumElements = SizeExpr;
-  else
-    NumElements = ConstantInt::get(TheContext, APInt(64, NumVals, true));
-
   auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext), nullptr, "__i");
   Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
   Builder.CreateStore(StartVal, Alloca);
@@ -223,7 +184,7 @@ void CodeGen::initArrays( Function *TheFunction,
   Builder.CreateBr(BeforeBB);
   Builder.SetInsertPoint(BeforeBB);
   auto CurVar = Builder.CreateLoad(llvmIntegerType(TheContext), Alloca);
-  auto EndCond = Builder.CreateICmpSLT(CurVar, NumElements, "initcond");
+  auto EndCond = Builder.CreateICmpSLT(CurVar, SizeExpr, "initcond");
   Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder.SetInsertPoint(LoopBB);
 
