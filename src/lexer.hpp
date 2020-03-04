@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -28,13 +29,17 @@ class Lexer {
   // Filled in if tok_identifier
   std::string IdentifierStr_;
 
+  std::stringstream Tee_;
+  std::string FileName_ = "<stdin>";
+
 public:
 
   // constructor for reading from stdin
   Lexer() = default;
 
   // constructor cor reading from file
-  Lexer( const std::string & filename ){
+  Lexer( const std::string & filename ) : FileName_(filename)
+  {
     InputStream_.open(filename.c_str());
     if (!InputStream_.good()) {
       std::stringstream ss;
@@ -48,6 +53,7 @@ public:
 
   /// read the next character
   int readchar() { return In_->get(); };
+  std::string readline();
   int peek() { return In_->peek(); };
   int eof() { return In_->eof(); }
 
@@ -66,6 +72,8 @@ public:
   const std::string & getIdentifierStr() const
   { return IdentifierStr_; }
 
+  // print out current line
+  std::ostream & barf(std::ostream& out, SourceLocation Loc);
 };
 
 } // namespace

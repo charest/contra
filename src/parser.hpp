@@ -80,6 +80,7 @@ public:
 
   SourceLocation getLoc() const { return TheLex_.getLexLoc(); }
   int getLine() const { return TheLex_.getLexLoc().getLine(); }
+  int getCol() const { return TheLex_.getLexLoc().getCol(); }
 
   // get the symbol table
   const auto & getSymbols() const

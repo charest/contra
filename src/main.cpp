@@ -31,7 +31,6 @@ int main(int argc, char** argv) {
   inp.is_optimized = args.count("O");
   inp.dump_ir = args.count("i");
 
-
   // if we are not interactive and compiling, open a file
   std::string source_filename;
   std::string output_filename;

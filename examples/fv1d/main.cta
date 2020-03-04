@@ -1,0 +1,26 @@
+###############################################################################
+# This is the main function
+###############################################################################
+function main()
+
+  # input parameters
+  var num_cells : i64 = 100
+  var num_ghost : i64 = 1
+  var xleft : f64 = 0
+  var xright : f64 = 1
+
+  # compute the rest of the mesh
+  var tot_cells = num_cells + num_ghost*2
+  var ileft = num_ghost
+  var iright = ileft + num_cells
+
+  var num_points : i64 = num_cells + 1
+
+  var length : f64 = xright - xleft
+  var centroids : [f64] = [0; ]
+
+  for i in ileft to iright
+    centroids[i] = xleft + i/(num_points-1) * length
+  end
+
+end

@@ -521,7 +521,11 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
     }
   }
   else {
-    THROW_SYNTAX_ERROR("Variable definition for '" << VarNames[0] << "'"
+    std::cerr << std::endl;
+    TheLex_.barf(std::cerr, getLoc());
+    std::cerr << std::string(getCol()-2, ' ') << "=" << std::endl;
+    std::cerr << std::endl;
+    THROW_SYNTAX_ERROR("Variable definition for '" << VarNames << "'"
         << " has no initializer", getLine());
   }
 

@@ -7,18 +7,29 @@
 #include <iostream>
 
 namespace contra {
+    
+//==============================================================================
+// Read the rest of the line
+//==============================================================================
+std::string Lexer::readline()
+{
+  std::string tmp;
+  std::getline(*In_, tmp);
+  return tmp;
+}
 
 //==============================================================================
 // Get the next char
 //==============================================================================
 int Lexer::advance() {
-  int LastChar_ = readchar();
+  int LastChar = readchar();
+  Tee_ << static_cast<char>(LastChar);
 
-  if (LastChar_ == '\n' || LastChar_ == '\r')
+  if (LastChar == '\n' || LastChar == '\r')
     LexLoc_.newLine();
   else
     LexLoc_.incrementCol();
-  return LastChar_;
+  return LastChar;
 }
 
 
@@ -134,5 +145,28 @@ int Lexer::gettok() {
   LastChar_ = advance();
   return ThisChar;
 }
+
+//==============================================================================
+/// dump out the current line
+//==============================================================================
+std::ostream & Lexer::barf(std::ostream& out, SourceLocation Loc)
+{
+  auto max = std::numeric_limits<std::streamsize>::max();
+  // finish the line
+  Tee_ << readline(); 
+  // skip lines
+  auto line = Loc.getLine(); 
+  auto col = Loc.getCol();
+  for ( int i=0; i<line-1; ++i ) Tee_.ignore(max, '\n');
+  // get relevant line
+  std::string tmp;
+  std::getline(Tee_, tmp);
+  // start output
+  out << FileName_ << " : Line " << line << " : Col " << col << ":" << std::endl;
+  out << tmp << std::endl;
+  out << std::string(col-2, ' ') << "^" << std::endl;
+  return out;
+}
+
 
 } // namespace
