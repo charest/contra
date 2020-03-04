@@ -26,7 +26,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
     auto FnAST = TheParser.parseFunction();
     if (is_verbose) FnAST->dump(errs(), 1);
     auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
-    if (is_optimized) TheCG.TheFPM->run(*FnIR);
+    if (is_optimized) TheCG.optimize(FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
       TheCG.doJIT();

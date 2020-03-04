@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
 
   // pile if necessary
   if (inp.do_compile)
-    compileLLVM( *TheCG.TheModule, output_filename );
+    compileLLVM( TheCG.getModule(), output_filename );
 
   return 0;
 

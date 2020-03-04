@@ -1,6 +1,7 @@
 #ifndef CONTRA_CODEGEN_HPP
 #define CONTRA_CODEGEN_HPP
 
+#include "array.hpp"
 #include "debug.hpp"
 #include "jit.hpp"
 #include "vartype.hpp"
@@ -27,24 +28,22 @@ class CodeGen {
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
 
-  struct ArrayType {
-    llvm::AllocaInst* Alloca = nullptr;
-    llvm::Value* Data = nullptr;
-  };
-
+  llvm::LLVMContext TheContext_;
+  llvm::IRBuilder<> Builder_;
+  std::unique_ptr<llvm::Module> TheModule_;
+  
+  std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
+  JIT TheJIT_;
 
 public:
 
-  JIT TheJIT;
-
-  llvm::LLVMContext TheContext;
-  llvm::IRBuilder<> Builder;
-  std::unique_ptr<llvm::Module> TheModule;
-  std::map<std::string, AllocaInst *> NamedValues;
-  std::map<std::string, AllocaInst *> NamedArrays;
-  std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   
+  std::map<std::string, AllocaInst *> NamedValues;
+  std::map<std::string, AllocaInst *> NamedArrays;
+  std::map<AllocaInst *, ArrayType> TempArrays;
+
+
   // debug extras
   std::unique_ptr<llvm::DIBuilder> DBuilder;
   DebugInfo KSDbgInfo;
@@ -52,8 +51,10 @@ public:
   // Constructor
   CodeGen (bool);
 
-  llvm::IRBuilder<> & getBuilder() { return Builder; }
-  llvm::LLVMContext & getContext() { return TheContext; }
+  // some accessors
+  llvm::IRBuilder<> & getBuilder() { return Builder_; }
+  llvm::LLVMContext & getContext() { return TheContext_; }
+  llvm::Module & getModule() { return *TheModule_; }
 
   Function *getFunction(std::string Name, int Line); 
 
@@ -68,27 +69,33 @@ public:
   createArray(Function *TheFunction, const std::string &VarName,
       llvm::Type* PtrType, llvm::Value * SizeExpr );
 
+  // Initializes a bunch of arrays with a value
   void initArrays( Function *TheFunction, 
       const std::vector<AllocaInst*> & VarList,
       llvm::Value * InitVal,
       llvm::Value * SizeExpr );
 
+  // initializes an array with a list of values
   void initArray( Function *TheFunction, 
       AllocaInst* Var,
       const std::vector<llvm::Value *> InitVals );
   
+  // copies one array to another
   void copyArrays( Function *TheFunction, 
       AllocaInst* Src,
       const std::vector<AllocaInst*> Tgts,
       llvm::Value * SizeExpr);
 
+  // destroy all arrays
   void destroyArrays();
-
 
   /// Top-Level parsing and JIT Driver
   void initializeModuleAndPassManager();
   void initializeModule();
   void initializePassManager();
+
+  void optimize(llvm::Function* F)
+  { TheFPM_->run(*F); }
 
   // Return true if in debug mode
   auto isDebug() { return static_cast<bool>(DBuilder); }
@@ -119,7 +126,7 @@ public:
       unsigned LineNo, AllocaInst *Alloca);
 
   void emitLocation(ExprAST * ast) { 
-    if (isDebug()) KSDbgInfo.emitLocation(Builder, ast);
+    if (isDebug()) KSDbgInfo.emitLocation(Builder_, ast);
   }
   
   void pushLexicalBlock(llvm::DISubprogram *SP) {

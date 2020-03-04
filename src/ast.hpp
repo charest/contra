@@ -144,11 +144,7 @@ public:
     : ExprAST(Loc, VarType), Vals_(std::move(Vals)), Size_(std::move(Size))
   {}
 
-  Value *codegen(CodeGen &) override
-  { THROW_CONTRA_ERROR("Should not be called"); };
-
-  std::tuple<llvm::AllocaInst*, Value*, Value*>
-  special_codegen(const std::string &, CodeGen &);
+  Value *codegen(CodeGen &) override;
 
   raw_ostream &dump(raw_ostream &out, int ind) override;
 };

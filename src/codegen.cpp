@@ -18,7 +18,7 @@ namespace contra {
 // Constructor
 //==============================================================================
 CodeGen::CodeGen (bool debug = false) :
-  Builder(TheContext)
+  Builder_(TheContext_)
 {
 
   initializeModuleAndPassManager();
@@ -26,14 +26,14 @@ CodeGen::CodeGen (bool debug = false) :
   if (debug) {
 
     // Add the current debug info version into the module.
-    TheModule->addModuleFlag(Module::Warning, "Debug Info Version",
+    TheModule_->addModuleFlag(Module::Warning, "Debug Info Version",
                              DEBUG_METADATA_VERSION);
 
     // Darwin only supports dwarf2.
     if (Triple(sys::getProcessTriple()).isOSDarwin())
-      TheModule->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
+      TheModule_->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
 
-    DBuilder = std::make_unique<DIBuilder>(*TheModule);
+    DBuilder = std::make_unique<DIBuilder>(*TheModule_);
     KSDbgInfo.TheCU = DBuilder->createCompileUnit(
       dwarf::DW_LANG_C, DBuilder->createFile("fib.ks", "."),
       "Kaleidoscope Compiler", 0, "", 0);
@@ -41,7 +41,7 @@ CodeGen::CodeGen (bool debug = false) :
 }
 
 //==============================================================================
-// Top-Level parsing and JIT Driver
+// Initialize module and optimizer
 //==============================================================================
 void CodeGen::initializeModuleAndPassManager() {
   initializeModule();
@@ -51,32 +51,36 @@ void CodeGen::initializeModuleAndPassManager() {
 
 
 //==============================================================================
+// Initialize module
+//==============================================================================
 void CodeGen::initializeModule() {
 
   // Open a new module.
-  TheModule = std::make_unique<Module>("my cool jit", TheContext);
-  TheModule->setDataLayout(TheJIT.getTargetMachine().createDataLayout());
+  TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
+  TheModule_->setDataLayout(TheJIT_.getTargetMachine().createDataLayout());
 
 }
 
 
 //==============================================================================
+// Initialize optimizer
+//==============================================================================
 void CodeGen::initializePassManager() {
 
   // Create a new pass manager attached to it.
-  TheFPM = std::make_unique<legacy::FunctionPassManager>(TheModule.get());
+  TheFPM_ = std::make_unique<legacy::FunctionPassManager>(TheModule_.get());
 
   // Promote allocas to registers.
-  TheFPM->add(createPromoteMemoryToRegisterPass());
+  TheFPM_->add(createPromoteMemoryToRegisterPass());
   // Do simple "peephole" optimizations and bit-twiddling optzns.
-  TheFPM->add(createInstructionCombiningPass());
+  TheFPM_->add(createInstructionCombiningPass());
   // Reassociate expressions.
-  TheFPM->add(createReassociatePass());
+  TheFPM_->add(createReassociatePass());
   // Eliminate Common SubExpressions.
-  TheFPM->add(createGVNPass());
+  TheFPM_->add(createGVNPass());
   // Simplify the control flow graph (deleting unreachable blocks, etc).
-  TheFPM->add(createCFGSimplificationPass());
-  TheFPM->doInitialization();
+  TheFPM_->add(createCFGSimplificationPass());
+  TheFPM_->doInitialization();
 }
 
 //==============================================================================
@@ -85,11 +89,11 @@ void CodeGen::initializePassManager() {
 Function *CodeGen::getFunction(std::string Name, int Line) {
 
   // First, see if the function has already been added to the current module.
-  if (auto F = TheModule->getFunction(Name))
+  if (auto F = TheModule_->getFunction(Name))
     return F;
   
   // see if this is an available intrinsic, try installing it first
-  if (auto F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, Name))
+  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
     return F;
 
   // If not, check whether we can codegen the declaration from some existing
@@ -119,48 +123,46 @@ AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-CodeGen::ArrayType
+ArrayType
 CodeGen::createArray(Function *TheFunction, const std::string &VarName,
     Type * PtrType, Value * SizeExpr)
 {
 
-  //----------------------------------------------------------------------------
-  // Create Array
 
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
 
   Function *F; 
-  F = TheModule->getFunction("allocate");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, "allocate");
+  F = TheModule_->getFunction("allocate");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
   auto ElementType = PtrType->getPointerElementType();
-  auto TheBlock = Builder.GetInsertBlock();
-  auto Index = ConstantInt::get(TheContext, APInt(32, 1, true));
+  auto TheBlock = Builder_.GetInsertBlock();
+  auto Index = ConstantInt::get(TheContext_, APInt(32, 1, true));
   auto Null = Constant::getNullValue(PtrType);
-  auto SizeGEP = Builder.CreateGEP(ElementType, Null, Index, "size");
+  auto SizeGEP = Builder_.CreateGEP(ElementType, Null, Index, "size");
   auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
-          llvmIntegerType(TheContext), "sizei", TheBlock);
+          llvmIntegerType(TheContext_), "sizei", TheBlock);
 
-  auto TotalSize = Builder.CreateMul(SizeExpr, DataSize, "multmp");
+  auto TotalSize = Builder_.CreateMul(SizeExpr, DataSize, "multmp");
 
-  Value* CallInst = Builder.CreateCall(F, TotalSize, VarName+"vectmp");
+  Value* CallInst = Builder_.CreateCall(F, TotalSize, VarName+"vectmp");
   auto ResType = CallInst->getType();
   auto AllocInst = TmpB.CreateAlloca(ResType, 0, VarName+"vec");
-  Builder.CreateStore(CallInst, AllocInst);
+  Builder_.CreateStore(CallInst, AllocInst);
 
   std::vector<Value*> MemberIndices(2);
-  MemberIndices[0] = ConstantInt::get(TheContext, APInt(32, 0, true));
-  MemberIndices[1] = ConstantInt::get(TheContext, APInt(32, 0, true));
+  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
+  MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 0, true));
 
-  auto GEPInst = Builder.CreateGEP(ResType, AllocInst, MemberIndices,
+  auto GEPInst = Builder_.CreateGEP(ResType, AllocInst, MemberIndices,
       VarName+"vec.ptr");
-  auto LoadedInst = Builder.CreateLoad(GEPInst->getType()->getPointerElementType(),
+  auto LoadedInst = Builder_.CreateLoad(GEPInst->getType()->getPointerElementType(),
       GEPInst, VarName+"vec.val");
 
   Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, PtrType, "casttmp", TheBlock);
 
-  return ArrayType{AllocInst, Cast};
+  return ArrayType{AllocInst, Cast, SizeExpr};
 }
  
 //==============================================================================
@@ -174,32 +176,32 @@ void CodeGen::initArrays( Function *TheFunction,
 
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
   
-  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext), nullptr, "__i");
-  Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
-  Builder.CreateStore(StartVal, Alloca);
+  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext_), nullptr, "__i");
+  Value * StartVal = llvmInteger(TheContext_, 0);
+  Builder_.CreateStore(StartVal, Alloca);
   
-  auto BeforeBB = BasicBlock::Create(TheContext, "beforeinit", TheFunction);
-  auto LoopBB =   BasicBlock::Create(TheContext, "init", TheFunction);
-  auto AfterBB =  BasicBlock::Create(TheContext, "afterinit", TheFunction);
-  Builder.CreateBr(BeforeBB);
-  Builder.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder.CreateLoad(llvmIntegerType(TheContext), Alloca);
-  auto EndCond = Builder.CreateICmpSLT(CurVar, SizeExpr, "initcond");
-  Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
-  Builder.SetInsertPoint(LoopBB);
+  auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
+  auto LoopBB =   BasicBlock::Create(TheContext_, "init", TheFunction);
+  auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
+  Builder_.CreateBr(BeforeBB);
+  Builder_.SetInsertPoint(BeforeBB);
+  auto CurVar = Builder_.CreateLoad(llvmIntegerType(TheContext_), Alloca);
+  auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeExpr, "initcond");
+  Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
+  Builder_.SetInsertPoint(LoopBB);
 
   for ( auto i : VarList) {
     auto LoadType = i->getType()->getPointerElementType();
-    auto Load = Builder.CreateLoad(LoadType, i, "ptr"); 
-    auto GEP = Builder.CreateGEP(Load, CurVar, "offset");
-    Builder.CreateStore(InitVal, GEP);
+    auto Load = Builder_.CreateLoad(LoadType, i, "ptr"); 
+    auto GEP = Builder_.CreateGEP(Load, CurVar, "offset");
+    Builder_.CreateStore(InitVal, GEP);
   }
 
-  auto StepVal = ConstantInt::get(TheContext, APInt(64, 1, true));
-  auto NextVar = Builder.CreateAdd(CurVar, StepVal, "nextvar");
-  Builder.CreateStore(NextVar, Alloca);
-  Builder.CreateBr(BeforeBB);
-  Builder.SetInsertPoint(AfterBB);
+  auto StepVal = llvmInteger(TheContext_, 1);
+  auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
+  Builder_.CreateStore(NextVar, Alloca);
+  Builder_.CreateBr(BeforeBB);
+  Builder_.SetInsertPoint(AfterBB);
 }
   
 //==============================================================================
@@ -213,30 +215,30 @@ void CodeGen::initArray(
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
   
   auto NumVals = InitVals.size();
-  auto TheBlock = Builder.GetInsertBlock();
+  auto TheBlock = Builder_.GetInsertBlock();
 
   auto LoadType = Var->getType()->getPointerElementType();
   auto ValType = LoadType->getPointerElementType();
-  auto Load = Builder.CreateLoad(LoadType, Var, "ptr"); 
+  auto Load = Builder_.CreateLoad(LoadType, Var, "ptr"); 
   
   for (std::size_t i=0; i<NumVals; ++i) {
-    auto Index = ConstantInt::get(TheContext, APInt(64, i, true));
-    auto GEP = Builder.CreateGEP(Load, Index, "offset");
+    auto Index = llvmInteger(TheContext_, i);
+    auto GEP = Builder_.CreateGEP(Load, Index, "offset");
     auto Init = InitVals[i];
     auto InitType = Init->getType();
     if ( InitType->isFloatingPointTy() && ValType->isIntegerTy() ) {
       auto Cast = CastInst::Create(Instruction::FPToSI, Init,
-          llvmIntegerType(TheContext), "cast", TheBlock);
+          llvmIntegerType(TheContext_), "cast", TheBlock);
       Init = Cast;
     }
     else if ( InitType->isIntegerTy() && ValType->isFloatingPointTy() ) {
       auto Cast = CastInst::Create(Instruction::SIToFP, Init,
-          llvmRealType(TheContext), "cast", TheBlock);
+          llvmRealType(TheContext_), "cast", TheBlock);
       Init = Cast;
     }
     else if (InitType!=ValType)
       THROW_CONTRA_ERROR("Unknown cast operation");
-    Builder.CreateStore(Init, GEP);
+    Builder_.CreateStore(Init, GEP);
   }
 }
 
@@ -252,38 +254,38 @@ void CodeGen::copyArrays(
 
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
 
-  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext), nullptr, "__i");
-  Value * StartVal = ConstantInt::get(TheContext, APInt(64, 0, true));
-  Builder.CreateStore(StartVal, Alloca);
+  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext_), nullptr, "__i");
+  Value * StartVal = llvmInteger(TheContext_, 0);
+  Builder_.CreateStore(StartVal, Alloca);
   
-  auto BeforeBB = BasicBlock::Create(TheContext, "beforeinit", TheFunction);
-  auto LoopBB =   BasicBlock::Create(TheContext, "init", TheFunction);
-  auto AfterBB =  BasicBlock::Create(TheContext, "afterinit", TheFunction);
-  Builder.CreateBr(BeforeBB);
-  Builder.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder.CreateLoad(llvmIntegerType(TheContext), Alloca);
-  auto EndCond = Builder.CreateICmpSLT(CurVar, NumElements, "initcond");
-  Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
-  Builder.SetInsertPoint(LoopBB);
+  auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
+  auto LoopBB =   BasicBlock::Create(TheContext_, "init", TheFunction);
+  auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
+  Builder_.CreateBr(BeforeBB);
+  Builder_.SetInsertPoint(BeforeBB);
+  auto CurVar = Builder_.CreateLoad(llvmIntegerType(TheContext_), Alloca);
+  auto EndCond = Builder_.CreateICmpSLT(CurVar, NumElements, "initcond");
+  Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
+  Builder_.SetInsertPoint(LoopBB);
     
   auto PtrType = Src->getType()->getPointerElementType();
   auto ValType = PtrType->getPointerElementType();
 
-  auto SrcLoad = Builder.CreateLoad(PtrType, Src, "srcptr"); 
-  auto SrcGEP = Builder.CreateGEP(SrcLoad, CurVar, "srcoffset");
-  auto SrcVal = Builder.CreateLoad(ValType, SrcLoad, "srcval");
+  auto SrcLoad = Builder_.CreateLoad(PtrType, Src, "srcptr"); 
+  auto SrcGEP = Builder_.CreateGEP(SrcLoad, CurVar, "srcoffset");
+  auto SrcVal = Builder_.CreateLoad(ValType, SrcLoad, "srcval");
 
   for ( auto T : Tgts ) {
-    auto TgtLoad = Builder.CreateLoad(PtrType, T, "tgtptr"); 
-    auto TgtGEP = Builder.CreateGEP(TgtLoad, CurVar, "tgtoffset");
-    Builder.CreateStore(SrcVal, TgtGEP);
+    auto TgtLoad = Builder_.CreateLoad(PtrType, T, "tgtptr"); 
+    auto TgtGEP = Builder_.CreateGEP(TgtLoad, CurVar, "tgtoffset");
+    Builder_.CreateStore(SrcVal, TgtGEP);
   }
 
-  auto StepVal = ConstantInt::get(TheContext, APInt(64, 1, true));
-  auto NextVar = Builder.CreateAdd(CurVar, StepVal, "nextvar");
-  Builder.CreateStore(NextVar, Alloca);
-  Builder.CreateBr(BeforeBB);
-  Builder.SetInsertPoint(AfterBB);
+  auto StepVal = llvmInteger(TheContext_, 1);
+  auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
+  Builder_.CreateStore(NextVar, Alloca);
+  Builder_.CreateBr(BeforeBB);
+  Builder_.SetInsertPoint(AfterBB);
 }
   
 
@@ -293,17 +295,17 @@ void CodeGen::copyArrays(
 void CodeGen::destroyArrays() {
   
   Function *F; 
-  F = TheModule->getFunction("deallocate");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext, *TheModule, "deallocate");
+  F = TheModule_->getFunction("deallocate");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
   
   for ( auto & i : NamedArrays )
   {
     const auto & Name = i.first;
     auto & Alloca = i.second;
     auto AllocaT = Alloca->getType()->getPointerElementType();
-    auto Vec = Builder.CreateLoad(AllocaT, Alloca, Name+"vec");
+    auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
   
-    auto CallInst = Builder.CreateCall(F, Vec, Name+"dealloctmp");
+    auto CallInst = Builder_.CreateCall(F, Vec, Name+"dealloctmp");
   }
 
   NamedArrays.clear();
@@ -315,7 +317,7 @@ void CodeGen::destroyArrays() {
 //==============================================================================
 JIT::VModuleKey CodeGen::doJIT()
 {
-  auto H = TheJIT.addModule(std::move(TheModule));
+  auto H = TheJIT_.addModule(std::move(TheModule_));
   initializeModuleAndPassManager();
   return H;
 }
@@ -324,13 +326,13 @@ JIT::VModuleKey CodeGen::doJIT()
 // Search the JIT for a symbol
 //==============================================================================
 JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
-{ return TheJIT.findSymbol(Symbol); }
+{ return TheJIT_.findSymbol(Symbol); }
 
 //==============================================================================
 // Delete a JITed module
 //==============================================================================
 void CodeGen::removeJIT( JIT::VModuleKey H )
-{ TheJIT.removeModule(H); }
+{ TheJIT_.removeModule(H); }
 
 //==============================================================================
 // Finalize whatever needs to be
@@ -403,7 +405,7 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 
     DBuilder->insertDeclare(Alloca, D, DBuilder->createExpression(),
         DebugLoc::get(LineNo, 0, SP),
-        Builder.GetInsertBlock());
+        Builder_.GetInsertBlock());
 
     return D;
   }

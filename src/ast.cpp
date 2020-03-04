@@ -27,7 +27,7 @@ template<>
 Value *IntegerExprAST::codegen(CodeGen & TheCG)
 {
   TheCG.emitLocation(this);
-  return llvmInteger(TheCG.TheContext, Val_);
+  return llvmInteger(TheCG.getContext(), Val_);
 }
 
 //------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ template<>
 Value *RealExprAST::codegen(CodeGen & TheCG)
 {
   TheCG.emitLocation(this);
-  return llvmReal(TheCG.TheContext, Val_);
+  return llvmReal(TheCG.getContext(), Val_);
 }
 
 //------------------------------------------------------------------------------
@@ -59,8 +59,8 @@ template<>
 Value *StringExprAST::codegen(CodeGen & TheCG)
 {
   TheCG.emitLocation(this);
-  auto & TheContext = TheCG.TheContext;
-  auto & TheModule = *TheCG.TheModule;
+  auto & TheContext = TheCG.getContext();
+  auto & TheModule = TheCG.getModule();
   auto ConstantArray = ConstantDataArray::getString(TheContext, Val_);
   auto GVStr = new GlobalVariable(TheModule, ConstantArray->getType(), true,
       GlobalValue::InternalLinkage, ConstantArray);
@@ -80,6 +80,8 @@ raw_ostream &StringExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *VariableExprAST::codegen(CodeGen & TheCG)
 {
+  auto & Builder = TheCG.getBuilder();
+
   // Look this variable up in the function.
   auto it = TheCG.NamedValues.find(Name_);
   if (it == TheCG.NamedValues.end()) 
@@ -93,7 +95,7 @@ Value *VariableExprAST::codegen(CodeGen & TheCG)
   if (!Ty->isPointerTy()) THROW_CONTRA_ERROR("why are you NOT a pointer");
   Ty = Ty->getPointerElementType();
     
-  auto Load = TheCG.Builder.CreateLoad(Ty, V, "ptr."+Name_);
+  auto Load = Builder.CreateLoad(Ty, V, "ptr."+Name_);
 
   if ( !Index_ ) {
     if (TheCG.NamedArrays.count(Name_))
@@ -103,8 +105,8 @@ Value *VariableExprAST::codegen(CodeGen & TheCG)
   else {
     Ty = Ty->getPointerElementType();
     auto IndexVal = Index_->codegen(TheCG);
-    auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, Name_+".offset");
-    return TheCG.Builder.CreateLoad(Ty, GEP, Name_+".i");
+    auto GEP = Builder.CreateGEP(Load, IndexVal, Name_+".offset");
+    return Builder.CreateLoad(Ty, GEP, Name_+".i");
   }
 }
 
@@ -118,6 +120,9 @@ raw_ostream &VariableExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *BinaryExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
+  
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
   
   // Special case '=' because we don't want to emit the LHS as an expression.
   if (Op_ == '=') {
@@ -141,13 +146,13 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
       if (!LHSE->isArray())
         THROW_SYNTAX_ERROR("Arrays must be indexed using '[i]'", LHSE->getLine());
       auto Ty = Variable->getType()->getPointerElementType();
-      auto Load = TheCG.Builder.CreateLoad(Ty, Variable, "ptr."+VarName);
+      auto Load = Builder.CreateLoad(Ty, Variable, "ptr."+VarName);
       auto IndexVal = LHSE->getIndex()->codegen(TheCG);
-      auto GEP = TheCG.Builder.CreateGEP(Load, IndexVal, VarName+"aoffset");
-      TheCG.Builder.CreateStore(Val, GEP);
+      auto GEP = Builder.CreateGEP(Load, IndexVal, VarName+"aoffset");
+      Builder.CreateStore(Val, GEP);
     }
     else {
-      TheCG.Builder.CreateStore(Val, Variable);
+      Builder.CreateStore(Val, Variable);
     }
     return Val;
   }
@@ -160,15 +165,15 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
   bool is_real =  (l_is_real || r_is_real);
 
   if (is_real) {
-    auto TheBlock = TheCG.Builder.GetInsertBlock();
+    auto TheBlock = Builder.GetInsertBlock();
     if (!l_is_real) {
       auto cast = CastInst::Create(Instruction::SIToFP, L,
-          llvmRealType(TheCG.TheContext), "castl", TheBlock);
+          llvmRealType(TheContext), "castl", TheBlock);
       L = cast;
     }
     else if (!r_is_real) {
       auto cast = CastInst::Create(Instruction::SIToFP, R,
-          llvmRealType(TheCG.TheContext), "castr", TheBlock);
+          llvmRealType(TheContext), "castr", TheBlock);
       R = cast;
     }
   }
@@ -176,15 +181,15 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
   if (is_real) {
     switch (Op_) {
     case tok_add:
-      return TheCG.Builder.CreateFAdd(L, R, "addtmp");
+      return Builder.CreateFAdd(L, R, "addtmp");
     case tok_sub:
-      return TheCG.Builder.CreateFSub(L, R, "subtmp");
+      return Builder.CreateFSub(L, R, "subtmp");
     case tok_mul:
-      return TheCG.Builder.CreateFMul(L, R, "multmp");
+      return Builder.CreateFMul(L, R, "multmp");
     case tok_div:
-      return TheCG.Builder.CreateFDiv(L, R, "divtmp");
+      return Builder.CreateFDiv(L, R, "divtmp");
     case tok_lt:
-      return TheCG.Builder.CreateFCmpULT(L, R, "cmptmp");
+      return Builder.CreateFCmpULT(L, R, "cmptmp");
     default:
       THROW_SYNTAX_ERROR( "'" << getTokName(Op_) << "' not supported yet for reals", getLine() );
     } 
@@ -192,15 +197,15 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
   else {
     switch (Op_) {
     case tok_add:
-      return TheCG.Builder.CreateAdd(L, R, "addtmp");
+      return Builder.CreateAdd(L, R, "addtmp");
     case tok_sub:
-      return TheCG.Builder.CreateSub(L, R, "subtmp");
+      return Builder.CreateSub(L, R, "subtmp");
     case tok_mul:
-      return TheCG.Builder.CreateMul(L, R, "multmp");
+      return Builder.CreateMul(L, R, "multmp");
     case tok_div:
-      return TheCG.Builder.CreateSDiv(L, R, "divtmp");
+      return Builder.CreateSDiv(L, R, "divtmp");
     case tok_lt:
-      return TheCG.Builder.CreateICmpSLT(L, R, "cmptmp");
+      return Builder.CreateICmpSLT(L, R, "cmptmp");
     default:
       THROW_SYNTAX_ERROR( "'" << getTokName(Op_) << "' not supported yet for ints", getLine() );
     }
@@ -212,7 +217,7 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
   if (!F) THROW_CONTRA_ERROR("binary operator not found!");
 
   Value *Ops[] = { L, R };
-  return TheCG.Builder.CreateCall(F, Ops, "binop");
+  return Builder.CreateCall(F, Ops, "binop");
 }
 
 //------------------------------------------------------------------------------
@@ -228,6 +233,9 @@ raw_ostream &BinaryExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *CallExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
+  
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
 
   // Look up the name in the global module table.
   auto CalleeF = TheCG.getFunction(Callee_, getLine());
@@ -249,22 +257,22 @@ Value *CallExprAST::codegen(CodeGen & TheCG) {
     // what is the arg type
     auto A = Args_[i]->codegen(TheCG);
     if (i < NumFixedArgs) {
-      auto TheBlock = TheCG.Builder.GetInsertBlock();
+      auto TheBlock = Builder.GetInsertBlock();
       if (FunType->getParamType(i)->isFloatingPointTy() && A->getType()->isIntegerTy()) {
         auto cast = CastInst::Create(Instruction::SIToFP, A,
-            llvmRealType(TheCG.TheContext), "cast", TheBlock);
+            llvmRealType(TheContext), "cast", TheBlock);
         A = cast;
       }
       else if (FunType->getParamType(i)->isIntegerTy() && A->getType()->isFloatingPointTy()) {
         auto cast = CastInst::Create(Instruction::FPToSI, A,
-            llvmIntegerType(TheCG.TheContext), "cast", TheBlock);
+            llvmIntegerType(TheContext), "cast", TheBlock);
         A = cast;
       }
     }
     ArgsV.push_back(A);
   }
 
-  return TheCG.Builder.CreateCall(CalleeF, ArgsV, "calltmp");
+  return Builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
   
 //------------------------------------------------------------------------------
@@ -280,71 +288,74 @@ raw_ostream &CallExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Value *IfExprAST::codegen(CodeGen & TheCG) {
   TheCG.emitLocation(this);
+  
+  auto & TheContext = TheCG.getContext();
+  auto & Builder = TheCG.getBuilder();
 
   if ( Then_.empty() && Else_.empty() )
-    return Constant::getNullValue(llvmIntegerType(TheCG.TheContext));
+    return Constant::getNullValue(llvmIntegerType(TheContext));
   else if (Then_.empty())
     THROW_SYNTAX_ERROR( "Can't have else with no if!", getLine() );
 
 
   Value *CondV = Cond_->codegen(TheCG);
 
-  auto TheFunction = TheCG.Builder.GetInsertBlock()->getParent();
+  auto TheFunction = Builder.GetInsertBlock()->getParent();
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
-  BasicBlock *ThenBB = BasicBlock::Create(TheCG.TheContext, "then", TheFunction);
-  BasicBlock *ElseBB = Else_.empty() ? nullptr : BasicBlock::Create(TheCG.TheContext, "else");
-  BasicBlock *MergeBB = BasicBlock::Create(TheCG.TheContext, "ifcont");
+  BasicBlock *ThenBB = BasicBlock::Create(TheContext, "then", TheFunction);
+  BasicBlock *ElseBB = Else_.empty() ? nullptr : BasicBlock::Create(TheContext, "else");
+  BasicBlock *MergeBB = BasicBlock::Create(TheContext, "ifcont");
 
   if (ElseBB)
-    TheCG.Builder.CreateCondBr(CondV, ThenBB, ElseBB);
+    Builder.CreateCondBr(CondV, ThenBB, ElseBB);
   else
-    TheCG.Builder.CreateCondBr(CondV, ThenBB, MergeBB);
+    Builder.CreateCondBr(CondV, ThenBB, MergeBB);
 
   // Emit then value.
-  TheCG.Builder.SetInsertPoint(ThenBB);
+  Builder.SetInsertPoint(ThenBB);
 
   for ( auto & stmt : Then_ ) stmt->codegen(TheCG);
 
   // get first non phi instruction
   auto ThenV = ThenBB->getFirstNonPHI();
 
-  TheCG.Builder.CreateBr(MergeBB);
+  Builder.CreateBr(MergeBB);
 
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
-  ThenBB = TheCG.Builder.GetInsertBlock();
+  ThenBB = Builder.GetInsertBlock();
 
   if (ElseBB) {
 
     // Emit else block.
     TheFunction->getBasicBlockList().push_back(ElseBB);
-    TheCG.Builder.SetInsertPoint(ElseBB);
+    Builder.SetInsertPoint(ElseBB);
 
     for ( auto & stmt : Else_ ) stmt->codegen(TheCG);
 
     // get first non phi
     auto ElseV = ElseBB->getFirstNonPHI();
 
-    TheCG.Builder.CreateBr(MergeBB);
+    Builder.CreateBr(MergeBB);
     // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
-    ElseBB = TheCG.Builder.GetInsertBlock();
+    ElseBB = Builder.GetInsertBlock();
 
   } // else
 
   // Emit merge block.
   TheFunction->getBasicBlockList().push_back(MergeBB);
-  TheCG.Builder.SetInsertPoint(MergeBB);
+  Builder.SetInsertPoint(MergeBB);
   //ElseV->getType()->print(outs());
   //outs() << "\n";
-  //PHINode *PN = TheCG.Builder.CreatePHI(ThenV->getType(), 2, "iftmp");
+  //PHINode *PN = Builder.CreatePHI(ThenV->getType(), 2, "iftmp");
 
   //if (ThenV) PN->addIncoming(ThenV, ThenBB);
   //if (ElseV) PN->addIncoming(ElseV, ElseBB);
   //return PN;
   
   // for expr always returns 0.
-  return Constant::getNullValue(llvmIntegerType(TheCG.TheContext));
+  return Constant::getNullValue(llvmIntegerType(TheContext));
 }
   
 //------------------------------------------------------------------------------
@@ -515,13 +526,16 @@ raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 Value *UnaryExprAST::codegen(CodeGen & TheCG) {
+  
+  auto & Builder = TheCG.getBuilder();
+  
   auto OperandV = Operand_->codegen(TheCG);
   
   if (OperandV->getType()->isFloatingPointTy()) {
   
     switch (Opcode_) {
     case tok_sub:
-      return TheCG.Builder.CreateFNeg(OperandV, "negtmp");
+      return Builder.CreateFNeg(OperandV, "negtmp");
     default:
       THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(Opcode_)
           << "'", getLine() );
@@ -531,7 +545,7 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG) {
   else {
     switch (Opcode_) {
     case tok_sub:
-      return TheCG.Builder.CreateNeg(OperandV, "negtmp");
+      return Builder.CreateNeg(OperandV, "negtmp");
     default:
       THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(Opcode_)
           << "'", getLine() );
@@ -543,7 +557,7 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG) {
     THROW_SYNTAX_ERROR("Unknown unary operator", getLine());
 
   TheCG.emitLocation(this);
-  return TheCG.Builder.CreateCall(F, OperandV, "unop");
+  return Builder.CreateCall(F, OperandV, "unop");
 }
   
 //------------------------------------------------------------------------------
@@ -587,7 +601,7 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
   for (const auto & VarName : VarNames_) {
     
     // cast init value if necessary
-    auto TheBlock = TheCG.Builder.GetInsertBlock();
+    auto TheBlock = Builder.GetInsertBlock();
     if (VarType_ == VarTypes::Real && !InitVal->getType()->isFloatingPointTy()) {
       auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
           llvmRealType(TheContext), "cast", TheBlock);
@@ -669,14 +683,14 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
 
     // transfer to first
     const auto & VarName = VarNames_[0];
-    auto InitVal = ArrayAST->special_codegen(VarName, TheCG);
-    auto ArrayAlloca = std::get<0>(InitVal);
-    auto Array = std::get<1>(InitVal);
-    auto SizeExpr = std::get<2>(InitVal);
-    ReturnInit = Array;
+    auto ArrayAlloca = static_cast<AllocaInst*>(ArrayAST->codegen(TheCG));
+    auto Array = TheCG.TempArrays[ArrayAlloca];
+    TheCG.TempArrays.erase(ArrayAlloca);
+    auto SizeExpr = Array.Size;
+    ReturnInit = Array.Data;
     auto FirstAlloca = TheCG.createEntryBlockAlloca(TheFunction, VarName,
         VarPointerType);
-    Builder.CreateStore(Array, FirstAlloca);
+    Builder.CreateStore(Array.Data, FirstAlloca);
     TheCG.NamedValues[VarName] = FirstAlloca;
     TheCG.NamedArrays[VarName] = ArrayAlloca;
   
@@ -781,8 +795,7 @@ raw_ostream &ArrayVarExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
-std::tuple<AllocaInst*, Value*, Value*>
-ArrayExprAST::special_codegen(const std::string & Name, CodeGen & TheCG)
+Value* ArrayExprAST::codegen(CodeGen & TheCG)
 {
   
   auto & TheContext = TheCG.getContext();
@@ -817,14 +830,16 @@ ArrayExprAST::special_codegen(const std::string & Name, CodeGen & TheCG)
 
   auto Array = TheCG.createArray(TheFunction, "__tmp", VarPointerType, SizeExpr );
   auto Alloca = TheCG.createEntryBlockAlloca(TheFunction, "__tmp", VarPointerType);
-  TheCG.Builder.CreateStore(Array.Data, Alloca);
+  Builder.CreateStore(Array.Data, Alloca);
 
   if (Size_) 
     TheCG.initArrays(TheFunction, {Alloca}, InitVals[0], SizeExpr);
   else
     TheCG.initArray(TheFunction, Alloca, InitVals);
 
-  return {Alloca, Array.Data, SizeExpr};
+  TheCG.TempArrays[Array.Alloca] = Array;
+
+  return Array.Alloca;
 }
 
 //------------------------------------------------------------------------------
@@ -837,7 +852,7 @@ raw_ostream &ArrayExprAST::dump(raw_ostream &out, int ind) {
 //==============================================================================
 Function *PrototypeAST::codegen(CodeGen & TheCG) {
 
-  // Make the function type:  double(double,double) etc.
+  auto & TheContext = TheCG.getContext();
   
   std::vector<Type *> ArgTypes;
   ArgTypes.reserve(Args_.size());
@@ -846,7 +861,7 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
     auto VarType = A.second.getType();
     Type * LLType;
     try {
-      LLType = getLLVMType(VarType, TheCG.TheContext);
+      LLType = getLLVMType(VarType, TheContext);
     }
     catch (const ContraError & e) {
       THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(VarType)
@@ -857,7 +872,7 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
   
   Type * ReturnType;
   try {
-    ReturnType = getLLVMType(Return_, TheCG.TheContext);
+    ReturnType = getLLVMType(Return_, TheContext);
   }
   catch (const ContraError & e) {
     THROW_SYNTAX_ERROR( "Unknown return type of '" << getVarTypeName(Return_)
@@ -867,7 +882,7 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
   Function *F =
-      Function::Create(FT, Function::ExternalLinkage, Name_, TheCG.TheModule.get());
+      Function::Create(FT, Function::ExternalLinkage, Name_, &TheCG.getModule());
 
   // Set names for all arguments.
   unsigned Idx = 0;
@@ -897,7 +912,7 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
     BinopPrecedence[P.getOperatorName()] = P.getBinaryPrecedence();
 
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheCG.TheContext, "entry", TheFunction);
+  BasicBlock *BB = BasicBlock::Create(TheContext, "entry", TheFunction);
   Builder.SetInsertPoint(BB);
 
   // Create a subprogram DIE for this function.
