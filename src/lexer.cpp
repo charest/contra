@@ -48,7 +48,7 @@ int Lexer::gettok() {
   // identifier: [a-zA-Z][a-zA-Z0-9]*
   if (isalpha(LastChar_)) {
     IdentifierStr_ = LastChar_;
-    while (isalnum((LastChar_ = advance())))
+    while (isalnum((LastChar_ = advance())) || LastChar_=='_')
       IdentifierStr_ += LastChar_;
 
     for ( int i=0; i<num_keywords; ++i )
@@ -59,19 +59,30 @@ int Lexer::gettok() {
 
   //----------------------------------------------------------------------------
   // Number: [0-9.]+
-  if (isdigit(LastChar_) || LastChar_ == '.' || LastChar_ == '+' || LastChar_ == '-') {
+  //if (isdigit(LastChar_) || LastChar_ == '.') { // Number: [0-9.]+
+  //  std::string NumStr;
+  //  do {
+  //    NumStr += LastChar_;
+  //    LastChar_ = advance();
+  //  } while (isdigit(LastChar_) || LastChar_ == '.');
+
+  //  IdentifierStr_ = NumStr; 
+  //  return tok_int_number;
+  //}
+
+  if (isdigit(LastChar_) || LastChar_ == '.' /*|| LastChar_ == '+' || LastChar_ == '-'*/) {
 
     IdentifierStr_.clear();
 
     // peak if this is a unary or number
-    if (LastChar_ == '+' || LastChar_ == '-') {
-      auto NextChar = peek();
-      if ( !isdigit(NextChar) && NextChar != '.' ) {
-        int ThisChar = LastChar_;
-        LastChar_ = advance();
-        return ThisChar;
-      }
-    }
+    //if (LastChar_ == '+' || LastChar_ == '-') {
+    //  auto NextChar = peek();
+    //  if ( !isdigit(NextChar) && NextChar != '.' ) {
+    //    int ThisChar = LastChar_;
+    //    LastChar_ = advance();
+    //    return ThisChar;
+    //  }
+    //}
 
     // read first part of number
     bool is_float = (LastChar_ == '.');
@@ -164,7 +175,7 @@ std::ostream & Lexer::barf(std::ostream& out, SourceLocation Loc)
   // start output
   out << FileName_ << " : Line " << line << " : Col " << col << ":" << std::endl;
   out << tmp << std::endl;
-  out << std::string(col-2, ' ') << "^" << std::endl;
+  out << std::string(col-1, ' ') << "^" << std::endl;
   return out;
 }
 

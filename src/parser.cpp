@@ -44,10 +44,15 @@ std::unique_ptr<ExprAST> Parser::parseStringExpr() {
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::parseParenExpr() {
   getNextToken(); // eat (.
+  auto Loc = getLoc();
   auto V = parseExpression();
 
-  if (CurTok_ != ')')
-    THROW_SYNTAX_ERROR("Expected ')'", getLine());
+  if (CurTok_ != ')') { 
+    std::cerr << std::endl;
+    TheLex_.barf(std::cerr, Loc);
+    std::cerr << std::endl;
+    THROW_SYNTAX_ERROR("Expected ')'", Loc.getLine());
+  }
   getNextToken(); // eat ).
   return V;
 }
@@ -70,9 +75,13 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
     
     // get variable type
     auto vit = NamedValues_.find(IdName);
-    if ( vit == NamedValues_.end() )
+    if ( vit == NamedValues_.end() ) {
+      std::cerr << std::endl;
+      TheLex_.barf(std::cerr, LitLoc);
+      std::cerr << std::endl;
       THROW_NAME_ERROR( "Variable '" << IdName << "' was referenced but not defined",
-        getLine() );
+        LitLoc.getLine() );
+    }
     
     // variable type
     const auto & TheSymbol = vit->second;
@@ -216,6 +225,7 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 // forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::parseForExpr() {
+  auto ForLoc = getLoc();
   getNextToken(); // eat the for.
 
   auto IdentLoc = getLoc();
@@ -250,6 +260,7 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", getLine());
   getNextToken(); // eat to
 
+  auto EndLoc = getLoc();
   auto End = parseExpression();
 
   // The step value is optional.
@@ -259,8 +270,13 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     Step = parseExpression();
   }
 
-  if (CurTok_ != tok_do)
-    THROW_SYNTAX_ERROR("Expected 'do' after 'for'", getLine());
+  if (CurTok_ != tok_do) {
+    std::cerr << std::endl;
+    TheLex_.barf(std::cerr, ForLoc);
+    std::cerr << std::string(ForLoc.getCol()-2, ' ') << "do" << std::endl;
+    std::cerr << std::endl;
+    THROW_SYNTAX_ERROR("Expected 'do' after 'for'", ForLoc.getLine());
+  }
   getNextToken(); // eat 'do'.
   
   // add statements
@@ -303,6 +319,8 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
   
   switch (CurTok_) {
   case tok_identifier:
+  case tok_int:
+  case tok_real:
     return parseIdentifierExpr();
   case tok_real_number:
     return parseRealExpr();
@@ -375,7 +393,6 @@ Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS)
 //
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::parseExpression() {
-  
   auto LHS = parseUnary();
 
   auto RHS = parseBinOpRHS(0, std::move(LHS));
@@ -565,12 +582,19 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
   std::unique_ptr<ExprAST> SizeExpr;
 
   while (CurTok_ != ']') {
+      auto Loc = getLoc();
     auto E = parseExpression();
 
     ValExprs.emplace_back( std::move(E) );
     
     if (CurTok_ == ';') {
       getNextToken(); // eat ;
+      if (CurTok_ == ']') {
+        std::cerr << std::endl;
+        TheLex_.barf(std::cerr, Loc);
+        std::cerr << std::endl;
+        THROW_SYNTAX_ERROR("Expected size expression after ';'", Loc.getLine());
+      }
       SizeExpr = std::move(parseExpression());
       break;
     }

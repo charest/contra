@@ -10,17 +10,26 @@ function main()
   var xright : f64 = 1
 
   # compute the rest of the mesh
-  var tot_cells = num_cells + num_ghost*2
-  var ileft = num_ghost
-  var iright = ileft + num_cells
+  var tot_cells : i64 = num_cells + num_ghost*2
+  var ileft : i64 = num_ghost
+  var iright : i64 = ileft + num_cells
 
-  var num_points : i64 = num_cells + 1
+  var tot_points : i64 = tot_cells + 1
 
   var length : f64 = xright - xleft
-  var centroids : [f64] = [0; ]
+  var vertices : [f64] = [0; tot_points]
+  var centroids : [f64] = [0; tot_cells]
 
-  for i in ileft to iright
-    centroids[i] = xleft + i/(num_points-1) * length
+  for i in ileft to iright do
+    vertices[i] = xleft + f64(i-ileft) / f64(num_cells) * length
+  end
+  for i in 0 until num_ghost do
   end
 
 end
+
+
+###############################################################################
+# launch main
+###############################################################################
+main()

@@ -237,6 +237,32 @@ Value *CallExprAST::codegen(CodeGen & TheCG) {
   auto & TheContext = TheCG.getContext();
   auto & Builder = TheCG.getBuilder();
 
+  // special cases
+  auto TheBlock = Builder.GetInsertBlock();
+  if (Callee_ == getTokName(tok_int)) {
+    auto A = Args_[0]->codegen(TheCG);
+    if (A->getType()->isFloatingPointTy()) {
+      auto cast = CastInst::Create(Instruction::FPToSI, A,
+          llvmIntegerType(TheContext), "cast", TheBlock);
+      return cast;
+    }
+    else {
+      return A;
+    }
+  }
+  else if  (Callee_ == getTokName(tok_real)) {
+    auto A = Args_[0]->codegen(TheCG);
+    if (A->getType()->isIntegerTy()) {
+      auto cast = CastInst::Create(Instruction::SIToFP, A,
+          llvmRealType(TheContext), "cast", TheBlock);
+      return cast;
+    }
+    else {
+      return A;
+    }
+  }
+
+
   // Look up the name in the global module table.
   auto CalleeF = TheCG.getFunction(Callee_, getLine());
   if (!CalleeF)
