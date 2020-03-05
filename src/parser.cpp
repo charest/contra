@@ -150,8 +150,12 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
     auto Cond = parseExpression();
     addExpr(Conds, IfLoc, std::move(Cond));
 
-    if (CurTok_ != tok_then)
-      THROW_SYNTAX_ERROR("Expected 'then' after 'if'", getLine());
+    if (CurTok_ != tok_then) {
+      std::cerr << std::endl;
+      TheLex_.barf(std::cerr, IfLoc);
+      std::cerr << std::endl;
+      THROW_SYNTAX_ERROR("Expected 'then' after 'if'", IfLoc.getLine());
+    }
     getNextToken(); // eat the then
 
     // make a new block
@@ -254,10 +258,21 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getLine());
   getNextToken(); // eat in
 
+  auto StartLoc = getLoc();
   auto Start = parseExpression();
 
-  if (CurTok_ != tok_to)
-    THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", getLine());
+  ForExprAST::LoopType Loop;
+  if (CurTok_ == tok_to) {
+    Loop = ForExprAST::LoopType::To;
+  }
+  else if (CurTok_ == tok_until) {
+    Loop = ForExprAST::LoopType::Until;
+  }
+  else {
+    std::cerr << std::endl;
+    TheLex_.barf(std::cerr, StartLoc);
+    THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", StartLoc.getLine());
+  }
   getNextToken(); // eat to
 
   auto EndLoc = getLoc();
@@ -289,7 +304,7 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   
   // make a for loop
   auto F = std::make_unique<ForExprAST>(TheLex_.getCurLoc(), IdName, std::move(Start),
-      std::move(End), std::move(Step), std::move(Body));
+      std::move(End), std::move(Step), std::move(Body), Loop);
 
 
   it = NamedValues_.find(IdName);

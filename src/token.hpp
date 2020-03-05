@@ -30,6 +30,7 @@ enum Token {
   tok_do,
   tok_to,
   tok_by,
+  tok_until,
 
   // operators
   tok_binary,
@@ -86,6 +87,7 @@ const Token tok_keywords[] = {
   tok_return,
   tok_then,
   tok_to,
+  tok_until,
   tok_unary,
   tok_var
 };

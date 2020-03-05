@@ -213,7 +213,7 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = TheCG.getFunction(std::string("binary") + Op_, getLine());
+  auto F = TheCG.getFunction(std::string("binary") + Op_);
   if (!F) THROW_CONTRA_ERROR("binary operator not found!");
 
   Value *Ops[] = { L, R };
@@ -264,7 +264,7 @@ Value *CallExprAST::codegen(CodeGen & TheCG) {
 
 
   // Look up the name in the global module table.
-  auto CalleeF = TheCG.getFunction(Callee_, getLine());
+  auto CalleeF = TheCG.getFunction(Callee_);
   if (!CalleeF)
     THROW_NAME_ERROR(Callee_, getLine());
 
@@ -478,7 +478,14 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
   Value *EndCond = End_->codegen(TheCG);
   if (EndCond->getType()->isFloatingPointTy())
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
+ 
+  if (Loop_ == LoopType::Until) {
+    Value *One = llvmInteger(TheContext, 1);
+    EndCond = Builder.CreateSub(EndCond, One, "loopsub");
+  }
+
   EndCond = Builder.CreateICmpSLE(CurVar, EndCond, "loopcond");
+
 
   // Insert the conditional branch into the end of LoopEndBB.
   Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
@@ -578,7 +585,7 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG) {
     }
   }
 
-  auto F = TheCG.getFunction(std::string("unary") + Opcode_, getLine());
+  auto F = TheCG.getFunction(std::string("unary") + Opcode_);
   if (!F)
     THROW_SYNTAX_ERROR("Unknown unary operator", getLine());
 
@@ -931,7 +938,10 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   // reference to it for use below.
   auto &P = *Proto_;
   TheCG.FunctionProtos[Proto_->getName()] = std::move(Proto_);
-  auto TheFunction = TheCG.getFunction(P.getName(), P.getLine());
+  auto TheFunction = TheCG.getFunction(P.getName());
+  if (!TheFunction)
+    THROW_SYNTAX_ERROR("'" << P.getName() << "' does not have a valid prototype",
+        P.getLine());
 
   // If this is an operator, install it.
   if (P.isBinaryOp())

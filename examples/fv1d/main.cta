@@ -1,3 +1,35 @@
+
+function flux( 
+  dl : f64,
+  pl : f64,
+  vl : f64,
+  dr : f64,
+  pr : f64,
+  vr : f64,
+  flux : [f64] )
+
+  var gamma : f64 = 1.4
+  var el : f64 = pl / (dl *(gamma-1)) + 0.5*vl*vl
+  var al : f64 = sqrt(gamma * pl / dl)
+  var sl : f64 = fabs(vl) + al
+  
+  var er : f64 = pr / (dr *(gamma-1)) + 0.5*vr*vr
+  var ar : f64 = sqrt(gamma * pr / dr)
+  var sr : f64 = fabs(vr) + ar
+
+  var smax : f64 = fmax(al, ar)
+
+  var moml : f64 = dl*vl
+  var momr : f64 = dr*vr
+  var enerl : f64 = dl*el
+  var enerr : f64 = dr*er
+
+  flux[0] = 0.5 * (moml    + momr   ) - 0.5 * smax * (dr - dl)
+  flux[1] = 0.5 * (moml*vl + pl + momr*vr + pr) - 0.5 * smax * (momr - moml)
+  flux[2] = 0.5 * (enerl*vl + pl*vl + enerr*vr + pr*vr) - 0.5 smax * (enerr - enerl)
+  
+end
+
 ###############################################################################
 # This is the main function
 ###############################################################################
@@ -15,15 +47,62 @@ function main()
   var iright : i64 = ileft + num_cells
 
   var tot_points : i64 = tot_cells + 1
-
   var length : f64 = xright - xleft
-  var vertices : [f64] = [0; tot_points]
-  var centroids : [f64] = [0; tot_cells]
 
+  # compute the vertices
+  var vertices : [f64] = [0; tot_points]
   for i in ileft to iright do
     vertices[i] = xleft + f64(i-ileft) / f64(num_cells) * length
   end
   for i in 0 until num_ghost do
+    vertices[ileft - num_ghost + i] = xleft - (vertices[ileft + num_ghost - i] - xleft)
+    vertices[iright + num_ghost - i] = xright + (xright - vertices[iright - num_ghost + i])
+  end
+
+  # now compute the cell centroids
+  var centroids : [f64] = [0; tot_cells]
+  var deltax : [f64] = [0; tot_cells]
+  for i in 0 until tot_cells do
+    centroids[i] = (vertices[i] + vertices[i+1]) / 2
+    deltax[i] = vertices[i+1] - vertices[i]
+  end
+ 
+  # initalize the solution
+  var density, velocity, pressure, energy : [f64] = [0; tot_cells]
+  for i in ileft until iright do
+    if centroids[i] < 0.5 then
+      density[i] = 1
+      pressure[i] = 1
+      velocity[i] = 0
+    else
+      density[i] = 0.1
+      pressure[i] = 0.125
+      velocity[i] = 0
+    end
+  end
+  
+  for i in 0 until num_ghost do
+    # left
+    var jghost = ileft - num_ghost + i
+    var jinter = ileft + num_ghost - i
+    density[jghost] = density[jinter]
+    pressure[jghost] = pressure[jinter]
+    velocity[jghost] = velocity[jinter]
+    # right
+    jghost = iright + num_ghost - i
+    jinter = iright - num_ghost + i
+    density[jghost] = density[jinter]
+    pressure[jghost] = pressure[jinter]
+    velocity[jghost] = velocity[jinter]
+  end
+
+  # compute rhs
+  for i in ileft until iright do
+
+    # left side
+    
+
+
   end
 
 end

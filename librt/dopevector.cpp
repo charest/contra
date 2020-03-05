@@ -1,9 +1,16 @@
-#include "dopevector.hpp"
+#include "config.hpp"
 #include "llvm_includes.hpp"
 
 #include <cstdlib>
 
 extern "C" {
+
+/// simple dopevector type
+struct dopevector_t {
+  void * data = nullptr;
+  int_t size = 0;
+};
+
 
 //==============================================================================
 /// memory allocation

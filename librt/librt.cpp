@@ -1,6 +1,7 @@
 #include "dllexport.h"
 #include "dopevector.hpp"
 #include "librt.hpp"
+#include "math.hpp"
 #include "print.hpp"
 
 namespace librt {
@@ -13,6 +14,11 @@ std::map<std::string, RunTimeLib::InstallFunctionPointer>
     {"print",installPrint},
     {"allocate",installAllocate},
     {"deallocate",installDeAllocate},
+    {"myabs",installAbs},
+    {"mysqrt",installSqrt},
+    {"fabs",installCAbs},
+    {"fmax",installCMax},
+    {"sqrt",installCSqrt},
   };
 
 }

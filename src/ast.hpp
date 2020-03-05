@@ -224,9 +224,19 @@ public:
 // ForExprAST - Expression class for for/in.
 //==============================================================================
 class ForExprAST : public ExprAST {
+
+public:
+
+  enum class LoopType {
+    To, Until
+  };
+
+private:
+
   std::string VarName_;
   std::unique_ptr<ExprAST> Start_, End_, Step_;
   ExprBlock Body_;
+  LoopType Loop_;
 
 public:
 
@@ -235,9 +245,11 @@ public:
       std::unique_ptr<ExprAST> Start,
       std::unique_ptr<ExprAST> End,
       std::unique_ptr<ExprAST> Step,
-      ExprBlock Body)
+      ExprBlock Body,
+      LoopType Loop = LoopType::To)
     : ExprAST(Loc), VarName_(VarName), Start_(std::move(Start)),
-      End_(std::move(End)), Step_(std::move(Step)), Body_(std::move(Body))
+      End_(std::move(End)), Step_(std::move(Step)), Body_(std::move(Body)),
+      Loop_(Loop)
   {}
 
   Value *codegen(CodeGen &) override;

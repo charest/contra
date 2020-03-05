@@ -56,7 +56,7 @@ public:
   llvm::LLVMContext & getContext() { return TheContext_; }
   llvm::Module & getModule() { return *TheModule_; }
 
-  Function *getFunction(std::string Name, int Line); 
+  Function *getFunction(std::string Name); 
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
