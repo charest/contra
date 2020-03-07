@@ -1,6 +1,6 @@
 # This is a comment, and is ignored by the compiler
-#function empty()
-#end
+function empty()
+end
 
 # This is the main function
 function main( x : i64 ) 
@@ -14,5 +14,5 @@ function main( x : i64 )
   
 end
 
-#empty()
+empty()
 main(1)

@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "config.hpp"
+#include "dispatcher.hpp"
 #include "errors.hpp"
 #include "parser.hpp"
 #include "token.hpp"
@@ -16,7 +17,7 @@ namespace contra {
 //==============================================================================
 // Insert 'size' spaces.
 //==============================================================================
-raw_ostream &indent(raw_ostream &O, int size) {
+std::ostream &indent(std::ostream &O, int size) {
   return O << std::string(size, ' ');
 }
 
@@ -32,9 +33,8 @@ Value *IntegerExprAST::codegen(CodeGen & TheCG)
 
 //------------------------------------------------------------------------------
 template<>
-raw_ostream &IntegerExprAST::dump(raw_ostream &out, int ind) {
-  return ExprAST::dump(out << Val_, ind);
-}
+void IntegerExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // RealExprAST - Expression class for numeric literals like "1.0".
@@ -48,9 +48,8 @@ Value *RealExprAST::codegen(CodeGen & TheCG)
 
 //------------------------------------------------------------------------------
 template<>
-raw_ostream &RealExprAST::dump(raw_ostream &out, int ind) {
-  return ExprAST::dump(out << Val_, ind);
-}
+void RealExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // StringExprAST - Expression class for string literals like "hello".
@@ -68,13 +67,12 @@ Value *StringExprAST::codegen(CodeGen & TheCG)
   Constant* strVal = ConstantExpr::getGetElementPtr(IntegerType::getInt8Ty(TheContext), GVStr, zero, true);
   return strVal;
 }
-
+ 
 //------------------------------------------------------------------------------
 template<>
-raw_ostream &StringExprAST::dump(raw_ostream &out, int ind) {
-  return ExprAST::dump(out << Val_, ind);
-}
- 
+void StringExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
+
 //==============================================================================
 // VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
@@ -95,11 +93,11 @@ Value *VariableExprAST::codegen(CodeGen & TheCG)
   if (!Ty->isPointerTy()) THROW_CONTRA_ERROR("why are you NOT a pointer");
   Ty = Ty->getPointerElementType();
     
-  auto Load = Builder.CreateLoad(Ty, V, "ptr."+Name_);
+  auto Load = Builder.CreateLoad(Ty, V, "val."+Name_);
 
   if ( !Index_ ) {
-    if (TheCG.NamedArrays.count(Name_))
-      THROW_SYNTAX_ERROR("Array accesses require explicit indices", getLine());
+    //if (TheCG.NamedArrays.count(Name_))
+    //  THROW_SYNTAX_ERROR("Array accesses require explicit indices", getLine());
     return Load;
   }
   else {
@@ -111,9 +109,8 @@ Value *VariableExprAST::codegen(CodeGen & TheCG)
 }
 
 //------------------------------------------------------------------------------
-raw_ostream &VariableExprAST::dump(raw_ostream &out, int ind) {
-  return ExprAST::dump(out << Name_, ind);
-}
+void VariableExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
@@ -142,9 +139,10 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
     if (!Variable)
       THROW_NAME_ERROR(VarName, LHSE->getLine());
 
-    if (TheCG.NamedArrays.count(VarName)) {
-      if (!LHSE->isArray())
-        THROW_SYNTAX_ERROR("Arrays must be indexed using '[i]'", LHSE->getLine());
+    //if (TheCG.NamedArrays.count(VarName)) {
+    if (Variable->getType()->getPointerElementType()->isPointerTy()) {
+      //if (!LHSE->isArray())
+      //  THROW_SYNTAX_ERROR("Arrays must be indexed using '[i]'", LHSE->getLine());
       auto Ty = Variable->getType()->getPointerElementType();
       auto Load = Builder.CreateLoad(Ty, Variable, "ptr."+VarName);
       auto IndexVal = LHSE->getIndex()->codegen(TheCG);
@@ -221,12 +219,8 @@ Value *BinaryExprAST::codegen(CodeGen & TheCG) {
 }
 
 //------------------------------------------------------------------------------
-raw_ostream &BinaryExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "binary" << Op_, ind);
-  LHS_->dump(indent(out, ind) << "LHS:", ind + 1);
-  RHS_->dump(indent(out, ind) << "RHS:", ind + 1);
-  return out;
-}
+void BinaryExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // CallExprAST - Expression class for function calls.
@@ -302,12 +296,8 @@ Value *CallExprAST::codegen(CodeGen & TheCG) {
 }
   
 //------------------------------------------------------------------------------
-raw_ostream &CallExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "call " << Callee_, ind);
-  for (const auto &Arg : Args_)
-    Arg->dump(indent(out, ind + 1), ind + 1);
-  return out;
-}
+void CallExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
@@ -385,17 +375,6 @@ Value *IfExprAST::codegen(CodeGen & TheCG) {
 }
   
 //------------------------------------------------------------------------------
-raw_ostream &IfExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "if", ind);
-  Cond_->dump(indent(out, ind) << "Cond:", ind + 1);
-  indent(out, ind+1) << "Then:\n";
-  for ( auto & I : Then_ ) I->dump(out, ind+2);
-  indent(out, ind+1) << "Else:\n";
-  for ( auto & I : Else_ ) I->dump(out, ind+2);
-  return out;
-}
-
-//------------------------------------------------------------------------------
 std::unique_ptr<ExprAST> IfExprAST::makeNested( 
   ExprLocPairList & Conds,
   ExprBlockList & Blocks )
@@ -416,6 +395,10 @@ std::unique_ptr<ExprAST> IfExprAST::makeNested(
 
   return std::move(TopIf);
 }
+
+//------------------------------------------------------------------------------
+void IfExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // ForExprAST - Expression class for for/in.
@@ -541,19 +524,10 @@ Value *ForExprAST::codegen(CodeGen & TheCG) {
   // for expr always returns 0.
   return Constant::getNullValue(LLType);
 }
-  
 
 //------------------------------------------------------------------------------
-raw_ostream &ForExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "for", ind);
-  Start_->dump(indent(out, ind) << "Cond:", ind + 1);
-  End_->dump(indent(out, ind) << "End:", ind + 1);
-  Step_->dump(indent(out, ind) << "Step:", ind + 1);
-  indent(out, ind+1) << "Body:\n";
-  for ( auto & B : Body_ )
-    B->dump(out, ind+2);
-  return out;
-}
+void ForExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
@@ -594,11 +568,8 @@ Value *UnaryExprAST::codegen(CodeGen & TheCG) {
 }
   
 //------------------------------------------------------------------------------
-raw_ostream &UnaryExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "unary" << Opcode_, ind);
-  Operand_->dump(out, ind + 1);
-  return out;
-}
+void UnaryExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // VarExprAST - Expression class for var/in
@@ -674,12 +645,8 @@ Value *VarExprAST::codegen(CodeGen & TheCG) {
 }
 
 //------------------------------------------------------------------------------
-raw_ostream &VarExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "var", ind);
-  for (const auto &NamedVar : VarNames_)
-    Init_->dump(indent(out, ind) << NamedVar << ':', ind + 1);
-  return out;
-}
+void VarExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // ArrayVarExprAST - Expression class for array vars
@@ -817,13 +784,8 @@ Value *ArrayVarExprAST::codegen(CodeGen & TheCG) {
 }
 
 //------------------------------------------------------------------------------
-raw_ostream &ArrayVarExprAST::dump(raw_ostream &out, int ind) {
-  ExprAST::dump(out << "var", ind);
-  for (const auto &NamedVar : VarNames_)
-    Init_->dump(indent(out, ind) << NamedVar << ':', ind + 1);
-  return out;
-}
-
+void ArrayVarExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
@@ -876,9 +838,8 @@ Value* ArrayExprAST::codegen(CodeGen & TheCG)
 }
 
 //------------------------------------------------------------------------------
-raw_ostream &ArrayExprAST::dump(raw_ostream &out, int ind) {
-  return out;
-}
+void ArrayExprAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
@@ -891,7 +852,8 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
   ArgTypes.reserve(Args_.size());
 
   for ( const auto & A : Args_ ) {
-    auto VarType = A.second.getType();
+    auto VarSymbol = A.second;
+    auto VarType = VarSymbol.getType();
     Type * LLType;
     try {
       LLType = getLLVMType(VarType, TheContext);
@@ -900,6 +862,10 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
       THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(VarType)
           << "' in prototype for function '" << Name_ << "'", Line_ );
     }
+    
+    if (VarSymbol.isArray())
+      LLType = PointerType::get(LLType, 0);
+
     ArgTypes.emplace_back(LLType);
   }
   
@@ -924,6 +890,10 @@ Function *PrototypeAST::codegen(CodeGen & TheCG) {
 
   return F;
 }
+
+//------------------------------------------------------------------------------
+void PrototypeAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
@@ -975,7 +945,8 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   for (auto &Arg : TheFunction->args()) {
 
     // get arg type
-    auto ArgType = P.getArgSymbol(ArgIdx).getType();
+    const auto & ArgSymbol = P.getArgSymbol(ArgIdx);
+    auto ArgType = ArgSymbol.getType();
   
     // the llvm variable type
     Type * LLType;
@@ -987,7 +958,9 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
           << "' used in function prototype for '" << Proto_->getName() << "'",
           Proto_->getLine() );
     }
-    
+    if (ArgSymbol.isArray()) 
+      LLType = PointerType::get(LLType, 0);
+
     // Create an alloca for this variable.
     AllocaInst *Alloca = TheCG.createEntryBlockAlloca(TheFunction, Arg.getName(), LLType);
     
@@ -1054,15 +1027,10 @@ Function *FunctionAST::codegen(CodeGen & TheCG,
   TheCG.popLexicalBlock();
 #endif
 }
-  
+
+
 //------------------------------------------------------------------------------
-raw_ostream &FunctionAST::dump(raw_ostream &out, int ind) {
-  indent(out, ind) << "FunctionAST\n";
-  ++ind;
-  indent(out, ind) << "Body:\n";
-  for ( auto & B : Body_ )
-    B->dump(out, ind+1);
-  return out;
-}
+void FunctionAST::accept(AbstractDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
 
 } // namespace

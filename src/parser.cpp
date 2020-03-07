@@ -349,11 +349,6 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
     return parseForExpr();
   case tok_var:
     return parseVarExpr();
-  case tok_end:
-  case tok_return:
-    std::cerr << "HERHERHEHER "<< getTokName(CurTok_) << std::endl;
-    abort();
-    //return ParseReturnExpr();
   case tok_string:
     return parseStringExpr();
   default:
@@ -640,19 +635,34 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
   auto Proto = parsePrototype();
 
   ExprBlock Body;
+  std::unique_ptr<ExprAST> Return;
 
   while (CurTok_ != tok_end) {
+
+    if (CurTok_ == tok_return) {
+      getNextToken(); // eat return
+      Return = parseExpression();
+      break;
+    }
+
     auto E = parseExpression();
 
     Body.emplace_back( std::move(E) );
 
     if (CurTok_ == tok_sep) getNextToken();
   }
+
+  if (CurTok_ != tok_end)
+    THROW_SYNTAX_ERROR( "Only one return statement allowed for a function.",
+        getLine() );
   
   // eat end
   getNextToken();
 
-  return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body));
+  if (Return)
+    return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body), std::move(Return));
+  else
+    return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body));
 }
 
 //==============================================================================
@@ -719,21 +729,33 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
     auto Loc = getLoc();
     auto Name = TheLex_.getIdentifierStr();
+    bool IsArray = false;
     getNextToken(); // eat identifier
     
     if (CurTok_ != ':') 
       THROW_SYNTAX_ERROR("Variable '" << Name << "' needs a type specifier", getLine());
     getNextToken(); // eat ":"
     
+    if (CurTok_ == '[') {
+      IsArray = true;
+      getNextToken(); // eat the '['.
+    }
+    
     auto VarType = getVarType(CurTok_);
     if (VarType == VarTypes::Void)
       THROW_SYNTAX_ERROR("Variable '" << Name << "' of type '"
           << getVarTypeName(VarType) << "' is not allowed "
           << "in a function prototype", getLine());
-
-    Args.emplace_back( Name, Symbol(VarType, Loc) );
-
     getNextToken(); // eat vartype
+    
+    if (IsArray) {
+      if (CurTok_ != ']') 
+        THROW_SYNTAX_ERROR("Array declaration expected ']' instead of '"
+          << getTokName(CurTok_) << "'", getLine());
+      getNextToken(); // eat ]
+    }
+
+    Args.emplace_back( Name, Symbol(VarType, Loc, IsArray) );
 
     if (CurTok_ == ',') getNextToken(); // eat ','
   }
@@ -752,8 +774,26 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   // add these varaibles to the current parser scope
   NamedValues_.addSymbols( Args );
 
+  VarTypes ReturnType = VarTypes::Void;
+  if (CurTok_ == '-') {
+    getNextToken(); // eat -
+    if (CurTok_ != '>')
+      THROW_SYNTAX_ERROR("Expected '>' after '-' for return statements", getLine());
+    getNextToken(); // eat >
+
+    auto VarType = getVarType(CurTok_);
+    if (VarType == VarTypes::Void)
+      THROW_SYNTAX_ERROR("Return type '"
+          << getVarTypeName(VarType) << "' is not allowed "
+          << "in a function prototype", getLine());
+    getNextToken(); // eat vartype
+
+    ReturnType = VarType;
+  }
+
+
   return std::make_unique<PrototypeAST>(FnLoc, FnName,
-      std::move(Args), VarTypes::Void, Kind != 0, BinaryPrecedence);
+      std::move(Args), ReturnType, Kind != 0, BinaryPrecedence);
 }
 
 } // namespace

@@ -1,6 +1,7 @@
 #include "contra.hpp"
 #include "errors.hpp"
 #include "inputs.hpp"
+#include "vizualizer.hpp"
 
 #include <iostream>
 
@@ -17,6 +18,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
   auto is_verbose = TheInputs.is_verbose;
   auto dump_ir = TheInputs.dump_ir;
   auto is_optimized = TheInputs.is_optimized;
+  Vizualizer viz("graph.dot");
 
   if (is_verbose) std::cerr << "Handling function" << std::endl;
 
@@ -24,7 +26,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
 
   try {
     auto FnAST = TheParser.parseFunction();
-    if (is_verbose) FnAST->dump(errs(), 1);
+    if (is_verbose) FnAST->accept(viz);
     auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     if (is_optimized) TheCG.optimize(FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
@@ -60,7 +62,7 @@ void handleDefinition(Parser & TheParser, CodeGen & TheCG, const InputsType & Th
 
   try {
     auto FnAST = TheParser.parseDefinition();
-    if (is_verbose) FnAST->dump(errs(), 1);
+    //if (is_verbose) FnAST->dump(std::cerr, 0);
     auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
@@ -127,7 +129,7 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
   // Evaluate a top-level expression into an anonymous function.
   try {
     auto FnAST = TheParser.parseTopLevelExpr();
-    if (is_verbose) FnAST->dump(errs(), 1);
+    //if (is_verbose) FnAST->dump(std::cerr, 0);
     auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
     auto RetType = FnIR->getReturnType();
     auto is_real = RetType->isFloatingPointTy();

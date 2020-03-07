@@ -18,24 +18,27 @@
 namespace contra {
 
 class Parser;
-using llvm::raw_ostream;
+class AbstractDispatcher;
 
 //==============================================================================
-/// BaseAST - Base class for all AST nodes
+/// NodeAST - Base class for all AST nodes
 //==============================================================================
-class BaseAST {
+class NodeAST {
 
 protected:
   using Value = llvm::Value;
   using Function = llvm::Function;
   using FunctionCallee = llvm::FunctionCallee;
 
+public:
+  virtual void accept(AbstractDispatcher& dispatcher) = 0;
+  virtual ~NodeAST() = default;
 };
 
 //==============================================================================
 /// ExprAST - Base class for all expression nodes.
 //==============================================================================
-class ExprAST : public BaseAST {
+class ExprAST : public NodeAST {
 
   SourceLocation Loc_;
   
@@ -52,9 +55,7 @@ public:
   auto getLoc() const { return Loc_; }
   int getLine() const { return Loc_.getLine(); }
   int getCol() const { return Loc_.getCol(); }
-  virtual raw_ostream &dump(raw_ostream &out, int ind){
-    return out << ':' << getLine() << ':' << getCol() << '\n';
-  }
+
 };
 
 //==============================================================================
@@ -83,14 +84,21 @@ inline auto createBlock( ExprBlockList & list)
 //==============================================================================
 template< typename T >
 class ValueExprAST : public ExprAST {
+protected:
+
   T Val_;
 
 public:
   ValueExprAST(SourceLocation Loc, T Val)
     : ExprAST(Loc, getVarType<T>()), Val_(Val) {}
 
+  const T & getVal() const { return Val_; }
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
+
   Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+  friend class Vizualizer;
   
 };
 
@@ -105,6 +113,8 @@ using StringExprAST = ValueExprAST<std::string>;
 /// VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
 class VariableExprAST : public ExprAST {
+protected:
+
   std::string Name_;
   std::shared_ptr<ExprAST> Index_;
 
@@ -118,22 +128,26 @@ public:
       VarTypes Type, std::unique_ptr<ExprAST> Index)
     : ExprAST(Loc, Type), Name_(Name), Index_(std::move(Index))
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
   
   const std::string &getName() const { return Name_; }
   
   bool isArray() const { return static_cast<bool>(Index_); }
 
   std::shared_ptr<ExprAST> getIndex() const { return Index_; }
+  
+  friend class Vizualizer;
 };
 
 //==============================================================================
 /// ArrayExprAST - Expression class for referencing an array.
 //==============================================================================
 class ArrayExprAST : public ExprAST {
-  
+protected:
+
   ExprBlock Vals_;
   std::unique_ptr<ExprAST> Size_;
 
@@ -143,16 +157,21 @@ public:
       std::unique_ptr<ExprAST> Size)
     : ExprAST(Loc, VarType), Vals_(std::move(Vals)), Size_(std::move(Size))
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
+  
+  friend class Vizualizer;
 
-  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
 /// BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
 class BinaryExprAST : public ExprAST {
+protected:
+
   char Op_;
   std::shared_ptr<ExprAST> LHS_;
   std::unique_ptr<ExprAST> RHS_;
@@ -174,27 +193,39 @@ public:
       InferredType =  LHS_->InferredType;
   }
 
-  Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
+  char getOperand() const { return Op_; }
   
+  virtual void accept(AbstractDispatcher& dispatcher) override;
+
+  Value *codegen(CodeGen &) override;
+  
+  friend class Vizualizer;
 };
 
 //==============================================================================
 /// CallExprAST - Expression class for function calls.
 //==============================================================================
 class CallExprAST : public ExprAST {
+protected:
+  
   std::string Callee_;
   std::vector<std::unique_ptr<ExprAST>> Args_;
 
 public:
+
   CallExprAST(SourceLocation Loc,
       const std::string &Callee,
       std::vector<std::unique_ptr<ExprAST>> Args)
     : ExprAST(Loc), Callee_(Callee), Args_(std::move(Args))
   {}
 
+  const std::string & getCalleeName() const { return Callee_; }
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
+
   Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+  friend class Vizualizer;
   
 };
 
@@ -202,6 +233,7 @@ public:
 /// IfExprAST - Expression class for if/then/else.
 //==============================================================================
 class IfExprAST : public ExprAST {
+protected:
 
   std::unique_ptr<ExprAST> Cond_;
   ExprBlock Then_, Else_;
@@ -212,12 +244,15 @@ public:
        ExprBlock Then)
     : ExprAST(Loc), Cond_(std::move(Cond)), Then_(std::move(Then))
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
 
   static std::unique_ptr<ExprAST> makeNested( 
     ExprLocPairList & Conds, ExprBlockList & Blocks );
+  
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -231,7 +266,7 @@ public:
     To, Until
   };
 
-private:
+protected:
 
   std::string VarName_;
   std::unique_ptr<ExprAST> Start_, End_, Step_;
@@ -251,15 +286,20 @@ public:
       End_(std::move(End)), Step_(std::move(Step)), Body_(std::move(Body)),
       Loop_(Loop)
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+  friend class Vizualizer;
 };
 
 //==============================================================================
 /// UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 class UnaryExprAST : public ExprAST {
+protected:
+
   char Opcode_;
   std::unique_ptr<ExprAST> Operand_;
 
@@ -269,9 +309,12 @@ public:
       std::unique_ptr<ExprAST> Operand)
     : ExprAST(Loc, Operand->InferredType), Opcode_(Opcode), Operand_(std::move(Operand))
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
-  raw_ostream &dump(raw_ostream &out, int ind) override;
+  
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -292,16 +335,19 @@ public:
     : ExprAST(Loc, Init->InferredType), VarNames_(VarNames), VarType_(VarType),
       Init_(std::move(Init)) 
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
-  
-  raw_ostream &dump(raw_ostream &out, int ind) override;
+ 
+  friend class Vizualizer;
 };
 
 //==============================================================================
 /// ArrayVarExprAST - Expression class for var/in
 //==============================================================================
 class ArrayVarExprAST : public VarExprAST {
+protected:
 
   std::unique_ptr<ExprAST> Size_;
 
@@ -313,10 +359,12 @@ public:
     : VarExprAST(Loc, VarNames, VarType, std::move(Init)),
       Size_(std::move(Size))
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Value *codegen(CodeGen &) override;
+  friend class Vizualizer;
   
-  raw_ostream &dump(raw_ostream &out, int ind) override;
 };
 
 //==============================================================================
@@ -324,7 +372,9 @@ public:
 /// which captures its name, and its argument names (thus implicitly the number
 /// of arguments the function takes).
 //==============================================================================
-class PrototypeAST : public BaseAST {
+class PrototypeAST : public NodeAST {
+protected:
+
   std::string Name_;
   VarTypes Return_;
   bool IsOperator_ = false;
@@ -354,6 +404,8 @@ public:
   {}
 
   
+  virtual void accept(AbstractDispatcher& dispatcher) override;
+  
   Function *codegen(CodeGen &);
 
   const std::string &getName() const { return Name_; }
@@ -370,13 +422,16 @@ public:
   int getLine() const { return Line_; }
 
   Symbol getArgSymbol(int i) { return Args_[i].second; }
+  
+  friend class Vizualizer;
 };
 
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
 //==============================================================================
-class FunctionAST : public BaseAST {
-  
+class FunctionAST : public NodeAST {
+protected:
+
   std::unique_ptr<PrototypeAST> Proto_;
   ExprBlock Body_;
   std::unique_ptr<ExprAST> Return_;
@@ -386,12 +441,20 @@ public:
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, ExprBlock Body)
       : Proto_(std::move(Proto)), Body_(std::move(Body)) {}
 
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ExprBlock Body, 
+      std::unique_ptr<ExprAST> Return)
+      : Proto_(std::move(Proto)), Body_(std::move(Body)), Return_(std::move(Return))
+  {}
+
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<ExprAST> Return)
       : Proto_(std::move(Proto)), Return_(std::move(Return))
   {}
+  
+  virtual void accept(AbstractDispatcher& dispatcher) override;
 
   Function *codegen(CodeGen &, std::map<char, int> &);
-  raw_ostream &dump(raw_ostream &out, int ind);
+  
+  friend class Vizualizer;
 
 };
 
