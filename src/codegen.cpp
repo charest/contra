@@ -89,7 +89,6 @@ void CodeGen::initializePassManager() {
 // Get the function
 //==============================================================================
 Function *CodeGen::getFunction(std::string Name) {
-#if 0
   // First, see if the function has already been added to the current module.
   if (auto F = TheModule_->getFunction(Name))
     return F;
@@ -102,10 +101,8 @@ Function *CodeGen::getFunction(std::string Name) {
   // prototype.
   auto FI = FunctionProtos.find(Name);
   if (FI != FunctionProtos.end()) {
-    dispatch(*FI->second);
-    return FunctionResult_;
+    return runFuncVisitor(*FI->second);
   }
-#endif
   return nullptr;
 }
 
