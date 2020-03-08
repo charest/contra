@@ -9,7 +9,7 @@
 
 namespace contra {
 
-class Vizualizer : public AbstractDispatcher {
+class Vizualizer : public AstDispatcher {
 
   std::ofstream OutputStream_;
   std::ostream * out_ = nullptr;

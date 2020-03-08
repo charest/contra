@@ -18,22 +18,18 @@
 namespace contra {
 
 class Parser;
-class AbstractDispatcher;
+class AstDispatcher;
 
 //==============================================================================
-/// NodeAST - Base class for all AST nodes
+/// NodeAST - Base class for all nodes.
 //==============================================================================
 class NodeAST {
-
-protected:
-  using Value = llvm::Value;
-  using Function = llvm::Function;
-  using FunctionCallee = llvm::FunctionCallee;
-
 public:
-  virtual void accept(AbstractDispatcher& dispatcher) = 0;
   virtual ~NodeAST() = default;
+  virtual void accept(AstDispatcher& dispatcher) = 0;
+
 };
+
 
 //==============================================================================
 /// ExprAST - Base class for all expression nodes.
@@ -50,8 +46,7 @@ public:
     : Loc_(Loc), InferredType(Type) {}
 
   virtual ~ExprAST() = default;
-
-  virtual Value *codegen(CodeGen &) = 0;
+  
   auto getLoc() const { return Loc_; }
   int getLine() const { return Loc_.getLine(); }
   int getCol() const { return Loc_.getCol(); }
@@ -94,11 +89,10 @@ public:
 
   const T & getVal() const { return Val_; }
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   friend class Vizualizer;
+  friend class CodeGen;
   
 };
 
@@ -129,10 +123,8 @@ public:
     : ExprAST(Loc, Type), Name_(Name), Index_(std::move(Index))
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   const std::string &getName() const { return Name_; }
   
   bool isArray() const { return static_cast<bool>(Index_); }
@@ -140,6 +132,7 @@ public:
   std::shared_ptr<ExprAST> getIndex() const { return Index_; }
   
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -158,11 +151,10 @@ public:
     : ExprAST(Loc, VarType), Vals_(std::move(Vals)), Size_(std::move(Size))
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   friend class Vizualizer;
+  friend class CodeGen;
 
 };
 
@@ -195,11 +187,10 @@ public:
 
   char getOperand() const { return Op_; }
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -221,11 +212,10 @@ public:
 
   const std::string & getCalleeName() const { return Callee_; }
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   friend class Vizualizer;
+  friend class CodeGen;
   
 };
 
@@ -245,14 +235,13 @@ public:
     : ExprAST(Loc), Cond_(std::move(Cond)), Then_(std::move(Then))
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
-
-  Value *codegen(CodeGen &) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
   static std::unique_ptr<ExprAST> makeNested( 
     ExprLocPairList & Conds, ExprBlockList & Blocks );
   
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -287,11 +276,10 @@ public:
       Loop_(Loop)
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -310,11 +298,10 @@ public:
     : ExprAST(Loc, Operand->InferredType), Opcode_(Opcode), Operand_(std::move(Operand))
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
-  
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -336,11 +323,10 @@ public:
       Init_(std::move(Init)) 
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
-
-  Value *codegen(CodeGen &) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
  
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -360,10 +346,10 @@ public:
       Size_(std::move(Size))
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Value *codegen(CodeGen &) override;
   friend class Vizualizer;
+  friend class CodeGen;
   
 };
 
@@ -404,10 +390,8 @@ public:
   {}
 
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
   
-  Function *codegen(CodeGen &);
-
   const std::string &getName() const { return Name_; }
 
   bool isUnaryOp() const { return IsOperator_ && Args_.size() == 1; }
@@ -424,6 +408,7 @@ public:
   Symbol getArgSymbol(int i) { return Args_[i].second; }
   
   friend class Vizualizer;
+  friend class CodeGen;
 };
 
 //==============================================================================
@@ -450,11 +435,10 @@ public:
       : Proto_(std::move(Proto)), Return_(std::move(Return))
   {}
   
-  virtual void accept(AbstractDispatcher& dispatcher) override;
+  virtual void accept(AstDispatcher& dispatcher) override;
 
-  Function *codegen(CodeGen &, std::map<char, int> &);
-  
   friend class Vizualizer;
+  friend class CodeGen;
 
 };
 

@@ -27,7 +27,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
   try {
     auto FnAST = TheParser.parseFunction();
     if (is_verbose) FnAST->accept(viz);
-    auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
+    auto FnIR = TheCG.runFuncVisitor(*FnAST);
     if (is_optimized) TheCG.optimize(FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
@@ -62,8 +62,8 @@ void handleDefinition(Parser & TheParser, CodeGen & TheCG, const InputsType & Th
 
   try {
     auto FnAST = TheParser.parseDefinition();
-    //if (is_verbose) FnAST->dump(std::cerr, 0);
-    auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
+    //if (is_verbose) FnAST->accept(viz);
+    auto FnIR = TheCG.runFuncVisitor(*FnAST);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
       TheCG.doJIT();
@@ -95,7 +95,7 @@ void handleExtern(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInp
 
   try {
     auto ProtoAST = TheParser.parseExtern();
-    auto FnIR = ProtoAST->codegen(TheCG);
+    auto FnIR = TheCG.runFuncVisitor(*ProtoAST);
     if (is_verbose || dump_ir) FnIR->print(errs());
     if (!TheCG.isDebug()) {
       TheCG.FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
@@ -129,8 +129,8 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
   // Evaluate a top-level expression into an anonymous function.
   try {
     auto FnAST = TheParser.parseTopLevelExpr();
-    //if (is_verbose) FnAST->dump(std::cerr, 0);
-    auto FnIR = FnAST->codegen(TheCG, TheParser.getBinopPrecedence());
+    //if (is_verbose) FnAST->accept(viz);
+    auto FnIR = TheCG.runFuncVisitor(*FnAST);
     auto RetType = FnIR->getReturnType();
     auto is_real = RetType->isFloatingPointTy();
     auto is_int = RetType->isIntegerTy();

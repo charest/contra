@@ -3,6 +3,7 @@
 
 #include "array.hpp"
 #include "debug.hpp"
+#include "dispatcher.hpp"
 #include "jit.hpp"
 #include "vartype.hpp"
 
@@ -23,7 +24,7 @@ class PrototypeAST;
 class JIT;
 class DebugInfo;
 
-class CodeGen {
+class CodeGen : public AstDispatcher {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
@@ -35,10 +36,11 @@ class CodeGen {
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
   JIT TheJIT_;
 
-public:
+  llvm::Value* ValueResult_ = nullptr;
+  llvm::Function* FunctionResult_ = nullptr;
 
-  std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
-  
+  std::shared_ptr< std::map<char, int> > BinopPrecedence_;
+
   std::map<std::string, AllocaInst *> NamedValues;
   std::map<std::string, AllocaInst *> NamedArrays;
   std::map<AllocaInst *, ArrayType> TempArrays;
@@ -48,8 +50,16 @@ public:
   std::unique_ptr<llvm::DIBuilder> DBuilder;
   DebugInfo KSDbgInfo;
 
+public:
+  
+  std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
+  
+
   // Constructor
-  CodeGen (bool);
+  CodeGen (std::shared_ptr<std::map<char, int>>, bool);
+
+  // destructor
+  virtual ~CodeGen() = default;
 
   // some accessors
   llvm::IRBuilder<> & getBuilder() { return Builder_; }
@@ -136,6 +146,48 @@ public:
   void popLexicalBlock() {
     if (isDebug()) KSDbgInfo.LexicalBlocks.pop_back();
   }
+ 
+  // Codegen function
+  template<
+    typename T,
+    typename = typename std::enable_if_t<
+      std::is_same<T, FunctionAST>::value || std::is_same<T, PrototypeAST>::value >
+  >
+  llvm::Function* runFuncVisitor(T&e)
+  {
+    FunctionResult_ = nullptr;
+    dispatch(e);
+    return FunctionResult_;
+  }
+
+private:
+
+  
+  // Codegen function
+  template<typename T>
+  llvm::Value* runExprVisitor(T&e)
+  {
+    ValueResult_ = nullptr;
+    dispatch(e);
+    return ValueResult_;
+  }
+  // Visitees 
+  void dispatch(ExprAST&) override;
+  void dispatch(ValueExprAST<int_t>&) override;
+  void dispatch(ValueExprAST<real_t>&) override;
+  void dispatch(ValueExprAST<std::string>&) override;
+  void dispatch(VariableExprAST&) override;
+  void dispatch(ArrayExprAST&) override;
+  void dispatch(BinaryExprAST&) override;
+  void dispatch(CallExprAST&) override;
+  void dispatch(ForExprAST&) override;
+  void dispatch(IfExprAST&) override;
+  void dispatch(UnaryExprAST&) override;
+  void dispatch(VarExprAST&) override;
+  void dispatch(ArrayVarExprAST&) override;
+  void dispatch(PrototypeAST&) override;
+  void dispatch(FunctionAST&) override;
+
 };
 
 } // namespace

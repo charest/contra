@@ -54,15 +54,27 @@ int main(int argc, char** argv) {
   // initialize llvm
   startLLVM();
 
+  // create the operator precedence
+  auto ThePrecedence = std::make_shared< std::map<char, int> >();
+  // Install standard binary operators.
+  // 1 is lowest precedence.
+  ThePrecedence->operator[](tok_eq) = 2;
+  ThePrecedence->operator[](tok_lt) = 10;
+  ThePrecedence->operator[](tok_add) = 20;
+  ThePrecedence->operator[](tok_sub) = 20;
+  ThePrecedence->operator[](tok_mul) = 40;
+  ThePrecedence->operator[](tok_div) = 50;
+  // highest.
+
   // create the parser
   std::unique_ptr<Parser> TheParser;
   if (!source_filename.empty())
-    TheParser = std::make_unique<Parser>(source_filename);
+    TheParser = std::make_unique<Parser>(ThePrecedence, source_filename);
   else
-    TheParser = std::make_unique<Parser>();
+    TheParser = std::make_unique<Parser>(ThePrecedence);
 
   // create the JIT and Code generator
-  CodeGen TheCG(inp.is_debug);
+  CodeGen TheCG(ThePrecedence, inp.is_debug);
 
   // Run the main "interpreter loop" now.
   mainLoop(*TheParser, TheCG, inp);

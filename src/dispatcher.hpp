@@ -1,6 +1,8 @@
 #ifndef CONTRA_DISPATCHER_HPP
 #define CONTRA_DISPATCHER_HPP
 
+#include "config.hpp"
+
 namespace contra {
 
 class VariableExprAST;
@@ -18,10 +20,10 @@ class FunctionAST;
 template<typename T>
 class ValueExprAST;
 
-class AbstractDispatcher {
+class AstDispatcher {
 public:
 
-  virtual ~AbstractDispatcher() = default;
+  virtual ~AstDispatcher() = default;
   
   virtual void dispatch(ExprAST&) = 0;
   virtual void dispatch(ValueExprAST<int_t>&) = 0;
@@ -36,6 +38,7 @@ public:
   virtual void dispatch(UnaryExprAST&) = 0;
   virtual void dispatch(VarExprAST&) = 0;
   virtual void dispatch(ArrayVarExprAST&) = 0;
+  
   virtual void dispatch(PrototypeAST&) = 0;
   virtual void dispatch(FunctionAST&) = 0;
 };
