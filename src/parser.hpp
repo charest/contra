@@ -3,6 +3,7 @@
 
 #include "ast.hpp"
 #include "lexer.hpp"
+#include "precedence.hpp"
 #include "symbols.hpp"
 #include "token.hpp"
 
@@ -25,20 +26,20 @@ class Parser {
 
   /// BinopPrecedence - This holds the precedence for each binary operator that is
   /// defined.
-  std::shared_ptr< std::map<char, int> > BinopPrecedence_;
+  std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
   // A symbol table to infer types in the parser
   SymbolTable NamedValues_;
   
 public:
 
-  Parser(std::shared_ptr<std::map<char, int>> BinopPrecedence) :
-    BinopPrecedence_(BinopPrecedence)
+  Parser(std::shared_ptr<BinopPrecedence> Precedence) :
+    BinopPrecedence_(Precedence)
   {}
 
-  Parser(std::shared_ptr<std::map<char, int>> BinopPrecedence,
+  Parser(std::shared_ptr<BinopPrecedence> Precedence,
       const std::string & filename ) :
-    TheLex_(filename), BinopPrecedence_(BinopPrecedence)
+    TheLex_(filename), BinopPrecedence_(Precedence)
   {}
 
   /// get the current token

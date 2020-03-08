@@ -2,6 +2,7 @@
 #include "contra.hpp"
 #include "inputs.hpp"
 #include "llvm.hpp"
+#include "precedence.hpp"
 #include "string_utils.hpp"
 
 #include <fstream>
@@ -55,16 +56,7 @@ int main(int argc, char** argv) {
   startLLVM();
 
   // create the operator precedence
-  auto ThePrecedence = std::make_shared< std::map<char, int> >();
-  // Install standard binary operators.
-  // 1 is lowest precedence.
-  ThePrecedence->operator[](tok_eq) = 2;
-  ThePrecedence->operator[](tok_lt) = 10;
-  ThePrecedence->operator[](tok_add) = 20;
-  ThePrecedence->operator[](tok_sub) = 20;
-  ThePrecedence->operator[](tok_mul) = 40;
-  ThePrecedence->operator[](tok_div) = 50;
-  // highest.
+  auto ThePrecedence = std::make_shared<BinopPrecedence>();
 
   // create the parser
   std::unique_ptr<Parser> TheParser;

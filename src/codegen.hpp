@@ -19,6 +19,7 @@
 
 namespace contra {
 
+class BinopPrecedence;
 class ExprAST;
 class PrototypeAST;
 class JIT;
@@ -39,7 +40,7 @@ class CodeGen : public AstDispatcher {
   llvm::Value* ValueResult_ = nullptr;
   llvm::Function* FunctionResult_ = nullptr;
 
-  std::shared_ptr< std::map<char, int> > BinopPrecedence_;
+  std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
   std::map<std::string, AllocaInst *> NamedValues;
   std::map<std::string, AllocaInst *> NamedArrays;
@@ -56,7 +57,7 @@ public:
   
 
   // Constructor
-  CodeGen (std::shared_ptr<std::map<char, int>>, bool);
+  CodeGen (std::shared_ptr<BinopPrecedence>, bool);
 
   // destructor
   virtual ~CodeGen() = default;

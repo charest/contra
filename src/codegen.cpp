@@ -1,6 +1,7 @@
 #include "ast.hpp"
 #include "config.hpp"
 #include "errors.hpp"
+#include "precedence.hpp"
 #include "token.hpp"
 
 #include "librt/librt.hpp"
@@ -19,8 +20,8 @@ namespace contra {
 //==============================================================================
 // Constructor
 //==============================================================================
-CodeGen::CodeGen (std::shared_ptr<std::map<char, int>> BinopPrecedence,
-    bool debug = false) : Builder_(TheContext_), BinopPrecedence_(BinopPrecedence)
+CodeGen::CodeGen (std::shared_ptr<BinopPrecedence> Precedence,
+    bool debug = false) : Builder_(TheContext_), BinopPrecedence_(Precedence)
 {
 
   initializeModuleAndPassManager();
@@ -100,9 +101,9 @@ Function *CodeGen::getFunction(std::string Name) {
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
   auto FI = FunctionProtos.find(Name);
-  if (FI != FunctionProtos.end()) {
+  if (FI != FunctionProtos.end())
     return runFuncVisitor(*FI->second);
-  }
+  
   return nullptr;
 }
 

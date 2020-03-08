@@ -4,6 +4,7 @@
 #include "codegen.hpp"
 #include "config.hpp"
 #include "errors.hpp"
+#include "expression.hpp"
 #include "sourceloc.hpp"
 #include "symbols.hpp"
 #include "vartype.hpp"
@@ -52,27 +53,6 @@ public:
   int getCol() const { return Loc_.getCol(); }
 
 };
-
-//==============================================================================
-/// ExprBlock - List of expressions that form a block 
-//==============================================================================
-
-struct ExprLocPair {
-  SourceLocation Loc;
-  std::unique_ptr<ExprAST> Expr;
-};
-using ExprLocPairList = std::list< ExprLocPair >;
-
-inline
-void addExpr(ExprLocPairList & l, SourceLocation sl, std::unique_ptr<ExprAST> e)
-{ l.emplace_back( ExprLocPair{sl, std::move(e) } ); }
-
-
-using ExprBlock = std::vector< std::unique_ptr<ExprAST> >;
-using ExprBlockList = std::list<ExprBlock>;
-
-inline auto createBlock( ExprBlockList & list)
-{ return list.emplace( list.end(), ExprBlock{} ); }
 
 //==============================================================================
 /// ValueExprAST - Expression class for numeric literals like "1.0".
