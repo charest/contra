@@ -42,6 +42,7 @@ int Lexer::gettok() {
   while (isspace(LastChar_))
     LastChar_ = advance();
   
+  auto NextChar = peek();
   CurLoc_ = LexLoc_;
 
   //----------------------------------------------------------------------------
@@ -70,18 +71,19 @@ int Lexer::gettok() {
   //  return tok_int_number;
   //}
 
-  if (isdigit(LastChar_) || LastChar_ == '.' /*|| LastChar_ == '+' || LastChar_ == '-'*/) {
+  // check if there is a sign in from of a number
+  bool is_signed_number = false;
+  if (LastChar_ == '+' || LastChar_ == '-')
+    is_signed_number = isdigit(NextChar) || NextChar == '.';
+    
+  if (isdigit(LastChar_) || LastChar_ == '.' /*|| is_signed_number*/) {
 
     IdentifierStr_.clear();
 
-    // peak if this is a unary or number
-    //if (LastChar_ == '+' || LastChar_ == '-') {
-    //  auto NextChar = peek();
-    //  if ( !isdigit(NextChar) && NextChar != '.' ) {
-    //    int ThisChar = LastChar_;
-    //    LastChar_ = advance();
-    //    return ThisChar;
-    //  }
+    // eat the sign if it has one
+    //if (is_signed_number) {
+    //  IdentifierStr_ += LastChar_;    
+    //  LastChar_ = advance();
     //}
 
     // read first part of number
