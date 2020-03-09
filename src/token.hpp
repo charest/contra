@@ -2,6 +2,7 @@
 #define CONTRA_TOKEN_HPP
 
 #include <string>
+#include <map>
 
 namespace contra {
 
@@ -65,35 +66,39 @@ enum Token {
   tok_div = '/'
 };
 
-// Get a tokens name
-std::string getTokName(int Tok);
-
-// the list of keywords to look for
-const Token tok_keywords[] = {
-  tok_binary,
-  tok_by,
-  tok_def,
-  tok_do,
-  tok_elif,
-  tok_else,
-  tok_end,
-  tok_extern,
-  tok_for,
-  tok_function,
-  tok_if,
-  tok_in,
-  tok_int,
-  tok_real,
-  tok_return,
-  tok_then,
-  tok_to,
-  tok_until,
-  tok_unary,
-  tok_var
+//==============================================================================
+// Helper class to return search result
+//==============================================================================
+struct TokenResult {
+  bool found = false;
+  int token = 0;
 };
 
-// The number of keywords
-const int num_keywords = sizeof(tok_keywords) / sizeof(Token);
+//==============================================================================
+// Struct that contains all installed tokens
+//==============================================================================
+class Tokens {
+
+  using map_type = std::map<int, std::string>;
+  using reverse_map_type = std::map<std::string, int>;
+  
+  // Token map
+  static map_type TokenMap;
+
+  // Reserved keyword map
+  static reverse_map_type KeywordMap;
+
+public:
+
+  // setup tokens
+  static void setup();
+
+  // Get a tokens name
+  static std::string getName(int Tok);
+
+  // get a token from its name
+  static TokenResult getTok(const std::string & Name);
+};
 
 } // namespace
 

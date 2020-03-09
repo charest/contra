@@ -51,9 +51,9 @@ int Lexer::gettok() {
     while (isalnum((LastChar_ = advance())) || LastChar_=='_')
       IdentifierStr_ += LastChar_;
 
-    for ( int i=0; i<num_keywords; ++i )
-      if (IdentifierStr_ == getTokName(tok_keywords[i]))
-        return tok_keywords[i];
+    auto res = Tokens::getTok(IdentifierStr_);
+    if (res.found) return res.token;
+    
     return tok_identifier;
   }
 

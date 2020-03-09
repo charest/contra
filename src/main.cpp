@@ -55,6 +55,9 @@ int main(int argc, char** argv) {
   // initialize llvm
   startLLVM();
 
+  // install tokens
+  Tokens::setup();
+
   // create the operator precedence
   auto ThePrecedence = std::make_shared<BinopPrecedence>();
 

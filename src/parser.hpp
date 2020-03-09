@@ -60,8 +60,10 @@ public:
 
     // Make sure it's a declared binop.
     auto TokPrecIt = BinopPrecedence_->find(CurTok_);
-    if (TokPrecIt == BinopPrecedence_->end()) return -1;
-    return TokPrecIt->second;
+    if (TokPrecIt.found) 
+      return TokPrecIt.precedence;
+    else
+      return -1;
   }
 
   SourceLocation getLoc() const { return TheLex_.getLexLoc(); }

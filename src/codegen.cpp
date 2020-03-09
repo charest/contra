@@ -653,7 +653,7 @@ void CodeGen::dispatch(CallExprAST &e) {
   
   // special cases
   auto TheBlock = Builder_.GetInsertBlock();
-  if (e.Callee_ == getTokName(tok_int)) {
+  if (e.Callee_ == Tokens::getName(tok_int)) {
     auto A = runExprVisitor(*e.Args_[0]);
     if (A->getType()->isFloatingPointTy()) {
       auto cast = CastInst::Create(Instruction::FPToSI, A,
@@ -666,7 +666,7 @@ void CodeGen::dispatch(CallExprAST &e) {
       return;
     }
   }
-  else if  (e.Callee_ == getTokName(tok_real)) {
+  else if  (e.Callee_ == Tokens::getName(tok_real)) {
     auto A = runExprVisitor(*e.Args_[0]);
     if (A->getType()->isIntegerTy()) {
       auto cast = CastInst::Create(Instruction::SIToFP, A,

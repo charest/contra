@@ -35,9 +35,9 @@ std::string getVarTypeName( VarTypes Type ) {
   case VarTypes::Void:
     return "void";
   case VarTypes::Int:
-    return getTokName(tok_int);
+    return Tokens::getName(tok_int);
   case VarTypes::Real:
-    return getTokName(tok_real);
+    return Tokens::getName(tok_real);
   }
   return {};
 }
@@ -80,9 +80,9 @@ VarTypes getVarType( const std::string & str )
 VarTypes getVarType( int tok )
 {
   for ( const auto & t : VarTypesList )
-    if (getVarTypeName(t) == getTokName(tok))
+    if (getVarTypeName(t) == Tokens::getName(tok))
       return t;
-  THROW_CONTRA_ERROR("Unknown variable type '" << getTokName(tok) << "'");
+  THROW_CONTRA_ERROR("Unknown variable type '" << Tokens::getName(tok) << "'");
   return VarTypes::Void;
 }
 

@@ -352,7 +352,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
   case tok_string:
     return parseStringExpr();
   default:
-    THROW_SYNTAX_ERROR("Unknown token '" <<  getTokName(CurTok_)
+    THROW_SYNTAX_ERROR("Unknown token '" <<  Tokens::getName(CurTok_)
         << "' when expecting an expression", getLine());
   }
 }
@@ -521,7 +521,7 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
 
       if (CurTok_ != ']' && CurTok_ != ';')
         THROW_SYNTAX_ERROR("Array definition expected ']' or ';' instead of '"
-            << getTokName(CurTok_) << "'", getLine());
+            << Tokens::getName(CurTok_) << "'", getLine());
       else if (CurTok_ == ';') {
         getNextToken(); // eat ;
         Size = parseExpression();
@@ -529,7 +529,7 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
       
       if (CurTok_ != ']')
         THROW_SYNTAX_ERROR("Array definition must end with ']' instead of '"
-            << getTokName(CurTok_) << "'", getLine());
+            << Tokens::getName(CurTok_) << "'", getLine());
 
       getNextToken(); // eat [
     }
@@ -751,7 +751,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     if (IsArray) {
       if (CurTok_ != ']') 
         THROW_SYNTAX_ERROR("Array declaration expected ']' instead of '"
-          << getTokName(CurTok_) << "'", getLine());
+          << Tokens::getName(CurTok_) << "'", getLine());
       getNextToken(); // eat ]
     }
 
