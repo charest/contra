@@ -4,7 +4,6 @@
 #include "ast.hpp"
 #include "lexer.hpp"
 #include "precedence.hpp"
-#include "symbols.hpp"
 #include "token.hpp"
 
 #include <map>
@@ -28,9 +27,6 @@ class Parser {
   /// defined.
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
-  // A symbol table to infer types in the parser
-  SymbolTable NamedValues_;
-  
 public:
 
   Parser(std::shared_ptr<BinopPrecedence> Precedence) :
@@ -70,13 +66,6 @@ public:
   int getLine() const { return TheLex_.getLexLoc().getLine(); }
   int getCol() const { return TheLex_.getLexLoc().getCol(); }
 
-  // get the symbol table
-  const auto & getSymbols() const
-  { return NamedValues_; }
-  // set the symbol table
-  void setSymbols( const SymbolTable & Symbols )
-  { NamedValues_ = Symbols; }
-
   /// numberexpr ::= number
   std::unique_ptr<ExprAST> parseIntegerExpr();
   std::unique_ptr<ExprAST> parseRealExpr();
@@ -98,7 +87,7 @@ public:
   /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
   std::unique_ptr<ExprAST> parseForExpr();
 
-  std::unique_ptr<ExprAST> parseArrayExpr(VarTypes VarType);
+  std::unique_ptr<ExprAST> parseArrayExpr();
   
   /// primary
   ///   ::= identifierexpr

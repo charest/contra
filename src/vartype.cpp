@@ -31,6 +31,7 @@ VarTypes getVarType<void>() { return VarTypes::Void; }
 /// Return the string corresponding to the variable type
 //==============================================================================
 std::string getVarTypeName( VarTypes Type ) {
+#if 0
   switch (Type) {
   case VarTypes::Void:
     return "void";
@@ -39,6 +40,7 @@ std::string getVarTypeName( VarTypes Type ) {
   case VarTypes::Real:
     return Tokens::getName(tok_real);
   }
+#endif
   return {};
 }
 

@@ -16,7 +16,8 @@ void Tokens::setup() {
     { tok_eof, "eof" },
     { tok_identifier, "identifier" },
     { tok_int_number, "integer_number" },
-    { tok_real_number, "real_number" }
+    { tok_real_number, "real_number" },
+    { tok_string, "string" }
   };
 
   // add keywords here
@@ -33,10 +34,7 @@ void Tokens::setup() {
     { tok_function, "function" },
     { tok_if, "if" },
     { tok_in, "in" },
-    { tok_int, "i64" },
-    { tok_real, "f64" },
     { tok_return, "return" },
-    { tok_string, "string" },
     { tok_then, "then" },
     { tok_to, "to" },
     { tok_unary, "unary" },

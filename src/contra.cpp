@@ -1,6 +1,7 @@
 #include "contra.hpp"
 #include "errors.hpp"
 #include "inputs.hpp"
+#include "analysis.hpp"
 #include "vizualizer.hpp"
 
 #include <iostream>
@@ -19,14 +20,16 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
   auto dump_ir = TheInputs.dump_ir;
   auto is_optimized = TheInputs.is_optimized;
   Vizualizer viz("graph.dot");
+  Analyzer TheAnalyser;
 
   if (is_verbose) std::cerr << "Handling function" << std::endl;
 
-  auto OldSymbols = TheParser.getSymbols();
+  //auto OldSymbols = TheParser.getSymbols();
 
   try {
     auto FnAST = TheParser.parseFunction();
     if (is_verbose) FnAST->accept(viz);
+    TheAnalyser.dispatch(*FnAST);
     auto FnIR = TheCG.runFuncVisitor(*FnAST);
     if (is_optimized) TheCG.optimize(FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
@@ -36,6 +39,9 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
   }
   catch (const ContraError & e) {
     std::cerr << e.what() << std::endl;
+    //std::cerr << std::endl;
+    //TheParser.barf(std::cerr, Loc);
+    //std::cerr << std::endl;
     // Skip token for error recovery.
     if (is_interactive) {
       TheParser.getNextToken();
@@ -46,7 +52,7 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
     }
   }
 
-  TheParser.setSymbols( OldSymbols );
+  //TheParser.setSymbols( OldSymbols );
 }
 
 //==============================================================================

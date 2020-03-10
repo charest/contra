@@ -458,7 +458,7 @@ void CodeGen::dispatch(ValueExprAST<std::string>& e)
 //==============================================================================
 void CodeGen::dispatch(VariableExprAST& e)
 {
-
+#if 0
   // Look this variable up in the function.
   auto it = NamedValues.find(e.Name_);
   if (it == NamedValues.end()) 
@@ -485,6 +485,7 @@ void CodeGen::dispatch(VariableExprAST& e)
     auto GEP = Builder_.CreateGEP(Load, IndexVal, e.Name_+".offset");
     ValueResult_ = Builder_.CreateLoad(Ty, GEP, e.Name_+".i");
   }
+#endif
 }
 
 //==============================================================================
@@ -492,6 +493,7 @@ void CodeGen::dispatch(VariableExprAST& e)
 //==============================================================================
 void CodeGen::dispatch(ArrayExprAST &e)
 {
+#if 0
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
   // the llvm variable type
@@ -533,12 +535,14 @@ void CodeGen::dispatch(ArrayExprAST &e)
   TempArrays[Array.Alloca] = Array;
 
   ValueResult_ = Array.Alloca;
+#endif
 }
 
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
 void CodeGen::dispatch(BinaryExprAST& e) {
+#if 0
   emitLocation(&e);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
@@ -643,6 +647,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 
   Value *Ops[] = { L, R };
   ValueResult_ = Builder_.CreateCall(F, Ops, "binop");
+#endif
 }
 
 //==============================================================================
@@ -650,10 +655,10 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 //==============================================================================
 void CodeGen::dispatch(CallExprAST &e) {
   emitLocation(&e);
-  
+#if 0 
   // special cases
   auto TheBlock = Builder_.GetInsertBlock();
-  if (e.Callee_ == Tokens::getName(tok_int)) {
+  if (e.Callee_ == "i64") {
     auto A = runExprVisitor(*e.Args_[0]);
     if (A->getType()->isFloatingPointTy()) {
       auto cast = CastInst::Create(Instruction::FPToSI, A,
@@ -666,7 +671,7 @@ void CodeGen::dispatch(CallExprAST &e) {
       return;
     }
   }
-  else if  (e.Callee_ == Tokens::getName(tok_real)) {
+  else if  (e.Callee_ == "f64") {
     auto A = runExprVisitor(*e.Args_[0]);
     if (A->getType()->isIntegerTy()) {
       auto cast = CastInst::Create(Instruction::SIToFP, A,
@@ -717,6 +722,7 @@ void CodeGen::dispatch(CallExprAST &e) {
   }
 
   ValueResult_ = Builder_.CreateCall(CalleeF, ArgsV, "calltmp");
+#endif
 }
 
 //==============================================================================
@@ -724,7 +730,7 @@ void CodeGen::dispatch(CallExprAST &e) {
 //==============================================================================
 void CodeGen::dispatch(IfExprAST & e) {
   emitLocation(&e);
-  
+#if 0 
   if ( e.Then_.empty() && e.Else_.empty() ) {
     ValueResult_ = Constant::getNullValue(llvmIntegerType(TheContext_));
     return;
@@ -791,6 +797,7 @@ void CodeGen::dispatch(IfExprAST & e) {
   
   // for expr always returns 0.
   ValueResult_ = Constant::getNullValue(llvmIntegerType(TheContext_));
+#endif
 }
 
 //==============================================================================
@@ -813,7 +820,7 @@ void CodeGen::dispatch(IfExprAST & e) {
 // outloop:
 //==============================================================================
 void CodeGen::dispatch(ForExprAST& e) {
-  
+#if 0  
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
@@ -914,13 +921,14 @@ void CodeGen::dispatch(ForExprAST& e) {
 
   // for expr always returns 0.
   ValueResult_ = Constant::getNullValue(LLType);
+#endif
 }
   
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 void CodeGen::dispatch(UnaryExprAST & e) {
-  
+#if 0 
   auto OperandV = runExprVisitor(*e.Operand_); 
   
   if (OperandV->getType()->isFloatingPointTy()) {
@@ -952,13 +960,14 @@ void CodeGen::dispatch(UnaryExprAST & e) {
 
   emitLocation(&e);
   ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
+#endif
 }
 
 //==============================================================================
 // VarExprAST - Expression class for var/in
 //==============================================================================
 void CodeGen::dispatch(VarExprAST & e) {
-
+#if 0
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
   // Emit the initializer before adding the variable to scope, this prevents
@@ -1023,6 +1032,7 @@ void CodeGen::dispatch(VarExprAST & e) {
 #endif
 
   ValueResult_ = InitVal;
+#endif
 }
 
 //==============================================================================
@@ -1030,7 +1040,7 @@ void CodeGen::dispatch(VarExprAST & e) {
 //==============================================================================
 void CodeGen::dispatch(ArrayVarExprAST &e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
+#if 0 
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
   // like this:
@@ -1155,13 +1165,14 @@ void CodeGen::dispatch(ArrayVarExprAST &e) {
 
 
   ValueResult_ = ReturnInit;
+#endif
 }
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
 void CodeGen::dispatch(PrototypeAST &e) {
-
+#if 0
   std::vector<Type *> ArgTypes;
   ArgTypes.reserve(e.Args_.size());
 
@@ -1203,6 +1214,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
     Arg.setName(e.Args_[Idx++].first);
 
   FunctionResult_ = F;
+#endif
 }
 
 //==============================================================================
@@ -1210,7 +1222,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
 //==============================================================================
 void CodeGen::dispatch(FunctionAST& e)
 {
-  
+#if 0 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
   auto &P = *e.Proto_;
@@ -1307,6 +1319,8 @@ void CodeGen::dispatch(FunctionAST& e)
   verifyFunction(*TheFunction);
     
   FunctionResult_ = TheFunction;
+#endif
+
 
 #if 0
 

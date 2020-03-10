@@ -1,4 +1,5 @@
 #include "errors.hpp"
+#include "identifier.hpp"
 #include "parser.hpp"
 #include "string_utils.hpp"
 
@@ -48,10 +49,7 @@ std::unique_ptr<ExprAST> Parser::parseParenExpr() {
   auto V = parseExpression();
 
   if (CurTok_ != ')') { 
-    std::cerr << std::endl;
-    TheLex_.barf(std::cerr, Loc);
-    std::cerr << std::endl;
-    THROW_SYNTAX_ERROR("Expected ')'", Loc.getLine());
+    THROW_SYNTAX_ERROR("Expected ')' after expression", Loc);
   }
   getNextToken(); // eat ).
   return V;
@@ -73,36 +71,19 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   // Simple variable ref.
   if (CurTok_ != '(') {
     
-    // get variable type
-    auto vit = NamedValues_.find(IdName);
-    if ( vit == NamedValues_.end() ) {
-      std::cerr << std::endl;
-      TheLex_.barf(std::cerr, LitLoc);
-      std::cerr << std::endl;
-      THROW_NAME_ERROR( "Variable '" << IdName << "' was referenced but not defined",
-        LitLoc.getLine() );
-    }
-    
-    // variable type
-    const auto & TheSymbol = vit->second;
-    auto VarType = TheSymbol.getType();
-
     // array value load
     if (CurTok_ == '[') {
-      if (!TheSymbol.isArray())
-        THROW_SYNTAX_ERROR( "Previously defined scalar variable '" << IdName
-            << "' cannot be referenced as an array" , getLine() );
       getNextToken(); // eat [
+      auto Loc = getLoc();
       auto Arg = parseExpression();
       if (CurTok_ != ']')
-        THROW_SYNTAX_ERROR( "Expected ']' at the end of array expression",
-            getLine() );
+        THROW_SYNTAX_ERROR( "Expected ']' at the end of array expression", Loc);
       getNextToken(); // eat ]
-      return std::make_unique<VariableExprAST>(LitLoc, IdName, VarType, std::move(Arg));
+      return std::make_unique<VariableExprAST>(LitLoc, IdName, std::move(Arg));
     }
     // scalar load
     else {
-      return std::make_unique<VariableExprAST>(LitLoc, IdName, VarType);
+      return std::make_unique<VariableExprAST>(LitLoc, IdName);
     }
 
   } // variable reference
@@ -113,6 +94,7 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   std::vector<std::unique_ptr<ExprAST>> Args;
   if (CurTok_ != ')') {
     while (true) {
+      auto Loc = getLoc();
       auto Arg = parseExpression();
       Args.push_back(std::move(Arg));
 
@@ -120,7 +102,7 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
         break;
 
       if (CurTok_ != ',')
-        THROW_SYNTAX_ERROR("Expected ')' or ',' in argument list", getLine());
+        THROW_SYNTAX_ERROR("Expected ')' or ',' in argument list", Loc);
       getNextToken();
     }
   }
@@ -150,12 +132,8 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
     auto Cond = parseExpression();
     addExpr(Conds, IfLoc, std::move(Cond));
 
-    if (CurTok_ != tok_then) {
-      std::cerr << std::endl;
-      TheLex_.barf(std::cerr, IfLoc);
-      std::cerr << std::endl;
-      THROW_SYNTAX_ERROR("Expected 'then' after 'if'", IfLoc.getLine());
-    }
+    if (CurTok_ != tok_then)
+      THROW_SYNTAX_ERROR("Expected 'then' after 'if'", IfLoc);
     getNextToken(); // eat the then
 
     // make a new block
@@ -183,7 +161,7 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
     addExpr(Conds, ElifLoc, std::move(Cond));
   
     if (CurTok_ != tok_then)
-      THROW_SYNTAX_ERROR("Expected 'then' after 'elif'", getLine());
+      THROW_SYNTAX_ERROR("Expected 'then' after 'elif'", ElifLoc);
     getNextToken(); // eat the then
   
     // make a new block
@@ -235,27 +213,12 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   auto IdentLoc = getLoc();
 
   if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Expected identifier after 'for'", getLine());
+    THROW_SYNTAX_ERROR("Expected identifier after 'for'", ForLoc);
   std::string IdName = TheLex_.getIdentifierStr();
   getNextToken(); // eat identifier.
 
-  auto it = NamedValues_.find(IdName);
-  Symbol OldType;
-  bool oldsaved = false;
-
-  // override type
-  if (it != NamedValues_.end() ) {
-    OldType = it->second;
-    oldsaved = true;
-    it->second = Symbol(VarTypes::Int, IdentLoc);
-  }
-  // create var
-  else {
-    NamedValues_.addSymbol( IdName, VarTypes::Int, IdentLoc );
-  }
-  
   if (CurTok_ != tok_in)
-    THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getLine());
+    THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getLoc());
   getNextToken(); // eat in
 
   auto StartLoc = getLoc();
@@ -268,11 +231,8 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   else if (CurTok_ == tok_until) {
     Loop = ForExprAST::LoopType::Until;
   }
-  else {
-    std::cerr << std::endl;
-    TheLex_.barf(std::cerr, StartLoc);
-    THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", StartLoc.getLine());
-  }
+  else
+    THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", StartLoc);
   getNextToken(); // eat to
 
   auto EndLoc = getLoc();
@@ -285,13 +245,8 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     Step = parseExpression();
   }
 
-  if (CurTok_ != tok_do) {
-    std::cerr << std::endl;
-    TheLex_.barf(std::cerr, ForLoc);
-    std::cerr << std::string(ForLoc.getCol()-2, ' ') << "do" << std::endl;
-    std::cerr << std::endl;
-    THROW_SYNTAX_ERROR("Expected 'do' after 'for'", ForLoc.getLine());
-  }
+  if (CurTok_ != tok_do)
+    THROW_SYNTAX_ERROR("Expected 'do' after 'for'", ForLoc);
   getNextToken(); // eat 'do'.
   
   // add statements
@@ -303,17 +258,9 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   }
   
   // make a for loop
-  auto F = std::make_unique<ForExprAST>(TheLex_.getCurLoc(), IdName, std::move(Start),
+  auto Id = Identifier{IdName, IdentLoc};
+  auto F = std::make_unique<ForExprAST>(TheLex_.getCurLoc(), Id, std::move(Start),
       std::move(End), std::move(Step), std::move(Body), Loop);
-
-
-  it = NamedValues_.find(IdName);
-  if (it == NamedValues_.end() )
-    THROW_CONTRA_ERROR( "Iterator somehow removed from symbol table" );
-  if (oldsaved)
-    it->second = OldType;
-  else 
-    NamedValues_.erase(it);
   
   // eat end
   getNextToken();
@@ -331,11 +278,11 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
 //   ::= varexpr
 //==============================================================================
 std::unique_ptr<ExprAST> Parser::parsePrimary() {
-  
+ 
+  auto Loc = getLoc();
+
   switch (CurTok_) {
   case tok_identifier:
-  case tok_int:
-  case tok_real:
     return parseIdentifierExpr();
   case tok_real_number:
     return parseRealExpr();
@@ -353,7 +300,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
     return parseStringExpr();
   default:
     THROW_SYNTAX_ERROR("Unknown token '" <<  Tokens::getName(CurTok_)
-        << "' when expecting an expression", getLine());
+        << "' when expecting an expression", Loc);
   }
 }
 
@@ -429,7 +376,7 @@ std::unique_ptr<FunctionAST> Parser::parseTopLevelExpr() {
   SourceLocation FnLoc = TheLex_.getCurLoc();
   auto E = parseExpression();
   // Make an anonymous proto.
-  auto Proto = std::make_unique<PrototypeAST>(FnLoc, "__anon_expr", E->InferredType);
+  auto Proto = std::make_unique<PrototypeAST>(FnLoc, "__anon_expr");
   return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 }
 
@@ -470,14 +417,13 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   getNextToken();  // eat the var.
   // At least one variable name is required.
   if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Expected identifier after var", getLine());
+    THROW_SYNTAX_ERROR("Expected identifier after var", getLoc());
 
-  std::vector<SourceLocation> VarLoc(1, getLoc());
-  std::vector<std::string> VarNames(1, TheLex_.getIdentifierStr());
+  std::vector<Identifier> VarNames;
+  VarNames.emplace_back(TheLex_.getIdentifierStr(), getLoc());
   getNextToken();  // eat identifier.
 
-  VarTypes VarType;
-  bool VarDefined = false;
+  Identifier VarType;
   bool IsArray = false;
 
   std::unique_ptr<ExprAST> Size;
@@ -486,9 +432,8 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   while (CurTok_ == ',') {
     getNextToken();  // eat ','  
     if (CurTok_ != tok_identifier)
-      THROW_SYNTAX_ERROR("Only variable names are allowed in definition.", getLine());
-    VarLoc.push_back(getLoc());
-    VarNames.push_back( TheLex_.getIdentifierStr() );
+      THROW_SYNTAX_ERROR("Only variable names are allowed in definition.", getLoc());
+    VarNames.emplace_back( TheLex_.getIdentifierStr(), getLoc() );
     getNextToken();  // eat identifier
   }
 
@@ -496,32 +441,21 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   if (CurTok_ == ':') {
     getNextToken(); // eat the ':'.
     
-    VarDefined = true;
-
     if (CurTok_ == '[') {
       IsArray = true;
       getNextToken(); // eat the '['.
     }
 
-    if (CurTok_ == tok_int) {
-      VarType = VarTypes::Int;
+    if (CurTok_ == tok_identifier) {
+      VarType = Identifier{TheLex_.getIdentifierStr(), getLoc()};
+      getNextToken(); // eat the identifier
     }
-    else if (CurTok_ == tok_real) {
-      VarType = VarTypes::Real;
-    }
-    else {
-      THROW_SYNTAX_ERROR("Variable type '" << TheLex_.getIdentifierStr()
-          << "' not supported for '" << VarNames[0] << "'", getLine());
-    }
-    
-    getNextToken(); // eat the 'real'/'int'
 
     if (IsArray) {
 
-
       if (CurTok_ != ']' && CurTok_ != ';')
         THROW_SYNTAX_ERROR("Array definition expected ']' or ';' instead of '"
-            << Tokens::getName(CurTok_) << "'", getLine());
+            << Tokens::getName(CurTok_) << "'", getLoc());
       else if (CurTok_ == ';') {
         getNextToken(); // eat ;
         Size = parseExpression();
@@ -529,7 +463,7 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
       
       if (CurTok_ != ']')
         THROW_SYNTAX_ERROR("Array definition must end with ']' instead of '"
-            << Tokens::getName(CurTok_) << "'", getLine());
+            << Tokens::getName(CurTok_) << "'", getLoc());
 
       getNextToken(); // eat [
     }
@@ -538,39 +472,23 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   
   // Read the optional initializer.
   std::unique_ptr<ExprAST> Init;
+  auto EqLoc = getLoc();
   if (CurTok_ == '=') {
     getNextToken(); // eat the '='.
     
     if (CurTok_ == '[')
-      Init = parseArrayExpr(VarType);
+      Init = parseArrayExpr();
     else {
       Init = parseExpression();
     }
   }
   else {
-    std::cerr << std::endl;
-    TheLex_.barf(std::cerr, getLoc());
-    std::cerr << std::string(getCol()-2, ' ') << "=" << std::endl;
-    std::cerr << std::endl;
-    THROW_SYNTAX_ERROR("Variable definition for '" << VarNames << "'"
-        << " has no initializer", getLine());
+    std::vector<std::string> Names;
+    for ( auto i : VarNames ) Names.emplace_back(i.Name);
+    THROW_SYNTAX_ERROR("Variable definition for '" << Names << "'"
+        << " has no initializer", EqLoc);
   }
 
-  if (!VarDefined) {
-    auto ptr = Init.get();
-    if ( dynamic_cast<IntegerExprAST*>(ptr) )
-      VarType = VarTypes::Int;
-    else if ( dynamic_cast<RealExprAST*>(ptr) )
-      VarType = VarTypes::Real;
-    else if (ptr->InferredType != VarTypes::Void)
-      VarType = ptr->InferredType;
-    else
-      THROW_SYNTAX_ERROR( "Could not infer variable type for '" << VarNames[0] << "'", getLine() );
-  }
-  
-  for ( int i=0; i<VarNames.size(); ++i )
-    NamedValues_.addSymbol( VarNames[i], VarType, VarLoc[i], IsArray );
- 
   if (IsArray)
     return std::make_unique<ArrayVarExprAST>(TheLex_.getCurLoc(), VarNames,
         VarType, std::move(Init), std::move(Size));
@@ -583,9 +501,10 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
 //==============================================================================
 // Array expression parser
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
+std::unique_ptr<ExprAST> Parser::parseArrayExpr()
 {
 
+  auto Loc = getLoc();
   getNextToken(); // eat [.
 
   ExprBlock ValExprs;
@@ -603,7 +522,7 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
         std::cerr << std::endl;
         TheLex_.barf(std::cerr, Loc);
         std::cerr << std::endl;
-        THROW_SYNTAX_ERROR("Expected size expression after ';'", Loc.getLine());
+        THROW_SYNTAX_ERROR("Expected size expression after ';'", Loc);
       }
       SizeExpr = std::move(parseExpression());
       break;
@@ -613,14 +532,14 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
   }
 
   if (CurTok_ != ']')
-    THROW_SYNTAX_ERROR( "Expected ']'", getLine() );
+    THROW_SYNTAX_ERROR( "Expected ']'", getLoc() );
 
  
   // eat ]
   getNextToken();
 
-  return std::make_unique<ArrayExprAST>(TheLex_.getCurLoc(), VarType,
-      std::move(ValExprs), std::move(SizeExpr));
+  return std::make_unique<ArrayExprAST>(Loc, std::move(ValExprs),
+      std::move(SizeExpr));
 }
 
 
@@ -628,8 +547,6 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr(VarTypes VarType)
 // Toplevel function parser
 //==============================================================================
 std::unique_ptr<FunctionAST> Parser::parseFunction() {
-
-  NamedValues_.clear();
 
   getNextToken(); // eat def.
   auto Proto = parsePrototype();
@@ -654,7 +571,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
 
   if (CurTok_ != tok_end)
     THROW_SYNTAX_ERROR( "Only one return statement allowed for a function.",
-        getLine() );
+        getLoc() );
   
   // eat end
   getNextToken();
@@ -679,7 +596,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   switch (CurTok_) {
   default:
-    THROW_SYNTAX_ERROR("Expected function name in prototype", getLine());
+    THROW_SYNTAX_ERROR("Expected function name in prototype", getLoc());
   case tok_identifier:
     FnName = TheLex_.getIdentifierStr();
     Kind = 0;
@@ -688,7 +605,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   case tok_unary:
     getNextToken();
     if (!isascii(CurTok_))
-      THROW_SYNTAX_ERROR("Expected unary operator", getLine());
+      THROW_SYNTAX_ERROR("Expected unary operator", getLoc());
     FnName = "unary";
     FnName += (char)CurTok_;
     Kind = 1;
@@ -697,7 +614,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   case tok_binary:
     getNextToken();
     if (!isascii(CurTok_))
-      THROW_SYNTAX_ERROR("Expected binrary operator", getLine());
+      THROW_SYNTAX_ERROR("Expected binrary operator", getLoc());
     FnName = "binary";
     FnName += (char)CurTok_;
     Kind = 2;
@@ -708,60 +625,63 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
       auto NumVal = std::atoi(TheLex_.getIdentifierStr().c_str());
       if (NumVal < 1 || NumVal > 100)
         THROW_SYNTAX_ERROR("Invalid precedence of '" << NumVal
-            << "' must be between 1 and 100", getLine());
+            << "' must be between 1 and 100", getLoc());
       BinaryPrecedence = NumVal;
       getNextToken();
     }
     else {
-      THROW_SYNTAX_ERROR("Precedence must be an integer number", getLine());
+      THROW_SYNTAX_ERROR("Precedence must be an integer number", getLoc());
     }
     break;
   }
   
   if (CurTok_ != '(')
-    THROW_SYNTAX_ERROR("Expected '(' in prototype", getLine());
+    THROW_SYNTAX_ERROR("Expected '(' in prototype", getLoc());
 
   getNextToken(); // eat "("
 
-  std::vector< std::pair<std::string, Symbol> > Args;
+  std::vector<Identifier> Args;
+  std::vector<Identifier> ArgTypes;
+  std::vector<bool> ArgIsArray;
 
   while (CurTok_ == tok_identifier) {
 
+    bool IsArray = false;
+
     auto Loc = getLoc();
     auto Name = TheLex_.getIdentifierStr();
-    bool IsArray = false;
+    Args.emplace_back( Name, Loc );
     getNextToken(); // eat identifier
     
     if (CurTok_ != ':') 
-      THROW_SYNTAX_ERROR("Variable '" << Name << "' needs a type specifier", getLine());
+      THROW_SYNTAX_ERROR("Variable '" << Name << "' needs a type specifier", getLoc());
     getNextToken(); // eat ":"
     
     if (CurTok_ == '[') {
       IsArray = true;
       getNextToken(); // eat the '['.
     }
-    
-    auto VarType = getVarType(CurTok_);
-    if (VarType == VarTypes::Void)
-      THROW_SYNTAX_ERROR("Variable '" << Name << "' of type '"
-          << getVarTypeName(VarType) << "' is not allowed "
-          << "in a function prototype", getLine());
+    ArgIsArray.push_back( IsArray );
+   
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Variable '" << Name << "' requires a type in prototype"
+          << " for function '" << FnName << "'", getLoc());
+    auto VarType = TheLex_.getIdentifierStr();
+    ArgTypes.emplace_back( VarType, getLoc() );
     getNextToken(); // eat vartype
     
     if (IsArray) {
       if (CurTok_ != ']') 
         THROW_SYNTAX_ERROR("Array declaration expected ']' instead of '"
-          << Tokens::getName(CurTok_) << "'", getLine());
+          << Tokens::getName(CurTok_) << "'", getLoc());
       getNextToken(); // eat ]
     }
-
-    Args.emplace_back( Name, Symbol(VarType, Loc, IsArray) );
 
     if (CurTok_ == ',') getNextToken(); // eat ','
   }
 
   if (CurTok_ != ')')
-    THROW_SYNTAX_ERROR("Expected ')' in prototype", getLine());
+    THROW_SYNTAX_ERROR("Expected ')' in prototype", getLoc());
 
   // success.
   getNextToken(); // eat ')'.
@@ -769,31 +689,26 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   // Verify right number of names for operator.
   if (Kind && Args.size() != Kind)
     THROW_SYNTAX_ERROR("Invalid number of operands for operator: "
-        << Kind << " expected, but got " << Args.size(), getLine());
+        << Kind << " expected, but got " << Args.size(), getLoc());
 
-  // add these varaibles to the current parser scope
-  NamedValues_.addSymbols( Args );
-
-  VarTypes ReturnType = VarTypes::Void;
+  std::unique_ptr<Identifier> ReturnType;
   if (CurTok_ == '-') {
     getNextToken(); // eat -
     if (CurTok_ != '>')
-      THROW_SYNTAX_ERROR("Expected '>' after '-' for return statements", getLine());
+      THROW_SYNTAX_ERROR("Expected '>' after '-' for return statements", getLoc());
     getNextToken(); // eat >
 
-    auto VarType = getVarType(CurTok_);
-    if (VarType == VarTypes::Void)
-      THROW_SYNTAX_ERROR("Return type '"
-          << getVarTypeName(VarType) << "' is not allowed "
-          << "in a function prototype", getLine());
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Return type requires an identifier in prototype"
+          << " for function '" << FnName << "'", getLoc());
+    ReturnType = std::make_unique<Identifier>(TheLex_.getIdentifierStr(), getLoc());
     getNextToken(); // eat vartype
-
-    ReturnType = VarType;
   }
 
 
-  return std::make_unique<PrototypeAST>(FnLoc, FnName,
-      std::move(Args), ReturnType, Kind != 0, BinaryPrecedence);
+  return std::make_unique<PrototypeAST>(FnLoc, FnName, std::move(Args),
+      std::move(ArgTypes), std::move(ArgIsArray), std::move(ReturnType), Kind != 0,
+      BinaryPrecedence);
 }
 
 } // namespace

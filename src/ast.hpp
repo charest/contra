@@ -5,9 +5,8 @@
 #include "config.hpp"
 #include "errors.hpp"
 #include "expression.hpp"
+#include "identifier.hpp"
 #include "sourceloc.hpp"
-#include "symbols.hpp"
-#include "vartype.hpp"
 
 #include <iostream>
 #include <list>
@@ -41,10 +40,7 @@ class ExprAST : public NodeAST {
   
 public:
   
-  VarTypes InferredType;
-
-  ExprAST(SourceLocation Loc, VarTypes Type = VarTypes::Void)
-    : Loc_(Loc), InferredType(Type) {}
+  ExprAST(SourceLocation Loc) : Loc_(Loc) {}
 
   virtual ~ExprAST() = default;
   
@@ -65,14 +61,15 @@ protected:
 
 public:
   ValueExprAST(SourceLocation Loc, T Val)
-    : ExprAST(Loc, getVarType<T>()), Val_(Val) {}
+    : ExprAST(Loc), Val_(Val) {}
 
   const T & getVal() const { return Val_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
   
 };
 
@@ -94,13 +91,13 @@ protected:
 
 public:
 
-  VariableExprAST(SourceLocation Loc, const std::string &Name,
-      VarTypes Type) : ExprAST(Loc, Type), Name_(Name)
+  VariableExprAST(SourceLocation Loc, const std::string &Name)
+    : ExprAST(Loc), Name_(Name)
   {}
 
   VariableExprAST(SourceLocation Loc, const std::string &Name,
-      VarTypes Type, std::unique_ptr<ExprAST> Index)
-    : ExprAST(Loc, Type), Name_(Name), Index_(std::move(Index))
+      std::unique_ptr<ExprAST> Index)
+    : ExprAST(Loc), Name_(Name), Index_(std::move(Index))
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
@@ -111,8 +108,9 @@ public:
 
   std::shared_ptr<ExprAST> getIndex() const { return Index_; }
   
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -126,15 +124,16 @@ protected:
 
 public:
 
-  ArrayExprAST(SourceLocation Loc, VarTypes VarType, ExprBlock Vals,
+  ArrayExprAST(SourceLocation Loc, ExprBlock Vals,
       std::unique_ptr<ExprAST> Size)
-    : ExprAST(Loc, VarType), Vals_(std::move(Vals)), Size_(std::move(Size))
+    : ExprAST(Loc), Vals_(std::move(Vals)), Size_(std::move(Size))
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 
 };
 
@@ -153,24 +152,15 @@ public:
       char Op, std::unique_ptr<ExprAST> lhs,
       std::unique_ptr<ExprAST> rhs)
     : ExprAST(Loc), Op_(Op), LHS_(std::move(lhs)), RHS_(std::move(rhs))
-  {
-    // promote lesser types
-    if (LHS_->InferredType == VarTypes::Real || RHS_->InferredType == VarTypes::Real)
-      InferredType = VarTypes::Real;
-    else if (LHS_->InferredType != RHS_->InferredType)
-      THROW_SYNTAX_ERROR( "Don't know how to handle binary expression with '"
-          << getVarTypeName(LHS_->InferredType) << "' and '"
-          << getVarTypeName(RHS_->InferredType) << "'", Loc.getLine() );
-    else
-      InferredType =  LHS_->InferredType;
-  }
+  {}
 
   char getOperand() const { return Op_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -194,8 +184,9 @@ public:
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
   
 };
 
@@ -220,8 +211,9 @@ public:
   static std::unique_ptr<ExprAST> makeNested( 
     ExprLocPairList & Conds, ExprBlockList & Blocks );
   
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -237,7 +229,7 @@ public:
 
 protected:
 
-  std::string VarName_;
+  Identifier VarName_;
   std::unique_ptr<ExprAST> Start_, End_, Step_;
   ExprBlock Body_;
   LoopType Loop_;
@@ -245,7 +237,7 @@ protected:
 public:
 
   ForExprAST(SourceLocation Loc,
-      const std::string &VarName,
+      const Identifier &VarName,
       std::unique_ptr<ExprAST> Start,
       std::unique_ptr<ExprAST> End,
       std::unique_ptr<ExprAST> Step,
@@ -258,8 +250,9 @@ public:
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -275,13 +268,14 @@ public:
   UnaryExprAST(SourceLocation Loc,
       char Opcode,
       std::unique_ptr<ExprAST> Operand)
-    : ExprAST(Loc, Operand->InferredType), Opcode_(Opcode), Operand_(std::move(Operand))
+    : ExprAST(Loc), Opcode_(Opcode), Operand_(std::move(Operand))
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -291,22 +285,23 @@ class VarExprAST : public ExprAST {
 
 protected:
 
-  std::vector<std::string> VarNames_;
-  VarTypes VarType_;
+  std::vector<Identifier> VarNames_;
+  Identifier VarType_;
   std::shared_ptr<ExprAST> Init_;
 
 public:
 
-  VarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
-      VarTypes VarType, std::unique_ptr<ExprAST> Init)
-    : ExprAST(Loc, Init->InferredType), VarNames_(VarNames), VarType_(VarType),
+  VarExprAST(SourceLocation Loc, const std::vector<Identifier> & VarNames, 
+      Identifier VarType, std::unique_ptr<ExprAST> Init)
+    : ExprAST(Loc), VarNames_(VarNames), VarType_(VarType),
       Init_(std::move(Init)) 
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
  
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -319,8 +314,8 @@ protected:
 
 public:
 
-  ArrayVarExprAST(SourceLocation Loc, const std::vector<std::string> & VarNames, 
-      VarTypes VarType, std::unique_ptr<ExprAST> Init,
+  ArrayVarExprAST(SourceLocation Loc, const std::vector<Identifier> & VarNames, 
+      Identifier VarType, std::unique_ptr<ExprAST> Init,
       std::unique_ptr<ExprAST> Size)
     : VarExprAST(Loc, VarNames, VarType, std::move(Init)),
       Size_(std::move(Size))
@@ -328,8 +323,9 @@ public:
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
   
 };
 
@@ -342,31 +338,35 @@ class PrototypeAST : public NodeAST {
 protected:
 
   std::string Name_;
-  VarTypes Return_;
+  std::unique_ptr<Identifier> Return_;
   bool IsOperator_ = false;
   unsigned Precedence_ = 0;  // Precedence if a binary op.
-  int Line_;
+  SourceLocation Loc_;
   
-  std::vector< std::pair<std::string, Symbol> > Args_;
+  std::vector<Identifier> Args_;
+  std::vector<Identifier> ArgTypes_;
+  std::vector<bool> ArgIsArray_;
 
 public:
   
   PrototypeAST(
     SourceLocation Loc,
-    const std::string &Name,
-    VarTypes Return)
-      : Name_(Name), Return_(Return), Line_(Loc.getLine())
+    const std::string &Name)
+      : Name_(Name), Loc_(Loc)
   {}
 
   PrototypeAST(
     SourceLocation Loc,
     const std::string &Name,
-    std::vector< std::pair<std::string, Symbol> > && Args,
-    VarTypes Return,
+    std::vector<Identifier> && Args,
+    std::vector<Identifier> && ArgTypes,
+    std::vector<bool> && ArgIsArray,
+    std::unique_ptr<Identifier> Return,
     bool IsOperator = false,
     unsigned Prec = 0)
-      : Name_(Name), Return_(Return), IsOperator_(IsOperator),
-        Precedence_(Prec), Line_(Loc.getLine()), Args_(std::move(Args))
+      : Name_(Name), Return_(std::move(Return)), IsOperator_(IsOperator),
+        Precedence_(Prec), Loc_(Loc), Args_(std::move(Args)),
+        ArgTypes_(std::move(ArgTypes)), ArgIsArray_(std::move(ArgIsArray))
   {}
 
   
@@ -383,12 +383,11 @@ public:
   }
 
   unsigned getBinaryPrecedence() const { return Precedence_; }
-  int getLine() const { return Line_; }
-
-  Symbol getArgSymbol(int i) { return Args_[i].second; }
+  int getLine() const { return Loc_.getLine(); }
   
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -417,8 +416,9 @@ public:
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  friend class Vizualizer;
+  friend class Analyzer;
   friend class CodeGen;
+  friend class Vizualizer;
 
 };
 

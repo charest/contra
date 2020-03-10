@@ -39,11 +39,9 @@ enum Token {
 
   // variables
   tok_var,
-  tok_int,
-  tok_real,
-  tok_string,
 
-  // numbers
+  // numbers / strings
+  tok_string,
   tok_int_number,
   tok_real_number,
 

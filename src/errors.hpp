@@ -2,6 +2,7 @@
 #define CONTRA_ERRORS_HPP
 
 #include "formatter.hpp"
+#include "sourceloc.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -28,9 +29,10 @@ public:
 //==============================================================================
 class NameError : public ContraError
 {
+  SourceLocation Loc_;
 public:
-  NameError(const char *str) : ContraError(str) {}
-  NameError(const std::string & str) : ContraError(str) {}
+  NameError(const char *str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
+  NameError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
 };
 
 //==============================================================================
@@ -38,30 +40,27 @@ public:
 //==============================================================================
 class SyntaxError : public ContraError
 {
+  SourceLocation Loc_;
 public:
-  SyntaxError(const char *str) : ContraError(str) {}
-
-  SyntaxError(const std::string & str) : ContraError(str) {}
+  SyntaxError(const char *str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
+  SyntaxError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
 };
 
 
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief Raise a syntax error.
 ////////////////////////////////////////////////////////////////////////////////
-#define THROW_SYNTAX_ERROR(msg,line)                                           \
+#define THROW_SYNTAX_ERROR(msg,loc)                                            \
   do {                                                                         \
-    std::cerr << "Syntax error on line " << line << std::endl;                 \
-    throw ::contra::SyntaxError(Formatter() << msg );                          \
+    throw ::contra::SyntaxError(Formatter() << msg, loc );                     \
   } while(0)
 
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief Raise a name error.
 ////////////////////////////////////////////////////////////////////////////////
-#define THROW_NAME_ERROR(msg,line)                                             \
+#define THROW_NAME_ERROR(msg,loc)                                              \
   do {                                                                         \
-    std::cerr << "Name error on line " << line << std::endl;                   \
-    throw ::contra::NameError(Formatter() << "Unknown specifier '" <<  msg     \
-        << "'" );                                                              \
+    throw ::contra::SyntaxError(Formatter() << msg, loc);                      \
   } while(0)
 
 

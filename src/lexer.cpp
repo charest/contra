@@ -93,7 +93,7 @@ int Lexer::gettok() {
       LastChar_ = advance();
       if (LastChar_ == '.') {
         if (is_float)
-          THROW_SYNTAX_ERROR( "Multiple '.' encountered in real", LexLoc_.getLine() );
+          THROW_SYNTAX_ERROR( "Multiple '.' encountered in real", LexLoc_ );
         is_float = true;
         // eat '.'
         IdentifierStr_ += LastChar_;
@@ -108,7 +108,7 @@ int Lexer::gettok() {
       LastChar_ = advance();
       // make sure next character is sign or number
       if (LastChar_ != '+' && LastChar_ != '-' && !isdigit(LastChar_))
-        THROW_SYNTAX_ERROR( "Digit or +/- must follow exponent", LexLoc_.getLine() );
+        THROW_SYNTAX_ERROR( "Digit or +/- must follow exponent", LexLoc_ );
       // eat sign or number
       IdentifierStr_ += LastChar_;
       LastChar_ = advance();
