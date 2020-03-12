@@ -1,5 +1,5 @@
 function wave_speed(
-  gamma : f64,
+  #gamma : f64,
   d : f64,
   p : f64,
   v : f64 ) -> f64

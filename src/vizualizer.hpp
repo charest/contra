@@ -31,17 +31,22 @@ public:
 
   std::ostream & out() { return *out_; }
   
+  // Codegen function
+  template<typename T>
+  void runVisitor(T&e)
+  { dispatch(e); }
+  
   void dispatch(ExprAST&) override;
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
   void dispatch(ValueExprAST<std::string>&) override;
   void dispatch(VariableExprAST&) override;
   void dispatch(ArrayExprAST&) override;
+  void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;
   void dispatch(CallExprAST&) override;
   void dispatch(ForExprAST&) override;
   void dispatch(IfExprAST&) override;
-  void dispatch(UnaryExprAST&) override;
   void dispatch(VarExprAST&) override;
   void dispatch(ArrayVarExprAST&) override;
   void dispatch(PrototypeAST&) override;

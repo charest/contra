@@ -6,19 +6,19 @@
 
 namespace librt {
 
+// static initialization
+std::map<std::string, RunTimeLib::LlvmFunctionPointer>
+  RunTimeLib::InstallMap;
+
+std::map<std::string, RunTimeLib::FunctionPointer>
+  RunTimeLib::SemantecMap;
+
 //==============================================================================
 // install the library functions available by default
 //==============================================================================
-std::map<std::string, RunTimeLib::InstallFunctionPointer>
-  RunTimeLib::InstallMap = {
-    {"print",installPrint},
-    {"allocate",installAllocate},
-    {"deallocate",installDeAllocate},
-    {"myabs",installAbs},
-    {"mysqrt",installSqrt},
-    {"fabs",installCAbs},
-    {"fmax",installCMax},
-    {"sqrt",installCSqrt},
-  };
+void RunTimeLib::setup()
+{
+    _setup<Print, Allocate, DeAllocate, CAbs, CMax, CSqrt>();
+}
 
 }

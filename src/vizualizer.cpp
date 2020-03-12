@@ -38,14 +38,23 @@ void Vizualizer::dispatch(ArrayExprAST& e)
 }
 
 //==============================================================================
+void Vizualizer::dispatch(UnaryExprAST& e)
+{
+  auto my_ind = ind_;
+  out() << "node" << my_ind << "[label=\"UnaryExprAST\"];" << std::endl;
+  out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
+  dispatch(*e.OpExpr_);
+}
+
+//==============================================================================
 void Vizualizer::dispatch(BinaryExprAST& e)
 {
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"BinaryExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.LHS_);
+  dispatch(*e.LeftExpr_);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.RHS_);
+  dispatch(*e.RightExpr_);
 }
 
 //==============================================================================
@@ -53,9 +62,9 @@ void Vizualizer::dispatch(CallExprAST& e)
 {
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"CallExprAST\"];" << std::endl;
-  for (int i=0; i<e.Args_.size(); ++i) {
+  for (int i=0; i<e.ArgExprs_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.Args_[i]);
+    dispatch(*e.ArgExprs_[i]);
   }
 }
 
@@ -65,14 +74,14 @@ void Vizualizer::dispatch(ForExprAST& e)
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"ForExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Start_);
+  dispatch(*e.StartExpr_);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.End_);
+  dispatch(*e.EndExpr_);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Step_);
-  for (int i=i; i<e.Body_.size(); ++i) {
+  dispatch(*e.StepExpr_);
+  for (int i=i; i<e.BodyExprs_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.Body_[i]);
+    dispatch(*e.BodyExprs_[i]);
   }
 }
 
@@ -82,24 +91,15 @@ void Vizualizer::dispatch(IfExprAST& e)
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"IfExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Cond_);
-  for (int i=i; i<e.Then_.size(); ++i) {
+  dispatch(*e.CondExpr_);
+  for (int i=i; i<e.ThenExpr_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.Then_[i]);
+    dispatch(*e.ThenExpr_[i]);
   }
-  for (int i=i; i<e.Else_.size(); ++i) {
+  for (int i=i; i<e.ElseExpr_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.Else_[i]);
+    dispatch(*e.ElseExpr_[i]);
   }
-}
-
-//==============================================================================
-void Vizualizer::dispatch(UnaryExprAST& e)
-{
-  auto my_ind = ind_;
-  out() << "node" << my_ind << "[label=\"UnaryExprAST\"];" << std::endl;
-  out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Operand_);
 }
 
 //==============================================================================
@@ -107,7 +107,7 @@ void Vizualizer::dispatch(VarExprAST& e)
 {
   out() << "node" << ind_ << "[label=\"VarExprAST\"];" << std::endl;
   out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Init_);
+  dispatch(*e.InitExpr_);
 }
 
 //==============================================================================
@@ -116,9 +116,9 @@ void Vizualizer::dispatch(ArrayVarExprAST& e)
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"ArrayVarExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Init_);
+  dispatch(*e.InitExpr_);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.Size_);
+  dispatch(*e.SizeExpr_);
 }
 
 //==============================================================================
@@ -131,9 +131,9 @@ void Vizualizer::dispatch(FunctionAST& e)
   auto my_ind = ind_;
   out() << "digraph {" << std::endl;
   out() << "node" << my_ind << "[label=\"FunctionAST\"];" << std::endl;
-  for ( int i=0; i<e.Body_.size(); ++i ) {
+  for ( int i=0; i<e.BodyExprs_.size(); ++i ) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.Body_[i]);
+    dispatch(*e.BodyExprs_[i]);
   }
   out() << "}" << std::endl;
 

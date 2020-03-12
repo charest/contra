@@ -170,6 +170,7 @@ std::ostream & Lexer::barf(std::ostream& out, SourceLocation Loc)
   // skip lines
   auto line = Loc.getLine(); 
   auto col = Loc.getCol();
+  auto prev_col = std::max(col - 1, 0);
   for ( int i=0; i<line-1; ++i ) Tee_.ignore(max, '\n');
   // get relevant line
   std::string tmp;
@@ -177,7 +178,7 @@ std::ostream & Lexer::barf(std::ostream& out, SourceLocation Loc)
   // start output
   out << FileName_ << " : Line " << line << " : Col " << col << ":" << std::endl;
   out << tmp << std::endl;
-  out << std::string(col-1, ' ') << "^" << std::endl;
+  out << std::string(prev_col, ' ') << "^" << std::endl;
   return out;
 }
 

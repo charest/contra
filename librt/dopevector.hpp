@@ -1,6 +1,7 @@
 #ifndef RTLIB_DOPEVECTOR_HPP
 #define RTLIB_DOPEVECTOR_HPP
 
+#include "config.hpp"
 #include "dllexport.h"
 #include "llvm_forwards.hpp"
 
@@ -8,7 +9,6 @@ extern "C" {
 
 /// forward declaration
 struct dopevector_t;
-struct int_t;
 
 /// memory allocation
 DLLEXPORT dopevector_t allocate(int_t size);
@@ -18,12 +18,23 @@ DLLEXPORT void deallocate(dopevector_t dv);
 
 } // extern
 
+namespace contra {
+class FunctionDef;
+}
+
 namespace librt {
 
-// install memory allocator
-llvm::Function *installAllocate(llvm::LLVMContext &, llvm::Module &);
-// install memory deallocator
-llvm::Function *installDeAllocate(llvm::LLVMContext &, llvm::Module &);
+struct Allocate {
+  static const std::string Name;
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::shared_ptr<contra::FunctionDef> check() { return nullptr; };
+};
+
+struct DeAllocate {
+  static const std::string Name;
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::shared_ptr<contra::FunctionDef> check() { return nullptr; };
+};
 
 } // namespace
 

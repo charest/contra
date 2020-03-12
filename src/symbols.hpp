@@ -1,6 +1,7 @@
 #ifndef CONTRA_SYMBOLS_HPP
 #define CONTRA_SYMBOLS_HPP
 
+#include "identifier.hpp"
 #include "sourceloc.hpp"
 #include "vartype.hpp"
 
@@ -15,37 +16,144 @@ namespace contra {
 class Symbol {
 
   std::string Name_;
-  SourceLocation Loc_;
 
 public:
 
-  Symbol(const std::string & Name, SourceLocation Loc) : Name_(Name), Loc_(Loc)
-  {}
+  Symbol(const std::string & Name) : Name_(Name) {}
 
   virtual ~Symbol() = default;
 
   virtual const std::string & getName() const { return Name_; }
+};
+
+
+//==============================================================================
+// The builtin symbol type
+//==============================================================================
+class BuiltInSymbol : public Symbol {
+public:
+
+  BuiltInSymbol(const std::string & Name) : Symbol(Name) {}
+
+  virtual ~BuiltInSymbol() = default;
 
 };
 
 //==============================================================================
-// The variable symbol type
+// The builtin symbol type
 //==============================================================================
-class VariableSymbol : public Symbol {
+class UserSymbol : public Symbol {
+  SourceLocation Loc_;
+public:
+
+  UserSymbol(const std::string & Name, SourceLocation Loc) : Symbol(Name),
+    Loc_(Loc) {}
+
+  virtual ~UserSymbol() = default;
+
+  virtual SourceLocation getLoc() const { return Loc_; }
+
+};
+
+//==============================================================================
+// The variable type
+//==============================================================================
+class VariableType {
 
   std::shared_ptr<Symbol> Type_;
   bool IsArray_ = false;
 
 public:
 
-  VariableSymbol(const std::string & Name, SourceLocation Loc, 
-      std::shared_ptr<Symbol> Type, bool IsArray)
-    : Symbol(Name, Loc), Type_(Type), IsArray_(IsArray)
+  VariableType() = default;
+
+  VariableType(std::shared_ptr<Symbol> Type, bool IsArray = false)
+    : Type_(Type), IsArray_(IsArray)
   {}
 
-  virtual ~VariableSymbol() = default;
+  //virtual ~VariableType() = default;
 
-  const std::shared_ptr<Symbol> getType() const { return Type_; }
+  const std::shared_ptr<Symbol> getSymbol() const { return Type_; }
+  bool isArray() const { return IsArray_; }
+  void setArray(bool IsArray=true) { IsArray_ = IsArray; }
+
+  bool operator==(const VariableType & other)
+  { return Type_ == other.Type_ && IsArray_ == other.IsArray_; }
+  bool operator!=(const VariableType & other)
+  { return Type_ != other.Type_ || IsArray_ != other.IsArray_; }
+};
+
+using VariableTypeList = std::vector<VariableType>;
+
+//==============================================================================
+// The variable symbol
+//==============================================================================
+class VariableDef : public Identifier, public VariableType {
+
+public:
+
+  VariableDef(const std::string & Name, SourceLocation Loc, 
+      std::shared_ptr<Symbol> Type, bool IsArray = false)
+    : VariableType(Type, IsArray), Identifier(Name, Loc)
+  {}
+
+  VariableDef(const std::string & Name, SourceLocation Loc, 
+      const VariableType & VarType)
+    : VariableType(VarType), Identifier(Name, Loc)
+  {}
+
+  //virtual ~Variable() = default;
+
+};
+
+//==============================================================================
+// The function symbol type
+//==============================================================================
+class FunctionDef{
+
+public:
+
+
+protected:
+
+  std::string Name_;
+  VariableTypeList ArgTypes_;
+  VariableType ReturnType_;
+
+public:
+
+  FunctionDef(const std::string & Name, const VariableTypeList & ArgTypes)
+    : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(Context::VoidSymbol)
+  {}
+
+  FunctionDef(const std::string & Name, const VariableTypeList & ArgTypes,
+      const VariableType & ReturnType)
+    : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(ReturnType)
+  {}
+
+  //virtual ~FunctionSymbol() = default;
+
+  const auto & getName() const { return Name_; }
+  const auto & getReturnType() const { return ReturnType_; }
+  const auto & getArgTypes() const { return ArgTypes_; }
+  auto getNumArgs() const { return ArgTypes_.size(); }
+};
+
+
+//==============================================================================
+// The function symbol type
+//==============================================================================
+class BuiltInFunction : public FunctionDef {
+
+public:
+
+  BuiltInFunction(const std::string & Name, const VariableTypeList & ArgTypes)
+    : FunctionDef(Name, ArgTypes)
+  {}
+
+  BuiltInFunction(const std::string & Name, const VariableTypeList & ArgTypes,
+      const VariableType & ReturnType) : FunctionDef(Name, ArgTypes, ReturnType)
+  {}
 
 };
 
@@ -53,70 +161,23 @@ public:
 //==============================================================================
 // The function symbol type
 //==============================================================================
-class FunctionSymbol : public Symbol {
+class UserFunction : public FunctionDef {
 
-  using symbol_list = std::vector<std::shared_ptr<VariableSymbol>>;
-
-  symbol_list ArgTypes_;
-  std::shared_ptr<Symbol> ReturnType_;
+  SourceLocation Loc_;
 
 public:
 
-  FunctionSymbol(const std::string & Name, SourceLocation Loc,
-      const symbol_list & ArgTypes, 
-      std::shared_ptr<Symbol> ReturnType = nullptr)
-    : Symbol(Name, Loc), ArgTypes_(ArgTypes), ReturnType_(ReturnType)
+  UserFunction(const std::string & Name, SourceLocation Loc,
+      const VariableTypeList & ArgTypes)
+    : FunctionDef(Name, ArgTypes), Loc_(Loc)
   {}
 
-  virtual ~FunctionSymbol() = default;
+  UserFunction(const std::string & Name, SourceLocation Loc,
+      const VariableTypeList & ArgTypes, const VariableType & ReturnType)
+    : FunctionDef(Name, ArgTypes, ReturnType), Loc_(Loc)
+  {}
 
-  const std::shared_ptr<Symbol> getReturnType() const { return ReturnType_; }
-  const symbol_list & getArgTypes() const { return ArgTypes_; }
-
-};
-
-
-//==============================================================================
-// The symbol table
-//==============================================================================
-class SymbolTable {
-
-  using table_type = std::map<std::string, Symbol>;
-  using iterator = table_type::iterator;
-
-  table_type Symbols_;
-
-public:
-
-  // find a symbol
-  std::pair<iterator, bool> find(const std::string name)
-  {
-    auto it = Symbols_.find(name);
-    auto found = (it != Symbols_.end());
-      return std::make_pair(it, found);
-  }
-
-  // get the size
-  std::size_t size() const
-  { return Symbols_.size(); }
-
-  // clear the table
-  void clear()
-  { Symbols_.clear(); }
-
-  // erase elements
-  void erase( const std::string & Name )
-  { Symbols_.erase(Name); }
-  
-  // add a symbol
-  template<typename...Args>
-  std::pair<iterator, bool>
-  addSymbol(const std::string & name, Args&&...args)
-  {
-    return Symbols_.emplace(name, Symbol(std::forward<Args>(args)...));
-  }
-
-
+  //virtual ~FunctionSymbol() = default;
 };
 
 } // namespace

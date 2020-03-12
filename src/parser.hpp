@@ -62,9 +62,15 @@ public:
       return -1;
   }
 
-  SourceLocation getLoc() const { return TheLex_.getLexLoc(); }
-  int getLine() const { return TheLex_.getLexLoc().getLine(); }
-  int getCol() const { return TheLex_.getLexLoc().getCol(); }
+  SourceLocation getCurLoc() const { return TheLex_.getCurLoc(); }
+  SourceLocation getLexLoc() const { return TheLex_.getLexLoc(); }
+  
+  // print out current line
+  std::ostream & barf(std::ostream& out, SourceLocation Loc)
+  { return TheLex_.barf(out, Loc); } 
+
+  std::shared_ptr<BinopPrecedence> getBinopPrecedence() const
+  { return BinopPrecedence_; }
 
   /// numberexpr ::= number
   std::unique_ptr<ExprAST> parseIntegerExpr();

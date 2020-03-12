@@ -1,26 +1,13 @@
 #include "config.hpp"
 #include "llvm_includes.hpp"
+#include "math.hpp"
 
-#include <math.h>
-
-extern "C" {
-
-//==============================================================================
-/// square root function
-//==============================================================================
-double mysqrt(double x)
-{ return sqrt(x); }
-
-//==============================================================================
-/// Absolute value function
-//==============================================================================
-double myabs(double x)
-{ return fabs(x); }
-
-} // extern
+#include "src/context.hpp"
+#include "src/symbols.hpp"
 
 namespace librt {
 
+using namespace contra;
 using namespace llvm;
 
 //==============================================================================
@@ -39,29 +26,49 @@ Function *installDoubleFun(LLVMContext & TheContext, Module & TheModule,
 }
 
 //==============================================================================
-// Installs the c functions
+// Installs the sqrt functions
 //==============================================================================
-Function *installCSqrt(LLVMContext & TheContext, Module & TheModule)
-{ return installDoubleFun(TheContext, TheModule, "sqrt"); }
 
-Function *installCAbs(LLVMContext & TheContext, Module & TheModule)
-{ return installDoubleFun(TheContext, TheModule, "fabs"); }
+const std::string CSqrt::Name = "sqrt";
 
-Function *installCMax(LLVMContext & TheContext, Module & TheModule)
-{ return installDoubleFun(TheContext, TheModule, "fmax"); }
+Function *CSqrt::install(LLVMContext & TheContext, Module & TheModule)
+{ return installDoubleFun(TheContext, TheModule, CSqrt::Name); }
 
-//==============================================================================
-// Installs the sqrt function
-//==============================================================================
-Function *installSqrt(LLVMContext & TheContext, Module & TheModule)
-{ return installDoubleFun(TheContext, TheModule, "mysqrt"); }
-
+std::shared_ptr<contra::FunctionDef> CSqrt::check()
+{
+  std::vector<VariableType> Args;
+  Args.emplace_back( Context::F64Symbol );
+  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args, Context::F64Symbol);
+}
 
 //==============================================================================
-// Installs the abs function
+// Installs the abs functions
 //==============================================================================
-Function *installAbs(LLVMContext & TheContext, Module & TheModule)
-{ return installDoubleFun(TheContext, TheModule, "myabs"); }
+const std::string CAbs::Name = "fabs";
 
+Function *CAbs::install(LLVMContext & TheContext, Module & TheModule)
+{ return installDoubleFun(TheContext, TheModule, CAbs::Name); }
+
+std::shared_ptr<contra::FunctionDef> CAbs::check()
+{
+  std::vector<VariableType> Args;
+  Args.emplace_back( Context::F64Symbol );
+  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args, Context::F64Symbol);
+}
+
+//==============================================================================
+// Installs the max functions
+//==============================================================================
+const std::string CMax::Name = "fmax";
+
+Function *CMax::install(LLVMContext & TheContext, Module & TheModule)
+{ return installDoubleFun(TheContext, TheModule, CMax::Name); }
+
+std::shared_ptr<contra::FunctionDef> CMax::check()
+{
+  std::vector<VariableType> Args;
+  Args.emplace_back( Context::F64Symbol );
+  return std::make_shared<BuiltInFunction>(CMax::Name, Args, Context::F64Symbol);
+}
 
 }

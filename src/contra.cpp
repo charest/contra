@@ -19,8 +19,8 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
   auto is_verbose = TheInputs.is_verbose;
   auto dump_ir = TheInputs.dump_ir;
   auto is_optimized = TheInputs.is_optimized;
-  Vizualizer viz("graph.dot");
-  Analyzer TheAnalyser;
+  Vizualizer TheViz("graph.dot");
+  Analyzer TheAnalyser(TheParser.getBinopPrecedence());
 
   if (is_verbose) std::cerr << "Handling function" << std::endl;
 
@@ -28,8 +28,8 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
 
   try {
     auto FnAST = TheParser.parseFunction();
-    if (is_verbose) FnAST->accept(viz);
-    TheAnalyser.dispatch(*FnAST);
+    if (is_verbose) TheViz.runVisitor(*FnAST);
+    TheAnalyser.runFuncVisitor(*FnAST);
     auto FnIR = TheCG.runFuncVisitor(*FnAST);
     if (is_optimized) TheCG.optimize(FnIR);
     if (is_verbose || dump_ir) FnIR->print(errs());
@@ -37,19 +37,19 @@ void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheI
       TheCG.doJIT();
     }
   }
-  catch (const ContraError & e) {
+  catch (const CodeError & e) {
     std::cerr << e.what() << std::endl;
-    //std::cerr << std::endl;
-    //TheParser.barf(std::cerr, Loc);
-    //std::cerr << std::endl;
+    std::cerr << std::endl;
+    TheParser.barf(std::cerr, e.getLoc());
+    std::cerr << std::endl;
     // Skip token for error recovery.
-    if (is_interactive) {
-      TheParser.getNextToken();
-    }
-    // otherwise keep throwing the error
-    else {
-      throw e;
-    }
+    if (!is_interactive) throw e;
+    TheParser.getNextToken();
+  }
+  catch (const ContraError & e) {
+    // Skip token for error recovery.
+    if (!is_interactive) throw e;
+    TheParser.getNextToken();
   }
 
   //TheParser.setSymbols( OldSymbols );

@@ -5,6 +5,8 @@
 #include "precedence.hpp"
 #include "string_utils.hpp"
 
+#include "librt/librt.hpp"
+
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -57,6 +59,9 @@ int main(int argc, char** argv) {
 
   // install tokens
   Tokens::setup();
+
+  // setup runtime
+  librt::RunTimeLib::setup();
 
   // create the operator precedence
   auto ThePrecedence = std::make_shared<BinopPrecedence>();

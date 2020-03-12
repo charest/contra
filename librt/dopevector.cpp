@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "dopevector.hpp"
 #include "llvm_includes.hpp"
 
 #include <cstdlib>
@@ -55,7 +56,9 @@ Type * createDopeVectorType(LLVMContext & TheContext)
 //==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
-Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
+const std::string Allocate::Name = "allocate";
+
+Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto DopeVectorType = createDopeVectorType(TheContext);
   auto IntType = llvmIntegerType(TheContext);
@@ -64,14 +67,16 @@ Function *installAllocate(LLVMContext & TheContext, Module & TheModule)
   auto AllocateType = FunctionType::get( DopeVectorType, Args, false );
 
   auto AllocateFun = Function::Create(AllocateType, Function::ExternalLinkage,
-      "allocate", TheModule);
+      Allocate::Name, TheModule);
   return AllocateFun;
 }
 
 //==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
-Function *installDeAllocate(LLVMContext & TheContext, Module & TheModule)
+const std::string DeAllocate::Name = "deallocate";
+
+Function *DeAllocate::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto DopeVectorType = createDopeVectorType(TheContext);
   auto VoidType = Type::getVoidTy(TheContext);
@@ -80,7 +85,7 @@ Function *installDeAllocate(LLVMContext & TheContext, Module & TheModule)
   auto DeAllocateType = FunctionType::get( VoidType, Args, false );
 
   auto DeAllocateFun = Function::Create(DeAllocateType, Function::ExternalLinkage,
-      "deallocate", TheModule);
+      DeAllocate::Name, TheModule);
   
   return DeAllocateFun;
 }

@@ -28,6 +28,10 @@ void ArrayExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
+void UnaryExprAST::accept(AstDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
+
+//==============================================================================
 void BinaryExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
@@ -51,9 +55,9 @@ std::unique_ptr<ExprAST> IfExprAST::makeNested(
 
   if ( !Blocks.empty() ) {
     if ( Conds.empty() )
-      TopIf->Else_ = std::move(Blocks.back());
+      TopIf->ElseExpr_ = std::move(Blocks.back());
     else
-      TopIf->Else_.emplace_back( IfExprAST::makeNested( Conds, Blocks ) );
+      TopIf->ElseExpr_.emplace_back( IfExprAST::makeNested( Conds, Blocks ) );
   }
 
   return std::move(TopIf);
@@ -65,10 +69,6 @@ void IfExprAST::accept(AstDispatcher& dispatcher)
 
 //==============================================================================
 void ForExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
-
-//==============================================================================
-void UnaryExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================

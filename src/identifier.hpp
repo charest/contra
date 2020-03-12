@@ -6,15 +6,19 @@
 
 namespace contra {
 
-struct Identifier {
-  std::string Name;
-  SourceLocation Loc;
+class Identifier {
+  std::string Name_;
+  SourceLocation Loc_;
+  
+public:
 
   Identifier() = default;
 
-  Identifier(const std::string N, SourceLocation L) :
-    Name(N), Loc(L) 
+  Identifier(const std::string N, SourceLocation L) : Name_(N), Loc_(L) 
   {}
+
+  const std::string & getName() const { return Name_; }
+  SourceLocation getLoc() const { return Loc_; }
 };
 
 }

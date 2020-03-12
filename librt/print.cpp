@@ -1,5 +1,6 @@
 #include "config.hpp"
 #include "llvm_includes.hpp"
+#include "print.hpp"
 
 #include <cstdarg>
 
@@ -29,7 +30,9 @@ using namespace llvm;
 //==============================================================================
 // Installs the print function
 //==============================================================================
-Function *installPrint(LLVMContext & TheContext, Module & TheModule)
+const std::string Print::Name = "print";
+
+Function * Print::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto PrintType = FunctionType::get(
       Type::getVoidTy(TheContext),
@@ -38,7 +41,7 @@ Function *installPrint(LLVMContext & TheContext, Module & TheModule)
 
   //auto PrintFun = TheModule.getOrInsertFunction("print", PrintType);
   auto PrintFun = Function::Create(PrintType, Function::ExternalLinkage,
-      "print", TheModule);
+      Print::Name, TheModule);
   return PrintFun;
 }
 

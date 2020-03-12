@@ -537,6 +537,45 @@ void CodeGen::dispatch(ArrayExprAST &e)
   ValueResult_ = Array.Alloca;
 #endif
 }
+  
+//==============================================================================
+// UnaryExprAST - Expression class for a unary operator.
+//==============================================================================
+void CodeGen::dispatch(UnaryExprAST & e) {
+#if 0 
+  auto OperandV = runExprVisitor(*e.Operand_); 
+  
+  if (OperandV->getType()->isFloatingPointTy()) {
+  
+    switch (e.Opcode_) {
+    case tok_sub:
+      ValueResult_ = Builder_.CreateFNeg(OperandV, "negtmp");
+      return;
+    default:
+      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(e.Opcode_)
+          << "'", e.getLine() );
+    }
+
+  }
+  else {
+    switch (e.Opcode_) {
+    case tok_sub:
+      ValueResult_ = Builder_.CreateNeg(OperandV, "negtmp");
+      return;
+    default:
+      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(e.Opcode_)
+          << "'", e.getLine() );
+    }
+  }
+
+  auto F = getFunction(std::string("unary") + e.Opcode_);
+  if (!F)
+    THROW_SYNTAX_ERROR("Unknown unary operator", e.getLine());
+
+  emitLocation(&e);
+  ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
+#endif
+}
 
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
@@ -921,45 +960,6 @@ void CodeGen::dispatch(ForExprAST& e) {
 
   // for expr always returns 0.
   ValueResult_ = Constant::getNullValue(LLType);
-#endif
-}
-  
-//==============================================================================
-// UnaryExprAST - Expression class for a unary operator.
-//==============================================================================
-void CodeGen::dispatch(UnaryExprAST & e) {
-#if 0 
-  auto OperandV = runExprVisitor(*e.Operand_); 
-  
-  if (OperandV->getType()->isFloatingPointTy()) {
-  
-    switch (e.Opcode_) {
-    case tok_sub:
-      ValueResult_ = Builder_.CreateFNeg(OperandV, "negtmp");
-      return;
-    default:
-      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(e.Opcode_)
-          << "'", e.getLine() );
-    }
-
-  }
-  else {
-    switch (e.Opcode_) {
-    case tok_sub:
-      ValueResult_ = Builder_.CreateNeg(OperandV, "negtmp");
-      return;
-    default:
-      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(e.Opcode_)
-          << "'", e.getLine() );
-    }
-  }
-
-  auto F = getFunction(std::string("unary") + e.Opcode_);
-  if (!F)
-    THROW_SYNTAX_ERROR("Unknown unary operator", e.getLine());
-
-  emitLocation(&e);
-  ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
 #endif
 }
 

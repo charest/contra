@@ -11,10 +11,18 @@ DLLEXPORT void print(const char *format, ...);
 
 } // extern
 
+namespace contra {
+class FunctionDef;
+}
+
 namespace librt {
 
-// install print statement
-llvm::Function *installPrint(llvm::LLVMContext &, llvm::Module &);
+struct Print {
+  static const std::string Name;
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::shared_ptr<contra::FunctionDef> check() { return nullptr; };
+
+};
 
 } // namespace
 

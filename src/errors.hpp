@@ -11,7 +11,7 @@
 namespace contra {
 
 //==============================================================================
-// General base contra error
+// General contra error
 //==============================================================================
 class ContraError : public std::runtime_error
 {
@@ -23,27 +23,37 @@ public:
   ContraError(const std::string & str) : std::runtime_error(str) {}
 };
 
+//==============================================================================
+// Base code error
+//==============================================================================
+class CodeError : public std::runtime_error
+{
+  SourceLocation Loc_;
+public:
+  CodeError(const char *str, SourceLocation Loc) : std::runtime_error(str), Loc_(Loc) {}
+  CodeError(const std::string & str, SourceLocation Loc) : std::runtime_error(str), Loc_(Loc) {}
+  SourceLocation getLoc() const { return Loc_; }
+};
+
 
 //==============================================================================
 // Invalid identifier accessed
 //==============================================================================
-class NameError : public ContraError
+class NameError : public CodeError
 {
-  SourceLocation Loc_;
 public:
-  NameError(const char *str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
-  NameError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
+  NameError(const char *str, SourceLocation Loc) : CodeError(str, Loc) {}
+  NameError(const std::string & str, SourceLocation Loc) : CodeError(str, Loc) {}
 };
 
 //==============================================================================
 // A syntax error
 //==============================================================================
-class SyntaxError : public ContraError
+class SyntaxError : public CodeError
 {
-  SourceLocation Loc_;
 public:
-  SyntaxError(const char *str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
-  SyntaxError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
+  SyntaxError(const char *str, SourceLocation Loc) : CodeError(str, Loc) {}
+  SyntaxError(const std::string & str, SourceLocation Loc) : CodeError(str, Loc) {}
 };
 
 

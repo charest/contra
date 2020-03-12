@@ -4,21 +4,29 @@
 #include "dllexport.h"
 #include "llvm_forwards.hpp"
 
-extern "C" {
-
-DLLEXPORT double mysqrt(double);
-DLLEXPORT double myabs(double);
-
-} // extern
+namespace contra {
+class FunctionDef;
+}
 
 namespace librt {
 
-llvm::Function *installCSqrt(llvm::LLVMContext &, llvm::Module &);
-llvm::Function *installCAbs(llvm::LLVMContext &, llvm::Module &);
-llvm::Function *installCMax(llvm::LLVMContext &, llvm::Module &);
+struct CSqrt {
+  static const std::string Name;
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::shared_ptr<contra::FunctionDef> check();
+};
 
-llvm::Function *installSqrt(llvm::LLVMContext &, llvm::Module &);
-llvm::Function *installAbs(llvm::LLVMContext &, llvm::Module &);
+struct CAbs {
+  static const std::string Name;
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::shared_ptr<contra::FunctionDef> check();
+};
+
+struct CMax {
+  static const std::string Name;
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::shared_ptr<contra::FunctionDef> check();
+};
 
 } // namespace
 
