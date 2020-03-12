@@ -1,6 +1,7 @@
-#include "config.hpp"
 #include "llvm_includes.hpp"
 #include "print.hpp"
+
+#include "contra/config.hpp"
 
 #include <cstdarg>
 

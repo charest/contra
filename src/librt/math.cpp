@@ -1,9 +1,8 @@
-#include "config.hpp"
 #include "llvm_includes.hpp"
 #include "math.hpp"
 
-#include "src/context.hpp"
-#include "src/symbols.hpp"
+#include "contra/context.hpp"
+#include "contra/symbols.hpp"
 
 namespace librt {
 

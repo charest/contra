@@ -1,9 +1,10 @@
 #ifndef RTLIB_DOPEVECTOR_HPP
 #define RTLIB_DOPEVECTOR_HPP
 
-#include "config.hpp"
 #include "dllexport.h"
 #include "llvm_forwards.hpp"
+
+#include "contra/config.hpp"
 
 extern "C" {
 
