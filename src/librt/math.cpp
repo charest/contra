@@ -1,6 +1,7 @@
 #include "llvm_includes.hpp"
 #include "math.hpp"
 
+#include "contra/config.hpp"
 #include "contra/context.hpp"
 #include "contra/symbols.hpp"
 

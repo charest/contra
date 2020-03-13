@@ -5,7 +5,6 @@
 #include "debug.hpp"
 #include "dispatcher.hpp"
 #include "jit.hpp"
-#include "vartype.hpp"
 
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Function.h"

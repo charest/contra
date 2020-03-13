@@ -3,10 +3,11 @@
 
 #include "identifier.hpp"
 #include "sourceloc.hpp"
-#include "vartype.hpp"
 
+#include <iostream>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace contra {
   
