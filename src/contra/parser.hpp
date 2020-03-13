@@ -73,27 +73,27 @@ public:
   { return BinopPrecedence_; }
 
   /// numberexpr ::= number
-  std::unique_ptr<ExprAST> parseIntegerExpr();
-  std::unique_ptr<ExprAST> parseRealExpr();
+  std::unique_ptr<NodeAST> parseIntegerExpr();
+  std::unique_ptr<NodeAST> parseRealExpr();
   
   /// stringexpr ::= string
-  std::unique_ptr<ExprAST> parseStringExpr();
+  std::unique_ptr<NodeAST> parseStringExpr();
 
   /// parenexpr ::= '(' expression ')'
-  std::unique_ptr<ExprAST> parseParenExpr();
+  std::unique_ptr<NodeAST> parseParenExpr();
   
   /// identifierexpr
   ///   ::= identifier
   ///   ::= identifier '(' expression* ')'
-  std::unique_ptr<ExprAST> parseIdentifierExpr();
+  std::unique_ptr<NodeAST> parseIdentifierExpr();
   
   /// ifexpr ::= 'if' expression 'then' expression 'else' expression
-  std::unique_ptr<ExprAST> parseIfExpr();
+  std::unique_ptr<NodeAST> parseIfExpr();
   
   /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
-  std::unique_ptr<ExprAST> parseForExpr();
+  std::unique_ptr<NodeAST> parseForExpr();
 
-  std::unique_ptr<ExprAST> parseArrayExpr();
+  std::unique_ptr<NodeAST> parseArrayExpr();
   
   /// primary
   ///   ::= identifierexpr
@@ -101,16 +101,16 @@ public:
   ///   ::= parenexpr
   ///   ::= ifexpr
   ///   ::= forexpr
-  std::unique_ptr<ExprAST> parsePrimary();
+  std::unique_ptr<NodeAST> parsePrimary();
   
   /// binoprhs
   ///   ::= ('+' primary)*
-  std::unique_ptr<ExprAST> parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS);
+  std::unique_ptr<NodeAST> parseBinOpRHS(int ExprPrec, std::unique_ptr<NodeAST> LHS);
   
   /// expression
   ///   ::= primary binoprhs
   ///
-  std::unique_ptr<ExprAST> parseExpression();
+  std::unique_ptr<NodeAST> parseExpression();
 
   /// definition ::= 'def' prototype expression
   std::unique_ptr<FunctionAST> parseDefinition();
@@ -125,11 +125,11 @@ public:
   /// unary
   ///   ::= primary
   ///   ::= '!' unary
-  std::unique_ptr<ExprAST> parseUnary();
+  std::unique_ptr<NodeAST> parseUnary();
 
   /// varexpr ::= 'var' identifier ('=' expression)?
   ///                    (',' identifier ('=' expression)?)* 'in' expression
-  std::unique_ptr<ExprAST> parseVarDefExpr();
+  std::unique_ptr<NodeAST> parseVarDefExpr();
 
   /// Top level function parser 
   std::unique_ptr<FunctionAST> parseFunction();

@@ -7,7 +7,7 @@
 
 namespace contra {
 
-class ExprAST;
+class NodeAST;
 
 struct DebugInfo {
   llvm::DICompileUnit *TheCU = nullptr;
@@ -15,7 +15,7 @@ struct DebugInfo {
   std::vector<llvm::DIScope *> LexicalBlocks;
 
   llvm::DIType *getDoubleTy(llvm::DIBuilder & DBuilder);
-  void emitLocation(llvm::IRBuilder<> & Builder, ExprAST *AST);
+  void emitLocation(llvm::IRBuilder<> & Builder, NodeAST *AST);
 };
 
 } // namespace

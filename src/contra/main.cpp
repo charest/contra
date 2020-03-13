@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     TheParser = std::make_unique<Parser>(ThePrecedence);
 
   // create the JIT and Code generator
-  CodeGen TheCG(ThePrecedence, inp.is_debug);
+  CodeGen TheCG(inp.is_debug);
 
   // Run the main "interpreter loop" now.
   mainLoop(*TheParser, TheCG, inp);

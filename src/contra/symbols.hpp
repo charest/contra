@@ -1,6 +1,7 @@
 #ifndef CONTRA_SYMBOLS_HPP
 #define CONTRA_SYMBOLS_HPP
 
+#include "context.hpp"
 #include "identifier.hpp"
 #include "sourceloc.hpp"
 

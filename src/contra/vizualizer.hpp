@@ -34,9 +34,8 @@ public:
   // Codegen function
   template<typename T>
   void runVisitor(T&e)
-  { dispatch(e); }
+  { e.accept(*this); }
   
-  void dispatch(ExprAST&) override;
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
   void dispatch(ValueExprAST<std::string>&) override;
@@ -46,10 +45,10 @@ public:
   void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;
   void dispatch(CallExprAST&) override;
-  void dispatch(ForExprAST&) override;
-  void dispatch(IfExprAST&) override;
-  void dispatch(VarDefExprAST&) override;
-  void dispatch(ArrayDefExprAST&) override;
+  void dispatch(ForStmtAST&) override;
+  void dispatch(IfStmtAST&) override;
+  void dispatch(VarDeclAST&) override;
+  void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
 

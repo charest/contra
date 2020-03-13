@@ -7,17 +7,16 @@ namespace contra {
 
 template<typename T> class ValueExprAST;
 
-class ExprAST;
 class VariableExprAST;
 class ArrayExprAST;
 class CastExprAST;
 class UnaryExprAST;
 class BinaryExprAST;
 class CallExprAST;
-class IfExprAST;
-class ForExprAST;
-class VarDefExprAST;
-class ArrayDefExprAST;
+class IfStmtAST;
+class ForStmtAST;
+class VarDeclAST;
+class ArrayDeclAST;
 class PrototypeAST;
 class FunctionAST;
 
@@ -26,22 +25,23 @@ public:
 
   virtual ~AstDispatcher() = default;
   
-  virtual void dispatch(ExprAST&) = 0;
   virtual void dispatch(ValueExprAST<int_t>&) = 0;
   virtual void dispatch(ValueExprAST<real_t>&) = 0;
   virtual void dispatch(ValueExprAST<std::string>&) = 0;
   virtual void dispatch(VariableExprAST&) = 0;
   virtual void dispatch(ArrayExprAST&) = 0;
   virtual void dispatch(CastExprAST&) = 0;
+  virtual void dispatch(UnaryExprAST&) = 0;
   virtual void dispatch(BinaryExprAST&) = 0;
   virtual void dispatch(CallExprAST&) = 0;
-  virtual void dispatch(IfExprAST&) = 0;
-  virtual void dispatch(ForExprAST&) = 0;
-  virtual void dispatch(UnaryExprAST&) = 0;
-  virtual void dispatch(VarDefExprAST&) = 0;
-  virtual void dispatch(ArrayDefExprAST&) = 0;
-  
+
+  virtual void dispatch(IfStmtAST&) = 0;
+  virtual void dispatch(ForStmtAST&) = 0;
+
+  virtual void dispatch(VarDeclAST&) = 0;
+  virtual void dispatch(ArrayDeclAST&) = 0;
   virtual void dispatch(PrototypeAST&) = 0;
+  
   virtual void dispatch(FunctionAST&) = 0;
 };
 

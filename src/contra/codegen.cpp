@@ -21,9 +21,13 @@ namespace contra {
 //==============================================================================
 // Constructor
 //==============================================================================
-CodeGen::CodeGen (std::shared_ptr<BinopPrecedence> Precedence,
-    bool debug = false) : Builder_(TheContext_), BinopPrecedence_(Precedence)
+CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 {
+
+
+  TypeTable_.emplace( Context::I64Type->getName(),  llvmIntegerType(TheContext_));
+  TypeTable_.emplace( Context::F64Type->getName(),  llvmRealType(TheContext_));
+  TypeTable_.emplace( Context::VoidType->getName(), Type::getVoidTy(TheContext_));
 
   initializeModuleAndPassManager();
 
@@ -42,6 +46,7 @@ CodeGen::CodeGen (std::shared_ptr<BinopPrecedence> Precedence,
       dwarf::DW_LANG_C, DBuilder->createFile("fib.ks", "."),
       "Kaleidoscope Compiler", 0, "", 0);
   }
+
 }
 
 //==============================================================================
@@ -414,12 +419,6 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
   }
 }
 
-//==============================================================================
-// ExprAST - Base expression class.
-//==============================================================================
-void CodeGen::dispatch(ExprAST& e)
-{ e.accept(*this); }
-
 
 //==============================================================================
 // IntegerExprAST - Expression class for numeric literals like "1.0".
@@ -765,7 +764,7 @@ void CodeGen::dispatch(CallExprAST &e) {
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
-void CodeGen::dispatch(IfExprAST & e) {
+void CodeGen::dispatch(IfStmtAST & e) {
   emitLocation(&e);
 #if 0 
   if ( e.Then_.empty() && e.Else_.empty() ) {
@@ -856,7 +855,7 @@ void CodeGen::dispatch(IfExprAST & e) {
 //   br endcond, loop, endloop
 // outloop:
 //==============================================================================
-void CodeGen::dispatch(ForExprAST& e) {
+void CodeGen::dispatch(ForStmtAST& e) {
 #if 0  
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
@@ -964,9 +963,9 @@ void CodeGen::dispatch(ForExprAST& e) {
 //==============================================================================
 // VarDefExprAST - Expression class for var/in
 //==============================================================================
-void CodeGen::dispatch(VarDefExprAST & e) {
-#if 0
+void CodeGen::dispatch(VarDeclAST & e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
+
   
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
@@ -975,20 +974,13 @@ void CodeGen::dispatch(VarDefExprAST & e) {
   //    var a = a in ...   # refers to outer 'a'.
 
   // Emit initializer first
-  auto InitVal = runExprVisitor(*e.Init_);
+  auto InitVal = runExprVisitor(*e.InitExpr_);
   auto IType = InitVal->getType();
-
+  
   // the llvm variable type
-  Type * VarType;
-  try {
-    VarType = getLLVMType(e.VarType_, TheContext_);
-  }
-  catch (const ContraError & err) {
-    THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(e.VarType_)
-        << "' for variables '" << e.VarNames_ << "'", e.getLine() );
-  }
+  //Type * VarType = TypeTable_.at(e.getType());
 
-
+#if 0
   // Register all variables and emit their initializer.
   for (const auto & VarName : e.VarNames_) {
     
@@ -1036,7 +1028,7 @@ void CodeGen::dispatch(VarDefExprAST & e) {
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
-void CodeGen::dispatch(ArrayDefExprAST &e) {
+void CodeGen::dispatch(ArrayDeclAST &e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 #if 0 
   // Emit the initializer before adding the variable to scope, this prevents

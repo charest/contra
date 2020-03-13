@@ -14,7 +14,7 @@ namespace contra {
 //==============================================================================
 // numberexpr ::= number
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseIntegerExpr() {
+std::unique_ptr<NodeAST> Parser::parseIntegerExpr() {
   auto NumVal = std::atoi( TheLex_.getIdentifierStr().c_str() );
   auto Result = std::make_unique<IntegerExprAST>(getCurLoc(), NumVal);
   getNextToken(); // consume the number
@@ -24,7 +24,7 @@ std::unique_ptr<ExprAST> Parser::parseIntegerExpr() {
 //==============================================================================
 // numberexpr ::= number
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseRealExpr() {
+std::unique_ptr<NodeAST> Parser::parseRealExpr() {
   auto NumVal = std::atof( TheLex_.getIdentifierStr().c_str() );
   auto Result = std::make_unique<RealExprAST>(getCurLoc(), NumVal);
   getNextToken(); // consume the number
@@ -34,7 +34,7 @@ std::unique_ptr<ExprAST> Parser::parseRealExpr() {
 //==============================================================================
 // stringexpr ::= string
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseStringExpr() {
+std::unique_ptr<NodeAST> Parser::parseStringExpr() {
   auto Result = std::make_unique<StringExprAST>(getCurLoc(), TheLex_.getIdentifierStr());
   getNextToken(); // consume the number
   return std::move(Result);
@@ -43,7 +43,7 @@ std::unique_ptr<ExprAST> Parser::parseStringExpr() {
 //==============================================================================
 // parenexpr ::= '(' expression ')'
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseParenExpr() {
+std::unique_ptr<NodeAST> Parser::parseParenExpr() {
   getNextToken(); // eat (.
   auto V = parseExpression();
 
@@ -59,7 +59,7 @@ std::unique_ptr<ExprAST> Parser::parseParenExpr() {
 //   ::= 
 //   ::= identifier '(' expression* ')'
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
+std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
   std::string IdName = TheLex_.getIdentifierStr();
 
   auto LitLoc = getCurLoc();
@@ -89,7 +89,7 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   //----------------------------------------------------------------------------
   // Call.
   getNextToken(); // eat (
-  std::vector<std::unique_ptr<ExprAST>> Args;
+  std::vector<std::unique_ptr<NodeAST>> Args;
   if (CurTok_ != ')') {
     while (true) {
       auto Arg = parseExpression();
@@ -113,10 +113,10 @@ std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 //==============================================================================
 // ifexpr ::= 'if' expression 'then' expression 'else' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseIfExpr() {
+std::unique_ptr<NodeAST> Parser::parseIfExpr() {
 
-  ExprLocPairList Conds;
-  ExprBlockList BBlocks;
+  std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> >  Conds;
+  ASTBlockList BBlocks;
   
   //---------------------------------------------------------------------------
   // If
@@ -127,7 +127,7 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 
     // condition.
     auto Cond = parseExpression();
-    addExpr(Conds, IfLoc, std::move(Cond));
+    Conds.emplace_back( IfLoc, std::move(Cond) );
 
     if (CurTok_ != tok_then)
       THROW_SYNTAX_ERROR("Expected 'then' after 'if'", IfLoc);
@@ -155,7 +155,7 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 
     // condition.
     auto Cond = parseExpression();
-    addExpr(Conds, ElifLoc, std::move(Cond));
+    Conds.emplace_back( ElifLoc, std::move(Cond) );
   
     if (CurTok_ != tok_then)
       THROW_SYNTAX_ERROR("Expected 'then' after 'elif'", ElifLoc);
@@ -196,13 +196,13 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
   //---------------------------------------------------------------------------
   // Construct If Else Then tree
 
-  return IfExprAST::makeNested( Conds, BBlocks );
+  return IfStmtAST::makeNested( Conds, BBlocks );
 }
 
 //==============================================================================
 // forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseForExpr() {
+std::unique_ptr<NodeAST> Parser::parseForExpr() {
   auto ForLoc = getCurLoc();
   getNextToken(); // eat the for.
 
@@ -219,12 +219,12 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   auto StartLoc = getLexLoc();
   auto Start = parseExpression();
 
-  ForExprAST::LoopType Loop;
+  ForStmtAST::LoopType Loop;
   if (CurTok_ == tok_to) {
-    Loop = ForExprAST::LoopType::To;
+    Loop = ForStmtAST::LoopType::To;
   }
   else if (CurTok_ == tok_until) {
-    Loop = ForExprAST::LoopType::Until;
+    Loop = ForStmtAST::LoopType::Until;
   }
   else
     THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", StartLoc);
@@ -233,7 +233,7 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   auto End = parseExpression();
 
   // The step value is optional.
-  std::unique_ptr<ExprAST> Step;
+  std::unique_ptr<NodeAST> Step;
   if (CurTok_ == tok_by) {
     getNextToken();
     Step = parseExpression();
@@ -244,7 +244,7 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   getNextToken(); // eat 'do'.
   
   // add statements
-  ExprBlock Body;
+  ASTBlock Body;
   while (CurTok_ != tok_end) {
     auto E = parseExpression();
     Body.emplace_back( std::move(E) );
@@ -253,7 +253,7 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
   
   // make a for loop
   auto Id = Identifier{IdName, IdentLoc};
-  auto F = std::make_unique<ForExprAST>(getCurLoc(), Id, std::move(Start),
+  auto F = std::make_unique<ForStmtAST>(getCurLoc(), Id, std::move(Start),
       std::move(End), std::move(Step), std::move(Body), Loop);
   
   // eat end
@@ -271,7 +271,7 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
 //   ::= forexpr
 //   ::= varexpr
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parsePrimary() {
+std::unique_ptr<NodeAST> Parser::parsePrimary() {
  
   switch (CurTok_) {
   case tok_identifier:
@@ -300,8 +300,8 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
 // binoprhs
 //   ::= ('+' primary)*
 //==============================================================================
-std::unique_ptr<ExprAST>
-Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS)
+std::unique_ptr<NodeAST>
+Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<NodeAST> LHS)
 {
   
   // If this is a binop, find its precedence.
@@ -341,7 +341,7 @@ Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS)
 //   ::= primary binoprhs
 //
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseExpression() {
+std::unique_ptr<NodeAST> Parser::parseExpression() {
   auto LHS = parseUnary();
 
   auto RHS = parseBinOpRHS(0, std::move(LHS));
@@ -385,7 +385,7 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
 //   ::= primary
 //   ::= '!' unary
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseUnary() {
+std::unique_ptr<NodeAST> Parser::parseUnary() {
 
   // If the current token is not an operator, it must be a primary expr.
   if (!isascii(CurTok_) || CurTok_ == '(' || CurTok_ == ',') {
@@ -404,7 +404,7 @@ std::unique_ptr<ExprAST> Parser::parseUnary() {
 // varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseVarDefExpr() {
+std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
 
   getNextToken();  // eat the var.
   // At least one variable name is required.
@@ -418,7 +418,7 @@ std::unique_ptr<ExprAST> Parser::parseVarDefExpr() {
   Identifier VarType;
   bool IsArray = false;
 
-  std::unique_ptr<ExprAST> Size;
+  std::unique_ptr<NodeAST> Size;
 
   // get additional variables
   while (CurTok_ == ',') {
@@ -463,7 +463,7 @@ std::unique_ptr<ExprAST> Parser::parseVarDefExpr() {
   }
   
   // Read the optional initializer.
-  std::unique_ptr<ExprAST> Init;
+  std::unique_ptr<NodeAST> Init;
   auto EqLoc = getCurLoc();
   if (CurTok_ == '=') {
     getNextToken(); // eat the '='.
@@ -482,10 +482,10 @@ std::unique_ptr<ExprAST> Parser::parseVarDefExpr() {
   }
 
   if (IsArray)
-    return std::make_unique<ArrayDefExprAST>(getCurLoc(), VarNames,
+    return std::make_unique<ArrayDeclAST>(getCurLoc(), VarNames,
         VarType, std::move(Init), std::move(Size));
   else
-    return std::make_unique<VarDefExprAST>(getCurLoc(), VarNames, VarType,
+    return std::make_unique<VarDeclAST>(getCurLoc(), VarNames, VarType,
         std::move(Init));
 }
 
@@ -493,14 +493,14 @@ std::unique_ptr<ExprAST> Parser::parseVarDefExpr() {
 //==============================================================================
 // Array expression parser
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseArrayExpr()
+std::unique_ptr<NodeAST> Parser::parseArrayExpr()
 {
 
   auto Loc = getCurLoc();
   getNextToken(); // eat [.
 
-  ExprBlock ValExprs;
-  std::unique_ptr<ExprAST> SizeExpr;
+  ASTBlock ValExprs;
+  std::unique_ptr<NodeAST> SizeExpr;
 
   while (CurTok_ != ']') {
     auto E = parseExpression();
@@ -539,8 +539,8 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
   getNextToken(); // eat def.
   auto Proto = parsePrototype();
 
-  ExprBlock Body;
-  std::unique_ptr<ExprAST> Return;
+  ASTBlock Body;
+  std::unique_ptr<NodeAST> Return;
 
   while (CurTok_ != tok_end) {
 

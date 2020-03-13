@@ -28,6 +28,7 @@ class Analyzer : public AstDispatcher {
   VariableType BoolType = VariableType(Context::BoolType);
   VariableType VoidType = VariableType(Context::VoidType);
 
+
   VariableType  TypeResult_;
   VariableType  DestinationType_;
 
@@ -52,7 +53,7 @@ public:
   void runFuncVisitor(T&e)
   {
     Scope_ = 0;
-    dispatch(e);
+    e.accept(*this);
   }
 
 private:
@@ -61,11 +62,10 @@ private:
   auto runExprVisitor(T&e)
   {
     TypeResult_ = VariableType{};
-    dispatch(e);
+    e.accept(*this);
     return TypeResult_;
   }
 
-  void dispatch(ExprAST&) override;
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
   void dispatch(ValueExprAST<std::string>&) override;
@@ -75,11 +75,13 @@ private:
   void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;
   void dispatch(CallExprAST&) override;
-  void dispatch(ForExprAST&) override;
-  void dispatch(IfExprAST&) override;
-  void dispatch(VarDefExprAST&) override;
-  void dispatch(ArrayDefExprAST&) override;
+
+  void dispatch(ForStmtAST&) override;
+  void dispatch(IfStmtAST&) override;
+  void dispatch(VarDeclAST&) override;
+  void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
+
   void dispatch(FunctionAST&) override;
   
   auto getBaseType(const std::string & Name, const SourceLocation & Loc) {
@@ -147,7 +149,7 @@ private:
            << " assigned to a variable of type '" << LeftType << "'." , Loc);
   }
 
-  auto insertCastOp( std::unique_ptr<ExprAST> FromExpr, const VariableType & ToType )
+  auto insertCastOp( std::unique_ptr<NodeAST> FromExpr, const VariableType & ToType )
   {
     auto Loc = FromExpr->getLoc();
     auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr),

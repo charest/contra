@@ -5,21 +5,6 @@ using namespace llvm;
 namespace contra {
 
 //==============================================================================
-template<>
-void IntegerExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
-
-//==============================================================================
-template<>
-void RealExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
-
-//==============================================================================
-template<>
-void StringExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
-
-//==============================================================================
 void VariableExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
@@ -46,14 +31,14 @@ void CallExprAST::accept(AstDispatcher& dispatcher)
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
-std::unique_ptr<ExprAST> IfExprAST::makeNested( 
-  ExprLocPairList & Conds,
-  ExprBlockList & Blocks )
+std::unique_ptr<NodeAST> IfStmtAST::makeNested( 
+  std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> > & Conds,
+  ASTBlockList & Blocks )
 {
   auto TopCond = std::move(Conds.front());
   Conds.pop_front();
 
-  auto TopIf = std::make_unique<IfExprAST>( TopCond.Loc, std::move(TopCond.Expr),
+  auto TopIf = std::make_unique<IfStmtAST>( TopCond.first, std::move(TopCond.second),
       std::move(Blocks.front()) );
   Blocks.pop_front();
 
@@ -61,26 +46,26 @@ std::unique_ptr<ExprAST> IfExprAST::makeNested(
     if ( Conds.empty() )
       TopIf->ElseExpr_ = std::move(Blocks.back());
     else
-      TopIf->ElseExpr_.emplace_back( IfExprAST::makeNested( Conds, Blocks ) );
+      TopIf->ElseExpr_.emplace_back( IfStmtAST::makeNested( Conds, Blocks ) );
   }
 
   return std::move(TopIf);
 }
 
 //------------------------------------------------------------------------------
-void IfExprAST::accept(AstDispatcher& dispatcher)
+void IfStmtAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
-void ForExprAST::accept(AstDispatcher& dispatcher)
+void ForStmtAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
-void VarDefExprAST::accept(AstDispatcher& dispatcher)
+void VarDeclAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
-void ArrayDefExprAST::accept(AstDispatcher& dispatcher)
+void ArrayDeclAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================

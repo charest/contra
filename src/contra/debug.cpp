@@ -18,7 +18,7 @@ DIType *DebugInfo::getDoubleTy(DIBuilder & DBuilder) {
 //==============================================================================
 // tell Builder whenever we’re at a new source location
 //==============================================================================
-void DebugInfo::emitLocation(IRBuilder<> & Builder, ExprAST *AST) {
+void DebugInfo::emitLocation(IRBuilder<> & Builder, NodeAST *AST) {
   if (!AST)
     return Builder.SetCurrentDebugLocation(DebugLoc());
   DIScope *Scope;

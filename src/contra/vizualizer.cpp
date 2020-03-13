@@ -4,10 +4,6 @@
 namespace contra {
 
 //==============================================================================
-void Vizualizer::dispatch(ExprAST& e)
-{ e.accept(*this); }
-
-//==============================================================================
 void Vizualizer::dispatch(ValueExprAST<int_t>& e)
 {
   out() << "node" << ind_ << "[label=\"IntegerExprAST\"];" << std::endl;
@@ -49,7 +45,7 @@ void Vizualizer::dispatch(UnaryExprAST& e)
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"UnaryExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.OpExpr_);
+  e.OpExpr_->accept(*this);
 }
 
 //==============================================================================
@@ -58,9 +54,9 @@ void Vizualizer::dispatch(BinaryExprAST& e)
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"BinaryExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.LeftExpr_);
+  e.LeftExpr_->accept(*this);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.RightExpr_);
+  e.RightExpr_->accept(*this);
 }
 
 //==============================================================================
@@ -70,62 +66,62 @@ void Vizualizer::dispatch(CallExprAST& e)
   out() << "node" << my_ind << "[label=\"CallExprAST\"];" << std::endl;
   for (unsigned i=0; i<e.ArgExprs_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.ArgExprs_[i]);
+    e.ArgExprs_[i]->accept(*this);
   }
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ForExprAST& e)
+void Vizualizer::dispatch(ForStmtAST& e)
 {
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"ForExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.StartExpr_);
+  e.StartExpr_->accept(*this);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.EndExpr_);
+  e.EndExpr_->accept(*this);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.StepExpr_);
+  e.StepExpr_->accept(*this);
   for (unsigned i=0; i<e.BodyExprs_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.BodyExprs_[i]);
+    e.BodyExprs_[i]->accept(*this);
   }
 }
 
 //==============================================================================
-void Vizualizer::dispatch(IfExprAST& e)
+void Vizualizer::dispatch(IfStmtAST& e)
 {
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"IfExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.CondExpr_);
+  e.CondExpr_->accept(*this);
   for (unsigned i=0; i<e.ThenExpr_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.ThenExpr_[i]);
+    e.ThenExpr_[i]->accept(*this);
   }
   for (unsigned i=0; i<e.ElseExpr_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.ElseExpr_[i]);
+    e.ElseExpr_[i]->accept(*this);
   }
 }
 
 //==============================================================================
-void Vizualizer::dispatch(VarDefExprAST& e)
+void Vizualizer::dispatch(VarDeclAST& e)
 {
   out() << "node" << ind_ << "[label=\"VarDefExprAST\"];" << std::endl;
   out() << "node" << ind_ << " -> node" << ind_+1 << ";" << std::endl;
   ind_++;
-  dispatch(*e.InitExpr_);
+  e.InitExpr_->accept(*this);
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ArrayDefExprAST& e)
+void Vizualizer::dispatch(ArrayDeclAST& e)
 {
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"ArrayDefExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.InitExpr_);
+  e.InitExpr_->accept(*this);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  dispatch(*e.SizeExpr_);
+  e.SizeExpr_->accept(*this);
 }
 
 //==============================================================================
@@ -140,10 +136,9 @@ void Vizualizer::dispatch(FunctionAST& e)
   out() << "node" << my_ind << "[label=\"FunctionAST\"];" << std::endl;
   for ( unsigned i=0; i<e.BodyExprs_.size(); ++i ) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    dispatch(*e.BodyExprs_[i]);
+    e.BodyExprs_[i]->accept(*this);
   }
   out() << "}" << std::endl;
-
 }
 
 }

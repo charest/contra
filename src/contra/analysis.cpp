@@ -29,31 +29,30 @@ std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name,
 }
 
 //==============================================================================
-void Analyzer::dispatch(ExprAST& e)
-{ e.accept(*this); }
-
-//==============================================================================
 void Analyzer::dispatch(ValueExprAST<int_t>& e)
 {
   TypeResult_ = I64Type;
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
 void Analyzer::dispatch(ValueExprAST<real_t>& e)
 {
   TypeResult_ = F64Type;
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
 void Analyzer::dispatch(ValueExprAST<std::string>& e)
 {
   TypeResult_ = StrType;
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
 void Analyzer::dispatch(VariableExprAST& e)
 {
-  const auto & Name = e.Name_;
+  const auto & Name = e.getName();
   auto Var = getVariable(Name, e.getLoc());
   auto VarType = Var->getType();
 
@@ -74,6 +73,7 @@ void Analyzer::dispatch(VariableExprAST& e)
 
   // result
   TypeResult_ = VarType;
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
@@ -114,6 +114,7 @@ void Analyzer::dispatch(ArrayExprAST& e)
 
   CommonType.setArray();
   TypeResult_ = CommonType;
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
@@ -124,6 +125,7 @@ void Analyzer::dispatch(CastExprAST& e)
   auto ToType = VariableType(getBaseType(TypeId));
   checkIsCastable(FromType, ToType, e.getLoc());
   TypeResult_ = VariableType(ToType);
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
@@ -149,6 +151,8 @@ void Analyzer::dispatch(UnaryExprAST& e)
   default:
     THROW_NAME_ERROR( "Unknown unary operator '" << OpCode << "'", Loc);
   };
+  
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
@@ -187,6 +191,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
     }
     
     TypeResult_ = LeftType;
+    e.setType(TypeResult_);
 
     return;
   }
@@ -212,9 +217,11 @@ void Analyzer::dispatch(BinaryExprAST& e)
   case tok_mul:
   case tok_div:
     TypeResult_ = CommonType;
+    e.setType(TypeResult_);
     return;
   case tok_lt:
     TypeResult_ = BoolType;
+    e.setType(TypeResult_);
     return;
   } 
   
@@ -222,6 +229,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
   // a call to it.
   auto F = getFunction(std::string("binary") + OpCode, Loc);
   TypeResult_ = F->getReturnType();
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
@@ -246,10 +254,11 @@ void Analyzer::dispatch(CallExprAST& e)
   }
 
   TypeResult_ = FunRes->getReturnType(); 
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
-void Analyzer::dispatch(ForExprAST& e)
+void Analyzer::dispatch(ForStmtAST& e)
 {
   auto VarId = e.VarId_;
   
@@ -285,7 +294,7 @@ void Analyzer::dispatch(ForExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(IfExprAST& e)
+void Analyzer::dispatch(IfStmtAST& e)
 {
   auto & CondExpr = *e.CondExpr_;
   auto CondType = runExprVisitor(CondExpr);
@@ -301,7 +310,7 @@ void Analyzer::dispatch(IfExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(VarDefExprAST& e)
+void Analyzer::dispatch(VarDeclAST& e)
 {
 
   // check if there is a specified type, if there is, get it
@@ -327,14 +336,15 @@ void Analyzer::dispatch(VarDefExprAST& e)
   }
 
   TypeResult_ = VarType;
+  e.setType(TypeResult_);
 }
 
 //==============================================================================
-void Analyzer::dispatch(ArrayDefExprAST& e)
+void Analyzer::dispatch(ArrayDeclAST& e)
 {
 
   { // scope
-    auto VarAST = static_cast<VarDefExprAST*>(&e);
+    auto VarAST = static_cast<VarDeclAST*>(&e);
     dispatch(*VarAST);
   }
 

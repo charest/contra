@@ -4,11 +4,12 @@
 #include "dispatcher.hpp"
 #include "config.hpp"
 #include "errors.hpp"
-#include "expression.hpp"
 #include "identifier.hpp"
 #include "sourceloc.hpp"
+#include "symbols.hpp"
 
 #include <iostream>
+#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -19,33 +20,50 @@ namespace contra {
 class Parser;
 class AstDispatcher;
 
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
 /// NodeAST - Base class for all nodes.
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
 class NodeAST {
-public:
-  virtual ~NodeAST() = default;
-  virtual void accept(AstDispatcher& dispatcher) = 0;
-
-};
-
-
-//==============================================================================
-/// ExprAST - Base class for all expression nodes.
-//==============================================================================
-class ExprAST : public NodeAST {
-
+  
   SourceLocation Loc_;
-  
+
 public:
   
-  ExprAST(const SourceLocation & Loc) : Loc_(Loc) {}
+  NodeAST(const SourceLocation & Loc) : Loc_(Loc) {}
+  
+  virtual ~NodeAST() = default;
 
-  virtual ~ExprAST() = default;
+  virtual void accept(AstDispatcher& dispatcher) = 0;
   
   const auto & getLoc() const { return Loc_; }
   int getLine() const { return Loc_.getLine(); }
   int getCol() const { return Loc_.getCol(); }
+
+};
+
+// some useful types
+using ASTBlock = std::vector< std::unique_ptr<NodeAST> >;
+using ASTBlockList = std::list<ASTBlock>;
+
+inline auto createBlock( ASTBlockList & list)
+{ return list.emplace( list.end(), ASTBlock{} ); }
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// ExprAST - Base class for all expression nodes.
+////////////////////////////////////////////////////////////////////////////////
+class ExprAST : public NodeAST {
+
+  VariableType Type_;
+  
+public:
+  
+  ExprAST(const SourceLocation & Loc) : NodeAST(Loc) {}
+
+  virtual ~ExprAST() = default;
+  
+  void setType(const VariableType & Type) { Type_ = Type; }
+  const VariableType getType() const { return Type_; }
 
 };
 
@@ -64,7 +82,8 @@ public:
 
   const T & getVal() const { return Val_; }
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  void accept(AstDispatcher& dispatcher) override
+  { dispatcher.dispatch(*this); }
 
   friend class Analyzer;
   friend class CodeGen;
@@ -86,7 +105,8 @@ class VariableExprAST : public ExprAST {
 protected:
 
   std::string Name_;
-  std::unique_ptr<ExprAST> IndexExpr_;
+  std::unique_ptr<NodeAST> IndexExpr_;
+  VariableType Type_;
 
 public:
 
@@ -95,7 +115,7 @@ public:
   {}
 
   VariableExprAST(const SourceLocation & Loc, const std::string &Name,
-      std::unique_ptr<ExprAST> IndexExpr)
+      std::unique_ptr<NodeAST> IndexExpr)
     : ExprAST(Loc), Name_(Name), IndexExpr_(std::move(IndexExpr))
   {}
   
@@ -104,7 +124,7 @@ public:
   const std::string &getName() const { return Name_; }
   
   bool isArray() const { return static_cast<bool>(IndexExpr_); }
-  
+
   friend class Analyzer;
   friend class CodeGen;
   friend class Vizualizer;
@@ -116,13 +136,13 @@ public:
 class ArrayExprAST : public ExprAST {
 protected:
 
-  ExprBlock ValExprs_;
-  std::unique_ptr<ExprAST> SizeExpr_;
+  ASTBlock ValExprs_;
+  std::unique_ptr<NodeAST> SizeExpr_;
 
 public:
 
-  ArrayExprAST(const SourceLocation & Loc, ExprBlock Vals,
-      std::unique_ptr<ExprAST> Size)
+  ArrayExprAST(const SourceLocation & Loc, ASTBlock Vals,
+      std::unique_ptr<NodeAST> Size)
     : ExprAST(Loc), ValExprs_(std::move(Vals)), SizeExpr_(std::move(Size))
   {}
   
@@ -140,12 +160,12 @@ public:
 class CastExprAST : public ExprAST {
 protected:
 
-  std::unique_ptr<ExprAST> FromExpr_;
+  std::unique_ptr<NodeAST> FromExpr_;
   Identifier TypeId_;
 
 
 public:
-  CastExprAST(const SourceLocation & Loc, std::unique_ptr<ExprAST> FromExpr,
+  CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
       Identifier TypeId) : ExprAST(Loc), FromExpr_(std::move(FromExpr)),
       TypeId_(TypeId)
   {}
@@ -166,12 +186,12 @@ class UnaryExprAST : public ExprAST {
 protected:
 
   char OpCode_;
-  std::unique_ptr<ExprAST> OpExpr_;
+  std::unique_ptr<NodeAST> OpExpr_;
 
 public:
   UnaryExprAST(const SourceLocation & Loc,
       char Opcode,
-      std::unique_ptr<ExprAST> Operand)
+      std::unique_ptr<NodeAST> Operand)
     : ExprAST(Loc), OpCode_(Opcode), OpExpr_(std::move(Operand))
   {}
   
@@ -189,13 +209,13 @@ class BinaryExprAST : public ExprAST {
 protected:
 
   char OpCode_;
-  std::unique_ptr<ExprAST> LeftExpr_;
-  std::unique_ptr<ExprAST> RightExpr_;
+  std::unique_ptr<NodeAST> LeftExpr_;
+  std::unique_ptr<NodeAST> RightExpr_;
 
 public:
   BinaryExprAST(const SourceLocation & Loc, 
-      char Op, std::unique_ptr<ExprAST> lhs,
-      std::unique_ptr<ExprAST> rhs)
+      char Op, std::unique_ptr<NodeAST> lhs,
+      std::unique_ptr<NodeAST> rhs)
     : ExprAST(Loc), OpCode_(Op), LeftExpr_(std::move(lhs)), RightExpr_(std::move(rhs))
   {}
 
@@ -215,13 +235,13 @@ class CallExprAST : public ExprAST {
 protected:
   
   std::string Callee_;
-  std::vector<std::unique_ptr<ExprAST>> ArgExprs_;
+  ASTBlock ArgExprs_;
 
 public:
 
   CallExprAST(const SourceLocation & Loc,
       const std::string &Callee,
-      std::vector<std::unique_ptr<ExprAST>> Args)
+      ASTBlock Args)
     : ExprAST(Loc), Callee_(Callee), ArgExprs_(std::move(Args))
   {}
 
@@ -235,26 +255,41 @@ public:
   
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/// StmtAST - Base class for all statement nodes.
+////////////////////////////////////////////////////////////////////////////////
+class StmtAST : public NodeAST {
+  
+public:
+  
+  StmtAST(const SourceLocation & Loc) : NodeAST(Loc) {}
+
+  virtual ~StmtAST() = default;
+
+};
+
+
 //==============================================================================
 /// IfExprAST - Expression class for if/then/else.
 //==============================================================================
-class IfExprAST : public ExprAST {
+class IfStmtAST : public StmtAST {
 protected:
 
-  std::unique_ptr<ExprAST> CondExpr_;
-  ExprBlock ThenExpr_, ElseExpr_;
+  std::unique_ptr<NodeAST> CondExpr_;
+  ASTBlock ThenExpr_, ElseExpr_;
 
 public:
 
-  IfExprAST(const SourceLocation & Loc, std::unique_ptr<ExprAST> Cond,
-       ExprBlock Then)
-    : ExprAST(Loc), CondExpr_(std::move(Cond)), ThenExpr_(std::move(Then))
+  IfStmtAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> Cond,
+       ASTBlock Then)
+    : StmtAST(Loc), CondExpr_(std::move(Cond)), ThenExpr_(std::move(Then))
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
-  static std::unique_ptr<ExprAST> makeNested( 
-    ExprLocPairList & Conds, ExprBlockList & Blocks );
+  static std::unique_ptr<NodeAST> makeNested( 
+    std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> > & Conds,
+    ASTBlockList & Blocks );
   
   friend class Analyzer;
   friend class CodeGen;
@@ -264,7 +299,7 @@ public:
 //==============================================================================
 // ForExprAST - Expression class for for/in.
 //==============================================================================
-class ForExprAST : public ExprAST {
+class ForStmtAST : public StmtAST {
 
 public:
 
@@ -275,20 +310,20 @@ public:
 protected:
 
   Identifier VarId_;
-  std::unique_ptr<ExprAST> StartExpr_, EndExpr_, StepExpr_;
-  ExprBlock BodyExprs_;
+  std::unique_ptr<NodeAST> StartExpr_, EndExpr_, StepExpr_;
+  ASTBlock BodyExprs_;
   LoopType Loop_;
 
 public:
 
-  ForExprAST(const SourceLocation & Loc,
+  ForStmtAST(const SourceLocation & Loc,
       const Identifier &VarId,
-      std::unique_ptr<ExprAST> Start,
-      std::unique_ptr<ExprAST> End,
-      std::unique_ptr<ExprAST> Step,
-      ExprBlock Body,
+      std::unique_ptr<NodeAST> Start,
+      std::unique_ptr<NodeAST> End,
+      std::unique_ptr<NodeAST> Step,
+      ASTBlock Body,
       LoopType Loop = LoopType::To)
-    : ExprAST(Loc), VarId_(VarId), StartExpr_(std::move(Start)),
+    : StmtAST(Loc), VarId_(VarId), StartExpr_(std::move(Start)),
       EndExpr_(std::move(End)), StepExpr_(std::move(Step)), BodyExprs_(std::move(Body)),
       Loop_(Loop)
   {}
@@ -300,22 +335,41 @@ public:
   friend class Vizualizer;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/// ExprAST - Base class for all expression nodes.
+////////////////////////////////////////////////////////////////////////////////
+class DeclAST : public NodeAST {
+
+  VariableType Type_;
+  
+public:
+  
+  DeclAST(const SourceLocation & Loc) : NodeAST(Loc) {}
+
+  virtual ~DeclAST() = default;
+  
+  void setType(const VariableType & Type) { Type_ = Type; }
+  const VariableType getType() const { return Type_; }
+
+};
+
+
 //==============================================================================
 /// VarDefExprAST - Expression class for var/in
 //==============================================================================
-class VarDefExprAST : public ExprAST {
+class VarDeclAST : public DeclAST {
 
 protected:
 
   std::vector<Identifier> VarIds_;
   Identifier TypeId_;
-  std::unique_ptr<ExprAST> InitExpr_;
+  std::unique_ptr<NodeAST> InitExpr_;
 
 public:
 
-  VarDefExprAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
-      Identifier VarType, std::unique_ptr<ExprAST> Init)
-    : ExprAST(Loc), VarIds_(Vars), TypeId_(VarType),
+  VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
+      Identifier VarType, std::unique_ptr<NodeAST> Init)
+    : DeclAST(Loc), VarIds_(Vars), TypeId_(VarType),
       InitExpr_(std::move(Init)) 
   {}
 
@@ -331,17 +385,17 @@ public:
 //==============================================================================
 /// ArrayDefExprAST - Expression class for var/in
 //==============================================================================
-class ArrayDefExprAST : public VarDefExprAST {
+class ArrayDeclAST : public VarDeclAST {
 protected:
 
-  std::unique_ptr<ExprAST> SizeExpr_;
+  std::unique_ptr<NodeAST> SizeExpr_;
 
 public:
 
-  ArrayDefExprAST(const SourceLocation & Loc, const std::vector<Identifier> & VarNames, 
-      Identifier VarType, std::unique_ptr<ExprAST> Init,
-      std::unique_ptr<ExprAST> Size)
-    : VarDefExprAST(Loc, VarNames, VarType, std::move(Init)),
+  ArrayDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & VarNames, 
+      Identifier VarType, std::unique_ptr<NodeAST> Init,
+      std::unique_ptr<NodeAST> Size)
+    : VarDeclAST(Loc, VarNames, VarType, std::move(Init)),
       SizeExpr_(std::move(Size))
   {}
   
@@ -374,7 +428,7 @@ protected:
 
 public:
   
-  PrototypeAST(const Identifier & Id) : Id_(Id)  {}
+  PrototypeAST(const Identifier & Id) : NodeAST(Id.getLoc()), Id_(Id)  {}
 
   PrototypeAST(
     const Identifier & Id,
@@ -384,8 +438,8 @@ public:
     std::unique_ptr<Identifier> Return,
     bool IsOperator = false,
     unsigned Prec = 0)
-      : Id_(Id), ReturnTypeId_(std::move(Return)), IsOperator_(IsOperator),
-        Precedence_(Prec), ArgIds_(std::move(Args)),
+      : NodeAST(Id.getLoc()), Id_(Id), ReturnTypeId_(std::move(Return)),
+        IsOperator_(IsOperator), Precedence_(Prec), ArgIds_(std::move(Args)),
         ArgTypeIds_(std::move(ArgTypes)), ArgIsArray_(std::move(ArgIsArray))
   {}
 
@@ -411,29 +465,31 @@ public:
   friend class Vizualizer;
 };
 
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
 /// FunctionAST - This class represents a function definition itself.
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
 class FunctionAST : public NodeAST {
 protected:
 
   std::unique_ptr<PrototypeAST> ProtoExpr_;
-  ExprBlock BodyExprs_;
-  std::unique_ptr<ExprAST> ReturnExpr_;
+  ASTBlock BodyExprs_;
+  std::unique_ptr<NodeAST> ReturnExpr_;
 
 public:
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ExprBlock Body)
-      : ProtoExpr_(std::move(Proto)), BodyExprs_(std::move(Body)) {}
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body)
+      : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
+        BodyExprs_(std::move(Body)) {}
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ExprBlock Body, 
-      std::unique_ptr<ExprAST> Return)
-      : ProtoExpr_(std::move(Proto)), BodyExprs_(std::move(Body)),
-        ReturnExpr_(std::move(Return))
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
+      std::unique_ptr<NodeAST> Return)
+      : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
+        BodyExprs_(std::move(Body)), ReturnExpr_(std::move(Return))
   {}
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<ExprAST> Return)
-      : ProtoExpr_(std::move(Proto)), ReturnExpr_(std::move(Return))
+  FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<NodeAST> Return)
+      : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
+      ReturnExpr_(std::move(Return))
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;

@@ -19,7 +19,6 @@
 namespace contra {
 
 class BinopPrecedence;
-class ExprAST;
 class PrototypeAST;
 class JIT;
 class DebugInfo;
@@ -39,7 +38,7 @@ class CodeGen : public AstDispatcher {
   llvm::Value* ValueResult_ = nullptr;
   llvm::Function* FunctionResult_ = nullptr;
 
-  std::shared_ptr<BinopPrecedence> BinopPrecedence_;
+  std::map<std::string, llvm::Type*> TypeTable_;
 
   std::map<std::string, AllocaInst *> NamedValues;
   std::map<std::string, AllocaInst *> NamedArrays;
@@ -56,7 +55,7 @@ public:
   
 
   // Constructor
-  CodeGen (std::shared_ptr<BinopPrecedence>, bool);
+  CodeGen (bool);
 
   // destructor
   virtual ~CodeGen() = default;
@@ -135,7 +134,7 @@ public:
       const std::string & Name, unsigned ArgIdx, llvm::DIFile *Unit,
       unsigned LineNo, AllocaInst *Alloca);
 
-  void emitLocation(ExprAST * ast) { 
+  void emitLocation(NodeAST * ast) { 
     if (isDebug()) KSDbgInfo.emitLocation(Builder_, ast);
   }
   
@@ -156,7 +155,7 @@ public:
   llvm::Function* runFuncVisitor(T&e)
   {
     FunctionResult_ = nullptr;
-    dispatch(e);
+    e.accept(*this);
     return FunctionResult_;
   }
 
@@ -168,11 +167,11 @@ private:
   llvm::Value* runExprVisitor(T&e)
   {
     ValueResult_ = nullptr;
-    dispatch(e);
+    e.accept(*this);
     return ValueResult_;
   }
+
   // Visitees 
-  void dispatch(ExprAST&) override;
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
   void dispatch(ValueExprAST<std::string>&) override;
@@ -182,10 +181,10 @@ private:
   void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;
   void dispatch(CallExprAST&) override;
-  void dispatch(ForExprAST&) override;
-  void dispatch(IfExprAST&) override;
-  void dispatch(VarDefExprAST&) override;
-  void dispatch(ArrayDefExprAST&) override;
+  void dispatch(ForStmtAST&) override;
+  void dispatch(IfStmtAST&) override;
+  void dispatch(VarDeclAST&) override;
+  void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
 
