@@ -5,15 +5,15 @@
 
 namespace contra {
 
-class Symbol;
+class TypeDef;
 
 struct Context {
 
-  static std::shared_ptr<Symbol> I64Symbol;
-  static std::shared_ptr<Symbol> F64Symbol;
-  static std::shared_ptr<Symbol> StrSymbol;
-  static std::shared_ptr<Symbol> BoolSymbol;
-  static std::shared_ptr<Symbol> VoidSymbol;
+  static std::shared_ptr<TypeDef> I64Type;
+  static std::shared_ptr<TypeDef> F64Type;
+  static std::shared_ptr<TypeDef> StrType;
+  static std::shared_ptr<TypeDef> BoolType;
+  static std::shared_ptr<TypeDef> VoidType;
 
 };
 

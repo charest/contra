@@ -458,34 +458,27 @@ void CodeGen::dispatch(ValueExprAST<std::string>& e)
 //==============================================================================
 void CodeGen::dispatch(VariableExprAST& e)
 {
-#if 0
-  // Look this variable up in the function.
-  auto it = NamedValues.find(e.Name_);
-  if (it == NamedValues.end()) 
-    THROW_NAME_ERROR(e.Name_, e.getLine());
-  emitLocation(&e);
 
-  Value* V = it->second;
+  auto Name = e.getName();
+
+  // Look this variable up in the function.
+  Value* V = NamedValues.at(e.getName());
   
   // Load the value.
   auto Ty = V->getType();
-  if (!Ty->isPointerTy()) THROW_CONTRA_ERROR("why are you NOT a pointer");
   Ty = Ty->getPointerElementType();
     
-  auto Load = Builder_.CreateLoad(Ty, V, "val."+e.Name_);
+  auto Load = Builder_.CreateLoad(Ty, V, "val."+Name);
 
-  if ( !e.Index_ ) {
-    //if (TheCG.NamedArrays.count(Name_))
-    //  THROW_SYNTAX_ERROR("Array accesses require explicit indices", getLine());
-    ValueResult_ = Load;
+  if ( e.IndexExpr_ ) {
+    Ty = Ty->getPointerElementType();
+    auto IndexVal = runExprVisitor(*e.IndexExpr_);
+    auto GEP = Builder_.CreateGEP(Load, IndexVal, Name+".offset");
+    ValueResult_ = Builder_.CreateLoad(Ty, GEP, Name+".i");
   }
   else {
-    Ty = Ty->getPointerElementType();
-    auto IndexVal = runExprVisitor(*e.Index_);
-    auto GEP = Builder_.CreateGEP(Load, IndexVal, e.Name_+".offset");
-    ValueResult_ = Builder_.CreateLoad(Ty, GEP, e.Name_+".i");
+    ValueResult_ = Load;
   }
-#endif
 }
 
 //==============================================================================
@@ -509,25 +502,23 @@ void CodeGen::dispatch(ArrayExprAST &e)
 
 
   std::vector<Value*> InitVals;
-  InitVals.reserve(e.Vals_.size());
-  for ( auto & E : e.Vals_ ) 
+  InitVals.reserve(e.ValExprs_.size());
+  for ( auto & E : e.ValExprs_ ) 
     InitVals.emplace_back( runExprVisitor(*E) );
 
   Value* SizeExpr = nullptr;
-  if (e.Size_) {
-    SizeExpr = runExprVisitor(*e.Size_);
-    if (e.Vals_.size() != 1 )
-      THROW_SYNTAX_ERROR("Only one value expected in [Val; N] syntax", e.getLine());
+  if (e.SizeExpr_) {
+    SizeExpr = runExprVisitor(*e.SizeExpr_);
   }
   else {
-    SizeExpr = llvmInteger(TheContext_, e.Vals_.size());
+    SizeExpr = llvmInteger(TheContext_, e.ValExprs_.size());
   }
 
   auto Array = createArray(TheFunction, "__tmp", VarPointerType, SizeExpr );
   auto Alloca = createEntryBlockAlloca(TheFunction, "__tmp", VarPointerType);
   Builder_.CreateStore(Array.Data, Alloca);
 
-  if (e.Size_) 
+  if (e.SizeExpr_) 
     initArrays(TheFunction, {Alloca}, InitVals[0], SizeExpr);
   else
     initArray(TheFunction, Alloca, InitVals);
@@ -538,6 +529,13 @@ void CodeGen::dispatch(ArrayExprAST &e)
 #endif
 }
   
+//==============================================================================
+// CastExprAST - Expression class for casts.
+//==============================================================================
+void CodeGen::dispatch(CastExprAST &e)
+{
+}
+
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
@@ -964,9 +962,9 @@ void CodeGen::dispatch(ForExprAST& e) {
 }
 
 //==============================================================================
-// VarExprAST - Expression class for var/in
+// VarDefExprAST - Expression class for var/in
 //==============================================================================
-void CodeGen::dispatch(VarExprAST & e) {
+void CodeGen::dispatch(VarDefExprAST & e) {
 #if 0
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -1038,7 +1036,7 @@ void CodeGen::dispatch(VarExprAST & e) {
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
-void CodeGen::dispatch(ArrayVarExprAST &e) {
+void CodeGen::dispatch(ArrayDefExprAST &e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 #if 0 
   // Emit the initializer before adding the variable to scope, this prevents

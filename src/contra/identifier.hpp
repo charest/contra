@@ -19,6 +19,8 @@ public:
 
   const std::string & getName() const { return Name_; }
   SourceLocation getLoc() const { return Loc_; }
+
+  operator bool() const { return !Name_.empty(); }
 };
 
 }

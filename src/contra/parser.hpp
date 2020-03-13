@@ -129,7 +129,7 @@ public:
 
   /// varexpr ::= 'var' identifier ('=' expression)?
   ///                    (',' identifier ('=' expression)?)* 'in' expression
-  std::unique_ptr<ExprAST> parseVarExpr();
+  std::unique_ptr<ExprAST> parseVarDefExpr();
 
   /// Top level function parser 
   std::unique_ptr<FunctionAST> parseFunction();

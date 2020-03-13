@@ -28,6 +28,10 @@ void ArrayExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
+void CastExprAST::accept(AstDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
+
+//==============================================================================
 void UnaryExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
@@ -72,11 +76,11 @@ void ForExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
-void VarExprAST::accept(AstDispatcher& dispatcher)
+void VarDefExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
-void ArrayVarExprAST::accept(AstDispatcher& dispatcher)
+void ArrayDefExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================

@@ -289,7 +289,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
   case tok_for:
     return parseForExpr();
   case tok_var:
-    return parseVarExpr();
+    return parseVarDefExpr();
   case tok_string:
     return parseStringExpr();
   default:
@@ -406,7 +406,7 @@ std::unique_ptr<ExprAST> Parser::parseUnary() {
 // varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
 //==============================================================================
-std::unique_ptr<ExprAST> Parser::parseVarExpr() {
+std::unique_ptr<ExprAST> Parser::parseVarDefExpr() {
 
   getNextToken();  // eat the var.
   // At least one variable name is required.
@@ -484,10 +484,10 @@ std::unique_ptr<ExprAST> Parser::parseVarExpr() {
   }
 
   if (IsArray)
-    return std::make_unique<ArrayVarExprAST>(getCurLoc(), VarNames,
+    return std::make_unique<ArrayDefExprAST>(getCurLoc(), VarNames,
         VarType, std::move(Init), std::move(Size));
   else
-    return std::make_unique<VarExprAST>(getCurLoc(), VarNames, VarType,
+    return std::make_unique<VarDefExprAST>(getCurLoc(), VarNames, VarType,
         std::move(Init));
 }
 

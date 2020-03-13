@@ -38,6 +38,12 @@ void Vizualizer::dispatch(ArrayExprAST& e)
 }
 
 //==============================================================================
+void Vizualizer::dispatch(CastExprAST& e)
+{
+  out() << "node" << ind_ << "[label=\"CastExprAST\"];" << std::endl;
+}
+
+//==============================================================================
 void Vizualizer::dispatch(UnaryExprAST& e)
 {
   auto my_ind = ind_;
@@ -103,18 +109,18 @@ void Vizualizer::dispatch(IfExprAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(VarExprAST& e)
+void Vizualizer::dispatch(VarDefExprAST& e)
 {
-  out() << "node" << ind_ << "[label=\"VarExprAST\"];" << std::endl;
+  out() << "node" << ind_ << "[label=\"VarDefExprAST\"];" << std::endl;
   out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
   dispatch(*e.InitExpr_);
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ArrayVarExprAST& e)
+void Vizualizer::dispatch(ArrayDefExprAST& e)
 {
   auto my_ind = ind_;
-  out() << "node" << my_ind << "[label=\"ArrayVarExprAST\"];" << std::endl;
+  out() << "node" << my_ind << "[label=\"ArrayDefExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
   dispatch(*e.InitExpr_);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;

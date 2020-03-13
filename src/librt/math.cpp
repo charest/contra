@@ -36,8 +36,8 @@ Function *CSqrt::install(LLVMContext & TheContext, Module & TheModule)
 std::shared_ptr<contra::FunctionDef> CSqrt::check()
 {
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::F64Symbol );
-  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args, Context::F64Symbol);
+  Args.emplace_back( Context::F64Type );
+  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args, Context::F64Type);
 }
 
 //==============================================================================
@@ -51,8 +51,8 @@ Function *CAbs::install(LLVMContext & TheContext, Module & TheModule)
 std::shared_ptr<contra::FunctionDef> CAbs::check()
 {
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::F64Symbol );
-  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args, Context::F64Symbol);
+  Args.emplace_back( Context::F64Type );
+  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args, Context::F64Type);
 }
 
 //==============================================================================
@@ -66,8 +66,8 @@ Function *CMax::install(LLVMContext & TheContext, Module & TheModule)
 std::shared_ptr<contra::FunctionDef> CMax::check()
 {
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::F64Symbol );
-  return std::make_shared<BuiltInFunction>(CMax::Name, Args, Context::F64Symbol);
+  Args.emplace_back( Context::F64Type );
+  return std::make_shared<BuiltInFunction>(CMax::Name, Args, Context::F64Type);
 }
 
 }

@@ -16,29 +16,30 @@ namespace contra {
 class Analyzer : public AstDispatcher {
 
   int Scope_ = 0;
-  std::map<std::string, std::shared_ptr<Symbol>> SymbolTable_;
+  std::map<std::string, std::shared_ptr<TypeDef>> TypeTable_;
   std::map<std::string, std::shared_ptr<VariableDef>> VariableTable_;
   std::map<std::string, std::shared_ptr<FunctionDef>> FunctionTable_;
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
-  VariableType I64Type  = Context::I64Symbol;
-  VariableType F64Type  = Context::F64Symbol;
-  VariableType StrType  = Context::StrSymbol;
-  VariableType BoolType = Context::BoolSymbol;
-  VariableType VoidType = Context::VoidSymbol;
+  VariableType I64Type  = Context::I64Type;
+  VariableType F64Type  = Context::F64Type;
+  VariableType StrType  = Context::StrType;
+  VariableType BoolType = Context::BoolType;
+  VariableType VoidType = Context::VoidType;
 
   VariableType  TypeResult_;
+  VariableType  DestinationType_;
 
 public:
 
   Analyzer(std::shared_ptr<BinopPrecedence> Prec) : BinopPrecedence_(std::move(Prec))
   {
-    SymbolTable_.emplace( Context::I64Symbol->getName(),  Context::I64Symbol);
-    SymbolTable_.emplace( Context::F64Symbol->getName(),  Context::F64Symbol);
-    SymbolTable_.emplace( Context::StrSymbol->getName(),  Context::StrSymbol);
-    SymbolTable_.emplace( Context::BoolSymbol->getName(), Context::BoolSymbol);
-    SymbolTable_.emplace( Context::VoidSymbol->getName(), Context::VoidSymbol);
+    TypeTable_.emplace( Context::I64Type->getName(),  Context::I64Type);
+    TypeTable_.emplace( Context::F64Type->getName(),  Context::F64Type);
+    TypeTable_.emplace( Context::StrType->getName(),  Context::StrType);
+    TypeTable_.emplace( Context::BoolType->getName(), Context::BoolType);
+    TypeTable_.emplace( Context::VoidType->getName(), Context::VoidType);
   }
 
   virtual ~Analyzer() = default;
@@ -51,7 +52,10 @@ public:
       std::is_same<T, FunctionAST>::value || std::is_same<T, PrototypeAST>::value >
   >
   void runFuncVisitor(T&e)
-  { dispatch(e); }
+  {
+    Scope_ = 0;
+    dispatch(e);
+  }
 
 private:
   
@@ -69,15 +73,87 @@ private:
   void dispatch(ValueExprAST<std::string>&) override;
   void dispatch(VariableExprAST&) override;
   void dispatch(ArrayExprAST&) override;
+  void dispatch(CastExprAST&) override;
   void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;
   void dispatch(CallExprAST&) override;
   void dispatch(ForExprAST&) override;
   void dispatch(IfExprAST&) override;
-  void dispatch(VarExprAST&) override;
-  void dispatch(ArrayVarExprAST&) override;
+  void dispatch(VarDefExprAST&) override;
+  void dispatch(ArrayDefExprAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
+  
+  auto getType(const std::string & Name, SourceLocation Loc) {
+    auto it = TypeTable_.find(Name);
+    if ( it == TypeTable_.end() )
+      THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Loc);
+    return it->second;
+  }
+
+  auto getVariable(const std::string & Name, SourceLocation Loc) {
+    auto it = VariableTable_.find(Name);
+    if (it == VariableTable_.end())
+      THROW_NAME_ERROR("Variable '" << Name << "' has not been"
+          << " previously defined", Loc);
+    return it->second;
+  }
+
+  auto insertVariable(const Identifier & Id, const VariableType & VarType)
+  {
+    const auto & Name = Id.getName();
+    auto Loc = Id.getLoc();
+    auto S = std::make_shared<VariableDef>( Name, Loc, VarType);
+    auto it = VariableTable_.emplace(Name, std::move(S));
+    if (!it.second)
+      THROW_NAME_ERROR("Variable '" << Name << "' has been"
+          << " previously defined", Loc);
+    return it.first->second;
+  }
+  
+  void checkIsCastable(const VariableType & FromType, const VariableType & ToType,
+      SourceLocation Loc)
+  {
+    auto IsCastable = FromType.isCastableTo(ToType);
+    if (!IsCastable)
+      THROW_NAME_ERROR("Cannot cast from type '" << FromType << "' to type '"
+          << ToType << "'.", Loc);
+  }
+    
+  void checkIsAssignable(const VariableType & LeftType, const VariableType & RightType,
+      SourceLocation Loc)
+  {
+    auto IsAssignable = RightType.isAssignableTo(LeftType);
+    if (IsAssignable)
+      THROW_NAME_ERROR("A variable of type '" << RightType << "' cannot be"
+           << " assigned to a variable of type '" << LeftType << "'." , Loc);
+  }
+
+  auto insertCastOp( std::unique_ptr<ExprAST> FromExpr, const VariableType & ToType )
+  {
+    auto Loc = FromExpr->getLoc();
+    auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr),
+          Identifier(ToType.getBaseType()->getName(), Loc));
+    return std::move(E);
+  }
+
+  VariableType promote(const VariableType & LeftType, const VariableType & RightType,
+      SourceLocation Loc)
+  {
+    if (LeftType == RightType) return LeftType;
+
+    if (LeftType.isNumber() && RightType.isNumber()) {
+      if (LeftType == F64Type || RightType == F64Type)
+        return F64Type;
+      else
+        return LeftType;
+    }
+    
+    THROW_NAME_ERROR("No promotion rules between the type '" << LeftType
+         << " and the type '" << RightType << "'." , Loc);
+
+    return {};
+  }
 
 };
 

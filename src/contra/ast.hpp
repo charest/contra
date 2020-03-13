@@ -136,6 +136,31 @@ public:
 };
 
 //==============================================================================
+/// CastExprAST - Expression class for casts
+//==============================================================================
+class CastExprAST : public ExprAST {
+protected:
+
+  std::unique_ptr<ExprAST> FromExpr_;
+  Identifier TypeId_;
+
+
+public:
+  CastExprAST(SourceLocation Loc, std::unique_ptr<ExprAST> FromExpr,
+      Identifier TypeId) : ExprAST(Loc), FromExpr_(std::move(FromExpr)),
+      TypeId_(TypeId)
+  {}
+
+  virtual void accept(AstDispatcher& dispatcher) override;
+
+  friend class Analyzer;
+  friend class CodeGen;
+  friend class Vizualizer;
+  
+};
+
+
+//==============================================================================
 /// UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 class UnaryExprAST : public ExprAST {
@@ -165,7 +190,7 @@ class BinaryExprAST : public ExprAST {
 protected:
 
   char OpCode_;
-  std::shared_ptr<ExprAST> LeftExpr_;
+  std::unique_ptr<ExprAST> LeftExpr_;
   std::unique_ptr<ExprAST> RightExpr_;
 
 public:
@@ -277,23 +302,25 @@ public:
 };
 
 //==============================================================================
-/// VarExprAST - Expression class for var/in
+/// VarDefExprAST - Expression class for var/in
 //==============================================================================
-class VarExprAST : public ExprAST {
+class VarDefExprAST : public ExprAST {
 
 protected:
 
   std::vector<Identifier> VarIds_;
   Identifier TypeId_;
-  std::shared_ptr<ExprAST> InitExpr_;
+  std::unique_ptr<ExprAST> InitExpr_;
 
 public:
 
-  VarExprAST(SourceLocation Loc, const std::vector<Identifier> & Vars, 
+  VarDefExprAST(SourceLocation Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<ExprAST> Init)
     : ExprAST(Loc), VarIds_(Vars), TypeId_(VarType),
       InitExpr_(std::move(Init)) 
   {}
+
+  virtual bool isArray() const { return false; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
  
@@ -303,21 +330,23 @@ public:
 };
 
 //==============================================================================
-/// ArrayVarExprAST - Expression class for var/in
+/// ArrayDefExprAST - Expression class for var/in
 //==============================================================================
-class ArrayVarExprAST : public VarExprAST {
+class ArrayDefExprAST : public VarDefExprAST {
 protected:
 
   std::unique_ptr<ExprAST> SizeExpr_;
 
 public:
 
-  ArrayVarExprAST(SourceLocation Loc, const std::vector<Identifier> & VarNames, 
+  ArrayDefExprAST(SourceLocation Loc, const std::vector<Identifier> & VarNames, 
       Identifier VarType, std::unique_ptr<ExprAST> Init,
       std::unique_ptr<ExprAST> Size)
-    : VarExprAST(Loc, VarNames, VarType, std::move(Init)),
+    : VarDefExprAST(Loc, VarNames, VarType, std::move(Init)),
       SizeExpr_(std::move(Size))
   {}
+  
+  virtual bool isArray() const { return true; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
