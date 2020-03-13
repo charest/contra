@@ -40,11 +40,11 @@ class ExprAST : public NodeAST {
   
 public:
   
-  ExprAST(SourceLocation Loc) : Loc_(Loc) {}
+  ExprAST(const SourceLocation & Loc) : Loc_(Loc) {}
 
   virtual ~ExprAST() = default;
   
-  auto getLoc() const { return Loc_; }
+  const auto & getLoc() const { return Loc_; }
   int getLine() const { return Loc_.getLine(); }
   int getCol() const { return Loc_.getCol(); }
 
@@ -60,7 +60,7 @@ protected:
   T Val_;
 
 public:
-  ValueExprAST(SourceLocation Loc, T Val)
+  ValueExprAST(const SourceLocation & Loc, T Val)
     : ExprAST(Loc), Val_(Val) {}
 
   const T & getVal() const { return Val_; }
@@ -91,11 +91,11 @@ protected:
 
 public:
 
-  VariableExprAST(SourceLocation Loc, const std::string &Name)
+  VariableExprAST(const SourceLocation & Loc, const std::string &Name)
     : ExprAST(Loc), Name_(Name)
   {}
 
-  VariableExprAST(SourceLocation Loc, const std::string &Name,
+  VariableExprAST(const SourceLocation & Loc, const std::string &Name,
       std::unique_ptr<ExprAST> IndexExpr)
     : ExprAST(Loc), Name_(Name), IndexExpr_(std::move(IndexExpr))
   {}
@@ -122,7 +122,7 @@ protected:
 
 public:
 
-  ArrayExprAST(SourceLocation Loc, ExprBlock Vals,
+  ArrayExprAST(const SourceLocation & Loc, ExprBlock Vals,
       std::unique_ptr<ExprAST> Size)
     : ExprAST(Loc), ValExprs_(std::move(Vals)), SizeExpr_(std::move(Size))
   {}
@@ -146,7 +146,7 @@ protected:
 
 
 public:
-  CastExprAST(SourceLocation Loc, std::unique_ptr<ExprAST> FromExpr,
+  CastExprAST(const SourceLocation & Loc, std::unique_ptr<ExprAST> FromExpr,
       Identifier TypeId) : ExprAST(Loc), FromExpr_(std::move(FromExpr)),
       TypeId_(TypeId)
   {}
@@ -170,7 +170,7 @@ protected:
   std::unique_ptr<ExprAST> OpExpr_;
 
 public:
-  UnaryExprAST(SourceLocation Loc,
+  UnaryExprAST(const SourceLocation & Loc,
       char Opcode,
       std::unique_ptr<ExprAST> Operand)
     : ExprAST(Loc), OpCode_(Opcode), OpExpr_(std::move(Operand))
@@ -194,7 +194,7 @@ protected:
   std::unique_ptr<ExprAST> RightExpr_;
 
 public:
-  BinaryExprAST(SourceLocation Loc, 
+  BinaryExprAST(const SourceLocation & Loc, 
       char Op, std::unique_ptr<ExprAST> lhs,
       std::unique_ptr<ExprAST> rhs)
     : ExprAST(Loc), OpCode_(Op), LeftExpr_(std::move(lhs)), RightExpr_(std::move(rhs))
@@ -220,7 +220,7 @@ protected:
 
 public:
 
-  CallExprAST(SourceLocation Loc,
+  CallExprAST(const SourceLocation & Loc,
       const std::string &Callee,
       std::vector<std::unique_ptr<ExprAST>> Args)
     : ExprAST(Loc), Callee_(Callee), ArgExprs_(std::move(Args))
@@ -247,7 +247,7 @@ protected:
 
 public:
 
-  IfExprAST(SourceLocation Loc, std::unique_ptr<ExprAST> Cond,
+  IfExprAST(const SourceLocation & Loc, std::unique_ptr<ExprAST> Cond,
        ExprBlock Then)
     : ExprAST(Loc), CondExpr_(std::move(Cond)), ThenExpr_(std::move(Then))
   {}
@@ -282,7 +282,7 @@ protected:
 
 public:
 
-  ForExprAST(SourceLocation Loc,
+  ForExprAST(const SourceLocation & Loc,
       const Identifier &VarId,
       std::unique_ptr<ExprAST> Start,
       std::unique_ptr<ExprAST> End,
@@ -314,7 +314,7 @@ protected:
 
 public:
 
-  VarDefExprAST(SourceLocation Loc, const std::vector<Identifier> & Vars, 
+  VarDefExprAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<ExprAST> Init)
     : ExprAST(Loc), VarIds_(Vars), TypeId_(VarType),
       InitExpr_(std::move(Init)) 
@@ -339,7 +339,7 @@ protected:
 
 public:
 
-  ArrayDefExprAST(SourceLocation Loc, const std::vector<Identifier> & VarNames, 
+  ArrayDefExprAST(const SourceLocation & Loc, const std::vector<Identifier> & VarNames, 
       Identifier VarType, std::unique_ptr<ExprAST> Init,
       std::unique_ptr<ExprAST> Size)
     : VarDefExprAST(Loc, VarNames, VarType, std::move(Init)),
@@ -364,11 +364,10 @@ public:
 class PrototypeAST : public NodeAST {
 protected:
 
-  std::string Name_;
+  Identifier Id_;
   std::unique_ptr<Identifier> ReturnTypeId_;
   bool IsOperator_ = false;
   unsigned Precedence_ = 0;  // Precedence if a binary op.
-  SourceLocation Loc_;
   
   std::vector<Identifier> ArgIds_;
   std::vector<Identifier> ArgTypeIds_;
@@ -376,41 +375,37 @@ protected:
 
 public:
   
-  PrototypeAST(
-    SourceLocation Loc,
-    const std::string &Name)
-      : Name_(Name), Loc_(Loc)
-  {}
+  PrototypeAST(const Identifier & Id) : Id_(Id)  {}
 
   PrototypeAST(
-    SourceLocation Loc,
-    const std::string &Name,
+    const Identifier & Id,
     std::vector<Identifier> && Args,
     std::vector<Identifier> && ArgTypes,
     std::vector<bool> && ArgIsArray,
     std::unique_ptr<Identifier> Return,
     bool IsOperator = false,
     unsigned Prec = 0)
-      : Name_(Name), ReturnTypeId_(std::move(Return)), IsOperator_(IsOperator),
-        Precedence_(Prec), Loc_(Loc), ArgIds_(std::move(Args)),
+      : Id_(Id), ReturnTypeId_(std::move(Return)), IsOperator_(IsOperator),
+        Precedence_(Prec), ArgIds_(std::move(Args)),
         ArgTypeIds_(std::move(ArgTypes)), ArgIsArray_(std::move(ArgIsArray))
   {}
 
   
   virtual void accept(AstDispatcher& dispatcher) override;
   
-  const std::string &getName() const { return Name_; }
+  const std::string &getName() const { return Id_.getName(); }
 
   bool isUnaryOp() const { return IsOperator_ && ArgIds_.size() == 1; }
   bool isBinaryOp() const { return IsOperator_ && ArgIds_.size() == 2; }
 
   char getOperatorName() const {
     assert(isUnaryOp() || isBinaryOp());
-    return Name_[Name_.size() - 1];
+    auto Name = Id_.getName();
+    return Name[Name.size() - 1];
   }
 
   unsigned getBinaryPrecedence() const { return Precedence_; }
-  auto getLoc() const { return Loc_; }
+  auto getLoc() const { return Id_.getLoc(); }
   
   friend class Analyzer;
   friend class CodeGen;

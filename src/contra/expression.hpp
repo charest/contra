@@ -18,7 +18,7 @@ struct ExprLocPair {
 using ExprLocPairList = std::list< ExprLocPair >;
 
 inline
-void addExpr(ExprLocPairList & l, SourceLocation sl, std::unique_ptr<ExprAST> e)
+void addExpr(ExprLocPairList & l, const SourceLocation & sl, std::unique_ptr<ExprAST> e)
 { l.emplace_back( ExprLocPair{sl, std::move(e) } ); }
 
 

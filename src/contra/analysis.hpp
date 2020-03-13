@@ -22,11 +22,11 @@ class Analyzer : public AstDispatcher {
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
-  VariableType I64Type  = Context::I64Type;
-  VariableType F64Type  = Context::F64Type;
-  VariableType StrType  = Context::StrType;
-  VariableType BoolType = Context::BoolType;
-  VariableType VoidType = Context::VoidType;
+  VariableType I64Type  = VariableType(Context::I64Type);
+  VariableType F64Type  = VariableType(Context::F64Type);
+  VariableType StrType  = VariableType(Context::StrType);
+  VariableType BoolType = VariableType(Context::BoolType);
+  VariableType VoidType = VariableType(Context::VoidType);
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
@@ -44,8 +44,6 @@ public:
 
   virtual ~Analyzer() = default;
 
-  std::shared_ptr<FunctionDef> getFunction(const std::string &);
-  
   template<
     typename T,
     typename = typename std::enable_if_t<
@@ -84,20 +82,22 @@ private:
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
   
-  auto getType(const std::string & Name, SourceLocation Loc) {
+  auto getBaseType(const std::string & Name, const SourceLocation & Loc) {
     auto it = TypeTable_.find(Name);
     if ( it == TypeTable_.end() )
       THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Loc);
     return it->second;
   }
+  auto getBaseType(Identifier Id) { return getBaseType(Id.getName(), Id.getLoc()); }
 
-  auto getVariable(const std::string & Name, SourceLocation Loc) {
+  auto getVariable(const std::string & Name, const SourceLocation & Loc) {
     auto it = VariableTable_.find(Name);
     if (it == VariableTable_.end())
       THROW_NAME_ERROR("Variable '" << Name << "' has not been"
           << " previously defined", Loc);
     return it->second;
   }
+  auto getVariable(Identifier Id) { return getVariable(Id.getName(), Id.getLoc()); }
 
   auto insertVariable(const Identifier & Id, const VariableType & VarType)
   {
@@ -110,9 +110,27 @@ private:
           << " previously defined", Loc);
     return it.first->second;
   }
+
+  auto insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
+      const VariableType & RetType)
+  { 
+    const auto & Name = Id.getName();
+    auto Sy = std::make_shared<UserFunction>(Name, Id.getLoc(), ArgTypes, RetType);
+    auto fit = FunctionTable_.emplace( Name, std::move(Sy) );
+    if (!fit.second)
+      THROW_NAME_ERROR("Prototype already exists for '" << Name << "'.",
+        Id.getLoc());
+    return fit.first->second;
+  }
+  
+  std::shared_ptr<FunctionDef> getFunction(const std::string &, const SourceLocation &);
+
+  auto getFunction(const Identifier & Id)
+  { return getFunction(Id.getName(), Id.getLoc()); }
+  
   
   void checkIsCastable(const VariableType & FromType, const VariableType & ToType,
-      SourceLocation Loc)
+      const SourceLocation & Loc)
   {
     auto IsCastable = FromType.isCastableTo(ToType);
     if (!IsCastable)
@@ -121,7 +139,7 @@ private:
   }
     
   void checkIsAssignable(const VariableType & LeftType, const VariableType & RightType,
-      SourceLocation Loc)
+      const SourceLocation & Loc)
   {
     auto IsAssignable = RightType.isAssignableTo(LeftType);
     if (IsAssignable)
@@ -138,7 +156,7 @@ private:
   }
 
   VariableType promote(const VariableType & LeftType, const VariableType & RightType,
-      SourceLocation Loc)
+      const SourceLocation & Loc)
   {
     if (LeftType == RightType) return LeftType;
 

@@ -50,12 +50,12 @@ class UserTypeDef : public TypeDef {
   SourceLocation Loc_;
 public:
 
-  UserTypeDef(const std::string & Name, SourceLocation Loc) : TypeDef(Name),
+  UserTypeDef(const std::string & Name, const SourceLocation & Loc) : TypeDef(Name),
     Loc_(Loc) {}
 
   virtual ~UserTypeDef() = default;
 
-  virtual SourceLocation getLoc() const { return Loc_; }
+  virtual const SourceLocation & getLoc() const { return Loc_; }
 
 };
 
@@ -71,7 +71,7 @@ public:
 
   VariableType() = default;
 
-  VariableType(std::shared_ptr<TypeDef> Type, bool IsArray = false)
+  explicit VariableType(std::shared_ptr<TypeDef> Type, bool IsArray = false)
     : Type_(Type), IsArray_(IsArray)
   {}
 
@@ -117,12 +117,12 @@ class VariableDef : public Identifier, public VariableType {
 
 public:
 
-  VariableDef(const std::string & Name, SourceLocation Loc, 
+  VariableDef(const std::string & Name, const SourceLocation & Loc, 
       std::shared_ptr<TypeDef> Type, bool IsArray = false)
     : VariableType(Type, IsArray), Identifier(Name, Loc)
   {}
 
-  VariableDef(const std::string & Name, SourceLocation Loc, 
+  VariableDef(const std::string & Name, const SourceLocation & Loc, 
       const VariableType & VarType)
     : VariableType(VarType), Identifier(Name, Loc)
   {}
@@ -195,12 +195,12 @@ class UserFunction : public FunctionDef {
 
 public:
 
-  UserFunction(const std::string & Name, SourceLocation Loc,
+  UserFunction(const std::string & Name, const SourceLocation & Loc,
       const VariableTypeList & ArgTypes)
     : FunctionDef(Name, ArgTypes), Loc_(Loc)
   {}
 
-  UserFunction(const std::string & Name, SourceLocation Loc,
+  UserFunction(const std::string & Name, const SourceLocation & Loc,
       const VariableTypeList & ArgTypes, const VariableType & ReturnType)
     : FunctionDef(Name, ArgTypes, ReturnType), Loc_(Loc)
   {}

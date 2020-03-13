@@ -62,7 +62,7 @@ std::unique_ptr<ExprAST> Parser::parseParenExpr() {
 std::unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   std::string IdName = TheLex_.getIdentifierStr();
 
-  SourceLocation LitLoc = getCurLoc();
+  auto LitLoc = getCurLoc();
 
   getNextToken(); // eat identifier.
 
@@ -317,7 +317,7 @@ Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS)
 
     // Okay, we know this is a binop.
     int BinOp = CurTok_;
-    SourceLocation BinLoc = getCurLoc();
+    auto BinLoc = getCurLoc();
     getNextToken(); // eat binop
 
     // Parse the unary expression after the binary operator.
@@ -367,10 +367,10 @@ std::unique_ptr<FunctionAST> Parser::parseDefinition() {
 //==============================================================================
 std::unique_ptr<FunctionAST> Parser::parseTopLevelExpr() {
 
-  SourceLocation FnLoc = getCurLoc();
+  auto FnLoc = getCurLoc();
   auto E = parseExpression();
   // Make an anonymous proto.
-  auto Proto = std::make_unique<PrototypeAST>(FnLoc, "__anon_expr");
+  auto Proto = std::make_unique<PrototypeAST>( Identifier{"__anon_expr", FnLoc} );
   return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 }
 
@@ -580,7 +580,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   std::string FnName;
 
-  SourceLocation FnLoc = getCurLoc();
+  auto FnLoc = getCurLoc();
 
   unsigned Kind = 0;  // 0 = identifier, 1 = unary, 2 = binary.
   unsigned BinaryPrecedence = 30;
@@ -697,7 +697,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   }
 
 
-  return std::make_unique<PrototypeAST>(FnLoc, FnName, std::move(Args),
+  return std::make_unique<PrototypeAST>( Identifier{FnName, FnLoc}, std::move(Args),
       std::move(ArgTypes), std::move(ArgIsArray), std::move(ReturnType), Kind != 0,
       BinaryPrecedence);
 }

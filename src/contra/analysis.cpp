@@ -9,7 +9,8 @@ namespace contra {
 //==============================================================================
 // Get the function
 //==============================================================================
-std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name) {
+std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name,
+    const SourceLocation & Loc) {
   
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
@@ -21,6 +22,8 @@ std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name) {
   if (auto F = librt::RunTimeLib::tryInstall(Name))
     return F;
   
+  THROW_NAME_ERROR("No valid prototype for '" << Name << "'.", Loc);
+
   // if found it, make sure its not a variable in scope
   return nullptr;
 }
@@ -50,7 +53,8 @@ void Analyzer::dispatch(ValueExprAST<std::string>& e)
 //==============================================================================
 void Analyzer::dispatch(VariableExprAST& e)
 {
-  auto Var = getVariable(e.Name_, e.getLoc());
+  const auto & Name = e.Name_;
+  auto Var = getVariable(Name, e.getLoc());
   auto VarType = Var->getType();
 
   // array index
@@ -62,7 +66,7 @@ void Analyzer::dispatch(VariableExprAST& e)
     
     auto IndexType = runExprVisitor(*e.IndexExpr_);
     if (IndexType != I64Type)
-      THROW_NAME_ERROR( "Array index for variable '" << e.Name_ << "' must "
+      THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
           << "evaluate to an integer.", Loc );
 
     VarType.setArray(false); // revert to scalar
@@ -117,7 +121,7 @@ void Analyzer::dispatch(CastExprAST& e)
 {
   auto FromType = runExprVisitor(*e.FromExpr_);
   auto TypeId = e.TypeId_;
-  auto ToType = getType( TypeId.getName(), TypeId.getLoc() );
+  auto ToType = VariableType(getBaseType(TypeId));
   checkIsCastable(FromType, ToType, e.getLoc());
   TypeResult_ = VariableType(ToType);
 }
@@ -216,17 +220,14 @@ void Analyzer::dispatch(BinaryExprAST& e)
   
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = getFunction(std::string("binary") + OpCode);
-  if (!F) THROW_NAME_ERROR("binary operator not found!", Loc);
+  auto F = getFunction(std::string("binary") + OpCode, Loc);
   TypeResult_ = F->getReturnType();
 }
 
 //==============================================================================
 void Analyzer::dispatch(CallExprAST& e)
 {
-  auto FunRes = getFunction(e.Callee_);
-  if (!FunRes)
-    THROW_NAME_ERROR("Prototype for '" << e.Callee_ << "' not found!", e.getLoc());
+  auto FunRes = getFunction(e.Callee_, e.getLoc());
 
   auto NumArgs = e.ArgExprs_.size();
   auto FunArgs = FunRes->getNumArgs();
@@ -256,11 +257,6 @@ void Analyzer::dispatch(ForExprAST& e)
   Scope_++;
 
   auto LoopVar = insertVariable(VarId, I64Type);
-  
-  auto it = VariableTable_.find(VarId.getName());
-  if (it != VariableTable_.end())
-    THROW_NAME_ERROR("Variable '" << VarId.getName() << "' has been"
-         << " previously defined", VarId.getLoc());
 
   auto & StartExpr = *e.StartExpr_;
   auto StartType = runExprVisitor(StartExpr);
@@ -295,7 +291,7 @@ void Analyzer::dispatch(IfExprAST& e)
 
   auto & CondExpr = *e.CondExpr_;
   auto CondType = runExprVisitor(CondExpr);
-  if (CondType != Context::BoolType )
+  if (CondType != BoolType )
     THROW_NAME_ERROR( "If condition must result in boolean type.", CondExpr.getLoc() );
 
   auto OldScope = Scope_;
@@ -314,44 +310,22 @@ void Analyzer::dispatch(VarDefExprAST& e)
   auto TypeId = e.TypeId_;
   VariableType VarType;
   if (TypeId) {
-    auto it = TypeTable_.find(TypeId.getName());
-    if ( it == TypeTable_.end() )
-      THROW_NAME_ERROR("Unknown type specifier '" << TypeId.getName() << "'.",
-        TypeId.getLoc());
-    VarType = VariableType(it->second, e.isArray());
+    VarType = VariableType(getBaseType(TypeId), e.isArray());
     DestinationType_ = VarType;
   }
   
   auto InitType = runExprVisitor(*e.InitExpr_);
+  if (!VarType) VarType = InitType;
 
-  
+  if (VarType != InitType) {
+    checkIsCastable(InitType, VarType, e.InitExpr_->getLoc());
+    e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), VarType);
+  }
+
   auto NumVars = e.VarIds_.size();
   for (int i=0; i<NumVars; ++i) {
     auto VarId = e.VarIds_[i];
-    auto VarName = VarId.getName();
-    auto it = VariableTable_.find(VarName);
-    if (it != VariableTable_.end())
-      THROW_NAME_ERROR("Variable '" << VarName << "' has been"
-           << " previously defined", VarId.getLoc());
-    auto S = std::make_shared<VariableDef>( VarName, VarId.getLoc(), VarType);
-    VariableTable_.emplace( VarId.getName(), std::move(S) );
-  }
-
-  if (InitType.isArray()) {
-    std::stringstream ss;
-    ss << e.VarIds_[0].getName();
-    if (NumVars == 2) ss << ", " << e.VarIds_[1].getName();
-    else if (NumVars > 2) ss << ", etc...";
-    THROW_NAME_ERROR("Scalar variables '" << ss.str() << "' cannot be "
-        << " assigned to an array.", e.VarIds_[0].getLoc());
-  }
-
-  if ( VarType != InitType ) {
-    // auto OrigInit = std::move(e.Init_);
-    // e.Init_ = std::make_unique<CastExpr>( std::move(OrigInit, InitType.Type, VarType );
-    //std::cerr << "Casting from " << InitType.Type->getName() << " to " << VarType->getName()
-    //  << std::endl;
-    THROW_NAME_ERROR( "Cast operations not implemented yet.", e.VarIds_[0].getLoc() );
+    insertVariable(VarId, VarType);
   }
 
   TypeResult_ = VarType;
@@ -360,34 +334,15 @@ void Analyzer::dispatch(VarDefExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(ArrayDefExprAST& e)
 {
-  auto InitType = runExprVisitor(*e.InitExpr_);
 
-  auto TypeId = e.TypeId_;
-  auto it = TypeTable_.find(TypeId.getName());
-  if ( it == TypeTable_.end() )
-    THROW_NAME_ERROR("Unknown type specifier '" << TypeId.getName() << "'.",
-        TypeId.getLoc());
-  auto VarType = VariableType(it->second, e.isArray());
- 
-  auto NumVars = e.VarIds_.size();
-  for (int i=0; i<NumVars; ++i) {
-    auto VarId = e.VarIds_[i];
-    auto VarName = VarId.getName();
-    auto it = VariableTable_.find(VarId.getName());
-    if (it != VariableTable_.end())
-      THROW_NAME_ERROR("Variable '" << VarId.getName() << "' has been"
-           << " previously defined", VarId.getLoc());
-    auto S = std::make_shared<VariableDef>( VarId.getName(), VarId.getLoc(), VarType);
-    VariableTable_.emplace( VarId.getName(), std::move(S) );
-  }
-
-  if ( VarType != InitType ) {
-    THROW_NAME_ERROR( "Cast operations not implemented yet.", e.VarIds_[0].getLoc() );
+  { // scope
+    auto VarAST = static_cast<VarDefExprAST*>(&e);
+    dispatch(*VarAST);
   }
 
   //---------------------------------------------------------------------------
   // Array already on right hand side
-  if (InitType.isArray()) {
+  if (TypeResult_.isArray()) {
   }
 
   //---------------------------------------------------------------------------
@@ -399,13 +354,11 @@ void Analyzer::dispatch(ArrayDefExprAST& e)
           e.SizeExpr_->getLoc());
   }
 
-  TypeResult_ = VarType;
 }
 
 //==============================================================================
 void Analyzer::dispatch(PrototypeAST& e)
 {
-  auto FnName = e.getName();
   auto NumArgs = e.ArgIds_.size();
 
   VariableTypeList ArgTypes;
@@ -414,11 +367,7 @@ void Analyzer::dispatch(PrototypeAST& e)
   for (int i=0; i<NumArgs; ++i) {
     // check type specifier
     const auto & TypeId = e.ArgTypeIds_[i];
-    auto sit = TypeTable_.find(TypeId.getName());
-    if ( sit == TypeTable_.end() )
-      THROW_NAME_ERROR("Unknown type specifier '" << TypeId.getName() << "' in prototype"
-          " for function '" << FnName << "'.", TypeId.getLoc());
-    VariableType ArgType(sit->second, e.ArgIsArray_[i]);
+    auto ArgType = VariableType( getBaseType(TypeId), e.ArgIsArray_[i] );
     ArgTypes.emplace_back(std::move(ArgType));
   }
 
@@ -426,18 +375,10 @@ void Analyzer::dispatch(PrototypeAST& e)
  
   if (e.ReturnTypeId_) { 
     auto RetId = *e.ReturnTypeId_;
-    auto it = TypeTable_.find(RetId.getName());
-    if ( it == TypeTable_.end() )
-      THROW_NAME_ERROR("Unknown return type specifier '" << RetId.getName() << "' in prototype"
-          " for function '" << FnName << "'.", RetId.getLoc());
-    RetType = VariableType(it->second);
+    RetType = VariableType( getBaseType(RetId) );
   }
 
-  auto Sy = std::make_shared<UserFunction>(FnName, e.Loc_, ArgTypes, RetType);
-  auto fit = FunctionTable_.emplace( FnName, std::move(Sy) );
-  if (!fit.second)
-    THROW_NAME_ERROR("Prototype already exists for '" << FnName << "'.",
-        e.Loc_);
+  insertFunction(e.Id_, ArgTypes, RetType);
 
 }
 
@@ -448,13 +389,12 @@ void Analyzer::dispatch(FunctionAST& e)
   Scope_++;
 
   auto & ProtoExpr = *e.ProtoExpr_;
-  auto FnName = ProtoExpr.getName();
-  auto Loc = ProtoExpr.getLoc();
+  const auto & FnId = ProtoExpr.Id_;
+  auto FnName = FnId.getName();
+  auto Loc = FnId.getLoc();
 
   runFuncVisitor(ProtoExpr);
-  auto ProtoType = getFunction(FnName);
-  if (!ProtoType)
-    THROW_NAME_ERROR("No valid prototype for '" << FnName << "'.", Loc);
+  auto ProtoType = getFunction(FnId);
 
   const auto & ArgIds = ProtoExpr.ArgIds_;
   const auto & ArgTypes = ProtoType->getArgTypes();
@@ -491,7 +431,9 @@ void Analyzer::dispatch(FunctionAST& e)
     auto RetType = runExprVisitor(*e.ReturnExpr_);
     if (RetType != ProtoType->getReturnType() )
       THROW_NAME_ERROR("Function return type does not match prototype for '"
-          << FnName << "'.", e.ReturnExpr_->getLoc());
+          << FnName << "'.  The type '" << RetType << "' cannot be "
+          << "converted to the type '" << ProtoType->getReturnType() << "'.",
+          e.ReturnExpr_->getLoc());
   }
   
   Scope_ = OldScope;
