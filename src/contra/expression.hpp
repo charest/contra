@@ -3,6 +3,8 @@
 
 #include "sourceloc.hpp"
 
+#include <list>
+
 namespace contra {
 
 class ExprAST;

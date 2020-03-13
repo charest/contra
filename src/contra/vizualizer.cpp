@@ -68,7 +68,7 @@ void Vizualizer::dispatch(CallExprAST& e)
 {
   auto my_ind = ind_;
   out() << "node" << my_ind << "[label=\"CallExprAST\"];" << std::endl;
-  for (int i=0; i<e.ArgExprs_.size(); ++i) {
+  for (unsigned i=0; i<e.ArgExprs_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
     dispatch(*e.ArgExprs_[i]);
   }
@@ -85,7 +85,7 @@ void Vizualizer::dispatch(ForExprAST& e)
   dispatch(*e.EndExpr_);
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
   dispatch(*e.StepExpr_);
-  for (int i=i; i<e.BodyExprs_.size(); ++i) {
+  for (unsigned i=0; i<e.BodyExprs_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
     dispatch(*e.BodyExprs_[i]);
   }
@@ -98,11 +98,11 @@ void Vizualizer::dispatch(IfExprAST& e)
   out() << "node" << my_ind << "[label=\"IfExprAST\"];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
   dispatch(*e.CondExpr_);
-  for (int i=i; i<e.ThenExpr_.size(); ++i) {
+  for (unsigned i=0; i<e.ThenExpr_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
     dispatch(*e.ThenExpr_[i]);
   }
-  for (int i=i; i<e.ElseExpr_.size(); ++i) {
+  for (unsigned i=0; i<e.ElseExpr_.size(); ++i) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
     dispatch(*e.ElseExpr_[i]);
   }
@@ -112,7 +112,8 @@ void Vizualizer::dispatch(IfExprAST& e)
 void Vizualizer::dispatch(VarDefExprAST& e)
 {
   out() << "node" << ind_ << "[label=\"VarDefExprAST\"];" << std::endl;
-  out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
+  out() << "node" << ind_ << " -> node" << ind_+1 << ";" << std::endl;
+  ind_++;
   dispatch(*e.InitExpr_);
 }
 
@@ -137,7 +138,7 @@ void Vizualizer::dispatch(FunctionAST& e)
   auto my_ind = ind_;
   out() << "digraph {" << std::endl;
   out() << "node" << my_ind << "[label=\"FunctionAST\"];" << std::endl;
-  for ( int i=0; i<e.BodyExprs_.size(); ++i ) {
+  for ( unsigned i=0; i<e.BodyExprs_.size(); ++i ) {
     out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
     dispatch(*e.BodyExprs_[i]);
   }

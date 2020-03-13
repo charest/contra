@@ -119,12 +119,12 @@ public:
 
   VariableDef(const std::string & Name, const SourceLocation & Loc, 
       std::shared_ptr<TypeDef> Type, bool IsArray = false)
-    : VariableType(Type, IsArray), Identifier(Name, Loc)
+    : Identifier(Name, Loc), VariableType(Type, IsArray)
   {}
 
   VariableDef(const std::string & Name, const SourceLocation & Loc, 
       const VariableType & VarType)
-    : VariableType(VarType), Identifier(Name, Loc)
+    : Identifier(Name, Loc), VariableType(VarType)
   {}
 
   VariableType getType() const { return *this; }

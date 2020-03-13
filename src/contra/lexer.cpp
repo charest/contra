@@ -42,7 +42,7 @@ int Lexer::gettok() {
   while (isspace(LastChar_))
     LastChar_ = advance();
   
-  auto NextChar = peek();
+  //auto NextChar = peek();
   CurLoc_ = LexLoc_;
 
   //----------------------------------------------------------------------------
@@ -72,9 +72,9 @@ int Lexer::gettok() {
   //}
 
   // check if there is a sign in from of a number
-  bool is_signed_number = false;
-  if (LastChar_ == '+' || LastChar_ == '-')
-    is_signed_number = isdigit(NextChar) || NextChar == '.';
+  //bool is_signed_number = false;
+  //if (LastChar_ == '+' || LastChar_ == '-')
+  //  is_signed_number = isdigit(NextChar) || NextChar == '.';
     
   if (isdigit(LastChar_) || LastChar_ == '.' /*|| is_signed_number*/) {
 

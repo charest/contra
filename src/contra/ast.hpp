@@ -1,7 +1,7 @@
 #ifndef CONTRA_AST_HPP
 #define CONTRA_AST_HPP
 
-#include "codegen.hpp"
+#include "dispatcher.hpp"
 #include "config.hpp"
 #include "errors.hpp"
 #include "expression.hpp"
@@ -9,7 +9,6 @@
 #include "sourceloc.hpp"
 
 #include <iostream>
-#include <list>
 #include <memory>
 #include <string>
 #include <utility>

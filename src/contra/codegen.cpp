@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "codegen.hpp"
 #include "config.hpp"
 #include "errors.hpp"
 #include "precedence.hpp"
@@ -486,9 +487,8 @@ void CodeGen::dispatch(VariableExprAST& e)
 //==============================================================================
 void CodeGen::dispatch(ArrayExprAST &e)
 {
-#if 0
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
+#if 0  
   // the llvm variable type
   Type * VarType;
   try {

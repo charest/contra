@@ -7,6 +7,7 @@ namespace contra {
 
 template<typename T> class ValueExprAST;
 
+class ExprAST;
 class VariableExprAST;
 class ArrayExprAST;
 class CastExprAST;

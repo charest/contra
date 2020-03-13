@@ -178,7 +178,6 @@ std::unique_ptr<ExprAST> Parser::parseIfExpr() {
 
   if (CurTok_ == tok_else) {
 
-    auto ElseLoc = getCurLoc();
     getNextToken(); // eat else
     
     // make a new block
@@ -231,7 +230,6 @@ std::unique_ptr<ExprAST> Parser::parseForExpr() {
     THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", StartLoc);
   getNextToken(); // eat to
 
-  auto EndLoc = getLexLoc();
   auto End = parseExpression();
 
   // The step value is optional.
@@ -347,7 +345,7 @@ std::unique_ptr<ExprAST> Parser::parseExpression() {
   auto LHS = parseUnary();
 
   auto RHS = parseBinOpRHS(0, std::move(LHS));
-  return std::move(RHS);
+  return RHS;
 }
 
 //==============================================================================
@@ -392,7 +390,7 @@ std::unique_ptr<ExprAST> Parser::parseUnary() {
   // If the current token is not an operator, it must be a primary expr.
   if (!isascii(CurTok_) || CurTok_ == '(' || CurTok_ == ',') {
     auto P = parsePrimary();
-    return std::move(P);
+    return P;
   }
 
   // If this is a unary operator, read it.
@@ -505,7 +503,6 @@ std::unique_ptr<ExprAST> Parser::parseArrayExpr()
   std::unique_ptr<ExprAST> SizeExpr;
 
   while (CurTok_ != ']') {
-    auto Loc = getCurLoc();
     auto E = parseExpression();
 
     ValExprs.emplace_back( std::move(E) );

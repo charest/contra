@@ -23,7 +23,7 @@ public:
     Formatter & operator << (const std::vector<Type> & values)
     {
       if (!values.empty()) {
-        for (int i=0; i<values.size()-1; ++i) stream_ << values[i] << ", ";
+        for (unsigned i=0; i<values.size()-1; ++i) stream_ << values[i] << ", ";
         stream_ << values.back();
       }
       return *this;

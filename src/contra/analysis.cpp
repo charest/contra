@@ -229,8 +229,8 @@ void Analyzer::dispatch(CallExprAST& e)
 {
   auto FunRes = getFunction(e.Callee_, e.getLoc());
 
-  auto NumArgs = e.ArgExprs_.size();
-  auto FunArgs = FunRes->getNumArgs();
+  int NumArgs = e.ArgExprs_.size();
+  int FunArgs = FunRes->getNumArgs();
   if (FunArgs != NumArgs)
     THROW_NAME_ERROR("Incorrect number of arguments specified for '" << e.Callee_
         << "', " << NumArgs << " provided but expected " << FunArgs, e.getLoc());
@@ -287,8 +287,6 @@ void Analyzer::dispatch(ForExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(IfExprAST& e)
 {
-  auto IfLoc = e.getLoc();
-
   auto & CondExpr = *e.CondExpr_;
   auto CondType = runExprVisitor(CondExpr);
   if (CondType != BoolType )
@@ -322,7 +320,7 @@ void Analyzer::dispatch(VarDefExprAST& e)
     e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), VarType);
   }
 
-  auto NumVars = e.VarIds_.size();
+  int NumVars = e.VarIds_.size();
   for (int i=0; i<NumVars; ++i) {
     auto VarId = e.VarIds_[i];
     insertVariable(VarId, VarType);
@@ -359,7 +357,7 @@ void Analyzer::dispatch(ArrayDefExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(PrototypeAST& e)
 {
-  auto NumArgs = e.ArgIds_.size();
+  int NumArgs = e.ArgIds_.size();
 
   VariableTypeList ArgTypes;
   ArgTypes.reserve( NumArgs );

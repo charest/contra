@@ -152,7 +152,7 @@ private:
     auto Loc = FromExpr->getLoc();
     auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr),
           Identifier(ToType.getBaseType()->getName(), Loc));
-    return std::move(E);
+    return E;
   }
 
   VariableType promote(const VariableType & LeftType, const VariableType & RightType,

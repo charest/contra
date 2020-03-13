@@ -200,7 +200,6 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
 void mainLoop( Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs) {
 
   auto is_interactive = TheInputs.is_interactive;
-  auto is_verbose = TheInputs.is_verbose;
 
   // Prime the first token.
   if (is_interactive) std::cerr << "contra> " << std::flush;
