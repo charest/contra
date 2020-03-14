@@ -24,10 +24,13 @@ namespace contra {
 CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 {
 
+  I64Type_  = llvmIntegerType(TheContext_);
+  F64Type_  = llvmRealType(TheContext_);
+  VoidType_ = Type::getVoidTy(TheContext_);
 
-  TypeTable_.emplace( Context::I64Type->getName(),  llvmIntegerType(TheContext_));
-  TypeTable_.emplace( Context::F64Type->getName(),  llvmRealType(TheContext_));
-  TypeTable_.emplace( Context::VoidType->getName(), Type::getVoidTy(TheContext_));
+  TypeTable_.emplace( Context::I64Type->getName(),  I64Type_);
+  TypeTable_.emplace( Context::F64Type->getName(),  F64Type_);
+  TypeTable_.emplace( Context::VoidType->getName(), VoidType_);
 
   initializeModuleAndPassManager();
 
@@ -124,6 +127,15 @@ AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
   return TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
 }
 
+AllocaInst *CodeGen::createVariable(Function *TheFunction,
+  const std::string &VarName, Type* VarType)
+{
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  auto Alloca = TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
+  VariableTable_[VarName] = Alloca;
+  return Alloca;
+}
+    
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
@@ -462,7 +474,7 @@ void CodeGen::dispatch(VariableExprAST& e)
   auto Name = e.getName();
 
   // Look this variable up in the function.
-  Value* V = NamedValues.at(e.getName());
+  Value* V = getVariable(e.getName());
   
   // Load the value.
   auto Ty = V->getType();
@@ -470,7 +482,7 @@ void CodeGen::dispatch(VariableExprAST& e)
     
   auto Load = Builder_.CreateLoad(Ty, V, "val."+Name);
 
-  if ( e.IndexExpr_ ) {
+  if ( e.isArray() ) {
     Ty = Ty->getPointerElementType();
     auto IndexVal = runExprVisitor(*e.IndexExpr_);
     auto GEP = Builder_.CreateGEP(Load, IndexVal, Name+".offset");
@@ -766,23 +778,20 @@ void CodeGen::dispatch(CallExprAST &e) {
 //==============================================================================
 void CodeGen::dispatch(IfStmtAST & e) {
   emitLocation(&e);
-#if 0 
-  if ( e.Then_.empty() && e.Else_.empty() ) {
-    ValueResult_ = Constant::getNullValue(llvmIntegerType(TheContext_));
+
+  if ( e.ThenExpr_.empty() && e.ElseExpr_.empty() ) {
+    ValueResult_ = Constant::getNullValue(VoidType_);
     return;
   }
-  else if (e.Then_.empty())
-    THROW_SYNTAX_ERROR( "Can't have else with no if!", e.getLine() );
 
-
-  Value *CondV = runExprVisitor(*e.Cond_);
+  Value *CondV = runExprVisitor(*e.CondExpr_);
 
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
   BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  BasicBlock *ElseBB = e.Else_.empty() ? nullptr : BasicBlock::Create(TheContext_, "else");
+  BasicBlock *ElseBB = e.ElseExpr_.empty() ? nullptr : BasicBlock::Create(TheContext_, "else");
   BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
 
   if (ElseBB)
@@ -793,7 +802,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
   // Emit then value.
   Builder_.SetInsertPoint(ThenBB);
 
-  for ( auto & stmt : e.Then_ ) runExprVisitor(*stmt);
+  for ( auto & stmt : e.ThenExpr_ ) runExprVisitor(*stmt);
 
   // get first non phi instruction
   auto ThenV = ThenBB->getFirstNonPHI();
@@ -809,7 +818,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
     TheFunction->getBasicBlockList().push_back(ElseBB);
     Builder_.SetInsertPoint(ElseBB);
 
-    for ( auto & stmt : e.Else_ ) runExprVisitor(*stmt);
+    for ( auto & stmt : e.ElseExpr_ ) runExprVisitor(*stmt);
 
     // get first non phi
     auto ElseV = ElseBB->getFirstNonPHI();
@@ -823,8 +832,6 @@ void CodeGen::dispatch(IfStmtAST & e) {
   // Emit merge block.
   TheFunction->getBasicBlockList().push_back(MergeBB);
   Builder_.SetInsertPoint(MergeBB);
-  //ElseV->getType()->print(outs());
-  //outs() << "\n";
   //PHINode *PN = Builder.CreatePHI(ThenV->getType(), 2, "iftmp");
 
   //if (ThenV) PN->addIncoming(ThenV, ThenBB);
@@ -832,8 +839,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
   //return PN;
   
   // for expr always returns 0.
-  ValueResult_ = Constant::getNullValue(llvmIntegerType(TheContext_));
-#endif
+  ValueResult_ = Constant::getNullValue(VoidType_);
 }
 
 //==============================================================================
@@ -966,7 +972,6 @@ void CodeGen::dispatch(ForStmtAST& e) {
 void CodeGen::dispatch(VarDeclAST & e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
-  
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
   // like this:
@@ -978,51 +983,16 @@ void CodeGen::dispatch(VarDeclAST & e) {
   auto IType = InitVal->getType();
   
   // the llvm variable type
-  //Type * VarType = TypeTable_.at(e.getType());
+  auto VarType = getLLVMType(e.getType());
 
-#if 0
   // Register all variables and emit their initializer.
-  for (const auto & VarName : e.VarNames_) {
-    
-    // cast init value if necessary
-    auto TheBlock = Builder_.GetInsertBlock();
-    if (e.VarType_ == VarTypes::Real && !InitVal->getType()->isFloatingPointTy()) {
-      auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
-          llvmRealType(TheContext_), "cast", TheBlock);
-      InitVal = cast;
-    }
-    else if (e.VarType_ == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
-      auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
-          llvmIntegerType(TheContext_), "cast", TheBlock);
-      InitVal = cast;
-    }
-
-    auto Alloca = createEntryBlockAlloca(TheFunction, VarName, VarType);
+  for (const auto & VarId : e.VarIds_) {  
+    auto Alloca = createVariable(TheFunction, VarId.getName(), VarType);
     Builder_.CreateStore(InitVal, Alloca);
-  
-    // Remember this binding.
-    NamedValues[VarName] = Alloca;
   }
 
-
   emitLocation(&e);
-
-#if 0
-  // Codegen the body, now that all vars are in scope.
-  Value *BodyVal = Body->codegen(TheCG);
-  if (!BodyVal)
-    return nullptr;
-
-  // Pop all our variables from scope.
-  for (unsigned i = 0, e = VarNames.size(); i != e; ++i)
-    NamedValues[VarNames[i].first] = OldBindings[i];
-
-  // Return the body computation.
-  return BodyVal;
-#endif
-
   ValueResult_ = InitVal;
-#endif
 }
 
 //==============================================================================

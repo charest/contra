@@ -22,11 +22,11 @@ class Analyzer : public AstDispatcher {
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
-  VariableType I64Type  = VariableType(Context::I64Type);
-  VariableType F64Type  = VariableType(Context::F64Type);
-  VariableType StrType  = VariableType(Context::StrType);
-  VariableType BoolType = VariableType(Context::BoolType);
-  VariableType VoidType = VariableType(Context::VoidType);
+  VariableType I64Type_  = VariableType(Context::I64Type);
+  VariableType F64Type_  = VariableType(Context::F64Type);
+  VariableType StrType_  = VariableType(Context::StrType);
+  VariableType BoolType_ = VariableType(Context::BoolType);
+  VariableType VoidType_ = VariableType(Context::VoidType);
 
 
   VariableType  TypeResult_;
@@ -163,8 +163,8 @@ private:
     if (LeftType == RightType) return LeftType;
 
     if (LeftType.isNumber() && RightType.isNumber()) {
-      if (LeftType == F64Type || RightType == F64Type)
-        return F64Type;
+      if (LeftType == F64Type_ || RightType == F64Type_)
+        return F64Type_;
       else
         return LeftType;
     }

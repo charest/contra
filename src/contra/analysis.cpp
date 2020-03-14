@@ -31,21 +31,21 @@ std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name,
 //==============================================================================
 void Analyzer::dispatch(ValueExprAST<int_t>& e)
 {
-  TypeResult_ = I64Type;
+  TypeResult_ = I64Type_;
   e.setType(TypeResult_);
 }
 
 //==============================================================================
 void Analyzer::dispatch(ValueExprAST<real_t>& e)
 {
-  TypeResult_ = F64Type;
+  TypeResult_ = F64Type_;
   e.setType(TypeResult_);
 }
 
 //==============================================================================
 void Analyzer::dispatch(ValueExprAST<std::string>& e)
 {
-  TypeResult_ = StrType;
+  TypeResult_ = StrType_;
   e.setType(TypeResult_);
 }
 
@@ -64,7 +64,7 @@ void Analyzer::dispatch(VariableExprAST& e)
       THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
     
     auto IndexType = runExprVisitor(*e.IndexExpr_);
-    if (IndexType != I64Type)
+    if (IndexType != I64Type_)
       THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
           << "evaluate to an integer.", Loc );
 
@@ -81,7 +81,7 @@ void Analyzer::dispatch(ArrayExprAST& e)
 {
   if (e.SizeExpr_) {
     auto SizeType = runExprVisitor(*e.SizeExpr_);
-    if (SizeType != I64Type)
+    if (SizeType != I64Type_)
       THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
           e.SizeExpr_->getLoc());
   }
@@ -220,7 +220,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
     e.setType(TypeResult_);
     return;
   case tok_lt:
-    TypeResult_ = BoolType;
+    TypeResult_ = BoolType_;
     e.setType(TypeResult_);
     return;
   } 
@@ -265,24 +265,24 @@ void Analyzer::dispatch(ForStmtAST& e)
   auto OldScope = Scope_;
   Scope_++;
 
-  auto LoopVar = insertVariable(VarId, I64Type);
+  auto LoopVar = insertVariable(VarId, I64Type_);
 
   auto & StartExpr = *e.StartExpr_;
   auto StartType = runExprVisitor(StartExpr);
-  if (StartType != I64Type )
+  if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
         StartExpr.getLoc() );
 
   auto & EndExpr = *e.EndExpr_;
   auto EndType = runExprVisitor(EndExpr);
-  if (EndType != I64Type )
+  if (EndType != I64Type_ )
     THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
         EndExpr.getLoc() );
 
   if (e.StepExpr_) {
     auto & StepExpr = *e.StepExpr_;
     auto StepType = runExprVisitor(StepExpr);
-    if (StepType != I64Type )
+    if (StepType != I64Type_ )
       THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
           StepExpr.getLoc() );
   }
@@ -290,7 +290,7 @@ void Analyzer::dispatch(ForStmtAST& e)
   for ( auto & stmt : e.BodyExprs_ ) runExprVisitor(*stmt);
 
   Scope_ = OldScope;
-  TypeResult_ = VoidType;
+  TypeResult_ = VoidType_;
 }
 
 //==============================================================================
@@ -298,7 +298,7 @@ void Analyzer::dispatch(IfStmtAST& e)
 {
   auto & CondExpr = *e.CondExpr_;
   auto CondType = runExprVisitor(CondExpr);
-  if (CondType != BoolType )
+  if (CondType != BoolType_ )
     THROW_NAME_ERROR( "If condition must result in boolean type.", CondExpr.getLoc() );
 
   auto OldScope = Scope_;
@@ -306,7 +306,7 @@ void Analyzer::dispatch(IfStmtAST& e)
   for ( auto & stmt : e.ElseExpr_ ) { Scope_ = OldScope+1; runExprVisitor(*stmt); }
   Scope_ = OldScope;
 
-  TypeResult_ = VoidType;
+  TypeResult_ = VoidType_;
 }
 
 //==============================================================================
@@ -357,7 +357,7 @@ void Analyzer::dispatch(ArrayDeclAST& e)
   //  on right hand side
   else {
     auto SizeType = runExprVisitor(*e.SizeExpr_);
-    if (SizeType != I64Type)
+    if (SizeType != I64Type_)
       THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
           e.SizeExpr_->getLoc());
   }
@@ -379,7 +379,7 @@ void Analyzer::dispatch(PrototypeAST& e)
     ArgTypes.emplace_back(std::move(ArgType));
   }
 
-  VariableType RetType = VoidType;
+  VariableType RetType = VoidType_;
  
   if (e.ReturnTypeId_) { 
     auto RetId = *e.ReturnTypeId_;

@@ -5,6 +5,7 @@
 #include "debug.hpp"
 #include "dispatcher.hpp"
 #include "jit.hpp"
+#include "symbols.hpp" 
 
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Function.h"
@@ -27,6 +28,8 @@ class CodeGen : public AstDispatcher {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
+  using Type = llvm::Type;
+  using Value = llvm::Value;
 
   llvm::LLVMContext TheContext_;
   llvm::IRBuilder<> Builder_;
@@ -35,19 +38,23 @@ class CodeGen : public AstDispatcher {
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
   JIT TheJIT_;
 
-  llvm::Value* ValueResult_ = nullptr;
-  llvm::Function* FunctionResult_ = nullptr;
+  Value* ValueResult_ = nullptr;
+  Function* FunctionResult_ = nullptr;
 
-  std::map<std::string, llvm::Type*> TypeTable_;
+  std::map<std::string, Type*> TypeTable_;
+  std::map<std::string, AllocaInst*> VariableTable_;
 
   std::map<std::string, AllocaInst *> NamedValues;
   std::map<std::string, AllocaInst *> NamedArrays;
   std::map<AllocaInst *, ArrayType> TempArrays;
 
-
   // debug extras
   std::unique_ptr<llvm::DIBuilder> DBuilder;
   DebugInfo KSDbgInfo;
+
+  Type* I64Type_;
+  Type* F64Type_;
+  Type* VoidType_;
 
 public:
   
@@ -70,30 +77,30 @@ public:
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
   AllocaInst *createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName, llvm::Type* VarType);
+    const std::string &VarName, Type* VarType);
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
   ArrayType
   createArray(Function *TheFunction, const std::string &VarName,
-      llvm::Type* PtrType, llvm::Value * SizeExpr );
+      Type* PtrType, Value * SizeExpr );
 
   // Initializes a bunch of arrays with a value
   void initArrays( Function *TheFunction, 
       const std::vector<AllocaInst*> & VarList,
-      llvm::Value * InitVal,
-      llvm::Value * SizeExpr );
+      Value * InitVal,
+      Value * SizeExpr );
 
   // initializes an array with a list of values
   void initArray( Function *TheFunction, 
       AllocaInst* Var,
-      const std::vector<llvm::Value *> InitVals );
+      const std::vector<Value *> InitVals );
   
   // copies one array to another
   void copyArrays( Function *TheFunction, 
       AllocaInst* Src,
       const std::vector<AllocaInst*> Tgts,
-      llvm::Value * SizeExpr);
+      Value * SizeExpr);
 
   // destroy all arrays
   void destroyArrays();
@@ -103,7 +110,7 @@ public:
   void initializeModule();
   void initializePassManager();
 
-  void optimize(llvm::Function* F)
+  void optimize(Function* F)
   { TheFPM_->run(*F); }
 
   // Return true if in debug mode
@@ -152,7 +159,7 @@ public:
     typename = typename std::enable_if_t<
       std::is_same<T, FunctionAST>::value || std::is_same<T, PrototypeAST>::value >
   >
-  llvm::Function* runFuncVisitor(T&e)
+  Function* runFuncVisitor(T&e)
   {
     FunctionResult_ = nullptr;
     e.accept(*this);
@@ -164,7 +171,7 @@ private:
   
   // Codegen function
   template<typename T>
-  llvm::Value* runExprVisitor(T&e)
+  Value* runExprVisitor(T&e)
   {
     ValueResult_ = nullptr;
     e.accept(*this);
@@ -188,6 +195,14 @@ private:
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
 
+  Type* getLLVMType(const VariableType & Ty)
+  { return TypeTable_.at(Ty.getBaseType()->getName()); }
+
+  AllocaInst *createVariable(Function *TheFunction,
+    const std::string &VarName, Type* VarType);
+  
+  AllocaInst *getVariable(const std::string &VarName)
+  { return VariableTable_.at(VarName); }
 };
 
 } // namespace
