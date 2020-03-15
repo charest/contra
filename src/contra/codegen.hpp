@@ -43,6 +43,8 @@ class CodeGen : public AstDispatcher {
 
   std::map<std::string, Type*> TypeTable_;
   std::map<std::string, AllocaInst*> VariableTable_;
+  std::map<std::string, ArrayType> ArrayTable_;
+  std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
 
   std::map<std::string, AllocaInst *> NamedValues;
   std::map<std::string, AllocaInst *> NamedArrays;
@@ -58,8 +60,6 @@ class CodeGen : public AstDispatcher {
 
 public:
   
-  std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
-  
 
   // Constructor
   CodeGen (bool);
@@ -71,8 +71,6 @@ public:
   llvm::IRBuilder<> & getBuilder() { return Builder_; }
   llvm::LLVMContext & getContext() { return TheContext_; }
   llvm::Module & getModule() { return *TheModule_; }
-
-  Function *getFunction(std::string Name); 
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
@@ -165,6 +163,8 @@ public:
     e.accept(*this);
     return FunctionResult_;
   }
+  
+  PrototypeAST & insertFunction(std::unique_ptr<PrototypeAST> Proto);
 
 private:
 
@@ -197,12 +197,38 @@ private:
 
   Type* getLLVMType(const VariableType & Ty)
   { return TypeTable_.at(Ty.getBaseType()->getName()); }
+  
+  Type* getLLVMType(const Identifier & Id)
+  { return TypeTable_.at(Id.getName()); }
 
   AllocaInst *createVariable(Function *TheFunction,
     const std::string &VarName, Type* VarType);
   
-  AllocaInst *getVariable(const std::string &VarName)
+  AllocaInst *getVariable(const std::string & VarName)
   { return VariableTable_.at(VarName); }
+
+  auto getArray(const std::string & Name)
+  { return ArrayTable_.at(Name); }
+
+  auto moveArray(const std::string & From, const std::string & To)
+  {
+    auto it = ArrayTable_.find(From);
+    auto Array = it->second;
+    ArrayTable_.erase(it);
+    ArrayTable_.emplace( To, Array );
+    return Array;
+  }
+
+  auto moveVariable(const std::string & From, const std::string & To)
+  {
+    auto it = VariableTable_.find(From);
+    auto Var = it->second;
+    VariableTable_.erase(it);
+    VariableTable_.emplace( To, Var );
+    return Var;
+  }
+  
+  Function *getFunction(std::string Name); 
 };
 
 } // namespace

@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
   inp.is_debug = args.count("g");
   inp.is_optimized = args.count("O");
   inp.dump_ir = args.count("i");
+  inp.dump_dot = args.count("d");
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;

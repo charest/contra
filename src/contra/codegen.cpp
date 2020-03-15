@@ -109,11 +109,15 @@ Function *CodeGen::getFunction(std::string Name) {
 
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
-  auto FI = FunctionProtos.find(Name);
-  if (FI != FunctionProtos.end())
-    return runFuncVisitor(*FI->second);
-  
-  return nullptr;
+  auto fit = FunctionTable_.find(Name);
+  return runFuncVisitor(*fit->second);
+}
+
+PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
+{
+  auto & P = FunctionTable_[Proto->getName()];
+  P = std::move(Proto);
+  return *P;
 }
 
 //==============================================================================
@@ -142,9 +146,8 @@ AllocaInst *CodeGen::createVariable(Function *TheFunction,
 //==============================================================================
 ArrayType
 CodeGen::createArray(Function *TheFunction, const std::string &VarName,
-    Type * PtrType, Value * SizeExpr)
+    Type * ElementType, Value * SizeExpr)
 {
-
 
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
 
@@ -153,7 +156,7 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
-  auto ElementType = PtrType->getPointerElementType();
+  auto PtrType = PointerType::get(ElementType, 0);
   auto TheBlock = Builder_.GetInsertBlock();
   auto Index = ConstantInt::get(TheContext_, APInt(32, 1, true));
   auto Null = Constant::getNullValue(PtrType);
@@ -179,7 +182,8 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
 
   Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, PtrType, "casttmp", TheBlock);
 
-  return ArrayType{AllocInst, Cast, SizeExpr};
+  ArrayTable_[VarName] = ArrayType{AllocInst, Cast, SizeExpr};
+  return ArrayTable_[VarName];
 }
  
 //==============================================================================
@@ -499,18 +503,10 @@ void CodeGen::dispatch(VariableExprAST& e)
 void CodeGen::dispatch(ArrayExprAST &e)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-#if 0  
+  
   // the llvm variable type
-  Type * VarType;
-  try {
-    VarType = getLLVMType(e.InferredType, TheContext_);
-  }
-  catch (const ContraError & err) {
-    THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(e.InferredType)
-        << "' used in array initialization", e.getLine() );
-  }
+  auto VarType = getLLVMType(e.getType());
   auto VarPointerType = PointerType::get(VarType, 0);
-
 
   std::vector<Value*> InitVals;
   InitVals.reserve(e.ValExprs_.size());
@@ -525,8 +521,8 @@ void CodeGen::dispatch(ArrayExprAST &e)
     SizeExpr = llvmInteger(TheContext_, e.ValExprs_.size());
   }
 
-  auto Array = createArray(TheFunction, "__tmp", VarPointerType, SizeExpr );
-  auto Alloca = createEntryBlockAlloca(TheFunction, "__tmp", VarPointerType);
+  auto Array = createArray(TheFunction, "__tmp", VarType, SizeExpr );
+  auto Alloca = createVariable(TheFunction, "__tmp", VarPointerType);
   Builder_.CreateStore(Array.Data, Alloca);
 
   if (e.SizeExpr_) 
@@ -534,10 +530,7 @@ void CodeGen::dispatch(ArrayExprAST &e)
   else
     initArray(TheFunction, Alloca, InitVals);
 
-  TempArrays[Array.Alloca] = Array;
-
-  ValueResult_ = Array.Alloca;
-#endif
+  ValueResult_ =  Alloca;
 }
   
 //==============================================================================
@@ -545,79 +538,79 @@ void CodeGen::dispatch(ArrayExprAST &e)
 //==============================================================================
 void CodeGen::dispatch(CastExprAST &e)
 {
+  auto TheBlock = Builder_.GetInsertBlock();
+
+  auto FromVal = runExprVisitor(*e.FromExpr_);
+  auto FromType = ValueResult_->getType();
+
+  auto ToType = getLLVMType(e.getType());
+  
+  if (FromType->isFloatingPointTy() && ToType == F64Type_) {
+    ValueResult_ = CastInst::Create(Instruction::SIToFP, FromVal,
+        llvmRealType(TheContext_), "cast", TheBlock);
+  }
+  else if (FromType->isIntegerTy() && ToType == I64Type_) {
+    ValueResult_ = CastInst::Create(Instruction::FPToSI, FromVal,
+        llvmIntegerType(TheContext_), "cast", TheBlock);
+  }
+
+  ValueResult_ = FromVal;
+
 }
 
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 void CodeGen::dispatch(UnaryExprAST & e) {
-#if 0 
-  auto OperandV = runExprVisitor(*e.Operand_); 
+  auto OperandV = runExprVisitor(*e.OpExpr_); 
   
   if (OperandV->getType()->isFloatingPointTy()) {
   
-    switch (e.Opcode_) {
+    switch (e.OpCode_) {
     case tok_sub:
       ValueResult_ = Builder_.CreateFNeg(OperandV, "negtmp");
       return;
-    default:
-      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(e.Opcode_)
-          << "'", e.getLine() );
     }
 
   }
   else {
-    switch (e.Opcode_) {
+    switch (e.OpCode_) {
     case tok_sub:
       ValueResult_ = Builder_.CreateNeg(OperandV, "negtmp");
       return;
-    default:
-      THROW_SYNTAX_ERROR( "Uknown unary operator '" << static_cast<char>(e.Opcode_)
-          << "'", e.getLine() );
     }
   }
 
-  auto F = getFunction(std::string("unary") + e.Opcode_);
-  if (!F)
-    THROW_SYNTAX_ERROR("Unknown unary operator", e.getLine());
-
+  auto F = getFunction(std::string("unary") + e.OpCode_);
   emitLocation(&e);
   ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
-#endif
 }
 
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
 void CodeGen::dispatch(BinaryExprAST& e) {
-#if 0
   emitLocation(&e);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
-  if (e.Op_ == '=') {
+  if (e.OpCode_ == '=') {
     // Assignment requires the LHS to be an identifier.
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a
     // dynamic_cast for automatic error checking.
-    auto LHSE = std::dynamic_pointer_cast<VariableExprAST>(e.LHS_);
-    if (!LHSE)
-      THROW_SYNTAX_ERROR("destination of '=' must be a variable", LHSE->getLine());
+    auto LHSE = dynamic_cast<VariableExprAST*>(e.LeftExpr_.get());
     // Codegen the RHS.
-    auto Val = runExprVisitor(*e.RHS_);
+    auto Val = runExprVisitor(*e.RightExpr_);
 
     // Look up the name.
     const auto & VarName = LHSE->getName();
-    Value *Variable = NamedValues[VarName];
-    if (!Variable)
-      THROW_NAME_ERROR(VarName, LHSE->getLine());
+    Value *Variable = getVariable(VarName);
 
-    //if (TheCG.NamedArrays.count(VarName)) {
+    // array element access
     if (Variable->getType()->getPointerElementType()->isPointerTy()) {
-      //if (!LHSE->isArray())
-      //  THROW_SYNTAX_ERROR("Arrays must be indexed using '[i]'", LHSE->getLine());
       auto Ty = Variable->getType()->getPointerElementType();
       auto Load = Builder_.CreateLoad(Ty, Variable, "ptr."+VarName);
-      auto IndexVal = runExprVisitor(*LHSE->getIndex());
+      auto IndexVal = runExprVisitor(*LHSE->IndexExpr_);
       auto GEP = Builder_.CreateGEP(Load, IndexVal, VarName+"aoffset");
       Builder_.CreateStore(Val, GEP);
     }
@@ -628,29 +621,15 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     return;
   }
 
-  Value *L = runExprVisitor(*e.LHS_);
-  Value *R = runExprVisitor(*e.RHS_);
+  Value *L = runExprVisitor(*e.LeftExpr_);
+  Value *R = runExprVisitor(*e.RightExpr_);
 
   auto l_is_real = L->getType()->isFloatingPointTy();
   auto r_is_real = R->getType()->isFloatingPointTy();
-  bool is_real =  (l_is_real || r_is_real);
+  bool is_real =  (l_is_real && r_is_real);
 
   if (is_real) {
-    auto TheBlock = Builder_.GetInsertBlock();
-    if (!l_is_real) {
-      auto cast = CastInst::Create(Instruction::SIToFP, L,
-          llvmRealType(TheContext_), "castl", TheBlock);
-      L = cast;
-    }
-    else if (!r_is_real) {
-      auto cast = CastInst::Create(Instruction::SIToFP, R,
-          llvmRealType(TheContext_), "castr", TheBlock);
-      R = cast;
-    }
-  }
-
-  if (is_real) {
-    switch (e.Op_) {
+    switch (e.OpCode_) {
     case tok_add:
       ValueResult_ = Builder_.CreateFAdd(L, R, "addtmp");
       return;
@@ -669,7 +648,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     } 
   }
   else {
-    switch (e.Op_) {
+    switch (e.OpCode_) {
     case tok_add:
       ValueResult_ = Builder_.CreateAdd(L, R, "addtmp");
       return;
@@ -690,12 +669,10 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = getFunction(std::string("binary") + e.Op_);
-  if (!F) THROW_CONTRA_ERROR("binary operator not found!");
+  auto F = getFunction(std::string("binary") + e.OpCode_);
 
   Value *Ops[] = { L, R };
   ValueResult_ = Builder_.CreateCall(F, Ops, "binop");
-#endif
 }
 
 //==============================================================================
@@ -703,74 +680,19 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 //==============================================================================
 void CodeGen::dispatch(CallExprAST &e) {
   emitLocation(&e);
-#if 0 
-  // special cases
-  auto TheBlock = Builder_.GetInsertBlock();
-  if (e.Callee_ == "i64") {
-    auto A = runExprVisitor(*e.Args_[0]);
-    if (A->getType()->isFloatingPointTy()) {
-      auto cast = CastInst::Create(Instruction::FPToSI, A,
-          llvmIntegerType(TheContext_), "cast", TheBlock);
-      ValueResult_ = cast;
-      return;
-    }
-    else {
-      ValueResult_ = A;
-      return;
-    }
-  }
-  else if  (e.Callee_ == "f64") {
-    auto A = runExprVisitor(*e.Args_[0]);
-    if (A->getType()->isIntegerTy()) {
-      auto cast = CastInst::Create(Instruction::SIToFP, A,
-          llvmRealType(TheContext_), "cast", TheBlock);
-      ValueResult_ = cast;
-      return;
-    }
-    else {
-      ValueResult_ = A;
-      return;
-    }
-  }
-
 
   // Look up the name in the global module table.
   auto CalleeF = getFunction(e.Callee_);
-  if (!CalleeF)
-    THROW_NAME_ERROR(e.Callee_, e.getLine());
-
-  // If argument mismatch error.
-  if (CalleeF->arg_size() != e.Args_.size() && !CalleeF->isVarArg()) {
-    THROW_SYNTAX_ERROR(
-        "Incorrect number of arguments, expected " << CalleeF->arg_size() 
-        << " but got " << e.Args_.size() << Formatter::to_str, e.getLine() );
-  }
-
   auto FunType = CalleeF->getFunctionType();
   auto NumFixedArgs = FunType->getNumParams();
 
   std::vector<Value *> ArgsV;
-  for (unsigned i = 0; i<e.Args_.size(); ++i) {
-    // what is the arg type
-    auto A = runExprVisitor(*e.Args_[i]);
-    if (i < NumFixedArgs) {
-      auto TheBlock = Builder_.GetInsertBlock();
-      if (FunType->getParamType(i)->isFloatingPointTy() && A->getType()->isIntegerTy()) {
-        auto cast = CastInst::Create(Instruction::SIToFP, A,
-            llvmRealType(TheContext_), "cast", TheBlock);
-        A = cast;
-      }
-      else if (FunType->getParamType(i)->isIntegerTy() && A->getType()->isFloatingPointTy()) {
-        auto cast = CastInst::Create(Instruction::FPToSI, A,
-            llvmIntegerType(TheContext_), "cast", TheBlock);
-        A = cast;
-      }
-    }
+  for (unsigned i = 0; i<e.ArgExprs_.size(); ++i) {
+    auto A = runExprVisitor(*e.ArgExprs_[i]);
     ArgsV.push_back(A);
   }
 
   ValueResult_ = Builder_.CreateCall(CalleeF, ArgsV, "calltmp");
-#endif
 }
 
 //==============================================================================
@@ -862,21 +784,17 @@ void CodeGen::dispatch(IfStmtAST & e) {
 // outloop:
 //==============================================================================
 void CodeGen::dispatch(ForStmtAST& e) {
-#if 0  
+  
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
   auto LLType = llvmIntegerType(TheContext_);
-  AllocaInst *Alloca = createEntryBlockAlloca(TheFunction, e.VarName_, LLType);
+  AllocaInst *Alloca = createVariable(TheFunction, e.VarId_.getName(), LLType);
   
-  // Within the loop, the variable is defined equal to the PHI node.  If it
-  // shadows an existing variable, we have to restore it, so save it now.
-  AllocaInst *OldVal = NamedValues[e.VarName_];
-  NamedValues[e.VarName_] = Alloca;
   emitLocation(&e);
 
   // Emit the start code first, without 'variable' in scope.
-  auto StartVal = runExprVisitor(*e.Start_);
+  auto StartVal = runExprVisitor(*e.StartExpr_);
   if (StartVal->getType()->isFloatingPointTy())
     THROW_IMPLEMENTED_ERROR("Cast required for start value");
 
@@ -898,11 +816,11 @@ void CodeGen::dispatch(ForStmtAST& e) {
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  auto EndCond = runExprVisitor(*e.End_);
+  auto EndCond = runExprVisitor(*e.EndExpr_);
   if (EndCond->getType()->isFloatingPointTy())
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
  
-  if (e.Loop_ == ForExprAST::LoopType::Until) {
+  if (e.Loop_ == ForStmtAST::LoopType::Until) {
     Value *One = llvmInteger(TheContext_, 1);
     EndCond = Builder_.CreateSub(EndCond, One, "loopsub");
   }
@@ -920,7 +838,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
-  for ( auto & stmt : e.Body_ ) runExprVisitor(*stmt);
+  for ( auto & stmt : e.BodyExprs_ ) runExprVisitor(*stmt);
 
   // Insert unconditional branch to increment.
   Builder_.CreateBr(IncrBB);
@@ -932,8 +850,8 @@ void CodeGen::dispatch(ForStmtAST& e) {
 
   // Emit the step value.
   Value *StepVal = nullptr;
-  if (e.Step_) {
-    StepVal = runExprVisitor(*e.Step_);
+  if (e.StepExpr_) {
+    StepVal = runExprVisitor(*e.StepExpr_);
     if (StepVal->getType()->isFloatingPointTy())
       THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
@@ -955,15 +873,8 @@ void CodeGen::dispatch(ForStmtAST& e) {
   //TheFunction->getBasicBlockList().push_back(AfterBB);
   Builder_.SetInsertPoint(AfterBB);
 
-  // Restore the unshadowed variable.
-  if (OldVal)
-    NamedValues[e.VarName_] = OldVal;
-  else
-    NamedValues.erase(e.VarName_);
-
   // for expr always returns 0.
   ValueResult_ = Constant::getNullValue(LLType);
-#endif
 }
 
 //==============================================================================
@@ -1000,62 +911,46 @@ void CodeGen::dispatch(VarDeclAST & e) {
 //==============================================================================
 void CodeGen::dispatch(ArrayDeclAST &e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-#if 0 
+  
   // Emit the initializer before adding the variable to scope, this prevents
   // the initializer from referencing the variable itself, and permits stuff
   // like this:
   //  var a = 1 in
   //    var a = a in ...   # refers to outer 'a'.
 
-  Value* ReturnInit = nullptr;
   
   // the llvm variable type
-  Type * VarType;
-  try {
-    VarType = getLLVMType(e.VarType_, TheContext_);
-  }
-  catch (const ContraError & err) {
-    THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(e.VarType_)
-        << "' for variables '" << e.VarNames_ << "'", e.getLine() );
-  }
+  auto VarType = getLLVMType(e.getType());
   auto VarPointerType = PointerType::get(VarType, 0);
+    
+  int NumVars = e.VarIds_.size();
 
   //---------------------------------------------------------------------------
   // Array already on right hand side
-  auto ArrayAST = std::dynamic_pointer_cast<ArrayExprAST>(e.Init_);
+  auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.InitExpr_.get());
   if (ArrayAST) {
 
-    // transfer to first
-    const auto & VarName = e.VarNames_[0];
-    auto ArrayAlloca = static_cast<AllocaInst*>(runExprVisitor(*ArrayAST));
-    auto Array = TempArrays[ArrayAlloca];
-    TempArrays.erase(ArrayAlloca);
-    auto SizeExpr = Array.Size;
-    ReturnInit = Array.Data;
-    auto FirstAlloca = createEntryBlockAlloca(TheFunction, VarName,
-        VarPointerType);
-    Builder_.CreateStore(Array.Data, FirstAlloca);
-    NamedValues[VarName] = FirstAlloca;
-    NamedArrays[VarName] = ArrayAlloca;
-  
-    // more complicated
-    if (e.VarNames_.size() > 1) {
-    
-      std::vector<AllocaInst*> ArrayAllocas;
-      ArrayAllocas.reserve(e.VarNames_.size());
+    runExprVisitor(*ArrayAST);
 
-      // Register all variables and emit their initializer.
-      for (int i=1; i<e.VarNames_.size(); ++i) {
-        const auto & VarName = e.VarNames_[i];
-        auto Array = createArray(TheFunction, VarName, VarPointerType, SizeExpr);
-        auto Alloca = createEntryBlockAlloca(TheFunction, VarName, VarPointerType);
-        Builder_.CreateStore(Array.Data, Alloca);
-        NamedValues[VarName] = Alloca;
-        NamedArrays[VarName] = Array.Alloca;
-        ArrayAllocas.emplace_back( Alloca ); 
-      }
-      copyArrays(TheFunction, FirstAlloca, ArrayAllocas, SizeExpr );
+    // transfer to first
+    const auto & VarName = e.VarIds_[0].getName();
+    auto Array = moveArray("__tmp", VarName);
+    auto Alloca = moveVariable("__tmp", VarName);
+    
+    auto SizeExpr = Array.Size;
+    ValueResult_ = Array.Data;
+  
+    // Register all variables and emit their initializer.
+    std::vector<AllocaInst*> ArrayAllocas;
+    for (int i=1; i<NumVars; ++i) {
+      const auto & VarName = e.VarIds_[i].getName();
+      auto Array = createArray(TheFunction, VarName, VarType, SizeExpr);
+      auto Alloca = createVariable(TheFunction, VarName, VarPointerType);
+      Builder_.CreateStore(Array.Data, Alloca);
+      ArrayAllocas.emplace_back( Alloca ); 
     }
+
+    copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr );
 
   }
   
@@ -1064,117 +959,63 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
   else {
   
     // Emit initializer first
-    auto InitVal = runExprVisitor(*e.Init_);
+    auto InitVal = runExprVisitor(*e.InitExpr_);
 
     // create a size expr
-    auto IType = InitVal->getType();
-    Value * SizeExpr = nullptr;
-
-    if (e.Size_) {
-      SizeExpr = runExprVisitor(*e.Size_);
-    }
-    else if (IType->isSingleValueType()) {
+    Value* SizeExpr = nullptr;
+    if (e.SizeExpr_)
+      SizeExpr = runExprVisitor(*e.SizeExpr_);
+    // otherwise scalar
+    else
       SizeExpr = llvmInteger(TheContext_, 1);
-    }
-    else {
-      THROW_SYNTAX_ERROR("Unknown array initialization", e.getLine()); 
-    }
  
-    std::vector<AllocaInst*> ArrayAllocas;
-
     // Register all variables and emit their initializer.
-    for (const auto & VarName : e.VarNames_) {
-      
-      // cast init value if necessary
-      auto TheBlock = Builder_.GetInsertBlock();
-      if (e.VarType_ == VarTypes::Real && !InitVal->getType()->isFloatingPointTy()) {
-        auto cast = CastInst::Create(Instruction::SIToFP, InitVal,
-            llvmRealType(TheContext_), "cast", TheBlock);
-        InitVal = cast;
-      }
-      else if (e.VarType_ == VarTypes::Int && !InitVal->getType()->isIntegerTy()) {
-        auto cast = CastInst::Create(Instruction::FPToSI, InitVal,
-            llvmIntegerType(TheContext_), "cast", TheBlock);
-        InitVal = cast;
-      }
-
-      AllocaInst* Alloca;
-
-      // create array of var
-      auto Array = createArray(TheFunction, VarName, VarPointerType, SizeExpr);
-  
-      NamedArrays[VarName] = Array.Alloca;
-
-      Alloca = createEntryBlockAlloca(TheFunction, VarName, VarPointerType);
+    std::vector<AllocaInst*> ArrayAllocas;
+    for (const auto & VarId : e.VarIds_) {
+      const auto & VarName = VarId.getName();
+      auto Array = createArray(TheFunction, VarName, VarType, SizeExpr);
+      auto Alloca = createVariable(TheFunction, VarName, VarPointerType);
       ArrayAllocas.emplace_back(Alloca);
-
       Builder_.CreateStore(Array.Data, Alloca);
-    
-      // Remember this binding.
-      NamedValues[VarName] = Alloca;
     }
 
     initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr);
 
-    ReturnInit = InitVal;
+    ValueResult_ = InitVal;
 
   } // else
   //---------------------------------------------------------------------------
 
   emitLocation(&e);
-
-
-  ValueResult_ = ReturnInit;
-#endif
 }
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
 void CodeGen::dispatch(PrototypeAST &e) {
-#if 0
+
+  unsigned NumArgs = e.ArgIds_.size();
+
   std::vector<Type *> ArgTypes;
-  ArgTypes.reserve(e.Args_.size());
+  ArgTypes.reserve(NumArgs);
 
-  for ( const auto & A : e.Args_ ) {
-    auto VarSymbol = A.second;
-    auto VarType = VarSymbol.getType();
-    Type * LLType;
-    try {
-      LLType = getLLVMType(VarType, TheContext_);
-    }
-    catch (const ContraError & err) {
-      THROW_SYNTAX_ERROR( "Unknown argument type of '" << getVarTypeName(VarType)
-          << "' in prototype for function '" << e.Name_ << "'", e.Line_ );
-    }
-    
-    if (VarSymbol.isArray())
-      LLType = PointerType::get(LLType, 0);
-
-    ArgTypes.emplace_back(LLType);
+  for (unsigned i=0; i<NumArgs; ++i) {
+    auto VarType = getLLVMType(e.ArgTypeIds_[i]);
+    if (e.ArgIsArray_[i]) VarType = PointerType::get(VarType, 0);
+    ArgTypes.emplace_back(VarType);
   }
   
-  Type * ReturnType;
-  try {
-    ReturnType = getLLVMType(e.Return_, TheContext_);
-  }
-  catch (const ContraError & err) {
-    THROW_SYNTAX_ERROR( "Unknown return type of '" << getVarTypeName(e.Return_)
-        << "' in prototype for function '" << e.Name_ << "'", e.Line_ );
-  }
-
+  auto ReturnType = getLLVMType(*e.ReturnTypeId_);
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
-  Function *F =
-      Function::Create(FT, Function::ExternalLinkage, e.Name_, &getModule());
+  Function *F = Function::Create(FT, Function::ExternalLinkage, e.Id_.getName(), &getModule());
 
   // Set names for all arguments.
   unsigned Idx = 0;
-  for (auto &Arg : F->args())
-    Arg.setName(e.Args_[Idx++].first);
+  for (auto &Arg : F->args()) Arg.setName(e.ArgIds_[Idx++].getName());
 
   FunctionResult_ = F;
-#endif
+
 }
 
 //==============================================================================
@@ -1182,19 +1023,10 @@ void CodeGen::dispatch(PrototypeAST &e) {
 //==============================================================================
 void CodeGen::dispatch(FunctionAST& e)
 {
-#if 0 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
-  auto &P = *e.Proto_;
-  FunctionProtos[e.Proto_->getName()] = std::move(e.Proto_);
+  auto & P = insertFunction( std::move(e.ProtoExpr_) );
   auto TheFunction = getFunction(P.getName());
-  if (!TheFunction)
-    THROW_SYNTAX_ERROR("'" << P.getName() << "' does not have a valid prototype",
-        P.getLine());
-
-  // If this is an operator, install it.
-  if (P.isBinaryOp())
-    BinopPrecedence_->operator[](P.getOperatorName()) = P.getBinaryPrecedence();
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TheFunction);
@@ -1218,43 +1050,31 @@ void CodeGen::dispatch(FunctionAST& e)
   emitLocation(nullptr);
 
   // Record the function arguments in the NamedValues map.
-  NamedValues.clear();
-  NamedArrays.clear();
+  VariableTable_.clear();
+  ArrayTable_.clear();
+
   unsigned ArgIdx = 0;
   for (auto &Arg : TheFunction->args()) {
 
     // get arg type
-    const auto & ArgSymbol = P.getArgSymbol(ArgIdx);
-    auto ArgType = ArgSymbol.getType();
-  
+    auto ArgType = P.ArgTypes_[ArgIdx];
     // the llvm variable type
-    Type * LLType;
-    try {
-      LLType = getLLVMType(ArgType, TheContext_);
-    }
-    catch (const ContraError & err) {
-      THROW_SYNTAX_ERROR( "Unknown variable type of '" << getVarTypeName(ArgType)
-          << "' used in function prototype for '" << P.getName() << "'",
-          P.getLine() );
-    }
-    if (ArgSymbol.isArray()) 
-      LLType = PointerType::get(LLType, 0);
+    auto LLType = getLLVMType(ArgType);
+    if (ArgType.isArray()) LLType = PointerType::get(LLType, 0);
 
     // Create an alloca for this variable.
-    AllocaInst *Alloca = createEntryBlockAlloca(TheFunction, Arg.getName(), LLType);
+    AllocaInst *Alloca = createVariable(TheFunction, Arg.getName(), LLType);
     
     // Create a debug descriptor for the variable.
     createVariable( SP, Arg.getName(), ++ArgIdx, Unit, LineNo, Alloca);
 
     // Store the initial value into the alloca.
     Builder_.CreateStore(&Arg, Alloca);
-
-    // Add arguments to variable symbol table.
-    NamedValues[Arg.getName()] = Alloca;
+  
   }
  
 
-  for ( auto & stmt : e.Body_ )
+  for ( auto & stmt : e.BodyExprs_ )
   {
     emitLocation(stmt.get());
     runExprVisitor(*stmt);
@@ -1264,8 +1084,8 @@ void CodeGen::dispatch(FunctionAST& e)
   destroyArrays();
     
   // Finish off the function.
-  if ( e.Return_ ) {
-    auto RetVal = runExprVisitor(*e.Return_);
+  if ( e.ReturnExpr_ )  {
+    auto RetVal = runExprVisitor(*e.ReturnExpr_);
     if (RetVal->getType()->isVoidTy() )
       Builder_.CreateRetVoid();
     else
@@ -1279,34 +1099,6 @@ void CodeGen::dispatch(FunctionAST& e)
   verifyFunction(*TheFunction);
     
   FunctionResult_ = TheFunction;
-#endif
-
-
-#if 0
-
-  if (Value *RetVal = Body->codegen(TheCG)) {
-    // Pop off the lexical block for the function.
-    popLexicalBlock();
-
-    // Validate the generated code, checking for consistency.
-    verifyFunction(*TheFunction);
-
-    // Run the optimizer on the function.
-    TheFPM->run(*TheFunction);
-
-    return TheFunction;
-  }
-
-  // Error reading body, remove function.
-  TheFunction->eraseFromParent();
-  
-  if (P.isBinaryOp())
-    TheParser.BinopPrecedence.erase(Proto->getOperatorName());
-
-  // Pop off the lexical block for the function since we added it
-  // unconditionally.
-  popLexicalBlock();
-#endif
 }
 
 

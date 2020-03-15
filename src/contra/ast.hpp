@@ -425,6 +425,9 @@ protected:
   std::vector<Identifier> ArgIds_;
   std::vector<Identifier> ArgTypeIds_;
   std::vector<bool> ArgIsArray_;
+  
+  std::vector<VariableType> ArgTypes_;
+  VariableType ReturnType_;
 
 public:
   

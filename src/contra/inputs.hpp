@@ -11,6 +11,7 @@ struct InputsType {
   bool is_debug = false;
   bool is_optimized = false;
   bool dump_ir = false;
+  bool dump_dot = false;
 };
 
 } // namespace

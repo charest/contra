@@ -369,7 +369,7 @@ void Analyzer::dispatch(PrototypeAST& e)
 {
   int NumArgs = e.ArgIds_.size();
 
-  VariableTypeList ArgTypes;
+  auto & ArgTypes = e.ArgTypes_;
   ArgTypes.reserve( NumArgs );
   
   for (int i=0; i<NumArgs; ++i) {
@@ -379,12 +379,10 @@ void Analyzer::dispatch(PrototypeAST& e)
     ArgTypes.emplace_back(std::move(ArgType));
   }
 
-  VariableType RetType = VoidType_;
+  auto & RetType = e.ReturnType_ = VoidType_;
  
-  if (e.ReturnTypeId_) { 
-    auto RetId = *e.ReturnTypeId_;
-    RetType = VariableType( getBaseType(RetId) );
-  }
+  if (e.ReturnTypeId_)
+    RetType = VariableType( getBaseType(*e.ReturnTypeId_) );
 
   insertFunction(e.Id_, ArgTypes, RetType);
 

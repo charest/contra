@@ -103,9 +103,7 @@ void handleExtern(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInp
     auto ProtoAST = TheParser.parseExtern();
     auto FnIR = TheCG.runFuncVisitor(*ProtoAST);
     if (is_verbose || dump_ir) FnIR->print(errs());
-    if (!TheCG.isDebug()) {
-      TheCG.FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
-    }
+    if (!TheCG.isDebug()) TheCG.insertFunction(std::move(ProtoAST));
   }
   catch (const ContraError & e) {
     std::cerr << e.what() << std::endl;
