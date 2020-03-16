@@ -325,8 +325,7 @@ void CodeGen::destroyArrays() {
     auto & Alloca = i.second;
     auto AllocaT = Alloca->getType()->getPointerElementType();
     auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
-  
-    auto CallInst = Builder_.CreateCall(F, Vec, Name+"dealloctmp");
+    Builder_.CreateCall(F, Vec, Name+"dealloctmp");
   }
 
   NamedArrays.clear();
@@ -683,8 +682,8 @@ void CodeGen::dispatch(CallExprAST &e) {
 
   // Look up the name in the global module table.
   auto CalleeF = getFunction(e.Callee_);
-  auto FunType = CalleeF->getFunctionType();
-  auto NumFixedArgs = FunType->getNumParams();
+  //auto FunType = CalleeF->getFunctionType();
+  //auto NumFixedArgs = FunType->getNumParams();
 
   std::vector<Value *> ArgsV;
   for (unsigned i = 0; i<e.ArgExprs_.size(); ++i) {
@@ -891,7 +890,7 @@ void CodeGen::dispatch(VarDeclAST & e) {
 
   // Emit initializer first
   auto InitVal = runExprVisitor(*e.InitExpr_);
-  auto IType = InitVal->getType();
+  //auto IType = InitVal->getType();
   
   // the llvm variable type
   auto VarType = getLLVMType(e.getType());
@@ -1005,7 +1004,8 @@ void CodeGen::dispatch(PrototypeAST &e) {
     ArgTypes.emplace_back(VarType);
   }
   
-  auto ReturnType = getLLVMType(*e.ReturnTypeId_);
+  Type* ReturnType = VoidType_;
+  if (e.ReturnType_) getLLVMType(e.ReturnType_);
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
   Function *F = Function::Create(FT, Function::ExternalLinkage, e.Id_.getName(), &getModule());

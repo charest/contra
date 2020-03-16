@@ -18,6 +18,8 @@ set(CMAKE_CXX_EXTENSIONS off)
 # cmake module path
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake")
 
+set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
+
 
 add_library( librt )
 add_executable( contra )
@@ -50,8 +52,26 @@ add_subdirectory(src/librt)
 add_subdirectory(src/contra)
 
 #------------------------------------------------------------------------------#
+# Enable Regression Tests
+#------------------------------------------------------------------------------#
+include(CTest) # note: this adds a BUILD_TESTING which defaults to ON
+
+# find python for running regression tests
+set(PythonInterp_FIND_VERSION TRUE) # unknown hack to search for versions
+find_package (PythonInterp QUIET)
+
+if (PYTHONINTERP_FOUND)
+  message (STATUS "Found PythonInterp: ${PYTHON_EXECUTABLE}")
+endif ()
+
+if(BUILD_TESTING AND NOT PYTHONINTERP_FOUND)
+  message(FATAL_ERROR "Testing requested, but python was not found")
+endif()
+
+#------------------------------------------------------------------------------#
 # Add examples
 #------------------------------------------------------------------------------#
 
-enable_testing()
-add_subdirectory(examples)
+if (BUILD_TESTING)
+  add_subdirectory(examples)
+endif()

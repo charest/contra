@@ -22,6 +22,7 @@ class Contra {
   std::string IRFileName_;
   std::string DotFileName_;
 
+  llvm::raw_ostream* IRFileStream_ = nullptr;
   std::unique_ptr<llvm::raw_ostream> IRFile_;
 
   std::shared_ptr<BinopPrecedence> ThePrecedence_;
@@ -40,6 +41,7 @@ public:
     //TheCG.TheModule->print(llvm::errs(), nullptr);
     // Compile if necessary
     if (!OutputFileName_.empty()) compileLLVM( TheCG_->getModule(), OutputFileName_ );
+    IRFileStream_ = nullptr;
   }
 
 
@@ -54,9 +56,13 @@ public:
 
     TheCG_ = std::make_unique<CodeGen>(IsDebug_);
 
-    if (!IRFileName_.empty()) {
+    if (IRFileName_ == "-") {
+      IRFileStream_ = &llvm::outs();
+    }
+    else if (!IRFileName_.empty()) {
       std::error_code EC;
       IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC, llvm::sys::fs::F_None);
+      IRFileStream_ = IRFile_.get();
     }
 
     if (!DotFileName_.empty()) TheViz_ = std::make_unique<Vizualizer>(DotFileName_);

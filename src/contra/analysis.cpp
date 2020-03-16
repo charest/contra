@@ -235,6 +235,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(CallExprAST& e)
 {
+  abort();
   auto FunRes = getFunction(e.Callee_, e.getLoc());
 
   int NumArgs = e.ArgExprs_.size();

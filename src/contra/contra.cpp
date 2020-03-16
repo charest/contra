@@ -24,7 +24,7 @@ void Contra::handleFunction()
     TheAnalyser_->runFuncVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (IsOptimized_) TheCG_->optimize(FnIR);
-    if (dumpIR()) FnIR->print(*IRFile_);
+    if (dumpIR()) FnIR->print(*IRFileStream_);
     if (!IsDebug_) TheCG_->doJIT();
   }
   catch (const CodeError & e) {
@@ -56,7 +56,7 @@ void Contra::handleDefinition()
     auto FnAST = TheParser_->parseDefinition();
     if (dumpDot()) TheViz_->runVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
-    if (dumpIR()) FnIR->print(*IRFile_);
+    if (dumpIR()) FnIR->print(*IRFileStream_);
     if (!IsDebug_) TheCG_->doJIT();
   }
   catch (const ContraError & e) {
@@ -82,7 +82,7 @@ void Contra::handleExtern()
   try {
     auto ProtoAST = TheParser_->parseExtern();
     auto FnIR = TheCG_->runFuncVisitor(*ProtoAST);
-    if (dumpIR()) FnIR->print(*IRFile_);
+    if (dumpIR()) FnIR->print(*IRFileStream_);
     if (!IsDebug_) TheCG_->insertFunction(std::move(ProtoAST));
   }
   catch (const ContraError & e) {
@@ -114,7 +114,7 @@ void Contra::handleTopLevelExpression()
     auto is_real = RetType->isFloatingPointTy();
     auto is_int = RetType->isIntegerTy();
     auto is_void = RetType->isVoidTy();
-    if (dumpIR()) FnIR->print(*IRFile_);
+    if (dumpIR()) FnIR->print(*IRFileStream_);
     if (!IsDebug_) {
       // JIT the module containing the anonymous expression, keeping a handle so
       // we can free it later.
