@@ -1,8 +1,6 @@
 #include "contra.hpp"
 #include "errors.hpp"
 #include "inputs.hpp"
-#include "analysis.hpp"
-#include "vizualizer.hpp"
 
 #include <iostream>
 
@@ -13,73 +11,59 @@ namespace contra {
 //==============================================================================
 // Top-Level definition handler
 //==============================================================================
-void handleFunction(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs)
+void Contra::handleFunction()
 {
-  auto is_interactive = TheInputs.is_interactive;
-  auto is_verbose = TheInputs.is_verbose;
-  auto dump_ir = TheInputs.dump_ir;
-  auto is_optimized = TheInputs.is_optimized;
-  Vizualizer TheViz("graph.dot");
-  Analyzer TheAnalyser(TheParser.getBinopPrecedence());
 
-  if (is_verbose) std::cerr << "Handling function" << std::endl;
+  if (IsVerbose_) std::cerr << "Handling function" << std::endl;
 
-  //auto OldSymbols = TheParser.getSymbols();
+  //auto OldSymbols = TheParser_->getSymbols();
 
   try {
-    auto FnAST = TheParser.parseFunction();
-    if (is_verbose) TheViz.runVisitor(*FnAST);
-    TheAnalyser.runFuncVisitor(*FnAST);
-    auto FnIR = TheCG.runFuncVisitor(*FnAST);
-    if (is_optimized) TheCG.optimize(FnIR);
-    if (is_verbose || dump_ir) FnIR->print(errs());
-    if (!TheCG.isDebug()) {
-      TheCG.doJIT();
-    }
+    auto FnAST = TheParser_->parseFunction();
+    if (dumpDot()) TheViz_->runVisitor(*FnAST);
+    TheAnalyser_->runFuncVisitor(*FnAST);
+    auto FnIR = TheCG_->runFuncVisitor(*FnAST);
+    if (IsOptimized_) TheCG_->optimize(FnIR);
+    if (dumpIR()) FnIR->print(*IRFile_);
+    if (!IsDebug_) TheCG_->doJIT();
   }
   catch (const CodeError & e) {
     std::cerr << e.what() << std::endl;
     std::cerr << std::endl;
-    TheParser.barf(std::cerr, e.getLoc());
+    TheParser_->barf(std::cerr, e.getLoc());
     std::cerr << std::endl;
     // Skip token for error recovery.
-    if (!is_interactive) throw e;
-    TheParser.getNextToken();
+    if (!IsInteractive_) throw e;
+    TheParser_->getNextToken();
   }
   catch (const ContraError & e) {
     // Skip token for error recovery.
-    if (!is_interactive) throw e;
-    TheParser.getNextToken();
+    if (!IsInteractive_) throw e;
+    TheParser_->getNextToken();
   }
 
-  //TheParser.setSymbols( OldSymbols );
+  //TheParser_->setSymbols( OldSymbols );
 }
 
 //==============================================================================
 // Top-Level definition handler
 //==============================================================================
-void handleDefinition(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs)
+void Contra::handleDefinition()
 {
-  auto is_interactive = TheInputs.is_interactive;
-  auto is_verbose = TheInputs.is_verbose;
-  auto dump_ir = TheInputs.dump_ir;
-
-  if (is_verbose) std::cerr << "Handling definition" << std::endl;
+  if (IsVerbose_) std::cerr << "Handling definition" << std::endl;
 
   try {
-    auto FnAST = TheParser.parseDefinition();
-    //if (is_verbose) FnAST->accept(viz);
-    auto FnIR = TheCG.runFuncVisitor(*FnAST);
-    if (is_verbose || dump_ir) FnIR->print(errs());
-    if (!TheCG.isDebug()) {
-      TheCG.doJIT();
-    }
+    auto FnAST = TheParser_->parseDefinition();
+    if (dumpDot()) TheViz_->runVisitor(*FnAST);
+    auto FnIR = TheCG_->runFuncVisitor(*FnAST);
+    if (dumpIR()) FnIR->print(*IRFile_);
+    if (!IsDebug_) TheCG_->doJIT();
   }
   catch (const ContraError & e) {
     std::cerr << e.what() << std::endl;
     // Skip token for error recovery.
-    if (is_interactive) {
-      TheParser.getNextToken();
+    if (IsInteractive_) {
+      TheParser_->getNextToken();
     }
     // otherwise keep throwing the error
     else {
@@ -91,25 +75,21 @@ void handleDefinition(Parser & TheParser, CodeGen & TheCG, const InputsType & Th
 //==============================================================================
 // Top-Level external handler
 //==============================================================================
-void handleExtern(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs)
+void Contra::handleExtern()
 {
-  auto is_verbose = TheInputs.is_verbose;
-  auto is_interactive = TheInputs.is_interactive;
-  auto dump_ir = TheInputs.dump_ir;
-
-  if (is_verbose) std::cerr << "Handling extern" << std::endl;
+  if (IsVerbose_) std::cerr << "Handling extern" << std::endl;
 
   try {
-    auto ProtoAST = TheParser.parseExtern();
-    auto FnIR = TheCG.runFuncVisitor(*ProtoAST);
-    if (is_verbose || dump_ir) FnIR->print(errs());
-    if (!TheCG.isDebug()) TheCG.insertFunction(std::move(ProtoAST));
+    auto ProtoAST = TheParser_->parseExtern();
+    auto FnIR = TheCG_->runFuncVisitor(*ProtoAST);
+    if (dumpIR()) FnIR->print(*IRFile_);
+    if (!IsDebug_) TheCG_->insertFunction(std::move(ProtoAST));
   }
   catch (const ContraError & e) {
     std::cerr << e.what() << std::endl;
     // Skip token for error recovery.
-    if (is_interactive) {
-      TheParser.getNextToken();
+    if (IsInteractive_) {
+      TheParser_->getNextToken();
     }
     // otherwise keep throwing the error
     else {
@@ -121,69 +101,64 @@ void handleExtern(Parser & TheParser, CodeGen & TheCG, const InputsType & TheInp
 //==============================================================================
 // Top-Level expression handler
 //==============================================================================
-void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
-    const InputsType & TheInputs)
+void Contra::handleTopLevelExpression()
 {
-  auto is_interactive = TheInputs.is_interactive;
-  auto is_verbose = TheInputs.is_verbose;
-  auto dump_ir = TheInputs.dump_ir;
-
-  if (is_verbose) std::cerr << "Handling top level expression" << std::endl;
+  if (IsVerbose_) std::cerr << "Handling top level expression" << std::endl;
 
   // Evaluate a top-level expression into an anonymous function.
   try {
-    auto FnAST = TheParser.parseTopLevelExpr();
-    //if (is_verbose) FnAST->accept(viz);
-    auto FnIR = TheCG.runFuncVisitor(*FnAST);
+    auto FnAST = TheParser_->parseTopLevelExpr();
+    //if (IsVerbose_) FnAST->accept(viz);
+    auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     auto RetType = FnIR->getReturnType();
     auto is_real = RetType->isFloatingPointTy();
     auto is_int = RetType->isIntegerTy();
     auto is_void = RetType->isVoidTy();
-    if (is_verbose || dump_ir) FnIR->print(errs());
-    if (!TheCG.isDebug()) {
+    if (dumpIR()) FnIR->print(*IRFile_);
+    if (!IsDebug_) {
       // JIT the module containing the anonymous expression, keeping a handle so
       // we can free it later.
-      auto H = TheCG.doJIT();
+      auto H = TheCG_->doJIT();
 
       // Search the JIT for the __anon_expr symbol.
-      auto ExprSymbol = TheCG.findSymbol("__anon_expr");
+      auto ExprSymbol = TheCG_->findSymbol("__anon_expr");
       assert(ExprSymbol && "Function not found");
 
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.
       if (is_real) {
         real_t (*FP)() = (real_t (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-        if (is_verbose) std::cerr << "---Begin Real Result--- " <<  "\n";
+        if (IsVerbose_) std::cerr << "---Begin Real Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
-        if (is_verbose) std::cerr << "---End Real Result--- " <<  "\n";
+        if (IsVerbose_) std::cerr << "---End Real Result--- " <<  "\n";
       }
       else if (is_int) {
         int_t (*FP)() = (int_t(*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-        if (is_verbose) std::cerr << "---Begin Int Result--- " <<  "\n";
+        if (IsVerbose_) std::cerr << "---Begin Int Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
-        if (is_verbose) std::cerr << "---End Int Result--- " <<  "\n";
+        if (IsVerbose_) std::cerr << "---End Int Result--- " <<  "\n";
       }
       else if (is_void) {
         void (*FP)() = (void(*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-        if (is_verbose) std::cerr << "---Begin Void Result--- " <<  "\n";
+        if (IsVerbose_) std::cerr << "---Begin Void Result--- " <<  "\n";
         FP();
-        if (is_verbose) std::cerr << "---End Void Result--- " <<  "\n";
+        if (IsVerbose_) std::cerr << "---End Void Result--- " <<  "\n";
       }
       else {
         THROW_CONTRA_ERROR("Unknown type of final result!");
       }
       
       // Delete the anonymous expression module from the JIT.
-      TheCG.removeJIT( H );
+      TheCG_->removeJIT( H );
     }
   }
   catch (const ContraError & e) {
     std::cerr << e.what() << std::endl;
     // Skip token for error recovery.
-    if (is_interactive) {
-      TheParser.getNextToken();
+    if (IsInteractive_) {
+      TheParser_->getNextToken();
     }
     // otherwise keep throwing the error
     else {
@@ -195,40 +170,38 @@ void handleTopLevelExpression(Parser & TheParser, CodeGen & TheCG,
 //==============================================================================
 /// top ::= definition | external | expression | ';'
 //==============================================================================
-void mainLoop( Parser & TheParser, CodeGen & TheCG, const InputsType & TheInputs) {
-
-  auto is_interactive = TheInputs.is_interactive;
+void Contra::mainLoop() {
 
   // Prime the first token.
-  if (is_interactive) std::cerr << "contra> " << std::flush;
-  TheParser.getNextToken();
+  if (IsInteractive_) std::cerr << "contra> " << std::flush;
+  TheParser_->getNextToken();
 
   while (true) {
 
-    if (TheParser.getCurTok() == tok_eof) {
-      if (is_interactive) std::cerr << std::endl;
+    if (TheParser_->getCurTok() == tok_eof) {
+      if (IsInteractive_) std::cerr << std::endl;
       return;
     }
 
-    switch (TheParser.getCurTok()) {
+    switch (TheParser_->getCurTok()) {
     case tok_sep: // ignore top-level semicolons.
-      TheParser.getNextToken();
+      TheParser_->getNextToken();
       break;
     case tok_def:
-      handleDefinition(TheParser, TheCG, TheInputs);
-      if (is_interactive) std::cerr << "contra> " << std::flush;
+      handleDefinition();
+      if (IsInteractive_) std::cerr << "contra> " << std::flush;
       break;
     case tok_function:
-      handleFunction(TheParser, TheCG, TheInputs);
-      if (is_interactive) std::cerr << "contra> " << std::flush;
+      handleFunction();
+      if (IsInteractive_) std::cerr << "contra> " << std::flush;
       break;
     case tok_extern:
-      handleExtern(TheParser, TheCG, TheInputs);
-      if (is_interactive) std::cerr << "contra> " << std::flush;
+      handleExtern();
+      if (IsInteractive_) std::cerr << "contra> " << std::flush;
       break;
     default:
-      handleTopLevelExpression(TheParser, TheCG, TheInputs);
-      if (is_interactive) std::cerr << "contra> " << std::flush;
+      handleTopLevelExpression();
+      if (IsInteractive_) std::cerr << "contra> " << std::flush;
     }
 
   }

@@ -62,7 +62,7 @@ public:
   
 
   // Constructor
-  CodeGen (bool);
+  CodeGen(bool);
 
   // destructor
   virtual ~CodeGen() = default;

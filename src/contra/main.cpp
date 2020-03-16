@@ -1,7 +1,6 @@
 #include "args.hpp"
 #include "contra.hpp"
 #include "inputs.hpp"
-#include "llvm.hpp"
 #include "precedence.hpp"
 #include "string_utils.hpp"
 
@@ -25,32 +24,37 @@ int main(int argc, char** argv) {
   if ( res ) return res;
 
   // santity checks
-  InputsType inp;
-  inp.is_interactive = args.count("__positional") == 0;
-  inp.do_compile = args.count("c");
-  inp.is_verbose = args.count("v");
-  inp.has_output = args.count("o");
-  inp.is_debug = args.count("g");
-  inp.is_optimized = args.count("O");
-  inp.dump_ir = args.count("i");
-  inp.dump_dot = args.count("d");
+  Contra Interp;
+  Interp.setInteractive( args.count("__positional") == 0 );
+  Interp.setVerbose( args.count("v") );
+  Interp.setDebug( args.count("g") );
+  Interp.setOptimized( args.count("O") );
+  if (args.count("i")) Interp.setDumpIR(args.at("i"));
+  if (args.count("d")) Interp.setDumpDot(args.at("d"));
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;
   std::string output_filename;
 
-  if (!inp.is_interactive) {
+  if (!Interp.isInteractive()) {
     
     source_filename = split( args.at("__positional"), ';' )[0];
-    if (inp.is_verbose) std::cout << "Reading source file:" << source_filename << std::endl;
+    if (Interp.isVerbose())
+      std::cout << "Reading source file:" << source_filename << std::endl;
     
-    if (inp.do_compile) {
-      auto source_extension = file_extension(source_filename);
-      if ( source_extension == "cta" )
-        output_filename = remove_extension(source_filename);
-      else
-        output_filename = source_filename;
-      output_filename += ".o";
+    if (args.count("c")) {
+      if (args.count("o")) {
+        output_filename = args.at("o");
+      }
+      else {
+        auto source_extension = file_extension(source_filename);
+        if ( source_extension == "cta" )
+          output_filename = remove_extension(source_filename);
+        else
+          output_filename = source_filename;
+        output_filename += ".o";
+      }
+      Interp.setCompile( output_filename );
     } // compile
 
   } // interactive
@@ -64,31 +68,12 @@ int main(int argc, char** argv) {
   // setup runtime
   librt::RunTimeLib::setup();
 
-  // create the operator precedence
-  auto ThePrecedence = std::make_shared<BinopPrecedence>();
-
   // create the parser
-  std::unique_ptr<Parser> TheParser;
-  if (!source_filename.empty())
-    TheParser = std::make_unique<Parser>(ThePrecedence, source_filename);
-  else
-    TheParser = std::make_unique<Parser>(ThePrecedence);
+  Interp.setup(source_filename);
 
-  // create the JIT and Code generator
-  CodeGen TheCG(inp.is_debug);
 
   // Run the main "interpreter loop" now.
-  mainLoop(*TheParser, TheCG, inp);
-
-  // Finalize whatever needs to be
-  TheCG.finalize();
-
-  // Print out all of the generated code.
-  //TheCG.TheModule->print(llvm::errs(), nullptr);
-
-  // pile if necessary
-  if (inp.do_compile)
-    compileLLVM( TheCG.getModule(), output_filename );
+  Interp.mainLoop();
 
   return 0;
 

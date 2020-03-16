@@ -1,6 +1,7 @@
 #ifndef CONTRA_ANALYSIS_HPP
 #define CONTRA_ANALYSIS_HPP
 
+#include "ast.hpp"
 #include "config.hpp"
 #include "context.hpp"
 #include "dispatcher.hpp"
