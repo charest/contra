@@ -16,33 +16,22 @@ void Contra::handleFunction()
 
   if (IsVerbose_) std::cerr << "Handling function" << std::endl;
 
-  //auto OldSymbols = TheParser_->getSymbols();
-
   try {
     auto FnAST = TheParser_->parseFunction();
     if (dumpDot()) TheViz_->runVisitor(*FnAST);
     TheAnalyser_->runFuncVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
-    if (IsOptimized_) TheCG_->optimize(FnIR);
     if (dumpIR()) FnIR->print(*IRFileStream_);
+    if (IsOptimized_) TheCG_->optimize(FnIR);
     if (!IsDebug_) TheCG_->doJIT();
   }
-  catch (const CodeError & e) {
-    std::cerr << e.what() << std::endl;
-    std::cerr << std::endl;
-    TheParser_->barf(std::cerr, e.getLoc());
-    std::cerr << std::endl;
-    // Skip token for error recovery.
-    if (!IsInteractive_) throw e;
-    TheParser_->getNextToken();
-  }
   catch (const ContraError & e) {
+    reportError(e);
     // Skip token for error recovery.
     if (!IsInteractive_) throw e;
     TheParser_->getNextToken();
   }
 
-  //TheParser_->setSymbols( OldSymbols );
 }
 
 //==============================================================================
@@ -59,16 +48,12 @@ void Contra::handleDefinition()
     if (dumpIR()) FnIR->print(*IRFileStream_);
     if (!IsDebug_) TheCG_->doJIT();
   }
-  catch (const ContraError & e) {
-    std::cerr << e.what() << std::endl;
+  catch (const CodeError & e) {
+    reportError(e);
     // Skip token for error recovery.
-    if (IsInteractive_) {
-      TheParser_->getNextToken();
-    }
+    if (IsInteractive_) TheParser_->getNextToken();
     // otherwise keep throwing the error
-    else {
-      throw e;
-    }
+    else throw e;
   }
 }
 
@@ -86,15 +71,11 @@ void Contra::handleExtern()
     if (!IsDebug_) TheCG_->insertFunction(std::move(ProtoAST));
   }
   catch (const ContraError & e) {
-    std::cerr << e.what() << std::endl;
+    reportError(e);
     // Skip token for error recovery.
-    if (IsInteractive_) {
-      TheParser_->getNextToken();
-    }
+    if (IsInteractive_) TheParser_->getNextToken();
     // otherwise keep throwing the error
-    else {
-      throw e;
-    }
+    else throw e;
   }
 }
 
@@ -105,23 +86,28 @@ void Contra::handleTopLevelExpression()
 {
   if (IsVerbose_) std::cerr << "Handling top level expression" << std::endl;
 
+  const std::string Name = "__anon_expr";
+
   // Evaluate a top-level expression into an anonymous function.
   try {
     auto FnAST = TheParser_->parseTopLevelExpr();
     //if (IsVerbose_) FnAST->accept(viz);
+    TheAnalyser_->runFuncVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
+    if (dumpIR()) FnIR->print(*IRFileStream_);
+    // get return type
     auto RetType = FnIR->getReturnType();
     auto is_real = RetType->isFloatingPointTy();
     auto is_int = RetType->isIntegerTy();
     auto is_void = RetType->isVoidTy();
-    if (dumpIR()) FnIR->print(*IRFileStream_);
+    // execute it 
     if (!IsDebug_) {
       // JIT the module containing the anonymous expression, keeping a handle so
       // we can free it later.
       auto H = TheCG_->doJIT();
 
       // Search the JIT for the __anon_expr symbol.
-      auto ExprSymbol = TheCG_->findSymbol("__anon_expr");
+      auto ExprSymbol = TheCG_->findSymbol(Name.c_str());
       assert(ExprSymbol && "Function not found");
 
       // Get the symbol's address and cast it to the right type (takes no
@@ -152,18 +138,15 @@ void Contra::handleTopLevelExpression()
       
       // Delete the anonymous expression module from the JIT.
       TheCG_->removeJIT( H );
+      TheAnalyser_->removeFunction(Name);
     }
   }
   catch (const ContraError & e) {
-    std::cerr << e.what() << std::endl;
+    reportError(e);
     // Skip token for error recovery.
-    if (IsInteractive_) {
-      TheParser_->getNextToken();
-    }
+    if (IsInteractive_) TheParser_->getNextToken();
     // otherwise keep throwing the error
-    else {
-      throw e;
-    }
+    else throw e;
   }
 }
 

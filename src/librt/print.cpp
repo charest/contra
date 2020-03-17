@@ -2,6 +2,8 @@
 #include "print.hpp"
 
 #include "contra/config.hpp"
+#include "contra/context.hpp"
+#include "contra/symbols.hpp"
 
 #include <cstdarg>
 
@@ -25,6 +27,7 @@ void print(const char *format, ...)
 
 namespace librt {
 
+using namespace contra;
 using namespace llvm;
 
 //==============================================================================
@@ -46,5 +49,12 @@ Function * Print::install(LLVMContext & TheContext, Module & TheModule)
 }
 
 
+std::shared_ptr<contra::FunctionDef> Print::check()
+{
+  std::vector<VariableType> Args;
+  Args.emplace_back( Context::StrType );
+  return std::make_shared<BuiltInFunction>(Print::Name, 
+      VariableType(Context::VoidType), Args, true);
+}
 
 }

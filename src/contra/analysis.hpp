@@ -56,6 +56,9 @@ public:
     Scope_ = 0;
     e.accept(*this);
   }
+  
+  void removeFunction(const std::string & Name)
+  { FunctionTable_.erase(Name); }
 
 private:
   
@@ -66,6 +69,15 @@ private:
     e.accept(*this);
     return TypeResult_;
   }
+  
+  template<typename T>
+  auto runStmtVisitor(T&e, int Scope)
+  {
+    Scope_ = Scope;
+    DestinationType_ = VariableType{};
+    return runExprVisitor(e);
+  }
+
 
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
@@ -105,8 +117,8 @@ private:
   auto insertVariable(const Identifier & Id, const VariableType & VarType)
   {
     const auto & Name = Id.getName();
-    auto Loc = Id.getLoc();
-    auto S = std::make_shared<VariableDef>( Name, Loc, VarType);
+    const auto & Loc = Id.getLoc();
+    auto S = std::make_shared<VariableDef>(Name, Loc, VarType);
     auto it = VariableTable_.emplace(Name, std::move(S));
     if (!it.second)
       THROW_NAME_ERROR("Variable '" << Name << "' has been"
@@ -114,11 +126,27 @@ private:
     return it.first->second;
   }
 
+  std::shared_ptr<VariableDef> popVariable(const std::string & Name)
+  {
+    auto it = VariableTable_.find(Name);
+    if (it != VariableTable_.end()) {
+      auto res = it->second;
+      VariableTable_.erase(it);
+      return res;
+    }
+    return nullptr;
+  }
+
+
+
+  void clearVariables()
+  { VariableTable_.clear(); }
+
   auto insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
       const VariableType & RetType)
   { 
     const auto & Name = Id.getName();
-    auto Sy = std::make_shared<UserFunction>(Name, Id.getLoc(), ArgTypes, RetType);
+    auto Sy = std::make_shared<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
     auto fit = FunctionTable_.emplace( Name, std::move(Sy) );
     if (!fit.second)
       THROW_NAME_ERROR("Prototype already exists for '" << Name << "'.",
@@ -130,7 +158,7 @@ private:
 
   auto getFunction(const Identifier & Id)
   { return getFunction(Id.getName(), Id.getLoc()); }
-  
+
   
   void checkIsCastable(const VariableType & FromType, const VariableType & ToType,
       const SourceLocation & Loc)
@@ -153,8 +181,7 @@ private:
   auto insertCastOp( std::unique_ptr<NodeAST> FromExpr, const VariableType & ToType )
   {
     auto Loc = FromExpr->getLoc();
-    auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr),
-          Identifier(ToType.getBaseType()->getName(), Loc));
+    auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr), ToType);
     return E;
   }
 

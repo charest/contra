@@ -86,7 +86,8 @@ public:
 
   bool isNumber() const { return (!IsArray_ && Type_->isNumber()); }
 
-  bool isCastableTo(const VariableType &To) const { return false; }
+  bool isCastableTo(const VariableType &To) const
+  { return (isNumber() && To.isNumber()); }
 
   bool isAssignableTo(const VariableType &LeftType) const
   {
@@ -138,26 +139,21 @@ public:
 //==============================================================================
 // The function symbol type
 //==============================================================================
-class FunctionDef{
-
-public:
-
+class FunctionDef {
 
 protected:
 
   std::string Name_;
   VariableTypeList ArgTypes_;
   VariableType ReturnType_;
+  bool IsVarArg_;
 
 public:
 
-  FunctionDef(const std::string & Name, const VariableTypeList & ArgTypes)
-    : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(Context::VoidType)
-  {}
-
-  FunctionDef(const std::string & Name, const VariableTypeList & ArgTypes,
-      const VariableType & ReturnType)
-    : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(ReturnType)
+  FunctionDef(const std::string & Name, const VariableType & ReturnType,
+      const VariableTypeList & ArgTypes, bool IsVarArg = false)
+    : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(ReturnType),
+      IsVarArg_(IsVarArg)
   {}
 
   //virtual ~FunctionTypeDef() = default;
@@ -167,6 +163,7 @@ public:
   const auto & getArgTypes() const { return ArgTypes_; }
   const auto & getArgType(int i) const { return ArgTypes_[i]; }
   auto getNumArgs() const { return ArgTypes_.size(); }
+  auto isVarArg() const { return IsVarArg_; }
 };
 
 
@@ -177,12 +174,9 @@ class BuiltInFunction : public FunctionDef {
 
 public:
 
-  BuiltInFunction(const std::string & Name, const VariableTypeList & ArgTypes)
-    : FunctionDef(Name, ArgTypes)
-  {}
-
-  BuiltInFunction(const std::string & Name, const VariableTypeList & ArgTypes,
-      const VariableType & ReturnType) : FunctionDef(Name, ArgTypes, ReturnType)
+  BuiltInFunction(const std::string & Name, const VariableType & ReturnType, 
+      const VariableTypeList & ArgTypes, bool IsVarArg = false)
+    : FunctionDef(Name, ReturnType, ArgTypes, IsVarArg)
   {}
 
 };
@@ -198,16 +192,10 @@ class UserFunction : public FunctionDef {
 public:
 
   UserFunction(const std::string & Name, const SourceLocation & Loc,
-      const VariableTypeList & ArgTypes)
-    : FunctionDef(Name, ArgTypes), Loc_(Loc)
+      const VariableType & ReturnType, const VariableTypeList & ArgTypes,
+      bool IsVarArg = false)
+    : FunctionDef(Name, ReturnType, ArgTypes, IsVarArg), Loc_(Loc)
   {}
-
-  UserFunction(const std::string & Name, const SourceLocation & Loc,
-      const VariableTypeList & ArgTypes, const VariableType & ReturnType)
-    : FunctionDef(Name, ArgTypes, ReturnType), Loc_(Loc)
-  {}
-
-  //virtual ~FunctionTypeDef() = default;
 };
 
 } // namespace

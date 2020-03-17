@@ -53,12 +53,15 @@ inline auto createBlock( ASTBlockList & list)
 /// ExprAST - Base class for all expression nodes.
 ////////////////////////////////////////////////////////////////////////////////
 class ExprAST : public NodeAST {
+protected:
 
   VariableType Type_;
   
 public:
   
   ExprAST(const SourceLocation & Loc) : NodeAST(Loc) {}
+  ExprAST(const SourceLocation & Loc, VariableType Type) : NodeAST(Loc),
+    Type_(Type) {}
 
   virtual ~ExprAST() = default;
   
@@ -168,6 +171,10 @@ public:
   CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
       Identifier TypeId) : ExprAST(Loc), FromExpr_(std::move(FromExpr)),
       TypeId_(TypeId)
+  {}
+
+  CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
+      VariableType Type) : ExprAST(Loc, Type), FromExpr_(std::move(FromExpr))
   {}
 
   virtual void accept(AstDispatcher& dispatcher) override;
@@ -429,9 +436,11 @@ protected:
   std::vector<VariableType> ArgTypes_;
   VariableType ReturnType_;
 
+  bool IsAnonExpr_ = false;
+
 public:
   
-  PrototypeAST(const Identifier & Id) : NodeAST(Id.getLoc()), Id_(Id)  {}
+  PrototypeAST(const Identifier & Id) : NodeAST(Id.getLoc()), Id_(Id), IsAnonExpr_(true)  {}
 
   PrototypeAST(
     const Identifier & Id,
@@ -453,12 +462,16 @@ public:
 
   bool isUnaryOp() const { return IsOperator_ && ArgIds_.size() == 1; }
   bool isBinaryOp() const { return IsOperator_ && ArgIds_.size() == 2; }
+  bool isAnonExpr() const { return IsAnonExpr_; } 
 
   char getOperatorName() const {
     assert(isUnaryOp() || isBinaryOp());
     auto Name = Id_.getName();
     return Name[Name.size() - 1];
   }
+
+  void setReturnType(const VariableType & ReturnType)
+  { ReturnType_ = ReturnType; }
 
   unsigned getBinaryPrecedence() const { return Precedence_; }
   auto getLoc() const { return Id_.getLoc(); }
@@ -479,10 +492,6 @@ protected:
   std::unique_ptr<NodeAST> ReturnExpr_;
 
 public:
-
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body)
-      : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-        BodyExprs_(std::move(Body)) {}
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
       std::unique_ptr<NodeAST> Return)

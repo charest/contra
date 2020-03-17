@@ -54,9 +54,9 @@ class CodeGen : public AstDispatcher {
   std::unique_ptr<llvm::DIBuilder> DBuilder;
   DebugInfo KSDbgInfo;
 
-  Type* I64Type_;
-  Type* F64Type_;
-  Type* VoidType_;
+  Type* I64Type_ = nullptr;
+  Type* F64Type_ = nullptr;
+  Type* VoidType_ = nullptr;
 
 public:
   

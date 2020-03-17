@@ -11,7 +11,7 @@
 
 namespace contra {
 
-class Contra {
+class Contra : public ErrorDispatcher {
 
   bool IsInteractive_ = false;
   bool IsVerbose_ = false;
@@ -103,6 +103,20 @@ private:
   void handleExtern();  
   void handleTopLevelExpression();
 
+  template<typename T>
+  void reportError(const T&e) const
+  { e.accept(*this); }
+
+  void dispatch(const CodeError & e) const {
+    std::cerr << e.what() << std::endl;
+    std::cerr << std::endl;
+    TheParser_->barf(std::cerr, e.getLoc());
+    std::cerr << std::endl;
+  }
+  
+  void dispatch(const ContraError & e) const {
+    std::cerr << e.what() << std::endl;
+  }
 };
 
 }

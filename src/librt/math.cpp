@@ -38,8 +38,8 @@ std::shared_ptr<contra::FunctionDef> CSqrt::check()
 {
   std::vector<VariableType> Args;
   Args.emplace_back( Context::F64Type );
-  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args,
-      VariableType(Context::F64Type));
+  return std::make_shared<BuiltInFunction>(CSqrt::Name,
+      VariableType(Context::F64Type), Args);
 }
 
 //==============================================================================
@@ -54,8 +54,8 @@ std::shared_ptr<contra::FunctionDef> CAbs::check()
 {
   std::vector<VariableType> Args;
   Args.emplace_back( Context::F64Type );
-  return std::make_shared<BuiltInFunction>(CSqrt::Name, Args,
-      VariableType(Context::F64Type));
+  return std::make_shared<BuiltInFunction>(CSqrt::Name,
+      VariableType(Context::F64Type), Args);
 }
 
 //==============================================================================
@@ -70,8 +70,8 @@ std::shared_ptr<contra::FunctionDef> CMax::check()
 {
   std::vector<VariableType> Args;
   Args.emplace_back( Context::F64Type );
-  return std::make_shared<BuiltInFunction>(CMax::Name, Args,
-      VariableType(Context::F64Type));
+  return std::make_shared<BuiltInFunction>(CMax::Name,
+      VariableType(Context::F64Type), Args);
 }
 
 }

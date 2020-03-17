@@ -10,29 +10,46 @@
 
 namespace contra {
 
+class ContraError;
+class CodeError;
+
+//==============================================================================
+// Abstrct visitor for errors
+//==============================================================================
+class ErrorDispatcher {
+public:
+  virtual ~ErrorDispatcher() = default;
+  virtual void dispatch(const ContraError&) const = 0;
+  virtual void dispatch(const CodeError&) const = 0;
+};
+
 //==============================================================================
 // General contra error
 //==============================================================================
 class ContraError : public std::runtime_error
 {
 public:
-  ContraError() : std::runtime_error( "general contra error" ) {}
-  
+  ContraError() : std::runtime_error( "general contra error" ) {} 
   ContraError(const char *str) : std::runtime_error(str) {}
-
   ContraError(const std::string & str) : std::runtime_error(str) {}
+  virtual ~ContraError() {}
+  virtual void accept(const ErrorDispatcher& dispatcher) const 
+  { dispatcher.dispatch(*this); }
 };
 
 //==============================================================================
 // Base code error
 //==============================================================================
-class CodeError : public std::runtime_error
+class CodeError : public ContraError
 {
   SourceLocation Loc_;
 public:
-  CodeError(const char *str, SourceLocation Loc) : std::runtime_error(str), Loc_(Loc) {}
-  CodeError(const std::string & str, SourceLocation Loc) : std::runtime_error(str), Loc_(Loc) {}
+  CodeError(const char *str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
+  CodeError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
   SourceLocation getLoc() const { return Loc_; }
+  virtual ~CodeError() {}
+  virtual void accept(const ErrorDispatcher& dispatcher) const override
+  { dispatcher.dispatch(*this); }
 };
 
 
@@ -44,6 +61,7 @@ class NameError : public CodeError
 public:
   NameError(const char *str, SourceLocation Loc) : CodeError(str, Loc) {}
   NameError(const std::string & str, SourceLocation Loc) : CodeError(str, Loc) {}
+  virtual ~NameError() {}
 };
 
 //==============================================================================
@@ -54,6 +72,7 @@ class SyntaxError : public CodeError
 public:
   SyntaxError(const char *str, SourceLocation Loc) : CodeError(str, Loc) {}
   SyntaxError(const std::string & str, SourceLocation Loc) : CodeError(str, Loc) {}
+  virtual ~SyntaxError() {}
 };
 
 

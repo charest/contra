@@ -101,7 +101,10 @@ void Analyzer::dispatch(ArrayExprAST& e)
     ValTypes.emplace_back(ValType);
   }
 
-  if (DestinationType_) CommonType = DestinationType_;
+  if (DestinationType_) {
+    CommonType = DestinationType_;
+    CommonType.setArray(false);
+  }
 
   for (int i=0; i<NumVals; ++i) {
     const auto & ValType = ValTypes[i];
@@ -139,17 +142,17 @@ void Analyzer::dispatch(UnaryExprAST& e)
       THROW_NAME_ERROR( "Unary operation '" << OpCode << "' "
           << "not allowed for array expressions.", Loc );
 
-  if (OpType.isNumber())
+  if (!OpType.isNumber())
       THROW_NAME_ERROR( "Unary operators only allowed for scalar numeric "
-          << "expressions.", Loc );
+          << "expressions. Expression is of type '" << OpType << "'.", Loc );
 
 
   switch (OpCode) {
+  default:
+    THROW_NAME_ERROR( "Unknown unary operator '" << OpCode << "'", Loc);
   case tok_sub:
   case tok_add:
     TypeResult_ = OpType;
-  default:
-    THROW_NAME_ERROR( "Unknown unary operator '" << OpCode << "'", Loc);
   };
   
   e.setType(TypeResult_);
@@ -235,16 +238,24 @@ void Analyzer::dispatch(BinaryExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(CallExprAST& e)
 {
-  abort();
   auto FunRes = getFunction(e.Callee_, e.getLoc());
 
   int NumArgs = e.ArgExprs_.size();
-  int FunArgs = FunRes->getNumArgs();
-  if (FunArgs != NumArgs)
-    THROW_NAME_ERROR("Incorrect number of arguments specified for '" << e.Callee_
-        << "', " << NumArgs << " provided but expected " << FunArgs, e.getLoc());
+  int NumFixedArgs = FunRes->getNumArgs();
 
-  for (int i=0; i<NumArgs; ++i) {
+  if (FunRes->isVarArg()) {
+    if (NumArgs < NumFixedArgs)
+      THROW_NAME_ERROR("Variadic function '" << e.Callee_
+          << "', must have at least " << NumFixedArgs << " arguments, but only "
+          << NumArgs << " provided.", e.getLoc());
+  }
+  else {
+    if (NumFixedArgs != NumArgs)
+      THROW_NAME_ERROR("Incorrect number of arguments specified for '" << e.Callee_
+          << "', " << NumArgs << " provided but expected " << NumFixedArgs, e.getLoc());
+  }
+
+  for (int i=0; i<NumFixedArgs; ++i) {
     auto ArgType = runExprVisitor(*e.ArgExprs_[i]);
     auto ParamType = FunRes->getArgType(i);
     if (ArgType != ParamType) {
@@ -288,7 +299,9 @@ void Analyzer::dispatch(ForStmtAST& e)
           StepExpr.getLoc() );
   }
 
-  for ( auto & stmt : e.BodyExprs_ ) runExprVisitor(*stmt);
+  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt, OldScope+1);
+  
+  popVariable(VarId.getName());
 
   Scope_ = OldScope;
   TypeResult_ = VoidType_;
@@ -303,17 +316,16 @@ void Analyzer::dispatch(IfStmtAST& e)
     THROW_NAME_ERROR( "If condition must result in boolean type.", CondExpr.getLoc() );
 
   auto OldScope = Scope_;
-  for ( auto & stmt : e.ThenExpr_ ) { Scope_ = OldScope+1; runExprVisitor(*stmt); }
-  for ( auto & stmt : e.ElseExpr_ ) { Scope_ = OldScope+1; runExprVisitor(*stmt); }
+  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt, OldScope+1);
+  for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt, OldScope+1);
+  
   Scope_ = OldScope;
-
   TypeResult_ = VoidType_;
 }
 
 //==============================================================================
 void Analyzer::dispatch(VarDeclAST& e)
 {
-
   // check if there is a specified type, if there is, get it
   auto TypeId = e.TypeId_;
   VariableType VarType;
@@ -349,12 +361,9 @@ void Analyzer::dispatch(ArrayDeclAST& e)
     dispatch(*VarAST);
   }
 
-  //---------------------------------------------------------------------------
   // Array already on right hand side
   if (TypeResult_.isArray()) {
   }
-
-  //---------------------------------------------------------------------------
   //  on right hand side
   else {
     auto SizeType = runExprVisitor(*e.SizeExpr_);
@@ -408,7 +417,7 @@ void Analyzer::dispatch(FunctionAST& e)
   auto NumArgs = ArgTypes.size();
   
   if (NumArgs != ArgIds.size())
-  THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
+    THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
         << "', does not match definition.  Expected " << ArgIds.size()
         << " but got " << NumArgs, Loc);
 
@@ -417,7 +426,7 @@ void Analyzer::dispatch(FunctionAST& e)
     BinopPrecedence_->operator[](ProtoExpr.getOperatorName()) = ProtoExpr.getBinaryPrecedence();
 
   // Record the function arguments in the NamedValues map.
-  VariableTable_.clear();
+  clearVariables();
   for (unsigned i=0; i<NumArgs; ++i) {
     const auto & Name = ArgIds[i].getName();
     const auto & Loc = ArgIds[i].getLoc();
@@ -429,14 +438,13 @@ void Analyzer::dispatch(FunctionAST& e)
           << ", '" << Name << "' of function '" << FnName << "'", Loc);
   }
 
-  for ( auto & B : e.BodyExprs_ ) {
-    DestinationType_ = VariableType{};
-    runExprVisitor(*B);
-  }
+  for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B, OldScope+1);
   
   if (e.ReturnExpr_) {
-    auto RetType = runExprVisitor(*e.ReturnExpr_);
-    if (RetType != ProtoType->getReturnType() )
+    auto RetType = runStmtVisitor(*e.ReturnExpr_, OldScope+1);
+    if (ProtoExpr.isAnonExpr())
+      ProtoExpr.setReturnType(RetType);
+    else if (RetType != ProtoType->getReturnType())
       THROW_NAME_ERROR("Function return type does not match prototype for '"
           << FnName << "'.  The type '" << RetType << "' cannot be "
           << "converted to the type '" << ProtoType->getReturnType() << "'.",

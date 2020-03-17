@@ -537,23 +537,24 @@ void CodeGen::dispatch(ArrayExprAST &e)
 //==============================================================================
 void CodeGen::dispatch(CastExprAST &e)
 {
-  auto TheBlock = Builder_.GetInsertBlock();
-
   auto FromVal = runExprVisitor(*e.FromExpr_);
   auto FromType = ValueResult_->getType();
 
   auto ToType = getLLVMType(e.getType());
-  
-  if (FromType->isFloatingPointTy() && ToType == F64Type_) {
-    ValueResult_ = CastInst::Create(Instruction::SIToFP, FromVal,
+
+  auto TheBlock = Builder_.GetInsertBlock();
+
+  if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
+    ValueResult_ = CastInst::Create(Instruction::FPToSI, FromVal,
         llvmRealType(TheContext_), "cast", TheBlock);
   }
-  else if (FromType->isIntegerTy() && ToType == I64Type_) {
-    ValueResult_ = CastInst::Create(Instruction::FPToSI, FromVal,
+  else if (FromType->isIntegerTy() && ToType->isFloatingPointTy()) {
+    ValueResult_ = CastInst::Create(Instruction::SIToFP, FromVal,
         llvmIntegerType(TheContext_), "cast", TheBlock);
   }
-
-  ValueResult_ = FromVal;
+  else {
+    ValueResult_ = FromVal;
+  }
 
 }
 
@@ -760,7 +761,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
   //return PN;
   
   // for expr always returns 0.
-  ValueResult_ = Constant::getNullValue(VoidType_);
+  ValueResult_ = UndefValue::get(VoidType_);
 }
 
 //==============================================================================
@@ -873,7 +874,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
   Builder_.SetInsertPoint(AfterBB);
 
   // for expr always returns 0.
-  ValueResult_ = Constant::getNullValue(LLType);
+  ValueResult_ = UndefValue::get(VoidType_);
 }
 
 //==============================================================================
@@ -1005,7 +1006,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
   }
   
   Type* ReturnType = VoidType_;
-  if (e.ReturnType_) getLLVMType(e.ReturnType_);
+  if (e.ReturnType_) ReturnType = getLLVMType(e.ReturnType_);
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
   Function *F = Function::Create(FT, Function::ExternalLinkage, e.Id_.getName(), &getModule());
