@@ -72,6 +72,10 @@ class VariableType {
 public:
 
   VariableType() = default;
+  
+  explicit VariableType(const VariableType & Type, bool IsArray)
+    : Type_(Type.Type_), IsArray_(IsArray)
+  {}
 
   explicit VariableType(std::shared_ptr<TypeDef> Type, bool IsArray = false)
     : Type_(Type), IsArray_(IsArray)
@@ -91,6 +95,7 @@ public:
 
   bool isAssignableTo(const VariableType &LeftType) const
   {
+    if (LeftType == *this) return true;
     if (!LeftType.isArray() && isArray()) return false;
     return isCastableTo(LeftType);
   }

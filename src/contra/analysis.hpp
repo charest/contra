@@ -173,7 +173,7 @@ private:
       const SourceLocation & Loc)
   {
     auto IsAssignable = RightType.isAssignableTo(LeftType);
-    if (IsAssignable)
+    if (!IsAssignable)
       THROW_NAME_ERROR("A variable of type '" << RightType << "' cannot be"
            << " assigned to a variable of type '" << LeftType << "'." , Loc);
   }

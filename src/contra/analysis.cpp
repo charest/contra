@@ -356,21 +356,50 @@ void Analyzer::dispatch(VarDeclAST& e)
 void Analyzer::dispatch(ArrayDeclAST& e)
 {
 
-  { // scope
-    auto VarAST = static_cast<VarDeclAST*>(&e);
-    dispatch(*VarAST);
+  // check if there is a specified type, if there is, get it
+  auto TypeId = e.TypeId_;
+  VariableType VarType;
+  if (TypeId) {
+    VarType = VariableType(getBaseType(TypeId), e.isArray());
+    DestinationType_ = VarType;
+  }
+  
+  auto InitType = runExprVisitor(*e.InitExpr_);
+  if (!VarType) VarType = InitType;
+
+  //----------------------------------------------------------------------------
+  // Array already on right hand side
+  if (InitType.isArray()) {
+  }
+  //----------------------------------------------------------------------------
+  //  scalar on right hand side
+  else {
+  
+    auto ElementType = VariableType(VarType, false);
+    if (ElementType != InitType) {
+      checkIsCastable(InitType, ElementType, e.InitExpr_->getLoc());
+      e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), ElementType);
+    }
+ 
+    if (e.SizeExpr_) {
+      auto SizeType = runExprVisitor(*e.SizeExpr_);
+      if (SizeType != I64Type_)
+        THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
+           e.SizeExpr_->getLoc());
+    }
+
+  }
+  //----------------------------------------------------------------------------
+
+  int NumVars = e.VarIds_.size();
+  for (int i=0; i<NumVars; ++i) {
+    auto VarId = e.VarIds_[i];
+    insertVariable(VarId, VarType);
   }
 
-  // Array already on right hand side
-  if (TypeResult_.isArray()) {
-  }
-  //  on right hand side
-  else {
-    auto SizeType = runExprVisitor(*e.SizeExpr_);
-    if (SizeType != I64Type_)
-      THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
-          e.SizeExpr_->getLoc());
-  }
+  TypeResult_ = VarType;
+  e.setType(TypeResult_);
+
 
 }
 

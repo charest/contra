@@ -546,11 +546,11 @@ void CodeGen::dispatch(CastExprAST &e)
 
   if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
     ValueResult_ = CastInst::Create(Instruction::FPToSI, FromVal,
-        llvmRealType(TheContext_), "cast", TheBlock);
+        llvmIntegerType(TheContext_), "cast", TheBlock);
   }
   else if (FromType->isIntegerTy() && ToType->isFloatingPointTy()) {
     ValueResult_ = CastInst::Create(Instruction::SIToFP, FromVal,
-        llvmIntegerType(TheContext_), "cast", TheBlock);
+        llvmRealType(TheContext_), "cast", TheBlock);
   }
   else {
     ValueResult_ = FromVal;
