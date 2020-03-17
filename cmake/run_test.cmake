@@ -1,6 +1,11 @@
 # some argument checking:
 
 # test_cmd is the command to run with all its arguments
+if( NOT test_name )
+   message( FATAL_ERROR "Variable test_name not defined" )
+endif()
+
+# test_cmd is the command to run with all its arguments
 if( NOT test_cmd )
    message( FATAL_ERROR "Variable test_cmd not defined" )
 endif()
@@ -33,7 +38,9 @@ message(STATUS "Using $ENV{OMP_NUM_THREADS} threads")
 
 # blow away the compare-to-file in case it is already there
 foreach(_file IN LISTS output_test )
-  file(REMOVE ${_file})
+  if (NOT _file STREQUAL "stdout")
+    file(REMOVE ${_file})
+  endif()
 endforeach()
 
 # run the test
@@ -42,15 +49,21 @@ separate_arguments( test_cmd )
 string(REPLACE ";" " " test_cmd_string "${test_cmd}")
 message(STATUS "Executing '${test_cmd_string}'")
 
+set(output_file ${test_name}.txt)
 execute_process(
    COMMAND ${test_cmd}
-   #OUTPUT_FILE log
+   OUTPUT_FILE ${output_file}
+   ERROR_FILE ${output_file}
    RESULT_VARIABLE test_not_successful
 )
 
 if( test_not_successful )
    message( SEND_ERROR "Error running ${test_cmd}" )
 endif()
+
+# dump output
+file(READ ${output_file} output)
+MESSAGE(${output})
 
 # need to fix the spaces in the passed command for some reason
 separate_arguments( compare_cmd ) 
@@ -66,16 +79,35 @@ foreach( _iter RANGE ${_iter_max} )
   list(GET output_test ${_iter} _test )
   MESSAGE( STATUS "Checking file ${_blessed} against ${_test}" )
 
-  string(REPLACE ";" " " test_cmd_string "${compare_cmd} ${_blessed} ${_test}")
-  message(STATUS "Executing '${test_cmd_string}'")
+  if (_test STREQUAL "stdout")
+    set(_test ${output_file})
+  endif()
 
-  execute_process(
-    COMMAND ${compare_cmd} ${_blessed} ${_test}
-    RESULT_VARIABLE test_not_successful
-  )
+  if(DEFINED ENV{BUILD_STANDARDS})
+    set(new_std $ENV{BUILD_STANDARDS})
+  endif()
 
-  if( test_not_successful )
-    message( SEND_ERROR "${_test} does not match ${_blessed}!" )
+  # NEW STANDARDS
+  if(new_std)
+
+    MESSAGE(STATUS "Rebuilding standards.")
+    configure_file(${output_file} ${_blessed} COPYONLY)
+
+  # COMPARE
+  else()
+
+    string(REPLACE ";" " " test_cmd_string "${compare_cmd} ${_blessed} ${_test}")
+    message(STATUS "Executing '${test_cmd_string}'")
+
+    execute_process(
+      COMMAND ${compare_cmd} ${_blessed} ${_test}
+      RESULT_VARIABLE test_not_successful
+    )
+
+    if( test_not_successful )
+      message( SEND_ERROR "${_test} does not match ${_blessed}!" )
+    endif()
+
   endif()
 
 endforeach()

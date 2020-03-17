@@ -1,1 +1,7 @@
-add_test(NAME hello_world COMMAND contra ${CMAKE_CURRENT_SOURCE_DIR}/hello.cta)
+foreach(_test hello)
+  create_test(
+    NAME ${_test}
+    COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta
+    COMPARE stdout
+    STANDARD ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.std)
+endforeach()

@@ -18,6 +18,7 @@ set(CMAKE_CXX_EXTENSIONS off)
 # cmake module path
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake")
 
+set( CONTRA_TEST_TOLERANCE 1e-14 CACHE INTERNAL "")
 set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 
 
@@ -73,5 +74,6 @@ endif()
 #------------------------------------------------------------------------------#
 
 if (BUILD_TESTING)
+  include(test)
   add_subdirectory(examples)
 endif()

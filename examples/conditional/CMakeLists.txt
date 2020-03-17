@@ -1,3 +1,7 @@
-add_test(NAME conditional1 COMMAND contra ${CMAKE_CURRENT_SOURCE_DIR}/if.cta)
-add_test(NAME conditional2 COMMAND contra ${CMAKE_CURRENT_SOURCE_DIR}/ifelse.cta)
-add_test(NAME conditional3 COMMAND contra ${CMAKE_CURRENT_SOURCE_DIR}/ifelseif.cta)
+foreach(_test if ifelse ifelseif)
+  create_test(
+    NAME ${_test}
+    COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta
+    COMPARE stdout
+    STANDARD ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.std)
+endforeach()

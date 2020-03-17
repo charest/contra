@@ -68,6 +68,7 @@ function(create_test)
     add_test( 
       NAME ${args_NAME}
       COMMAND ${CMAKE_COMMAND}
+        "-Dtest_name=${args_NAME}"
         "-Dtest_cmd=${args_COMMAND}"
         -Dcompare_cmd=${TEST_COMMAND}
         "-Doutput_blessed=${args_STANDARD}"
