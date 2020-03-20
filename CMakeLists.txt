@@ -3,6 +3,8 @@
 #------------------------------------------------------------------------------#
 
 cmake_minimum_required(VERSION 3.2)
+cmake_policy(SET CMP0074 NEW)
+include(ExternalProject)
 
 #------------------------------------------------------------------------------#
 # Setup the project
@@ -18,9 +20,13 @@ set(CMAKE_CXX_EXTENSIONS off)
 # cmake module path
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake")
 
+# project variables
 set( CONTRA_TEST_TOLERANCE 1e-14 CACHE INTERNAL "")
 set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 
+#------------------------------------------------------------------------------#
+# configure targets
+#------------------------------------------------------------------------------#
 
 add_library( librt )
 add_executable( contra )
@@ -28,7 +34,7 @@ target_link_libraries(contra PUBLIC librt)
 
 
 #------------------------------------------------------------------------------#
-# configure library
+# LLVM
 #------------------------------------------------------------------------------#
 
 find_package(LLVM REQUIRED)
@@ -43,6 +49,40 @@ target_compile_definitions(contra PUBLIC ${LLVM_DEFINITIONS})
 llvm_map_components_to_libnames(llvm_libs core mcjit native orcjit objcarcopts)
 set( llvm_libs LLVM )
 target_link_libraries(contra PUBLIC ${llvm_libs})
+
+#------------------------------------------------------------------------------#
+# Legion
+#------------------------------------------------------------------------------#
+
+set(LEGION_DIR ${PROJECT_SOURCE_DIR}/legion)
+file(GLOB _legion_contents ${LEGION_DIR}/*)
+if (_legion_contents)
+  ExternalProject_Add(legion
+    SOURCE_DIR  ${LEGION_DIR}
+    INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
+    UPDATE_COMMAND  ""
+    CMAKE_ARGS
+      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+  )
+  set( Legion_ROOT "${CMAKE_INSTALL_PREFIX}" CACHE FORCE "Legion root install directory.")
+endif()
+
+find_package(Legion)
+if (Legion_FOUND)
+  
+  # need pthreads
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  find_package(Threads REQUIRED)
+  # need zlib
+  find_package(ZLIB REQUIRED)
+  # add other necessary libaries for legion
+  list(APPEND Legion_LIBRARIES Threads::Threads ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+  if(UNIX AND NOT APPLE)
+    list(APPEND Legion_LIBRARIES rt)
+  endif()
+  target_include_directories(librt PUBLIC ${Legion_INCLUDE_DIRS})
+  target_link_libraries(librt PUBLIC ${Legion_LIBRARIES})
+endif()
 
 #------------------------------------------------------------------------------#
 # build library

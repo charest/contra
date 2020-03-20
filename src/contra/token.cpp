@@ -35,6 +35,7 @@ void Tokens::setup() {
     { tok_if, "if" },
     { tok_in, "in" },
     { tok_return, "return" },
+    { tok_task, "task" },
     { tok_then, "then" },
     { tok_to, "to" },
     { tok_unary, "unary" },

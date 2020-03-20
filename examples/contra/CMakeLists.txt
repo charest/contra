@@ -1,0 +1,6 @@
+add_subdirectory(hello_world)
+add_subdirectory(functions)
+add_subdirectory(loops)
+add_subdirectory(conditional)
+add_subdirectory(variables)
+add_subdirectory(sample)

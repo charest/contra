@@ -490,13 +490,15 @@ protected:
   std::unique_ptr<PrototypeAST> ProtoExpr_;
   ASTBlock BodyExprs_;
   std::unique_ptr<NodeAST> ReturnExpr_;
+  bool IsTask_ = false;
 
 public:
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
-      std::unique_ptr<NodeAST> Return)
+      std::unique_ptr<NodeAST> Return, bool IsTask)
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-        BodyExprs_(std::move(Body)), ReturnExpr_(std::move(Return))
+        BodyExprs_(std::move(Body)), ReturnExpr_(std::move(Return)),
+        IsTask_(IsTask)
   {}
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<NodeAST> Return)

@@ -4,6 +4,7 @@
 #include "array.hpp"
 #include "debug.hpp"
 #include "dispatcher.hpp"
+#include "tasking.hpp"
 #include "jit.hpp"
 #include "symbols.hpp" 
 
@@ -45,10 +46,7 @@ class CodeGen : public AstDispatcher {
   std::map<std::string, AllocaInst*> VariableTable_;
   std::map<std::string, ArrayType> ArrayTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
-
-  std::map<std::string, AllocaInst *> NamedValues;
-  std::map<std::string, AllocaInst *> NamedArrays;
-  std::map<AllocaInst *, ArrayType> TempArrays;
+  std::set<std::string> TaskTable_;
 
   // debug extras
   std::unique_ptr<llvm::DIBuilder> DBuilder;
@@ -57,6 +55,8 @@ class CodeGen : public AstDispatcher {
   Type* I64Type_ = nullptr;
   Type* F64Type_ = nullptr;
   Type* VoidType_ = nullptr;
+
+  std::unique_ptr<AbstractTasker> Tasker_;
 
 public:
   

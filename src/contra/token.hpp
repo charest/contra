@@ -49,7 +49,7 @@ enum Token {
   tok_function,
   tok_end,
   tok_return,
-  
+  tok_task,
   
   // file seperators
   tok_eof = -1,

@@ -29,7 +29,6 @@ class Analyzer : public AstDispatcher {
   VariableType BoolType_ = VariableType(Context::BoolType);
   VariableType VoidType_ = VariableType(Context::VoidType);
 
-
   VariableType  TypeResult_;
   VariableType  DestinationType_;
 

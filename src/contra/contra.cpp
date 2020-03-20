@@ -174,6 +174,7 @@ void Contra::mainLoop() {
       handleDefinition();
       if (IsInteractive_) std::cerr << "contra> " << std::flush;
       break;
+    case tok_task:
     case tok_function:
       handleFunction();
       if (IsInteractive_) std::cerr << "contra> " << std::flush;

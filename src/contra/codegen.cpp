@@ -2,6 +2,7 @@
 #include "codegen.hpp"
 #include "config.hpp"
 #include "errors.hpp"
+#include "legion.hpp"
 #include "precedence.hpp"
 #include "token.hpp"
 
@@ -23,6 +24,8 @@ namespace contra {
 //==============================================================================
 CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 {
+
+  Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
   I64Type_  = llvmIntegerType(TheContext_);
   F64Type_  = llvmRealType(TheContext_);
@@ -319,16 +322,16 @@ void CodeGen::destroyArrays() {
   F = TheModule_->getFunction("deallocate");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
   
-  for ( auto & i : NamedArrays )
+  for ( auto & i : ArrayTable_ )
   {
     const auto & Name = i.first;
-    auto & Alloca = i.second;
+    auto & Alloca = VariableTable_.at(Name);
     auto AllocaT = Alloca->getType()->getPointerElementType();
     auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
     Builder_.CreateCall(F, Vec, Name+"dealloctmp");
   }
 
-  NamedArrays.clear();
+  ArrayTable_.clear();
 }
 
 
@@ -1027,11 +1030,14 @@ void CodeGen::dispatch(FunctionAST& e)
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
   auto & P = insertFunction( std::move(e.ProtoExpr_) );
-  auto TheFunction = getFunction(P.getName());
+  const auto & Name = P.getName();
+  auto TheFunction = getFunction(Name);
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TheFunction);
   Builder_.SetInsertPoint(BB);
+
+  if (e.IsTask_) TaskTable_.emplace(Name);
 
   // Create a subprogram DIE for this function.
   auto Unit = createFile();
@@ -1099,7 +1105,10 @@ void CodeGen::dispatch(FunctionAST& e)
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
     
-  FunctionResult_ = TheFunction;
+  auto WrapperF = Tasker_->wrap(*TheModule_, Name, TheFunction);
+  WrapperF->print(errs()); errs() << "\n";
+
+  FunctionResult_ = WrapperF;
 }
 
 

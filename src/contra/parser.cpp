@@ -536,7 +536,9 @@ std::unique_ptr<NodeAST> Parser::parseArrayExpr()
 //==============================================================================
 std::unique_ptr<FunctionAST> Parser::parseFunction() {
 
-  getNextToken(); // eat def.
+  bool IsTask = (CurTok_ == tok_task);
+
+  getNextToken(); // eat 'function' / 'task'
   auto Proto = parsePrototype();
 
   ASTBlock Body;
@@ -564,7 +566,8 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
   // eat end
   getNextToken();
   
-  return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body), std::move(Return));
+  return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body),
+      std::move(Return), IsTask);
 }
 
 //==============================================================================
