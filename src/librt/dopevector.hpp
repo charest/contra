@@ -4,7 +4,10 @@
 #include "dllexport.h"
 #include "llvm_forwards.hpp"
 
-#include "contra/config.hpp"
+#include "config.hpp"
+
+#include <memory>
+#include <string>
 
 extern "C" {
 

@@ -46,7 +46,7 @@ class CodeGen : public AstDispatcher {
   std::map<std::string, AllocaInst*> VariableTable_;
   std::map<std::string, ArrayType> ArrayTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
-  std::set<std::string> TaskTable_;
+  std::map<std::string, TaskInfo> TaskTable_;
 
   // debug extras
   std::unique_ptr<llvm::DIBuilder> DBuilder;
@@ -58,6 +58,9 @@ class CodeGen : public AstDispatcher {
 
   std::unique_ptr<AbstractTasker> Tasker_;
 
+  int Argc_ = 0;
+  char ** Argv_ = nullptr;
+
 public:
   
 
@@ -65,17 +68,14 @@ public:
   CodeGen(bool);
 
   // destructor
-  virtual ~CodeGen() = default;
+  virtual ~CodeGen();
 
   // some accessors
   llvm::IRBuilder<> & getBuilder() { return Builder_; }
   llvm::LLVMContext & getContext() { return TheContext_; }
   llvm::Module & getModule() { return *TheModule_; }
 
-  /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
-  /// the function.  This is used for mutable variables etc.
-  AllocaInst *createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName, Type* VarType);
+  static llvm::IRBuilder<> createBuilder(Function *TheFunction);
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
@@ -229,6 +229,18 @@ private:
   }
   
   Function *getFunction(std::string Name); 
+
+  auto insertTask(const std::string & Name, Function* F)
+  {
+    auto Id = static_cast<int>(TaskTable_.size()+1);
+    return TaskTable_.emplace(Name, TaskInfo{Id, F});
+  }
+
+  bool isTask(const std::string & Name) const
+  { return TaskTable_.count(Name); }
+
+  auto getTask(const std::string & Name) const
+  { return TaskTable_.at(Name); }
 };
 
 } // namespace

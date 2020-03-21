@@ -1,7 +1,5 @@
 #include "ast.hpp"
 
-using namespace llvm;
-
 namespace contra {
 
 //==============================================================================

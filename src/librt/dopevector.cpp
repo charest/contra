@@ -1,6 +1,8 @@
 #include "dopevector.hpp"
 #include "llvm_includes.hpp"
 
+#include "llvm_utils.hpp"
+
 #include <cstdlib>
 
 extern "C" {

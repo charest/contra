@@ -1,8 +1,10 @@
 #ifndef RTLIB_MATH_HPP
 #define RTLIB_MATH_HPP
 
-#include "dllexport.h"
 #include "llvm_forwards.hpp"
+
+#include <string>
+#include <memory>
 
 namespace contra {
 class FunctionDef;

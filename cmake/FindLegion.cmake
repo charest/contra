@@ -53,7 +53,8 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Legion
     REQUIRED_VARS
         Legion_INCLUDE_DIRS
-        Legion_LIBRARIES)
+        Legion_LIBRARIES
+        Legion_LIBRARY)
 
 mark_as_advanced(Legion_INCLUDE_DIR Legion_INCLUDE_DIRS)
 

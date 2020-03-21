@@ -4,6 +4,8 @@
 
 #include "librt/librt.hpp"
 
+#include <string>
+
 namespace contra {
 
 //==============================================================================

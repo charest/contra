@@ -1,6 +1,9 @@
 #ifndef CONTRA_JIT_H
 #define CONTRA_JIT_H
 
+#include "config.hpp"
+#include "errors.hpp"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -18,6 +21,7 @@
 #include "llvm/Target/TargetMachine.h"
 
 #include <algorithm>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -61,7 +65,9 @@ public:
           Compiler(*TM)
       ) 
   {
-    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+    std::string ErrMsgStr;
+    if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(LEGION_LIBRARY, &ErrMsgStr) )
+      THROW_CONTRA_ERROR(ErrMsgStr);
   }
 
   auto &getTargetMachine() { return *TM; }

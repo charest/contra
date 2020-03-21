@@ -1,6 +1,8 @@
+#include "config.hpp"
+#include "llvm_utils.hpp"
+
 #include "ast.hpp"
 #include "codegen.hpp"
-#include "config.hpp"
 #include "errors.hpp"
 #include "legion.hpp"
 #include "precedence.hpp"
@@ -24,6 +26,11 @@ namespace contra {
 //==============================================================================
 CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 {
+
+  Argc_ = 1;
+  Argv_ = new char *[Argc_];
+  Argv_[0] = new char[9];
+  strcpy(Argv_[0], "./contra");
 
   Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
@@ -53,6 +60,14 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
       "Kaleidoscope Compiler", 0, "", 0);
   }
 
+}
+  
+//==============================================================================
+// Destructor
+//==============================================================================
+CodeGen::~CodeGen() {
+  for (int i=0; i<Argc_; ++i) delete[] Argv_[i];
+  delete[] Argv_;
 }
 
 //==============================================================================
@@ -123,21 +138,20 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
   return *P;
 }
 
+IRBuilder<> CodeGen::createBuilder(Function *TheFunction) 
+{
+  auto & Block = TheFunction->getEntryBlock();
+  return IRBuilder<>(&Block, Block.begin());
+}
+
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-AllocaInst *CodeGen::createEntryBlockAlloca(Function *TheFunction,
-    const std::string &VarName, Type* VarType)
-{
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
-  return TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
-}
-
 AllocaInst *CodeGen::createVariable(Function *TheFunction,
   const std::string &VarName, Type* VarType)
 {
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  auto TmpB = createBuilder(TheFunction);
   auto Alloca = TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
   VariableTable_[VarName] = Alloca;
   return Alloca;
@@ -152,14 +166,14 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
     Type * ElementType, Value * SizeExpr)
 {
 
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  auto TmpB = createBuilder(TheFunction);
 
   Function *F; 
   F = TheModule_->getFunction("allocate");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
-  auto PtrType = PointerType::get(ElementType, 0);
+  auto PtrType = ElementType->getPointerTo();
   auto TheBlock = Builder_.GetInsertBlock();
   auto Index = ConstantInt::get(TheContext_, APInt(32, 1, true));
   auto Null = Constant::getNullValue(PtrType);
@@ -198,10 +212,10 @@ void CodeGen::initArrays( Function *TheFunction,
     Value * SizeExpr )
 {
 
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  auto TmpB = createBuilder(TheFunction);
   
   auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext_), nullptr, "__i");
-  Value * StartVal = llvmInteger(TheContext_, 0);
+  Value * StartVal = llvmInteger<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
   auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
@@ -221,7 +235,7 @@ void CodeGen::initArrays( Function *TheFunction,
     Builder_.CreateStore(InitVal, GEP);
   }
 
-  auto StepVal = llvmInteger(TheContext_, 1);
+  auto StepVal = llvmInteger<int_t>(TheContext_, 1);
   auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
   Builder_.CreateStore(NextVar, Alloca);
   Builder_.CreateBr(BeforeBB);
@@ -236,8 +250,6 @@ void CodeGen::initArray(
     AllocaInst* Var,
     const std::vector<Value *> InitVals )
 {
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
-  
   auto NumVals = InitVals.size();
   auto TheBlock = Builder_.GetInsertBlock();
 
@@ -246,7 +258,7 @@ void CodeGen::initArray(
   auto Load = Builder_.CreateLoad(LoadType, Var, "ptr"); 
   
   for (std::size_t i=0; i<NumVals; ++i) {
-    auto Index = llvmInteger(TheContext_, i);
+    auto Index = llvmInteger<int_t>(TheContext_, i);
     auto GEP = Builder_.CreateGEP(Load, Index, "offset");
     auto Init = InitVals[i];
     auto InitType = Init->getType();
@@ -276,10 +288,10 @@ void CodeGen::copyArrays(
     Value * NumElements)
 {
 
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+  auto TmpB = createBuilder(TheFunction);
 
   auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext_), nullptr, "__i");
-  Value * StartVal = llvmInteger(TheContext_, 0);
+  Value * StartVal = llvmInteger<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
   auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
@@ -305,7 +317,7 @@ void CodeGen::copyArrays(
     Builder_.CreateStore(SrcVal, TgtGEP);
   }
 
-  auto StepVal = llvmInteger(TheContext_, 1);
+  auto StepVal = llvmInteger<int_t>(TheContext_, 1);
   auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
   Builder_.CreateStore(NextVar, Alloca);
   Builder_.CreateBr(BeforeBB);
@@ -444,7 +456,7 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 void CodeGen::dispatch(ValueExprAST<int_t> & e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmInteger(TheContext_, e.Val_);
+  ValueResult_ = llvmInteger<int_t>(TheContext_, e.Val_);
 }
 
 //==============================================================================
@@ -462,13 +474,7 @@ void CodeGen::dispatch(ValueExprAST<real_t> & e)
 void CodeGen::dispatch(ValueExprAST<std::string>& e)
 {
   emitLocation(&e);
-  auto ConstantArray = ConstantDataArray::getString(TheContext_, e.Val_);
-  auto GVStr = new GlobalVariable(getModule(), ConstantArray->getType(), true,
-      GlobalValue::InternalLinkage, ConstantArray);
-  Constant* zero = Constant::getNullValue(IntegerType::getInt32Ty(TheContext_));
-  Constant* strVal = ConstantExpr::getGetElementPtr(
-      IntegerType::getInt8Ty(TheContext_), GVStr, zero, true);
-  ValueResult_ = strVal;
+  ValueResult_ = llvmString(TheContext_, getModule(), e.Val_);
 }
  
 //==============================================================================
@@ -508,7 +514,7 @@ void CodeGen::dispatch(ArrayExprAST &e)
   
   // the llvm variable type
   auto VarType = getLLVMType(e.getType());
-  auto VarPointerType = PointerType::get(VarType, 0);
+  auto VarPointerType = VarType->getPointerTo();
 
   std::vector<Value*> InitVals;
   InitVals.reserve(e.ValExprs_.size());
@@ -520,7 +526,7 @@ void CodeGen::dispatch(ArrayExprAST &e)
     SizeExpr = runExprVisitor(*e.SizeExpr_);
   }
   else {
-    SizeExpr = llvmInteger(TheContext_, e.ValExprs_.size());
+    SizeExpr = llvmInteger<int_t>(TheContext_, e.ValExprs_.size());
   }
 
   auto Array = createArray(TheFunction, "__tmp", VarType, SizeExpr );
@@ -688,14 +694,31 @@ void CodeGen::dispatch(CallExprAST &e) {
   auto CalleeF = getFunction(e.Callee_);
   //auto FunType = CalleeF->getFunctionType();
   //auto NumFixedArgs = FunType->getNumParams();
+  
+  auto IsTask = isTask(e.Callee_);
 
-  std::vector<Value *> ArgsV;
-  for (unsigned i = 0; i<e.ArgExprs_.size(); ++i) {
-    auto A = runExprVisitor(*e.ArgExprs_[i]);
-    ArgsV.push_back(A);
+  if (IsTask) {
+    auto TaskI = getTask(e.Callee_);
+    //if (!Tasker_.isStarted()) {
+      Tasker_->preregister(*TheModule_, e.Callee_, TaskI);
+      //Tasker_->set_top(*TheModule_, TaskI.Id);
+      Tasker_->start(*TheModule_, Argc_, Argv_);
+    //}
+    //else {
+    //  Tasker_->register(*TheModule_, Name, TaskId);
+    //}
+    ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+    TheModule_->print(errs(), nullptr);
+  }
+  else {
+    std::vector<Value *> ArgsV;
+    for (unsigned i = 0; i<e.ArgExprs_.size(); ++i) {
+      auto A = runExprVisitor(*e.ArgExprs_[i]);
+      ArgsV.push_back(A);
+    }
+    ValueResult_ = Builder_.CreateCall(CalleeF, ArgsV, "calltmp");
   }
 
-  ValueResult_ = Builder_.CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
 //==============================================================================
@@ -824,7 +847,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
  
   if (e.Loop_ == ForStmtAST::LoopType::Until) {
-    Value *One = llvmInteger(TheContext_, 1);
+    Value *One = llvmInteger<int_t>(TheContext_, 1);
     EndCond = Builder_.CreateSub(EndCond, One, "loopsub");
   }
 
@@ -859,7 +882,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
       THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
     // If not specified, use 1.0.
-    StepVal = llvmInteger(TheContext_, 1);
+    StepVal = llvmInteger<int_t>(TheContext_, 1);
   }
 
 
@@ -924,7 +947,7 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
   
   // the llvm variable type
   auto VarType = getLLVMType(e.getType());
-  auto VarPointerType = PointerType::get(VarType, 0);
+  auto VarPointerType = VarType->getPointerTo();
     
   int NumVars = e.VarIds_.size();
 
@@ -970,7 +993,7 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
       SizeExpr = runExprVisitor(*e.SizeExpr_);
     // otherwise scalar
     else
-      SizeExpr = llvmInteger(TheContext_, 1);
+      SizeExpr = llvmInteger<int_t>(TheContext_, 1);
  
     // Register all variables and emit their initializer.
     std::vector<AllocaInst*> ArrayAllocas;
@@ -1004,7 +1027,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
 
   for (unsigned i=0; i<NumArgs; ++i) {
     auto VarType = getLLVMType(e.ArgTypeIds_[i]);
-    if (e.ArgIsArray_[i]) VarType = PointerType::get(VarType, 0);
+    if (e.ArgIsArray_[i]) VarType = VarType->getPointerTo();
     ArgTypes.emplace_back(VarType);
   }
   
@@ -1037,8 +1060,6 @@ void CodeGen::dispatch(FunctionAST& e)
   BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TheFunction);
   Builder_.SetInsertPoint(BB);
 
-  if (e.IsTask_) TaskTable_.emplace(Name);
-
   // Create a subprogram DIE for this function.
   auto Unit = createFile();
   unsigned LineNo = P.getLine();
@@ -1067,7 +1088,7 @@ void CodeGen::dispatch(FunctionAST& e)
     auto ArgType = P.ArgTypes_[ArgIdx];
     // the llvm variable type
     auto LLType = getLLVMType(ArgType);
-    if (ArgType.isArray()) LLType = PointerType::get(LLType, 0);
+    if (ArgType.isArray()) LLType = LLType->getPointerTo();
 
     // Create an alloca for this variable.
     AllocaInst *Alloca = createVariable(TheFunction, Arg.getName(), LLType);
@@ -1087,28 +1108,31 @@ void CodeGen::dispatch(FunctionAST& e)
     runExprVisitor(*stmt);
   }
 
+  // Finish off the function.
+  Value* RetVal = nullptr;
+  if ( e.ReturnExpr_ ) RetVal = runExprVisitor(*e.ReturnExpr_);
+  
   // garbage collection
   destroyArrays();
-    
+  
   // Finish off the function.
-  if ( e.ReturnExpr_ )  {
-    auto RetVal = runExprVisitor(*e.ReturnExpr_);
-    if (RetVal->getType()->isVoidTy() )
-      Builder_.CreateRetVoid();
-    else
-      Builder_.CreateRet(RetVal);
-  }
-  else {  
+  if (RetVal && !RetVal->getType()->isVoidTy() )
+    Builder_.CreateRet(RetVal);
+  else
     Builder_.CreateRetVoid();
-  }
-
+  
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
-    
-  auto WrapperF = Tasker_->wrap(*TheModule_, Name, TheFunction);
-  WrapperF->print(errs()); errs() << "\n";
+   
+  if (e.IsTask_) {
+    auto WrapperF = Tasker_->wrap(*TheModule_, Name, TheFunction);
+    insertTask(Name, WrapperF);
+    FunctionResult_ = WrapperF;
+  }
+  else {
+    FunctionResult_ = TheFunction;
+  }
 
-  FunctionResult_ = WrapperF;
 }
 
 

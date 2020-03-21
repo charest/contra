@@ -19,6 +19,7 @@ set(CMAKE_CXX_EXTENSIONS off)
 
 # cmake module path
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake")
+include(BuildType)
 
 # project variables
 set( CONTRA_TEST_TOLERANCE 1e-14 CACHE INTERNAL "")
@@ -63,6 +64,7 @@ if (_legion_contents)
     UPDATE_COMMAND  ""
     CMAKE_ARGS
       -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+      -DBUILD_SHARED_LIBS=True
   )
   set( Legion_ROOT "${CMAKE_INSTALL_PREFIX}" CACHE FORCE "Legion root install directory.")
 endif()
@@ -80,8 +82,8 @@ if (Legion_FOUND)
   if(UNIX AND NOT APPLE)
     list(APPEND Legion_LIBRARIES rt)
   endif()
-  target_include_directories(librt PUBLIC ${Legion_INCLUDE_DIRS})
-  target_link_libraries(librt PUBLIC ${Legion_LIBRARIES})
+  target_include_directories(contra PUBLIC ${Legion_INCLUDE_DIRS})
+  target_link_libraries(contra PUBLIC ${Legion_LIBRARIES})
 endif()
 
 #------------------------------------------------------------------------------#
@@ -89,8 +91,10 @@ endif()
 #------------------------------------------------------------------------------#
 
 target_include_directories(librt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-add_subdirectory(src/librt)
-add_subdirectory(src/contra)
+target_include_directories(librt PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
+target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(contra PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
+add_subdirectory(src)
 
 #------------------------------------------------------------------------------#
 # Enable Regression Tests

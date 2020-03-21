@@ -4,6 +4,9 @@
 #include "dllexport.h"
 #include "llvm_forwards.hpp"
 
+#include <string>
+#include <memory>
+
 extern "C" {
 
 /// generic c print statement

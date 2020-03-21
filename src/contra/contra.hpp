@@ -74,7 +74,7 @@ public:
   void setInteractive(bool IsInteractive=true)
   { IsInteractive_ = IsInteractive; }
   
-  bool doCompile() const { return !OutputFileName_.empty(); }
+  bool isCompiled() const { return !OutputFileName_.empty(); }
   void setCompile(const std::string & OutputFileName)
   { OutputFileName_ = OutputFileName; }
 

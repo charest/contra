@@ -3,6 +3,8 @@
 
 #include "config.hpp"
 
+#include <string>
+
 namespace contra {
 
 template<typename T> class ValueExprAST;

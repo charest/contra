@@ -15,6 +15,12 @@ public:
   virtual llvm::Function* wrap(llvm::Module &, const std::string &,
       llvm::Function*) const override;
   
+  virtual void preregister(llvm::Module &, const std::string &, const TaskInfo &) const override;
+  
+  virtual void set_top(llvm::Module &, int) const override;
+  
+  virtual llvm::Value* start(llvm::Module &, int, char **) const override;
+  
   virtual ~LegionTasker() = default;
 };
 

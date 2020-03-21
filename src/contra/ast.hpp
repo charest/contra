@@ -8,6 +8,7 @@
 #include "sourceloc.hpp"
 #include "symbols.hpp"
 
+#include <cassert>
 #include <iostream>
 #include <list>
 #include <memory>
