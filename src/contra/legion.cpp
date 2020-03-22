@@ -19,7 +19,7 @@ using namespace llvm;
 Type * createOpaqueType(const std::string & Name, LLVMContext & TheContext)
 {
   auto OpaqueType = StructType::create( TheContext, Name );
-  auto VoidPointerType = llvmVoidPointerType(TheContext);
+  auto VoidPointerType = llvmType<void*>(TheContext);
 
   std::vector<Type*> members{ VoidPointerType }; 
   OpaqueType->setBody( members );
@@ -47,10 +47,10 @@ Type * createTaskConfigOptionsType(const std::string & Name, LLVMContext & TheCo
 Function* LegionTasker::wrap(Module &TheModule, const std::string & Name,
     Function* TaskF) const
 {
-  auto VoidPtrType = llvmVoidPointerType(TheContext_);
+  auto VoidPtrType = llvmType<void*>(TheContext_);
   auto VoidType = Type::getVoidTy(TheContext_);
-  auto SizeType = llvmIntegerType<std::size_t>(TheContext_);
-  auto RealmIdType = llvmIntegerType<realm_id_t>(TheContext_);
+  auto SizeType = llvmType<std::size_t>(TheContext_);
+  auto RealmIdType = llvmType<realm_id_t>(TheContext_);
 
   //----------------------------------------------------------------------------
   // Create task wrapper
@@ -120,7 +120,7 @@ Function* LegionTasker::wrap(Module &TheModule, const std::string & Name,
   auto NullV = Constant::getNullValue(OpaquePtrType);
   Builder_.CreateStore(NullV, RegionsAlloca);
 
-  auto NumType = llvmIntegerType<std::uint32_t>(TheContext_); 
+  auto NumType = llvmType<std::uint32_t>(TheContext_); 
   auto NumRegionsAlloca = TmpB.CreateAlloca(NumType, nullptr, "num_regions");
   auto ZeroV = ConstantInt::get(TheContext_, APInt(32, 0 /* len for now */, false));  
   Builder_.CreateStore(ZeroV, NumRegionsAlloca);
@@ -158,7 +158,7 @@ Function* LegionTasker::wrap(Module &TheModule, const std::string & Name,
   auto ContextV = Builder_.CreateLoad(OpaqueType, ContextAlloca, "ctx");
 
   auto RetvalV = Constant::getNullValue(VoidPtrType);
-  auto RetsizeV = llvmInteger<std::size_t>(TheContext_, 0);
+  auto RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
 
   // args
   std::vector<Value*> PostambleArgsV = { RuntimeV, ContextV, RetvalV, RetsizeV };
@@ -207,8 +207,8 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
   //----------------------------------------------------------------------------
   // add constraint
   //
-  auto ProcIdT = llvmIntegerType<legion_processor_kind_t>(TheContext_);
-  auto ProcIdV = llvmInteger<legion_processor_kind_t>(TheContext_, LOC_PROC);  
+  auto ProcIdT = llvmType<legion_processor_kind_t>(TheContext_);
+  auto ProcIdV = llvmValue<legion_processor_kind_t>(TheContext_, LOC_PROC);  
   
   std::vector<Type*> AddExecArgTs = {OpaqueT, ProcIdT};
   auto AddExecT = FunctionType::get(OpaqueT, AddExecArgTs, false);
@@ -240,10 +240,10 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
   //----------------------------------------------------------------------------
   // registration
   
-  auto VoidPtrT = llvmVoidPointerType(TheContext_);
-  auto TaskIdT = llvmIntegerType<legion_task_id_t>(TheContext_);
-  auto TaskIdVariantT = llvmIntegerType<legion_variant_id_t>(TheContext_);
-  auto SizeT = llvmIntegerType<std::size_t>(TheContext_);
+  auto VoidPtrT = llvmType<void*>(TheContext_);
+  auto TaskIdT = llvmType<legion_task_id_t>(TheContext_);
+  auto TaskIdVariantT = llvmType<legion_variant_id_t>(TheContext_);
+  auto SizeT = llvmType<std::size_t>(TheContext_);
   auto FunPtrT = Task.Func->getFunctionType()->getPointerTo();
   
   std::vector<Type*> PreArgTs = {TaskIdT, TaskIdVariantT, VoidPtrT,
@@ -254,8 +254,8 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
   auto PreF = Function::Create(PreT, Function::ExternalLinkage,
       "legion_runtime_preregister_task_variant_fnptr", &TheModule);
 
-  Value* TaskIdV = llvmInteger<legion_task_id_t>(TheContext_, Task.Id);
-  auto TaskIdVariantV = llvmInteger<legion_variant_id_t>(TheContext_, AUTO_GENERATE_ID);
+  Value* TaskIdV = llvmValue<legion_task_id_t>(TheContext_, Task.Id);
+  auto TaskIdVariantV = llvmValue<legion_variant_id_t>(TheContext_, AUTO_GENERATE_ID);
   auto TaskNameV = llvmString(TheContext_, TheModule, Name + " task");
   auto VariantNameV = llvmString(TheContext_, TheModule, Name + " variant");
 
@@ -266,12 +266,12 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
 
   auto TheBlock = Builder_.GetInsertBlock();
   auto TaskInt = reinterpret_cast<intptr_t>(Task.Func);
-  auto TaskIntV = llvmInteger<intptr_t>(TheContext_, TaskInt);
+  auto TaskIntV = llvmValue<intptr_t>(TheContext_, TaskInt);
   auto TaskPtr = CastInst::Create(Instruction::IntToPtr, TaskIntV, FunPtrT,
       "fptr", TheBlock);
 
   auto UserDataV = Constant::getNullValue(VoidPtrT);
-  auto UserLenV = llvmInteger<std::size_t>(TheContext_, 0);
+  auto UserLenV = llvmValue<std::size_t>(TheContext_, 0);
 
   std::vector<Value*> PreArgVs = { TaskIdV, TaskIdVariantV, TaskNameV,
     VariantNameV, ExecV, LayoutV, OptionsV, TaskPtr, UserDataV, UserLenV };
@@ -287,13 +287,13 @@ void LegionTasker::set_top(llvm::Module &TheModule, int TaskId ) const
 {
 
   auto VoidT = Type::getVoidTy(TheContext_);
-  auto TaskIdT = llvmIntegerType<legion_task_id_t>(TheContext_);
+  auto TaskIdT = llvmType<legion_task_id_t>(TheContext_);
   std::vector<Type*> SetArgTs = { TaskIdT };
   auto SetT = FunctionType::get(VoidT, SetArgTs, false);
   auto SetF = Function::Create(SetT, Function::ExternalLinkage,
       "legion_runtime_set_top_level_task_id", &TheModule);
 
-  auto TaskIdV = llvmInteger<legion_task_id_t>(TheContext_, TaskId);
+  auto TaskIdV = llvmValue<legion_task_id_t>(TheContext_, TaskId);
   std::vector<Value*> SetArgVs = { TaskIdV };
   Builder_.CreateCall(SetF, SetArgVs, "set_top");
 }
@@ -303,8 +303,8 @@ void LegionTasker::set_top(llvm::Module &TheModule, int TaskId ) const
 //==============================================================================
 llvm::Value* LegionTasker::start(llvm::Module &TheModule, int Argc, char ** Argv) const
 {
-  auto VoidPtrArrayT = llvmVoidPointerType(TheContext_)->getPointerTo();
-  auto IntT = llvmIntegerType<int>(TheContext_);
+  auto VoidPtrArrayT = llvmType<void*>(TheContext_)->getPointerTo();
+  auto IntT = llvmType<int>(TheContext_);
   auto BoolT = llvmType<bool>(TheContext_);
 
   std::vector<Type*> StartArgTs = { IntT, VoidPtrArrayT, BoolT };
@@ -312,7 +312,7 @@ llvm::Value* LegionTasker::start(llvm::Module &TheModule, int Argc, char ** Argv
   auto StartF = Function::Create(StartT, Function::InternalLinkage,
       "legion_runtime_start", &TheModule);
 
-  auto ArgcV = llvmInteger<int>(TheContext_, Argc);
+  auto ArgcV = llvmValue<int_t>(TheContext_, Argc);
   auto ArgvV = Constant::getNullValue(VoidPtrArrayT);
   auto BackV = llvmValue<bool>(TheContext_, false);
 

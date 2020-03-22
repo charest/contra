@@ -41,7 +41,7 @@ Function * Print::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto PrintType = FunctionType::get(
       Type::getVoidTy(TheContext),
-      llvmVoidPointerType(TheContext),
+      llvmType<void*>(TheContext),
       true /* var args */ );
 
   //auto PrintFun = TheModule.getOrInsertFunction("print", PrintType);

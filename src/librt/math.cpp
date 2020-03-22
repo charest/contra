@@ -19,8 +19,8 @@ Function *installDoubleFun(LLVMContext & TheContext, Module & TheModule,
     const std::string & name )
 {
   auto FunType = FunctionType::get(
-      llvmRealType(TheContext),
-      llvmRealType(TheContext) );
+      llvmType<real_t>(TheContext),
+      llvmType<real_t>(TheContext) );
 
   auto Fun = Function::Create(FunType, Function::ExternalLinkage,
       name, TheModule);

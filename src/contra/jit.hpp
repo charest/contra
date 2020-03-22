@@ -66,6 +66,7 @@ public:
       ) 
   {
     std::string ErrMsgStr;
+    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr); 
     if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(LEGION_LIBRARY, &ErrMsgStr) )
       THROW_CONTRA_ERROR(ErrMsgStr);
   }

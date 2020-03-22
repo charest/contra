@@ -45,8 +45,8 @@ using namespace llvm;
 Type * createDopeVectorType(LLVMContext & TheContext)
 {
   auto DopeVectorType = StructType::create( TheContext, "dopevector_t" );
-  auto VoidPointerType = llvmVoidPointerType(TheContext);
-  auto IntType = llvmIntegerType(TheContext);
+  auto VoidPointerType = llvmType<void*>(TheContext);
+  auto IntType = llvmType<int_t>(TheContext);
 
   std::vector<Type*> members{ VoidPointerType, IntType}; 
   DopeVectorType->setBody( members );
@@ -62,7 +62,7 @@ const std::string Allocate::Name = "allocate";
 Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto DopeVectorType = createDopeVectorType(TheContext);
-  auto IntType = llvmIntegerType(TheContext);
+  auto IntType = llvmType<int_t>(TheContext);
 
   std::vector<Type*> Args = {IntType};
   auto AllocateType = FunctionType::get( DopeVectorType, Args, false );

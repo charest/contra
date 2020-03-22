@@ -34,8 +34,8 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 
   Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
-  I64Type_  = llvmIntegerType(TheContext_);
-  F64Type_  = llvmRealType(TheContext_);
+  I64Type_  = llvmType<int_t>(TheContext_);
+  F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
 
   TypeTable_.emplace( Context::I64Type->getName(),  I64Type_);
@@ -179,7 +179,7 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
   auto Null = Constant::getNullValue(PtrType);
   auto SizeGEP = Builder_.CreateGEP(ElementType, Null, Index, "size");
   auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
-          llvmIntegerType(TheContext_), "sizei", TheBlock);
+          llvmType<int_t>(TheContext_), "sizei", TheBlock);
 
   auto TotalSize = Builder_.CreateMul(SizeExpr, DataSize, "multmp");
 
@@ -214,8 +214,8 @@ void CodeGen::initArrays( Function *TheFunction,
 
   auto TmpB = createBuilder(TheFunction);
   
-  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext_), nullptr, "__i");
-  Value * StartVal = llvmInteger<int_t>(TheContext_, 0);
+  auto Alloca = TmpB.CreateAlloca(llvmType<int_t>(TheContext_), nullptr, "__i");
+  Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
   auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
@@ -223,7 +223,7 @@ void CodeGen::initArrays( Function *TheFunction,
   auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder_.CreateLoad(llvmIntegerType(TheContext_), Alloca);
+  auto CurVar = Builder_.CreateLoad(llvmType<int_t>(TheContext_), Alloca);
   auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeExpr, "initcond");
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
@@ -235,7 +235,7 @@ void CodeGen::initArrays( Function *TheFunction,
     Builder_.CreateStore(InitVal, GEP);
   }
 
-  auto StepVal = llvmInteger<int_t>(TheContext_, 1);
+  auto StepVal = llvmValue<int_t>(TheContext_, 1);
   auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
   Builder_.CreateStore(NextVar, Alloca);
   Builder_.CreateBr(BeforeBB);
@@ -258,18 +258,18 @@ void CodeGen::initArray(
   auto Load = Builder_.CreateLoad(LoadType, Var, "ptr"); 
   
   for (std::size_t i=0; i<NumVals; ++i) {
-    auto Index = llvmInteger<int_t>(TheContext_, i);
+    auto Index = llvmValue<int_t>(TheContext_, i);
     auto GEP = Builder_.CreateGEP(Load, Index, "offset");
     auto Init = InitVals[i];
     auto InitType = Init->getType();
     if ( InitType->isFloatingPointTy() && ValType->isIntegerTy() ) {
       auto Cast = CastInst::Create(Instruction::FPToSI, Init,
-          llvmIntegerType(TheContext_), "cast", TheBlock);
+          llvmType<int_t>(TheContext_), "cast", TheBlock);
       Init = Cast;
     }
     else if ( InitType->isIntegerTy() && ValType->isFloatingPointTy() ) {
       auto Cast = CastInst::Create(Instruction::SIToFP, Init,
-          llvmRealType(TheContext_), "cast", TheBlock);
+          llvmType<real_t>(TheContext_), "cast", TheBlock);
       Init = Cast;
     }
     else if (InitType!=ValType)
@@ -290,8 +290,8 @@ void CodeGen::copyArrays(
 
   auto TmpB = createBuilder(TheFunction);
 
-  auto Alloca = TmpB.CreateAlloca(llvmIntegerType(TheContext_), nullptr, "__i");
-  Value * StartVal = llvmInteger<int_t>(TheContext_, 0);
+  auto Alloca = TmpB.CreateAlloca(llvmType<int_t>(TheContext_), nullptr, "__i");
+  Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
   auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
@@ -299,7 +299,7 @@ void CodeGen::copyArrays(
   auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder_.CreateLoad(llvmIntegerType(TheContext_), Alloca);
+  auto CurVar = Builder_.CreateLoad(llvmType<int_t>(TheContext_), Alloca);
   auto EndCond = Builder_.CreateICmpSLT(CurVar, NumElements, "initcond");
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
@@ -317,7 +317,7 @@ void CodeGen::copyArrays(
     Builder_.CreateStore(SrcVal, TgtGEP);
   }
 
-  auto StepVal = llvmInteger<int_t>(TheContext_, 1);
+  auto StepVal = llvmValue<int_t>(TheContext_, 1);
   auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
   Builder_.CreateStore(NextVar, Alloca);
   Builder_.CreateBr(BeforeBB);
@@ -456,7 +456,7 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 void CodeGen::dispatch(ValueExprAST<int_t> & e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmInteger<int_t>(TheContext_, e.Val_);
+  ValueResult_ = llvmValue<int_t>(TheContext_, e.Val_);
 }
 
 //==============================================================================
@@ -465,7 +465,7 @@ void CodeGen::dispatch(ValueExprAST<int_t> & e)
 void CodeGen::dispatch(ValueExprAST<real_t> & e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmReal(TheContext_, e.Val_);
+  ValueResult_ = llvmValue(TheContext_, e.Val_);
 }
 
 //==============================================================================
@@ -526,7 +526,7 @@ void CodeGen::dispatch(ArrayExprAST &e)
     SizeExpr = runExprVisitor(*e.SizeExpr_);
   }
   else {
-    SizeExpr = llvmInteger<int_t>(TheContext_, e.ValExprs_.size());
+    SizeExpr = llvmValue<int_t>(TheContext_, e.ValExprs_.size());
   }
 
   auto Array = createArray(TheFunction, "__tmp", VarType, SizeExpr );
@@ -555,11 +555,11 @@ void CodeGen::dispatch(CastExprAST &e)
 
   if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
     ValueResult_ = CastInst::Create(Instruction::FPToSI, FromVal,
-        llvmIntegerType(TheContext_), "cast", TheBlock);
+        llvmType<int_t>(TheContext_), "cast", TheBlock);
   }
   else if (FromType->isIntegerTy() && ToType->isFloatingPointTy()) {
     ValueResult_ = CastInst::Create(Instruction::SIToFP, FromVal,
-        llvmRealType(TheContext_), "cast", TheBlock);
+        llvmType<real_t>(TheContext_), "cast", TheBlock);
   }
   else {
     ValueResult_ = FromVal;
@@ -814,7 +814,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   // Create an alloca for the variable in the entry block.
-  auto LLType = llvmIntegerType(TheContext_);
+  auto LLType = llvmType<int_t>(TheContext_);
   AllocaInst *Alloca = createVariable(TheFunction, e.VarId_.getName(), LLType);
   
   emitLocation(&e);
@@ -847,7 +847,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
  
   if (e.Loop_ == ForStmtAST::LoopType::Until) {
-    Value *One = llvmInteger<int_t>(TheContext_, 1);
+    Value *One = llvmValue<int_t>(TheContext_, 1);
     EndCond = Builder_.CreateSub(EndCond, One, "loopsub");
   }
 
@@ -882,7 +882,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
       THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
     // If not specified, use 1.0.
-    StepVal = llvmInteger<int_t>(TheContext_, 1);
+    StepVal = llvmValue<int_t>(TheContext_, 1);
   }
 
 
@@ -993,7 +993,7 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
       SizeExpr = runExprVisitor(*e.SizeExpr_);
     // otherwise scalar
     else
-      SizeExpr = llvmInteger<int_t>(TheContext_, 1);
+      SizeExpr = llvmValue<int_t>(TheContext_, 1);
  
     // Register all variables and emit their initializer.
     std::vector<AllocaInst*> ArrayAllocas;
