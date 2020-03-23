@@ -12,10 +12,19 @@
 namespace {
 
   //============================================================================
-  
+  // Helper structs to convert between LLVM and our types
+
   template<typename T, typename Enable = void>
   struct LlvmType;
   
+  template<typename T>
+  struct LlvmType<
+    T, typename std::enable_if_t<std::is_same<T,void>::value> >
+  {
+    static llvm::Type* getType(llvm::LLVMContext & TheContext)
+    { return llvm::Type::getVoidTy(TheContext); }
+  };
+
   template<typename T>
   struct LlvmType<
     T, typename std::enable_if_t<std::is_same<T,void*>::value> >
@@ -25,20 +34,8 @@ namespace {
   };
 
   template<typename T>
-  struct LlvmType<
-    T, typename std::enable_if_t<std::is_same<T,bool>::value> >
-  {
-    static llvm::Type* getType(llvm::LLVMContext & TheContext)
-    {return llvm::Type::getInt1Ty(TheContext); }
-
-    static llvm::Value* getValue(llvm::LLVMContext & TheContext, T Val)
-    { return llvm::ConstantInt::get(TheContext, llvm::APInt(1, Val)); }
-  };
-
-  template<typename T>
   struct LlvmType< T,
-    typename std::enable_if_t<(std::is_integral<T>::value || std::is_enum<T>::value) 
-      && !std::is_same<T,bool>::value> >
+    typename std::enable_if_t<(std::is_integral<T>::value || std::is_enum<T>::value)> >
   {
     static llvm::Type* getType(llvm::LLVMContext & TheContext)
     {
@@ -82,17 +79,27 @@ namespace {
     static llvm::Value* getValue(llvm::LLVMContext & TheContext, T Val)
     { return llvm::ConstantFP::get(TheContext, llvm::APFloat(Val)); }
   };
+  
+  //============================================================================
+  // Utility functions to get LLVM types and values
 
   template<typename T>
-  llvm::Type* llvmType( llvm::LLVMContext & TheContext )
+  auto llvmType( llvm::LLVMContext & TheContext )
   { return LlvmType<T>::getType(TheContext); }
   
   template<typename T>
-  llvm::Value* llvmValue( llvm::LLVMContext & TheContext, T Val )
+  auto llvmValue( llvm::LLVMContext & TheContext, T Val )
   { return LlvmType<T>::getValue(TheContext, Val); }
+
+  auto llvmTypes(const std::vector<llvm::Value*> & Vals)
+  {
+    std::vector<llvm::Type*> Types;
+    Types.reserve(Vals.size());
+    for (const auto & V : Vals) Types.emplace_back(V->getType());
+    return Types;
+  }
   
-  //============================================================================
-  
+  //============================================================================  
   
   inline llvm::Value* llvmString(llvm::LLVMContext & TheContext,
       llvm::Module &TheModule, const std::string & Str)

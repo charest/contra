@@ -18,12 +18,17 @@ void Contra::handleFunction()
 
   try {
     auto FnAST = TheParser_->parseFunction();
+    auto IsTask = FnAST->isTask();
+    auto Name = FnAST->getName();
     if (dumpDot()) TheViz_->runVisitor(*FnAST);
     TheAnalyser_->runFuncVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);
     if (IsOptimized_) TheCG_->optimize(FnIR);
-    if (!isCompiled()) TheCG_->doJIT();
+    if (!isCompiled()) {
+      auto H = TheCG_->doJIT();
+      if (IsTask) TheCG_->updateTask(Name);
+    }
   }
   catch (const ContraError & e) {
     reportError(e);

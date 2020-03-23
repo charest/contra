@@ -232,8 +232,9 @@ private:
 
   auto insertTask(const std::string & Name, Function* F)
   {
+    auto TaskName = F->getName();
     auto Id = static_cast<int>(TaskTable_.size()+1);
-    return TaskTable_.emplace(Name, TaskInfo{Id, F});
+    return TaskTable_.emplace(Name, TaskInfo{Id, TaskName, F});
   }
 
   bool isTask(const std::string & Name) const
@@ -241,6 +242,15 @@ private:
 
   auto getTask(const std::string & Name) const
   { return TaskTable_.at(Name); }
+
+public: 
+
+  void updateTask(const std::string & Name)
+  {
+    auto & Task = TaskTable_.at(Name);
+    auto TaskS = findSymbol(Task.getName().c_str());
+    Task.setAddress( (intptr_t)cantFail(TaskS.getAddress()) );
+  }
 };
 
 } // namespace

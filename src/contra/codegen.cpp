@@ -701,14 +701,13 @@ void CodeGen::dispatch(CallExprAST &e) {
     auto TaskI = getTask(e.Callee_);
     //if (!Tasker_.isStarted()) {
       Tasker_->preregister(*TheModule_, e.Callee_, TaskI);
-      //Tasker_->set_top(*TheModule_, TaskI.Id);
+      Tasker_->set_top(*TheModule_, TaskI.getId());
       Tasker_->start(*TheModule_, Argc_, Argv_);
     //}
     //else {
     //  Tasker_->register(*TheModule_, Name, TaskId);
     //}
     ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
-    TheModule_->print(errs(), nullptr);
   }
   else {
     std::vector<Value *> ArgsV;

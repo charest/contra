@@ -22,7 +22,7 @@ Function *installDoubleFun(LLVMContext & TheContext, Module & TheModule,
       llvmType<real_t>(TheContext),
       llvmType<real_t>(TheContext) );
 
-  auto Fun = Function::Create(FunType, Function::ExternalLinkage,
+  auto Fun = Function::Create(FunType, Function::InternalLinkage,
       name, TheModule);
   return Fun;
 }

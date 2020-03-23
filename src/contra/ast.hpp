@@ -506,6 +506,9 @@ public:
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
       ReturnExpr_(std::move(Return))
   {}
+
+  auto isTask() const { return IsTask_; }
+  const std::string &getName() const { return ProtoExpr_->getName(); }
   
   virtual void accept(AstDispatcher& dispatcher) override;
 

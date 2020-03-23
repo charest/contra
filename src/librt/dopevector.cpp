@@ -67,7 +67,7 @@ Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
   std::vector<Type*> Args = {IntType};
   auto AllocateType = FunctionType::get( DopeVectorType, Args, false );
 
-  auto AllocateFun = Function::Create(AllocateType, Function::ExternalLinkage,
+  auto AllocateFun = Function::Create(AllocateType, Function::InternalLinkage,
       Allocate::Name, TheModule);
   return AllocateFun;
 }
@@ -85,7 +85,7 @@ Function *DeAllocate::install(LLVMContext & TheContext, Module & TheModule)
   std::vector<Type*> Args = {DopeVectorType};
   auto DeAllocateType = FunctionType::get( VoidType, Args, false );
 
-  auto DeAllocateFun = Function::Create(DeAllocateType, Function::ExternalLinkage,
+  auto DeAllocateFun = Function::Create(DeAllocateType, Function::InternalLinkage,
       DeAllocate::Name, TheModule);
   
   return DeAllocateFun;

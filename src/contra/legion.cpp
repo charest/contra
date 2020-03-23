@@ -16,7 +16,7 @@ using namespace llvm;
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-Type * createOpaqueType(const std::string & Name, LLVMContext & TheContext)
+StructType * createOpaqueType(const std::string & Name, LLVMContext & TheContext)
 {
   auto OpaqueType = StructType::create( TheContext, Name );
   auto VoidPointerType = llvmType<void*>(TheContext);
@@ -30,16 +30,41 @@ Type * createOpaqueType(const std::string & Name, LLVMContext & TheContext)
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-Type * createTaskConfigOptionsType(const std::string & Name, LLVMContext & TheContext)
+StructType * createTaskConfigOptionsType(const std::string & Name, LLVMContext & TheContext)
 {
-  auto OptionsType = StructType::create( TheContext, Name );
   auto BoolType = llvmType<bool>(TheContext);
-
   std::vector<Type*> members(4, BoolType);
-  OptionsType->setBody( members );
-
+  auto OptionsType = StructType::create( TheContext, members, Name );
   return OptionsType;
 }
+
+Type* reduceStruct(StructType * StructT, LLVMContext & TheContext, const Module &TheModule) {
+  auto NumElem = StructT->getNumElements();
+  auto ElementTs = StructT->elements();
+  if (NumElem == 1) return ElementTs[0];
+  auto DL = std::make_unique<DataLayout>(&TheModule);
+  auto BitWidth = DL->getTypeAllocSizeInBits(StructT);
+  return IntegerType::get(TheContext, BitWidth);
+}
+ 
+Value* castStruct(Value* V, BasicBlock * TheBlock, LLVMContext & TheContext,
+    const Module &TheModule)
+{
+  auto T = V->getType();
+  if (auto StrucT = dyn_cast<StructType>(T)) {
+    auto NewT = reduceStruct(StrucT, TheContext, TheModule);
+    std::string Str = StrucT->hasName() ? StrucT->getName().str()+".cast" : "casttmp";
+    auto Cast = CastInst::Create(CastInst::BitCast, V, NewT, Str, TheBlock);
+    return Cast;
+  }
+  else {
+    return V;
+  }
+}
+
+void castStructs(std::vector<Value*> & Vs, BasicBlock * TheBlock,
+    LLVMContext & TheContext, const Module &TheModule )
+{ for (auto & V : Vs ) V = castStruct(V, TheBlock, TheContext, TheModule); }
 
 //==============================================================================
 // Create the function wrapper
@@ -47,19 +72,20 @@ Type * createTaskConfigOptionsType(const std::string & Name, LLVMContext & TheCo
 Function* LegionTasker::wrap(Module &TheModule, const std::string & Name,
     Function* TaskF) const
 {
-  auto VoidPtrType = llvmType<void*>(TheContext_);
-  auto VoidType = Type::getVoidTy(TheContext_);
-  auto SizeType = llvmType<std::size_t>(TheContext_);
-  auto RealmIdType = llvmType<realm_id_t>(TheContext_);
+  auto VoidPtrT = llvmType<void*>(TheContext_);
+  auto VoidT = llvmType<void>(TheContext_);
+  auto SizeT = llvmType<std::size_t>(TheContext_);
+  auto RealmIdT = llvmType<realm_id_t>(TheContext_);
 
   //----------------------------------------------------------------------------
   // Create task wrapper
   std::string TaskName = "__" + Name + "_task__";
-  std::vector<Type *> WrapperArgTypes =
-    {VoidPtrType, SizeType, VoidPtrType, SizeType, RealmIdType};
+
+  std::vector<Type *> WrapperArgTs =
+    {VoidPtrT, SizeT, VoidPtrT, SizeT, RealmIdT};
   
-  auto WrapperT = FunctionType::get(VoidType, WrapperArgTypes, false);
-  auto WrapperF = Function::Create(WrapperT, Function::InternalLinkage,
+  auto WrapperT = FunctionType::get(VoidT, WrapperArgTs, false);
+  auto WrapperF = Function::Create(WrapperT, Function::ExternalLinkage,
       TaskName, &TheModule);
  
   auto Arg = WrapperF->arg_begin();
@@ -83,96 +109,96 @@ Function* LegionTasker::wrap(Module &TheModule, const std::string & Name,
   Builder_.SetInsertPoint(BB);
 
   // allocate arguments
-  std::vector<Value*> WrapperArgsV;
-  WrapperArgsV.reserve(WrapperArgTypes.size());
+  std::vector<Value*> WrapperArgVs;
+  WrapperArgVs.reserve(WrapperArgTs.size());
 
   auto TmpB = CodeGen::createBuilder(WrapperF);
 
   unsigned ArgIdx = 0;
   for (auto &Arg : WrapperF->args()) {
     // get arg type
-    auto ArgType = WrapperArgTypes[ArgIdx];
+    auto ArgT = WrapperArgTs[ArgIdx];
     // Create an alloca for this variable.
-    auto Alloca = TmpB.CreateAlloca(ArgType, nullptr, Arg.getName());
+    auto Alloca = TmpB.CreateAlloca(ArgT, nullptr, Arg.getName()+".alloca");
     // Store the initial value into the alloca.
     Builder_.CreateStore(&Arg, Alloca);
-    WrapperArgsV.emplace_back(Alloca);
+    WrapperArgVs.emplace_back(Alloca);
     ArgIdx++;
   }
 
   // loads
-  auto DataV = Builder_.CreateLoad(VoidPtrType, WrapperArgsV[0], "data");
-  auto DataLenV = Builder_.CreateLoad(SizeType, WrapperArgsV[1], "datalen");
-  //auto UserDataV = Builder_.CreateLoad(VoidPtrType, WrapperArgsV[2], "userdata");
-  //auto UserLenV = Builder_.CreateLoad(SizeType, WrapperArgsV[3], "userlen");
-  auto ProcIdV = Builder_.CreateLoad(RealmIdType, WrapperArgsV[4], "proc_id");
+  auto DataV = Builder_.CreateLoad(VoidPtrT, WrapperArgVs[0], "data");
+  auto DataLenV = Builder_.CreateLoad(SizeT, WrapperArgVs[1], "datalen");
+  //auto UserDataV = Builder_.CreateLoad(VoidPtrT, WrapperArgVs[2], "userdata");
+  //auto UserLenV = Builder_.CreateLoad(SizeT, WrapperArgVs[3], "userlen");
+  auto ProcIdV = Builder_.CreateLoad(RealmIdT, WrapperArgVs[4], "proc_id");
 
   //----------------------------------------------------------------------------
   // call to preamble
 
   // create temporaries
-  auto OpaqueType = createOpaqueType("legion_opaque_t", TheContext_);
-  auto OpaquePtrType = PointerType::get(OpaqueType, 0);
-  
-  auto TaskAlloca = TmpB.CreateAlloca(OpaqueType, nullptr, "task");
-  
-  auto RegionsAlloca = TmpB.CreateAlloca(OpaquePtrType, nullptr, "regions");
-  auto NullV = Constant::getNullValue(OpaquePtrType);
-  Builder_.CreateStore(NullV, RegionsAlloca);
+  auto TaskT = createOpaqueType("legion_task_t", TheContext_);
+  auto TaskPtrT = TaskT->getPointerTo();
+  auto TaskA = TmpB.CreateAlloca(TaskT, nullptr, "task.alloca");
+ 
+  auto RegionT = createOpaqueType("legion_physical_region_t", TheContext_);
+  auto RegionsT = RegionT->getPointerTo();
+  auto RegionsA = TmpB.CreateAlloca(RegionsT, nullptr, "regions.alloca");
+  auto NullV = Constant::getNullValue(RegionsT);
+  Builder_.CreateStore(NullV, RegionsA);
 
-  auto NumType = llvmType<std::uint32_t>(TheContext_); 
-  auto NumRegionsAlloca = TmpB.CreateAlloca(NumType, nullptr, "num_regions");
-  auto ZeroV = ConstantInt::get(TheContext_, APInt(32, 0 /* len for now */, false));  
-  Builder_.CreateStore(ZeroV, NumRegionsAlloca);
-  
-  auto ContextAlloca = TmpB.CreateAlloca(OpaqueType, nullptr, "ctx");
-  auto RuntimeAlloca = TmpB.CreateAlloca(OpaqueType, nullptr, "runtime");
+  auto NumRegionsT = llvmType<std::uint32_t>(TheContext_); 
+  auto NumRegionsA = TmpB.CreateAlloca(NumRegionsT, nullptr, "num_regions");
+  auto ZeroV = llvmValue<std::uint32_t>(TheContext_, 0);
+  Builder_.CreateStore(ZeroV, NumRegionsA);
+ 
+  auto ContextT = createOpaqueType("legion_context_t", TheContext_);
+  auto ContextA = TmpB.CreateAlloca(ContextT, nullptr, "context.alloca");
+
+  auto RuntimeT = createOpaqueType("legion_runtime_t", TheContext_);
+  auto RuntimeA = TmpB.CreateAlloca(RuntimeT, nullptr, "runtime.alloca");
 
   // args
-  std::vector<Value*> PreambleArgsV = { DataV, DataLenV, ProcIdV,
-    TaskAlloca, RegionsAlloca, NumRegionsAlloca, RuntimeAlloca, ContextAlloca };
-
-  std::vector<Type*> PreambleArgTypes;
-  PreambleArgTypes.reserve(PreambleArgsV.size());
-  for (auto & Arg : PreambleArgsV) PreambleArgTypes.emplace_back( Arg->getType() );
+  std::vector<Value*> PreambleArgVs = { DataV, DataLenV, ProcIdV,
+    TaskA, RegionsA, NumRegionsA, RuntimeA, ContextA };
+  //castStructs(PreambleArgVs, Builder_.GetInsertBlock(), TheContext_, TheModule);
+  auto PreambleArgTs = llvmTypes(PreambleArgVs);
   
-  auto PreambleT = FunctionType::get(VoidType, PreambleArgTypes, false);
-  auto PreambleF = Function::Create(PreambleT, Function::ExternalLinkage,
+  auto PreambleT = FunctionType::get(VoidT, PreambleArgTs, false);
+  auto PreambleF = Function::Create(PreambleT, Function::InternalLinkage,
       "legion_task_preamble", &TheModule);
   
-  Builder_.CreateCall(PreambleF, PreambleArgsV, "preamble");
+  Builder_.CreateCall(PreambleF, PreambleArgVs, "preamble");
 
   //----------------------------------------------------------------------------
   // extrat user variables
-  std::vector<Value*> TaskArgsV;
+  std::vector<Value*> TaskArgVs;
   
   //----------------------------------------------------------------------------
   // call users actual function
-  Builder_.CreateCall(TaskF, TaskArgsV, "calltmp");
+  Builder_.CreateCall(TaskF, TaskArgVs, "calltmp");
 
   //----------------------------------------------------------------------------
   // Postable
  
   // temporaries
-  auto RuntimeV = Builder_.CreateLoad(OpaqueType, RuntimeAlloca, "runtime");
-  auto ContextV = Builder_.CreateLoad(OpaqueType, ContextAlloca, "ctx");
+  auto RuntimeV = Builder_.CreateLoad(RuntimeT, RuntimeA, "runtime");
+  auto ContextV = Builder_.CreateLoad(ContextT, ContextA, "context");
 
-  auto RetvalV = Constant::getNullValue(VoidPtrType);
+  auto RetvalV = Constant::getNullValue(VoidPtrT);
   auto RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
 
   // args
-  std::vector<Value*> PostambleArgsV = { RuntimeV, ContextV, RetvalV, RetsizeV };
-  
-  std::vector<Type*> PostambleArgTypes;
-  PostambleArgTypes.reserve(PostambleArgsV.size());
-  for (auto & Arg : PostambleArgsV) PostambleArgTypes.emplace_back( Arg->getType() );
+  std::vector<Value*> PostambleArgVs = { RuntimeV, ContextV, RetvalV, RetsizeV };
+  //castStructs(PostambleArgVs, Builder_.GetInsertBlock(), TheContext_, TheModule);
+  std::vector<Type*> PostambleArgTs = llvmTypes(PostambleArgVs);
 
   // call
-  auto PostambleT = FunctionType::get(VoidType, PostambleArgTypes, false);
-  auto PostambleF = Function::Create(PostambleT, Function::ExternalLinkage,
+  auto PostambleT = FunctionType::get(VoidT, PostambleArgTs, false);
+  auto PostambleF = Function::Create(PostambleT, Function::InternalLinkage,
       "legion_task_postamble", &TheModule);
   
-  Builder_.CreateCall(PostambleF, PostambleArgsV, "preamble");
+  Builder_.CreateCall(PostambleF, PostambleArgVs, "preamble");
   
   //----------------------------------------------------------------------------
   // function retuns void
@@ -193,49 +219,51 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
 
   //----------------------------------------------------------------------------
   // execution_constraint_set
-  auto OpaqueT = createOpaqueType("legion_opaque_t", TheContext_);
+  auto ExecSetT = createOpaqueType("legion_execution_constraint_set_t", TheContext_);
   
-  auto ExecT = FunctionType::get(OpaqueT, false);
-  auto ExecF = Function::Create(ExecT, Function::ExternalLinkage,
+  auto ExecT = FunctionType::get(ExecSetT, false);
+  auto ExecF = Function::Create(ExecT, Function::InternalLinkage,
       "legion_execution_constraint_set_create", &TheModule);
   
-  Value* ExecV = Builder_.CreateCall(ExecF, None, "execution_constraint");
+  Value* ExecSetV = Builder_.CreateCall(ExecF, None, "execution_constraint");
   
-  auto ExecAlloca = TmpB.CreateAlloca(OpaqueT, nullptr, "legion_execution_constraint_set_t");
-  Builder_.CreateStore(ExecV, ExecAlloca);
-
+  auto ExecSetA = TmpB.CreateAlloca(ExecSetT, nullptr, "execution_constraint.alloca");
+  Builder_.CreateStore(ExecSetV, ExecSetA);
+  
   //----------------------------------------------------------------------------
   // add constraint
-  //
-  auto ProcIdT = llvmType<legion_processor_kind_t>(TheContext_);
-  auto ProcIdV = llvmValue<legion_processor_kind_t>(TheContext_, LOC_PROC);  
   
-  std::vector<Type*> AddExecArgTs = {OpaqueT, ProcIdT};
-  auto AddExecT = FunctionType::get(OpaqueT, AddExecArgTs, false);
-  auto AddExecF = Function::Create(AddExecT, Function::ExternalLinkage,
+  auto VoidT = llvmType<void>(TheContext_);
+  auto ProcIdV = llvmValue<legion_processor_kind_t>(TheContext_, LOC_PROC);  
+  std::vector<Value*> AddExecArgVs = {ExecSetV, ProcIdV};
+  //castStructs(AddExecArgVs, Builder_.GetInsertBlock(), TheContext_, TheModule);
+  auto AddExecArgTs = llvmTypes(AddExecArgVs);
+  auto AddExecT = FunctionType::get(VoidT, AddExecArgTs, false);
+  auto AddExecF = Function::Create(AddExecT, Function::InternalLinkage,
       "legion_execution_constraint_set_add_processor_constraint", &TheModule);
 
-  std::vector<Value*> AddExecArgsV = {ExecV, ProcIdV};
-  Builder_.CreateCall(AddExecF, AddExecArgsV, "add_processor_constraint");
+  Builder_.CreateCall(AddExecF, AddExecArgVs, "add_processor_constraint");
 
   //----------------------------------------------------------------------------
   // task_layout_constraint_set
-  
-  auto LayoutT = FunctionType::get(OpaqueT, false);
-  auto LayoutF = Function::Create(LayoutT, Function::ExternalLinkage,
+ 
+  auto LayoutSetT = createOpaqueType("legion_task_layout_constraint_set_t", TheContext_);
+  auto LayoutT = FunctionType::get(LayoutSetT, false);
+  auto LayoutF = Function::Create(LayoutT, Function::InternalLinkage,
       "legion_task_layout_constraint_set_create", &TheModule);
   
-  Value* LayoutV = Builder_.CreateCall(LayoutF, None, "execution_constraint");
+  Value* LayoutSetV = Builder_.CreateCall(LayoutF, None, "layout_constraint");
   
-  auto LayoutAlloca = TmpB.CreateAlloca(OpaqueT, nullptr, "task_layout_constraint");
-  Builder_.CreateStore(LayoutV, LayoutAlloca);
+  auto LayoutSetA = TmpB.CreateAlloca(LayoutSetT, nullptr, "layout_constraint.alloca");
+  Builder_.CreateStore(LayoutSetV, LayoutSetA);
   
   //----------------------------------------------------------------------------
   // options
   auto TaskConfigT = createTaskConfigOptionsType("task_config_options_t", TheContext_);
-  auto TaskConfigAlloca = TmpB.CreateAlloca(TaskConfigT, nullptr, "options");
-  auto ZeroV = ConstantInt::get(TheContext_, APInt(8, 0, false));  
-  Builder_.CreateMemSet(TaskConfigAlloca, ZeroV, 4, 1); 
+  auto TaskConfigA = TmpB.CreateAlloca(TaskConfigT, nullptr, "options");
+  auto BoolT = TaskConfigT->getElementType(0);
+  auto FalseV = Constant::getNullValue(BoolT);
+  Builder_.CreateMemSet(TaskConfigA, FalseV, 4, 1); 
   
   //----------------------------------------------------------------------------
   // registration
@@ -244,40 +272,48 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
   auto TaskIdT = llvmType<legion_task_id_t>(TheContext_);
   auto TaskIdVariantT = llvmType<legion_variant_id_t>(TheContext_);
   auto SizeT = llvmType<std::size_t>(TheContext_);
-  auto FunPtrT = Task.Func->getFunctionType()->getPointerTo();
+  //auto FunT = Task.getFunction()->getFunctionType();
+  //auto FunPtrT = FunT->getPointerTo();
   
-  std::vector<Type*> PreArgTs = {TaskIdT, TaskIdVariantT, VoidPtrT,
-    VoidPtrT, OpaqueT, OpaqueT, TaskConfigT, FunPtrT, VoidPtrT,
-    SizeT};
-  auto PreRetT = TaskIdVariantT;
-  auto PreT = FunctionType::get(PreRetT, PreArgTs, false);
-  auto PreF = Function::Create(PreT, Function::ExternalLinkage,
-      "legion_runtime_preregister_task_variant_fnptr", &TheModule);
-
-  Value* TaskIdV = llvmValue<legion_task_id_t>(TheContext_, Task.Id);
+  auto TaskT = Task.getFunction()->getFunctionType();
+  auto TaskF = Function::Create(TaskT, Function::InternalLinkage, Task.getName(), &TheModule);
+  
+  Value* TaskIdV = llvmValue<legion_task_id_t>(TheContext_, Task.getId());
   auto TaskIdVariantV = llvmValue<legion_variant_id_t>(TheContext_, AUTO_GENERATE_ID);
   auto TaskNameV = llvmString(TheContext_, TheModule, Name + " task");
   auto VariantNameV = llvmString(TheContext_, TheModule, Name + " variant");
 
-  ExecV = Builder_.CreateLoad(ExecT, ExecAlloca, "execution_constraints");
-  LayoutV = Builder_.CreateLoad(LayoutT, LayoutAlloca, "layout_constraints");
-  
-  auto OptionsV = Builder_.CreateLoad(TaskConfigT, TaskConfigAlloca, "options");
+  ExecSetV = Builder_.CreateLoad(ExecSetT, ExecSetA, "execution_constraints");
+  LayoutSetV = Builder_.CreateLoad(LayoutSetT, LayoutSetA, "layout_constraints");
+ 
 
-  auto TheBlock = Builder_.GetInsertBlock();
-  auto TaskInt = reinterpret_cast<intptr_t>(Task.Func);
-  auto TaskIntV = llvmValue<intptr_t>(TheContext_, TaskInt);
-  auto TaskPtr = CastInst::Create(Instruction::IntToPtr, TaskIntV, FunPtrT,
-      "fptr", TheBlock);
+  auto I32T = llvmType<int>(TheContext_);
+  auto Cast = CastInst::Create(CastInst::BitCast, TaskConfigA,
+      I32T->getPointerTo(), "", Builder_.GetInsertBlock());
+  auto OptionsV = Builder_.CreateLoad(I32T, Cast, "options");
+  //auto OptionsV = Builder_.CreateLoad(TaskConfigT, TaskConfigA, "options");
+
+  //auto TheBlock = Builder_.GetInsertBlock();
+  //auto TaskInt = Task.getAddress();
+  //auto TaskIntV = llvmValue<intptr_t>(TheContext_, TaskInt);
+  //auto TaskPtr = CastInst::Create(Instruction::IntToPtr, TaskIntV, FunPtrT,
+  //    "fptr", TheBlock);
 
   auto UserDataV = Constant::getNullValue(VoidPtrT);
   auto UserLenV = llvmValue<std::size_t>(TheContext_, 0);
 
   std::vector<Value*> PreArgVs = { TaskIdV, TaskIdVariantV, TaskNameV,
-    VariantNameV, ExecV, LayoutV, OptionsV, TaskPtr, UserDataV, UserLenV };
+    VariantNameV, ExecSetV, LayoutSetV, OptionsV, TaskF, UserDataV, UserLenV };
+  //castStructs(PreArgVs, Builder_.GetInsertBlock(), TheContext_, TheModule);
+  auto PreArgTs = llvmTypes(PreArgVs);
+
+  auto PreRetT = TaskIdVariantT;
+
+  auto PreT = FunctionType::get(PreRetT, PreArgTs, false);
+  auto PreF = Function::Create(PreT, Function::InternalLinkage,
+      "legion_runtime_preregister_task_variant_fnptr", &TheModule);
 
   TaskIdV = Builder_.CreateCall(PreF, PreArgVs, "task_variant_id");
-
 }
   
 //==============================================================================
@@ -286,15 +322,17 @@ void LegionTasker::preregister(llvm::Module &TheModule, const std::string & Name
 void LegionTasker::set_top(llvm::Module &TheModule, int TaskId ) const
 {
 
-  auto VoidT = Type::getVoidTy(TheContext_);
+  auto VoidT = llvmType<void>(TheContext_);
   auto TaskIdT = llvmType<legion_task_id_t>(TheContext_);
-  std::vector<Type*> SetArgTs = { TaskIdT };
-  auto SetT = FunctionType::get(VoidT, SetArgTs, false);
-  auto SetF = Function::Create(SetT, Function::ExternalLinkage,
-      "legion_runtime_set_top_level_task_id", &TheModule);
-
+  
   auto TaskIdV = llvmValue<legion_task_id_t>(TheContext_, TaskId);
   std::vector<Value*> SetArgVs = { TaskIdV };
+  auto SetArgTs = llvmTypes(SetArgVs);
+
+  auto SetT = FunctionType::get(VoidT, SetArgTs, false);
+  auto SetF = Function::Create(SetT, Function::InternalLinkage,
+      "legion_runtime_set_top_level_task_id", &TheModule);
+
   Builder_.CreateCall(SetF, SetArgVs, "set_top");
 }
   
