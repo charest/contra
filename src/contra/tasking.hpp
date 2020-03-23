@@ -5,10 +5,14 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace contra {
 
 
+//==============================================================================
+// Task info
+//==============================================================================
 class TaskInfo {
   int Id_ = -1;
   std::string Name_;
@@ -31,6 +35,9 @@ public:
   }
 };
 
+//==============================================================================
+// Main tasking interface
+//==============================================================================
 class AbstractTasker {
 
 protected:
@@ -50,6 +57,12 @@ public:
   virtual llvm::Value* start(llvm::Module &, int, char **) const = 0;
 
   virtual ~AbstractTasker() = default;
+
+  llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;
+  llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
+  void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;
+  llvm::Value* load(llvm::AllocaInst *, const llvm::Module &, std::string) const;
+  void store(llvm::Value*, llvm::AllocaInst *) const;
 };
 
 } // namespace
