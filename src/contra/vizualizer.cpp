@@ -131,14 +131,40 @@ void Vizualizer::dispatch(PrototypeAST& e)
 //==============================================================================
 void Vizualizer::dispatch(FunctionAST& e)
 {
-  auto my_ind = ind_;
-  out() << "digraph {" << std::endl;
-  out() << "node" << my_ind << "[label=\"FunctionAST\"];" << std::endl;
-  for ( unsigned i=0; i<e.BodyExprs_.size(); ++i ) {
-    out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-    e.BodyExprs_[i]->accept(*this);
+  auto fun_ind = ind_;
+  out() << "subgraph cluster" << fun_ind << " {" << std::endl;
+  out() << "node" << fun_ind << "[label=" <<
+    makeLabel(e.getClassName(), e.getName()) << "];" << std::endl;
+
+  auto NumBody = e.BodyExprs_.size();
+  auto body_ind = fun_ind;
+  if (NumBody>1) {
+    body_ind = ++ind_;
+    out() << "node" << fun_ind << " -> node" << body_ind << ";" << std::endl;
+    out() << "node" << body_ind << "[label=\"Body\"]" << std::endl;
+  }
+  
+  std::string extra = NumBody==1 ? " [label=Body]" : "";
+  for ( unsigned i=0; i<NumBody; ++i ) {
+    out() << "node" << body_ind << " -> node" << ++ind_ << extra << ";" << std::endl;
+    runVisitor(*e.BodyExprs_[i]);
+  }
+
+  if (e.ReturnExpr_) {
+    out() << "node" << fun_ind << " -> node" << ++ind_;
+    if (NumBody>1) {
+      out() << ";" << std::endl;
+      out() << "node" << ind_ << "[label=Return];" << std::endl;
+      out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
+  }
+    else {
+      out() << " [label=Return];" << std::endl;
+    }
+    runVisitor(*e.ReturnExpr_);
   }
   out() << "}" << std::endl;
+
+  ind_++;
 }
 
 }

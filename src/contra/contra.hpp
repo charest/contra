@@ -65,7 +65,14 @@ public:
       IRFileStream_ = IRFile_.get();
     }
 
-    if (!DotFileName_.empty()) TheViz_ = std::make_unique<Vizualizer>(DotFileName_);
+    if (DotFileName_ == "-") {
+      TheViz_ = std::make_unique<Vizualizer>(std::cout);
+    }
+    else if (!DotFileName_.empty()) {
+      TheViz_ = std::make_unique<Vizualizer>(DotFileName_);
+    }
+    if (TheViz_) TheViz_->start();
+
 
     TheAnalyser_ = std::make_unique<Analyzer>(ThePrecedence_);
   }

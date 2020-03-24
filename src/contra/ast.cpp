@@ -3,6 +3,19 @@
 namespace contra {
 
 //==============================================================================
+template<>
+std::string IntegerExprAST::getClassName() const
+{ return "IntegerExprAST"; }
+
+template<>
+std::string RealExprAST::getClassName() const
+{ return "RealExprAST"; }
+
+template<>
+std::string StringExprAST::getClassName() const
+{ return "StringExprAST"; }
+
+//==============================================================================
 void VariableExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 

@@ -35,6 +35,8 @@ public:
   virtual ~NodeAST() = default;
 
   virtual void accept(AstDispatcher& dispatcher) = 0;
+
+  virtual std::string getClassName() const = 0;
   
   const auto & getLoc() const { return Loc_; }
   int getLine() const { return Loc_.getLine(); }
@@ -88,6 +90,8 @@ public:
   
   void accept(AstDispatcher& dispatcher) override
   { dispatcher.dispatch(*this); }
+  
+  virtual std::string getClassName() const override;
 
   friend class Analyzer;
   friend class CodeGen;
@@ -124,6 +128,9 @@ public:
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "VariableExprAST"; };
 
   const std::string &getName() const { return Name_; }
   
@@ -151,6 +158,9 @@ public:
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "ArrayExprAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -179,6 +189,9 @@ public:
   {}
 
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "CastExprAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -204,6 +217,9 @@ public:
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "UnaryExprAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -230,6 +246,9 @@ public:
   char getOperand() const { return OpCode_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "BinaryExprAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -256,6 +275,9 @@ public:
   const std::string & getCalleeName() const { return Callee_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "CallExprAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -294,6 +316,9 @@ public:
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "IfStmtAST"; };
 
   static std::unique_ptr<NodeAST> makeNested( 
     std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> > & Conds,
@@ -337,6 +362,9 @@ public:
   {}
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "ForStmtAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -384,6 +412,9 @@ public:
   virtual bool isArray() const { return false; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "VarDeclAST"; };
  
   friend class Analyzer;
   friend class CodeGen;
@@ -410,6 +441,9 @@ public:
   virtual bool isArray() const { return true; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "ArrayDeclAST"; };
 
   friend class Analyzer;
   friend class CodeGen;
@@ -458,6 +492,9 @@ public:
 
   
   virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "PrototypeAST"; };
   
   const std::string &getName() const { return Id_.getName(); }
 
@@ -511,6 +548,9 @@ public:
   const std::string &getName() const { return ProtoExpr_->getName(); }
   
   virtual void accept(AstDispatcher& dispatcher) override;
+
+  virtual std::string getClassName() const override
+  { return "FunctionAST"; };
 
   friend class Analyzer;
   friend class CodeGen;

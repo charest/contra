@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 namespace contra {
 
@@ -27,14 +28,37 @@ public:
   }
 
   virtual ~Vizualizer()
-  { if (OutputStream_) OutputStream_.close(); }
+  {
+    stop();
+    if (OutputStream_) OutputStream_.close();
+  }
 
   std::ostream & out() { return *out_; }
+
+  void start() { out() << "digraph {" << std::endl; }
+  void stop() { out() << "}" << std::endl; }
+
+  std::string makeLabel(const std::string & Type, const std::string & extra = "")
+  {
+    std::stringstream ss;
+    if (extra.empty()) {
+      ss << "\"" << Type << "\"";
+    }
+    else {
+      ss << "<" << Type << "<BR />";
+      ss << "<FONT POINT-SIZE=\"12\">";
+      ss << extra;
+      ss << "</FONT>>";
+    }
+    return ss.str();
+  }
   
   // Codegen function
   template<typename T>
   void runVisitor(T&e)
-  { e.accept(*this); }
+  {
+    e.accept(*this);
+  }
   
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
