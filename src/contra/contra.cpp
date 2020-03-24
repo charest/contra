@@ -13,7 +13,6 @@ namespace contra {
 //==============================================================================
 void Contra::handleFunction()
 {
-  static int i = 0;
 
   if (IsVerbose_) std::cerr << "Handling function" << std::endl;
 
@@ -22,10 +21,6 @@ void Contra::handleFunction()
     auto IsTask = FnAST->isTask();
     auto Name = FnAST->getName();
     if (dumpDot()) TheViz_->runVisitor(*FnAST);
-    if (++i == 2) {
-      TheViz_.reset();
-      abort();
-    }
     TheAnalyser_->runFuncVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);

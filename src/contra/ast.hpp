@@ -162,6 +162,8 @@ public:
   virtual std::string getClassName() const override
   { return "ArrayExprAST"; };
 
+  bool hasSize() const { return static_cast<bool>(SizeExpr_); }
+
   friend class Analyzer;
   friend class CodeGen;
   friend class Vizualizer;
@@ -272,7 +274,7 @@ public:
     : ExprAST(Loc), Callee_(Callee), ArgExprs_(std::move(Args))
   {}
 
-  const std::string & getCalleeName() const { return Callee_; }
+  const std::string & getName() const { return Callee_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
   
@@ -366,6 +368,9 @@ public:
   virtual std::string getClassName() const override
   { return "ForStmtAST"; };
 
+  const std::string & getVarName() const
+  { return VarId_.getName(); }
+
   friend class Analyzer;
   friend class CodeGen;
   friend class Vizualizer;
@@ -415,6 +420,14 @@ public:
   
   virtual std::string getClassName() const override
   { return "VarDeclAST"; };
+
+  std::vector<std::string> getNames() const
+  {
+    std::vector<std::string> strs;
+    for (const auto & Id : VarIds_)
+      strs.emplace_back( Id.getName() );
+    return strs;
+  }
  
   friend class Analyzer;
   friend class CodeGen;
@@ -444,6 +457,8 @@ public:
   
   virtual std::string getClassName() const override
   { return "ArrayDeclAST"; };
+
+  bool hasSize() const { return static_cast<bool>(SizeExpr_); }
 
   friend class Analyzer;
   friend class CodeGen;

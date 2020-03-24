@@ -31,6 +31,9 @@ std::string unescape(const std::string& s);
 //! add the extra \ in quoted strings
 std::string escape(const std::string& s);
 
+//! sanitize for html 
+std::string html(const std::string& s);
+
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief Convert a value to a string.
 //! \param [in] x The value to convert to a string.

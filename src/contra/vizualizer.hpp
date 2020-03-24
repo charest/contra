@@ -3,6 +3,7 @@
 
 #include "config.hpp"
 #include "dispatcher.hpp"
+#include "string_utils.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -38,28 +39,15 @@ public:
   void start() { out() << "digraph {" << std::endl; }
   void stop() { out() << "}" << std::endl; }
 
-  std::string makeLabel(const std::string & Type, const std::string & extra = "")
-  {
-    std::stringstream ss;
-    if (extra.empty()) {
-      ss << "\"" << Type << "\"";
-    }
-    else {
-      ss << "<" << Type << "<BR />";
-      ss << "<FONT POINT-SIZE=\"12\">";
-      ss << extra;
-      ss << "</FONT>>";
-    }
-    return ss.str();
-  }
-  
+  std::string makeLabel(const std::string &, const std::string & = "");
+
   // Codegen function
   template<typename T>
   void runVisitor(T&e)
   {
     e.accept(*this);
   }
-  
+   
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
   void dispatch(ValueExprAST<std::string>&) override;
@@ -75,6 +63,13 @@ public:
   void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
+
+private:
+
+  template<typename T>
+  void dumpNumericVal(ValueExprAST<T>&);
+
+  void dumpBlock(ASTBlock &, int_t, const std::string &, bool = false);
 
 };
 

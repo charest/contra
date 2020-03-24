@@ -119,4 +119,26 @@ std::string escape(const std::string& s)
   return res;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// sanitize for html
+////////////////////////////////////////////////////////////////////////////////
+std::string html(const std::string& s)
+{
+  std::string res;
+  std::string::const_iterator it = s.begin();
+
+  while (it != s.end())
+  {
+    auto c = *it++;
+    std::string str(1, c);
+    switch (c) {
+    case '<': str = "&lt;"; break;
+    case '>': str = "&gt;"; break;
+    }
+    res += str;
+  }
+
+  return res;
+}
+
 } // namespace
