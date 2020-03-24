@@ -119,5 +119,6 @@ endif()
 
 if (BUILD_TESTING)
   include(test)
+  add_subdirectory(testing)
   add_subdirectory(examples)
 endif()

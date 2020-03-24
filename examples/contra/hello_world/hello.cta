@@ -1,10 +1,5 @@
-# This is a comment, and is ignored by the compiler
-print("Hello World!\n")
-print("Hello Again!\n")
+task main()
+  print("Hello World!\n")
+end
 
-# print a number
-print("Printing the number one, %d\n", 1)
-
-# do some math
-print("1 + 2 = \n")
-1+2
+main()

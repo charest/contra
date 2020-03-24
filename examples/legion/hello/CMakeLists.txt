@@ -1,3 +1,3 @@
-add_executable(hello-legion hello.cpp)
-target_include_directories(hello-legion PRIVATE ${Legion_INCLUDE_DIRS})
-target_link_libraries(hello-legion PRIVATE  ${Legion_LIBRARIES})
+add_executable(legion_hello hello.cpp)
+target_include_directories(legion_hello PRIVATE ${Legion_INCLUDE_DIRS})
+target_link_libraries(legion_hello PRIVATE  ${Legion_LIBRARIES})

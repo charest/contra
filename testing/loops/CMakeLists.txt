@@ -1,6 +1,6 @@
-foreach(_test if ifelse ifelseif)
+foreach(_test loops)
   create_test(
-    NAME ${_test}
+    NAME test_${_test}
     COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta
     COMPARE stdout
     STANDARD ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.std)
