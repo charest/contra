@@ -83,11 +83,15 @@ Analyzer::insertFunction(
 Analyzer::VariableEntry
 Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
 {
-  auto it = VariableTable_.find(Name);
-  if (it == VariableTable_.end())
-    THROW_NAME_ERROR("Variable '" << Name << "' has not been"
-        << " previously defined", Loc);
-  return it->second;
+  int idx = 0;
+  int sz = std::distance( VariableTable_.begin(), VariableTable_.end() );
+  for ( const auto & ST : VariableTable_ ) {
+    auto it = ST.find(Name);
+    if (it != ST.end()) return it->second;
+  }
+  THROW_NAME_ERROR("Variable '" << Name << "' has not been"
+     << " previously defined", Loc);
+  return {};
 }
 
 //==============================================================================
@@ -101,28 +105,12 @@ Analyzer::insertVariable(const Identifier & Id, const VariableType & VarType)
   const auto & Name = Id.getName();
   const auto & Loc = Id.getLoc();
   auto S = std::make_shared<VariableDef>(Name, Loc, VarType);
-  auto it = VariableTable_.emplace(Name, std::move(S));
+  auto it = VariableTable_.front().emplace(Name, std::move(S));
   if (!it.second)
     THROW_NAME_ERROR("Variable '" << Name << "' has been"
         << " previously defined", Loc);
   return it.first->second;
 }
-
-//==============================================================================
-Analyzer::VariableEntry Analyzer::popVariable(const std::string & Name)
-{
-  auto it = VariableTable_.find(Name);
-  if (it != VariableTable_.end()) {
-    auto res = it->second;
-    VariableTable_.erase(it);
-    return res;
-  }
-  return nullptr;
-}
-
-//==============================================================================
-void Analyzer::clearVariables()
-{ VariableTable_.clear(); }
 
 ////////////////////////////////////////////////////////////////////////////////
 // type checking interface
@@ -443,32 +431,30 @@ void Analyzer::dispatch(ForStmtAST& e)
   auto VarId = e.VarId_;
   
   auto OldScope = Scope_;
-  Scope_++;
+  auto InnerScope = createScope();
 
   auto LoopVar = insertVariable(VarId, I64Type_);
 
-  auto StartType = runStmtVisitor(*e.StartExpr_, OldScope+1);
+  auto StartType = runStmtVisitor(*e.StartExpr_, InnerScope);
   if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
         e.StartExpr_->getLoc() );
 
-  auto EndType = runStmtVisitor(*e.EndExpr_, OldScope+1);
+  auto EndType = runStmtVisitor(*e.EndExpr_, InnerScope);
   if (EndType != I64Type_ )
     THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
         e.EndExpr_->getLoc() );
 
   if (e.StepExpr_) {
-    auto StepType = runStmtVisitor(*e.StepExpr_, OldScope+1);
+    auto StepType = runStmtVisitor(*e.StepExpr_, InnerScope);
     if (StepType != I64Type_ )
       THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
           e.StepExpr_->getLoc() );
   }
 
-  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt, OldScope+1);
-  
-  popVariable(VarId.getName());
+  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt, InnerScope);
 
-  Scope_ = OldScope;
+  resetScope(OldScope);
   TypeResult_ = VoidType_;
 }
 
@@ -481,10 +467,14 @@ void Analyzer::dispatch(IfStmtAST& e)
     THROW_NAME_ERROR( "If condition must result in boolean type.", CondExpr.getLoc() );
 
   auto OldScope = Scope_;
-  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt, OldScope+1);
-  for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt, OldScope+1);
+  auto InnerScope = createScope();
+  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt, InnerScope);
   
-  Scope_ = OldScope;
+  resetScope(OldScope);
+  InnerScope = createScope();
+  for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt, InnerScope);
+  
+  resetScope(OldScope);
   TypeResult_ = VoidType_;
 }
 
@@ -596,7 +586,7 @@ void Analyzer::dispatch(PrototypeAST& e)
 void Analyzer::dispatch(FunctionAST& e)
 {
   auto OldScope = Scope_;
-  Scope_++;
+  auto InnerScope = createScope();
 
   auto & ProtoExpr = *e.ProtoExpr_;
   const auto & FnId = ProtoExpr.Id_;
@@ -620,14 +610,13 @@ void Analyzer::dispatch(FunctionAST& e)
     BinopPrecedence_->operator[](ProtoExpr.getOperatorName()) = ProtoExpr.getBinaryPrecedence();
 
   // Record the function arguments in the NamedValues map.
-  clearVariables();
   for (unsigned i=0; i<NumArgs; ++i)
     insertVariable(ArgIds[i], ArgTypes[i]);
-
-  for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B, OldScope+1);
+  
+  for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B, InnerScope);
   
   if (e.ReturnExpr_) {
-    auto RetType = runStmtVisitor(*e.ReturnExpr_, OldScope+1);
+    auto RetType = runStmtVisitor(*e.ReturnExpr_, InnerScope);
     if (ProtoExpr.isAnonExpr())
       ProtoExpr.setReturnType(RetType);
     else if (RetType != ProtoType->getReturnType())
@@ -637,7 +626,7 @@ void Analyzer::dispatch(FunctionAST& e)
           e.ReturnExpr_->getLoc());
   }
   
-  Scope_ = OldScope;
+  resetScope(OldScope);
   
 }
 

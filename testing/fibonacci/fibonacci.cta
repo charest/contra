@@ -12,14 +12,15 @@ function fibonacci(fib_num : i64) -> i64
     res = 1
   else
     var fib1 = fib_num-1
-    f1 = fibonacci(fib1)
+    var f1 = fibonacci(fib1)
 
     var fib2 = fib_num-2
-    f2 = fibonacci(fib2)
+    var f2 = fibonacci(fib2)
 
     res = sum(f1, f2)
   end
 
+  print("shouldnt", f1)
   return res
 
 end
@@ -31,7 +32,7 @@ function main()
 
   for i in 0 until num_fibonacci do
     var fib = fibonacci(i)
-    print("Fibonacci(%d) = %d\n", i, fib_results[i])
+    print("Fibonacci(%d) = %d\n", i, fib)
   end
 
 end

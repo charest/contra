@@ -9,6 +9,7 @@
 #include "symbols.hpp"
 
 #include <iostream>
+#include <forward_list>
 #include <fstream>
 
 namespace contra {
@@ -28,7 +29,7 @@ private:
   std::map<std::string, TypeEntry> TypeTable_;
   std::map<std::string, FunctionEntry> FunctionTable_;
   
-  std::map<std::string, VariableEntry> VariableTable_;
+  std::forward_list< std::map<std::string, VariableEntry> > VariableTable_;
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
@@ -40,8 +41,21 @@ private:
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
+ 
+  static constexpr int DefaultScope = 0;
+  int Scope_ = DefaultScope;
   
-  int Scope_ = 0;
+  int createScope() {
+    VariableTable_.push_front({});
+    Scope_++;
+    return Scope_;
+  }
+  
+  void resetScope(int Scope) {
+    for (int i=Scope; i<Scope_; ++i)
+      VariableTable_.pop_front();
+    Scope_ = Scope;
+  }
 
 public:
 
@@ -63,10 +77,7 @@ public:
       std::is_same<T, FunctionAST>::value || std::is_same<T, PrototypeAST>::value >
   >
   void runFuncVisitor(T&e)
-  {
-    Scope_ = 0;
-    e.accept(*this);
-  }
+  { e.accept(*this); }
 
 private:
   
@@ -81,7 +92,7 @@ private:
   template<typename T>
   auto runStmtVisitor(T&e, int Scope)
   {
-    Scope_ = Scope;
+    resetScope(Scope);
     DestinationType_ = VariableType{};
     return runExprVisitor(e);
   }
@@ -117,10 +128,6 @@ private:
 
   VariableEntry
     insertVariable(const Identifier & Id, const VariableType & VarType);
-
-  VariableEntry popVariable(const std::string & Name);
-  
-  void clearVariables();
 
   // function interface
   FunctionEntry
