@@ -8,10 +8,35 @@
 
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+// Base type interface
+////////////////////////////////////////////////////////////////////////////////
+
 //==============================================================================
-// Get the function
+Analyzer::TypeEntry
+  Analyzer::getBaseType(const std::string & Name, const SourceLocation & Loc)
+{
+  auto it = TypeTable_.find(Name);
+  if ( it == TypeTable_.end() )
+    THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Loc);
+  return it->second;
+}
+
 //==============================================================================
-std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name,
+Analyzer::TypeEntry Analyzer::getBaseType(Identifier Id)
+{ return getBaseType(Id.getName(), Id.getLoc()); }
+
+  
+////////////////////////////////////////////////////////////////////////////////
+// Function routines
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+void Analyzer::removeFunction(const std::string & Name)
+{ FunctionTable_.erase(Name); }
+
+//==============================================================================
+Analyzer::FunctionEntry Analyzer::getFunction(const std::string & Name,
     const SourceLocation & Loc) {
   
   // If not, check whether we can codegen the declaration from some existing
@@ -29,6 +54,140 @@ std::shared_ptr<FunctionDef> Analyzer::getFunction(const std::string & Name,
   // if found it, make sure its not a variable in scope
   return nullptr;
 }
+
+//==============================================================================
+Analyzer::FunctionEntry Analyzer::getFunction(const Identifier & Id)
+{ return getFunction(Id.getName(), Id.getLoc()); }
+  
+//==============================================================================
+Analyzer::FunctionEntry
+Analyzer::insertFunction(
+    const Identifier & Id,
+    const VariableTypeList & ArgTypes,
+    const VariableType & RetType)
+{ 
+  const auto & Name = Id.getName();
+  auto Sy = std::make_shared<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
+  auto fit = FunctionTable_.emplace( Name, std::move(Sy) );
+  if (!fit.second)
+    THROW_NAME_ERROR("Prototype already exists for '" << Name << "'.",
+      Id.getLoc());
+  return fit.first->second;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Variable interface
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+Analyzer::VariableEntry
+Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
+{
+  auto it = VariableTable_.find(Name);
+  if (it == VariableTable_.end())
+    THROW_NAME_ERROR("Variable '" << Name << "' has not been"
+        << " previously defined", Loc);
+  return it->second;
+}
+
+//==============================================================================
+Analyzer::VariableEntry Analyzer::getVariable(Identifier Id)
+{ return getVariable(Id.getName(), Id.getLoc()); }
+
+//==============================================================================
+Analyzer::VariableEntry
+Analyzer::insertVariable(const Identifier & Id, const VariableType & VarType)
+{
+  const auto & Name = Id.getName();
+  const auto & Loc = Id.getLoc();
+  auto S = std::make_shared<VariableDef>(Name, Loc, VarType);
+  auto it = VariableTable_.emplace(Name, std::move(S));
+  if (!it.second)
+    THROW_NAME_ERROR("Variable '" << Name << "' has been"
+        << " previously defined", Loc);
+  return it.first->second;
+}
+
+//==============================================================================
+Analyzer::VariableEntry Analyzer::popVariable(const std::string & Name)
+{
+  auto it = VariableTable_.find(Name);
+  if (it != VariableTable_.end()) {
+    auto res = it->second;
+    VariableTable_.erase(it);
+    return res;
+  }
+  return nullptr;
+}
+
+//==============================================================================
+void Analyzer::clearVariables()
+{ VariableTable_.clear(); }
+
+////////////////////////////////////////////////////////////////////////////////
+// type checking interface
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+void Analyzer::checkIsCastable(
+    const VariableType & FromType,
+    const VariableType & ToType,
+    const SourceLocation & Loc)
+{
+  auto IsCastable = FromType.isCastableTo(ToType);
+  if (!IsCastable)
+    THROW_NAME_ERROR("Cannot cast from type '" << FromType << "' to type '"
+        << ToType << "'.", Loc);
+}
+  
+//==============================================================================
+void Analyzer::checkIsAssignable(
+    const VariableType & LeftType,
+    const VariableType & RightType,
+    const SourceLocation & Loc)
+{
+  auto IsAssignable = RightType.isAssignableTo(LeftType);
+  if (!IsAssignable)
+    THROW_NAME_ERROR("A variable of type '" << RightType << "' cannot be"
+         << " assigned to a variable of type '" << LeftType << "'." , Loc);
+}
+
+//==============================================================================
+std::unique_ptr<CastExprAST>
+Analyzer::insertCastOp(
+    std::unique_ptr<NodeAST> FromExpr,
+    const VariableType & ToType )
+{
+  auto Loc = FromExpr->getLoc();
+  auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr), ToType);
+  return E;
+}
+
+//==============================================================================
+VariableType
+Analyzer::promote(
+    const VariableType & LeftType,
+    const VariableType & RightType,
+    const SourceLocation & Loc)
+{
+  if (LeftType == RightType) return LeftType;
+
+  if (LeftType.isNumber() && RightType.isNumber()) {
+    if (LeftType == F64Type_ || RightType == F64Type_)
+      return F64Type_;
+    else
+      return LeftType;
+  }
+  
+  THROW_NAME_ERROR("No promotion rules between the type '" << LeftType
+       << " and the type '" << RightType << "'." , Loc);
+
+  return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Visitors
+////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
 void Analyzer::dispatch(ValueExprAST<int_t>& e)
@@ -288,24 +447,21 @@ void Analyzer::dispatch(ForStmtAST& e)
 
   auto LoopVar = insertVariable(VarId, I64Type_);
 
-  auto & StartExpr = *e.StartExpr_;
-  auto StartType = runExprVisitor(StartExpr);
+  auto StartType = runStmtVisitor(*e.StartExpr_, OldScope+1);
   if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
-        StartExpr.getLoc() );
+        e.StartExpr_->getLoc() );
 
-  auto & EndExpr = *e.EndExpr_;
-  auto EndType = runExprVisitor(EndExpr);
+  auto EndType = runStmtVisitor(*e.EndExpr_, OldScope+1);
   if (EndType != I64Type_ )
     THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
-        EndExpr.getLoc() );
+        e.EndExpr_->getLoc() );
 
   if (e.StepExpr_) {
-    auto & StepExpr = *e.StepExpr_;
-    auto StepType = runExprVisitor(StepExpr);
+    auto StepType = runStmtVisitor(*e.StepExpr_, OldScope+1);
     if (StepType != I64Type_ )
       THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
-          StepExpr.getLoc() );
+          e.StepExpr_->getLoc() );
   }
 
   for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt, OldScope+1);
@@ -465,16 +621,8 @@ void Analyzer::dispatch(FunctionAST& e)
 
   // Record the function arguments in the NamedValues map.
   clearVariables();
-  for (unsigned i=0; i<NumArgs; ++i) {
-    const auto & Name = ArgIds[i].getName();
-    const auto & Loc = ArgIds[i].getLoc();
-
-    auto S = std::make_shared<VariableDef>(Name, Loc, ArgTypes[i]);
-    auto it = VariableTable_.emplace( Name, std::move(S) );
-    if (!it.second)
-      THROW_NAME_ERROR("Duplicate definition for argument " << i+1
-          << ", '" << Name << "' of function '" << FnName << "'", Loc);
-  }
+  for (unsigned i=0; i<NumArgs; ++i)
+    insertVariable(ArgIds[i], ArgTypes[i]);
 
   for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B, OldScope+1);
   

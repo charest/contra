@@ -35,8 +35,6 @@ class Contra : public ErrorDispatcher {
 public:
 
   ~Contra() {
-    // Finalize whatever needs to be
-    TheCG_->finalize();
     // Print out all of the generated code.
     //TheCG.TheModule->print(llvm::errs(), nullptr);
     // Compile if necessary

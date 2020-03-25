@@ -14,12 +14,21 @@
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Semantec analyzer class
+////////////////////////////////////////////////////////////////////////////////
 class Analyzer : public AstDispatcher {
+public:
 
-  int Scope_ = 0;
-  std::map<std::string, std::shared_ptr<TypeDef>> TypeTable_;
-  std::map<std::string, std::shared_ptr<VariableDef>> VariableTable_;
-  std::map<std::string, std::shared_ptr<FunctionDef>> FunctionTable_;
+  using TypeEntry = std::shared_ptr<TypeDef>;
+  using FunctionEntry = std::shared_ptr<FunctionDef>;
+  using VariableEntry = std::shared_ptr<VariableDef>;
+
+private:
+
+  std::map<std::string, TypeEntry> TypeTable_;
+  std::map<std::string, FunctionEntry> FunctionTable_;
+  
+  std::map<std::string, VariableEntry> VariableTable_;
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
@@ -31,6 +40,8 @@ class Analyzer : public AstDispatcher {
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
+  
+  int Scope_ = 0;
 
 public:
 
@@ -44,7 +55,8 @@ public:
   }
 
   virtual ~Analyzer() = default;
-
+  
+  // visitor interface
   template<
     typename T,
     typename = typename std::enable_if_t<
@@ -55,9 +67,6 @@ public:
     Scope_ = 0;
     e.accept(*this);
   }
-  
-  void removeFunction(const std::string & Name)
-  { FunctionTable_.erase(Name); }
 
 private:
   
@@ -68,7 +77,7 @@ private:
     e.accept(*this);
     return TypeResult_;
   }
-  
+
   template<typename T>
   auto runStmtVisitor(T&e, int Scope)
   {
@@ -96,111 +105,49 @@ private:
 
   void dispatch(FunctionAST&) override;
   
-  auto getBaseType(const std::string & Name, const SourceLocation & Loc) {
-    auto it = TypeTable_.find(Name);
-    if ( it == TypeTable_.end() )
-      THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Loc);
-    return it->second;
-  }
-  auto getBaseType(Identifier Id) { return getBaseType(Id.getName(), Id.getLoc()); }
+  // base type interface
+  TypeEntry getBaseType(const std::string & Name, const SourceLocation & Loc);
+  TypeEntry getBaseType(Identifier Id);
 
-  auto getVariable(const std::string & Name, const SourceLocation & Loc) {
-    auto it = VariableTable_.find(Name);
-    if (it == VariableTable_.end())
-      THROW_NAME_ERROR("Variable '" << Name << "' has not been"
-          << " previously defined", Loc);
-    return it->second;
-  }
-  auto getVariable(Identifier Id) { return getVariable(Id.getName(), Id.getLoc()); }
+  // variable interface
+  VariableEntry
+    getVariable(const std::string & Name, const SourceLocation & Loc);
 
-  auto insertVariable(const Identifier & Id, const VariableType & VarType)
-  {
-    const auto & Name = Id.getName();
-    const auto & Loc = Id.getLoc();
-    auto S = std::make_shared<VariableDef>(Name, Loc, VarType);
-    auto it = VariableTable_.emplace(Name, std::move(S));
-    if (!it.second)
-      THROW_NAME_ERROR("Variable '" << Name << "' has been"
-          << " previously defined", Loc);
-    return it.first->second;
-  }
+  VariableEntry getVariable(Identifier Id);
 
-  std::shared_ptr<VariableDef> popVariable(const std::string & Name)
-  {
-    auto it = VariableTable_.find(Name);
-    if (it != VariableTable_.end()) {
-      auto res = it->second;
-      VariableTable_.erase(it);
-      return res;
-    }
-    return nullptr;
-  }
+  VariableEntry
+    insertVariable(const Identifier & Id, const VariableType & VarType);
 
-
-
-  void clearVariables()
-  { VariableTable_.clear(); }
-
-  auto insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
-      const VariableType & RetType)
-  { 
-    const auto & Name = Id.getName();
-    auto Sy = std::make_shared<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
-    auto fit = FunctionTable_.emplace( Name, std::move(Sy) );
-    if (!fit.second)
-      THROW_NAME_ERROR("Prototype already exists for '" << Name << "'.",
-        Id.getLoc());
-    return fit.first->second;
-  }
+  VariableEntry popVariable(const std::string & Name);
   
-  std::shared_ptr<FunctionDef> getFunction(const std::string &, const SourceLocation &);
+  void clearVariables();
 
-  auto getFunction(const Identifier & Id)
-  { return getFunction(Id.getName(), Id.getLoc()); }
-
+  // function interface
+  FunctionEntry
+    insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
+      const VariableType & RetType);
   
+  FunctionEntry getFunction(const std::string &, const SourceLocation &);
+
+  FunctionEntry getFunction(const Identifier & Id);
+ 
+public:
+  void removeFunction(const std::string & Name);
+
+private:
+
+  // type checking interface
   void checkIsCastable(const VariableType & FromType, const VariableType & ToType,
-      const SourceLocation & Loc)
-  {
-    auto IsCastable = FromType.isCastableTo(ToType);
-    if (!IsCastable)
-      THROW_NAME_ERROR("Cannot cast from type '" << FromType << "' to type '"
-          << ToType << "'.", Loc);
-  }
+      const SourceLocation & Loc);
     
   void checkIsAssignable(const VariableType & LeftType, const VariableType & RightType,
-      const SourceLocation & Loc)
-  {
-    auto IsAssignable = RightType.isAssignableTo(LeftType);
-    if (!IsAssignable)
-      THROW_NAME_ERROR("A variable of type '" << RightType << "' cannot be"
-           << " assigned to a variable of type '" << LeftType << "'." , Loc);
-  }
+      const SourceLocation & Loc);
 
-  auto insertCastOp( std::unique_ptr<NodeAST> FromExpr, const VariableType & ToType )
-  {
-    auto Loc = FromExpr->getLoc();
-    auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr), ToType);
-    return E;
-  }
+  std::unique_ptr<CastExprAST>
+    insertCastOp( std::unique_ptr<NodeAST> FromExpr, const VariableType & ToType );
 
   VariableType promote(const VariableType & LeftType, const VariableType & RightType,
-      const SourceLocation & Loc)
-  {
-    if (LeftType == RightType) return LeftType;
-
-    if (LeftType.isNumber() && RightType.isNumber()) {
-      if (LeftType == F64Type_ || RightType == F64Type_)
-        return F64Type_;
-      else
-        return LeftType;
-    }
-    
-    THROW_NAME_ERROR("No promotion rules between the type '" << LeftType
-         << " and the type '" << RightType << "'." , Loc);
-
-    return {};
-  }
+      const SourceLocation & Loc);
 
 };
 

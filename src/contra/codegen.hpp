@@ -32,6 +32,7 @@ class CodeGen : public AstDispatcher {
   using Type = llvm::Type;
   using Value = llvm::Value;
 
+  // LLVM builder types  
   llvm::LLVMContext TheContext_;
   llvm::IRBuilder<> Builder_;
   std::unique_ptr<llvm::Module> TheModule_;
@@ -39,6 +40,7 @@ class CodeGen : public AstDispatcher {
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
   JIT TheJIT_;
 
+  // visitor results
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
 
@@ -56,13 +58,18 @@ class CodeGen : public AstDispatcher {
   Type* F64Type_ = nullptr;
   Type* VoidType_ = nullptr;
 
+  // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
 
+  // command line arguments
   int Argc_ = 0;
   char ** Argv_ = nullptr;
 
 public:
   
+  //============================================================================
+  // Constructor / Destructors
+  //============================================================================
 
   // Constructor
   CodeGen(bool);
@@ -70,38 +77,20 @@ public:
   // destructor
   virtual ~CodeGen();
 
+  //============================================================================
+  // LLVM accessors
+  //============================================================================
+
   // some accessors
   llvm::IRBuilder<> & getBuilder() { return Builder_; }
   llvm::LLVMContext & getContext() { return TheContext_; }
   llvm::Module & getModule() { return *TheModule_; }
 
   static llvm::IRBuilder<> createBuilder(Function *TheFunction);
-
-  /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
-  /// the function.  This is used for mutable variables etc.
-  ArrayType
-  createArray(Function *TheFunction, const std::string &VarName,
-      Type* PtrType, Value * SizeExpr );
-
-  // Initializes a bunch of arrays with a value
-  void initArrays( Function *TheFunction, 
-      const std::vector<AllocaInst*> & VarList,
-      Value * InitVal,
-      Value * SizeExpr );
-
-  // initializes an array with a list of values
-  void initArray( Function *TheFunction, 
-      AllocaInst* Var,
-      const std::vector<Value *> InitVals );
   
-  // copies one array to another
-  void copyArrays( Function *TheFunction, 
-      AllocaInst* Src,
-      const std::vector<AllocaInst*> Tgts,
-      Value * SizeExpr);
-
-  // destroy all arrays
-  void destroyArrays();
+  //============================================================================
+  // Optimization / Module interface
+  //============================================================================
 
   /// Top-Level parsing and JIT Driver
   void initializeModuleAndPassManager();
@@ -111,8 +100,9 @@ public:
   void optimize(Function* F)
   { TheFPM_->run(*F); }
 
-  // Return true if in debug mode
-  auto isDebug() { return static_cast<bool>(DBuilder); }
+  //============================================================================
+  // JIT interface
+  //============================================================================
 
   // JIT the current module
   JIT::VModuleKey doJIT();
@@ -123,11 +113,15 @@ public:
   // Delete a JITed module
   void removeJIT( JIT::VModuleKey H );
 
-  // Finalize whatever needs to be
-  void finalize();
+  //============================================================================
+  // Debug-related accessors
+  //============================================================================
+  
+  // Return true if in debug mode
+  auto isDebug() { return static_cast<bool>(DBuilder); }
 
+  // create a debug entry for a function
   llvm::DISubroutineType *createFunctionType(unsigned NumArgs, llvm::DIFile *Unit);
-
 
   // create a subprogram DIE
   llvm::DIFile * createFile();
@@ -150,6 +144,10 @@ public:
   void popLexicalBlock() {
     if (isDebug()) KSDbgInfo.LexicalBlocks.pop_back();
   }
+  
+  //============================================================================
+  // Vizitor interface
+  //============================================================================
  
   // Codegen function
   template<
@@ -163,11 +161,8 @@ public:
     e.accept(*this);
     return FunctionResult_;
   }
-  
-  PrototypeAST & insertFunction(std::unique_ptr<PrototypeAST> Proto);
 
 private:
-
   
   // Codegen function
   template<typename T>
@@ -194,6 +189,10 @@ private:
   void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
+  
+  //============================================================================
+  // Type interface
+  //============================================================================
 
   Type* getLLVMType(const VariableType & Ty)
   { return TypeTable_.at(Ty.getBaseType()->getName()); }
@@ -201,41 +200,68 @@ private:
   Type* getLLVMType(const Identifier & Id)
   { return TypeTable_.at(Id.getName()); }
 
+  //============================================================================
+  // Variable interface
+  //============================================================================
   AllocaInst *createVariable(Function *TheFunction,
     const std::string &VarName, Type* VarType);
   
   AllocaInst *getVariable(const std::string & VarName)
   { return VariableTable_.at(VarName); }
 
+  AllocaInst* moveVariable(const std::string & From, const std::string & To);
+
+  //============================================================================
+  // Array interface
+  //============================================================================
+
   auto getArray(const std::string & Name)
   { return ArrayTable_.at(Name); }
 
-  auto moveArray(const std::string & From, const std::string & To)
-  {
-    auto it = ArrayTable_.find(From);
-    auto Array = it->second;
-    ArrayTable_.erase(it);
-    ArrayTable_.emplace( To, Array );
-    return Array;
-  }
-
-  auto moveVariable(const std::string & From, const std::string & To)
-  {
-    auto it = VariableTable_.find(From);
-    auto Var = it->second;
-    VariableTable_.erase(it);
-    VariableTable_.emplace( To, Var );
-    return Var;
-  }
+  ArrayType & moveArray(const std::string & From, const std::string & To);
   
-  Function *getFunction(std::string Name); 
+  /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+  /// the function.  This is used for mutable variables etc.
+  ArrayType
+  createArray(Function *TheFunction, const std::string &VarName,
+      Type* PtrType, Value * SizeExpr );
 
-  auto insertTask(const std::string & Name, Function* F)
-  {
-    auto TaskName = F->getName();
-    auto Id = static_cast<int>(TaskTable_.size()+1);
-    return TaskTable_.emplace(Name, TaskInfo{Id, TaskName, F});
-  }
+  // Initializes a bunch of arrays with a value
+  void initArrays( Function *TheFunction, 
+      const std::vector<AllocaInst*> & VarList,
+      Value * InitVal,
+      Value * SizeExpr );
+
+  // initializes an array with a list of values
+  void initArray( Function *TheFunction, 
+      AllocaInst* Var,
+      const std::vector<Value *> InitVals );
+  
+  // copies one array to another
+  void copyArrays( Function *TheFunction, 
+      AllocaInst* Src,
+      const std::vector<AllocaInst*> Tgts,
+      Value * SizeExpr);
+
+  // destroy all arrays
+  void destroyArrays();
+
+  
+  //============================================================================
+  // Function interface
+  //============================================================================
+
+public: 
+  PrototypeAST & insertFunction(std::unique_ptr<PrototypeAST> Proto);
+
+private:
+  Function *getFunction(std::string Name); 
+  
+  //============================================================================
+  // Task interface
+  //============================================================================
+
+  TaskInfo & insertTask(const std::string & Name, Function* F);
 
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }
@@ -245,12 +271,8 @@ private:
 
 public: 
 
-  void updateTask(const std::string & Name)
-  {
-    auto & Task = TaskTable_.at(Name);
-    auto TaskS = findSymbol(Task.getName().c_str());
-    Task.setAddress( (intptr_t)cantFail(TaskS.getAddress()) );
-  }
+  void updateTask(const std::string & Name);
+  
 };
 
 } // namespace

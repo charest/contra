@@ -21,6 +21,10 @@ using namespace llvm;
 
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+// Constructor / Destructor
+////////////////////////////////////////////////////////////////////////////////
+
 //==============================================================================
 // Constructor
 //==============================================================================
@@ -66,14 +70,36 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 // Destructor
 //==============================================================================
 CodeGen::~CodeGen() {
+  // delete arguments
   for (int i=0; i<Argc_; ++i) delete[] Argv_[i];
   delete[] Argv_;
+  
+  // finish debug
+  if (DBuilder) DBuilder->finalize();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// LLVM accessors
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+// Create temp builder
+//==============================================================================
+IRBuilder<> CodeGen::createBuilder(Function *TheFunction) 
+{
+  auto & Block = TheFunction->getEntryBlock();
+  return IRBuilder<>(&Block, Block.begin());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Optimization / Module interface
+////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
 // Initialize module and optimizer
 //==============================================================================
-void CodeGen::initializeModuleAndPassManager() {
+void CodeGen::initializeModuleAndPassManager()
+{
   initializeModule();
   if (!isDebug())
     initializePassManager();
@@ -113,36 +139,123 @@ void CodeGen::initializePassManager() {
   TheFPM_->doInitialization();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// JIT interface
+////////////////////////////////////////////////////////////////////////////////
+
 //==============================================================================
-// Get the function
+// JIT the current module
 //==============================================================================
-Function *CodeGen::getFunction(std::string Name) {
-  // First, see if the function has already been added to the current module.
-  if (auto F = TheModule_->getFunction(Name))
-    return F;
+JIT::VModuleKey CodeGen::doJIT()
+{
+  auto H = TheJIT_.addModule(std::move(TheModule_));
+  initializeModuleAndPassManager();
+  return H;
+}
+
+//==============================================================================
+// Search the JIT for a symbol
+//==============================================================================
+JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
+{ return TheJIT_.findSymbol(Symbol); }
+
+//==============================================================================
+// Delete a JITed module
+//==============================================================================
+void CodeGen::removeJIT( JIT::VModuleKey H )
+{ TheJIT_.removeModule(H); }
+
+////////////////////////////////////////////////////////////////////////////////
+// Debug related interface
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+// Create a debug function type
+//==============================================================================
+DISubroutineType *CodeGen::createFunctionType(unsigned NumArgs, DIFile *Unit) {
   
-  // see if this is an available intrinsic, try installing it first
-  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
-    return F;
+  if (!isDebug()) return nullptr;
 
-  // If not, check whether we can codegen the declaration from some existing
-  // prototype.
-  auto fit = FunctionTable_.find(Name);
-  return runFuncVisitor(*fit->second);
+  SmallVector<Metadata *, 8> EltTys;
+  DIType *DblTy = KSDbgInfo.getDoubleTy(*DBuilder);
+
+  // Add the result type.
+  EltTys.push_back(DblTy);
+
+  for (unsigned i = 0, e = NumArgs; i != e; ++i)
+    EltTys.push_back(DblTy);
+
+  return DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(EltTys));
+}
+  
+DIFile * CodeGen::createFile() {
+  if (isDebug())
+    return DBuilder->createFile(KSDbgInfo.TheCU->getFilename(),
+        KSDbgInfo.TheCU->getDirectory());
+  else
+    return nullptr;
 }
 
-PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
+//==============================================================================
+// create a subprogram DIE
+//==============================================================================
+DISubprogram * CodeGen::createSubprogram(
+    unsigned LineNo,
+    unsigned ScopeLine,
+    const std::string & Name,
+    unsigned arg_size,
+    DIFile * Unit)
 {
-  auto & P = FunctionTable_[Proto->getName()];
-  P = std::move(Proto);
-  return *P;
+  if (isDebug()) {
+    DIScope *FContext = Unit;
+    DISubprogram *SP = DBuilder->createFunction(
+        FContext, Name, StringRef(), Unit, LineNo,
+        createFunctionType(arg_size, Unit), ScopeLine,
+        DINode::FlagPrototyped, DISubprogram::SPFlagDefinition);
+    return SP;
+  }
+  else {
+    return nullptr;
+  }
+}
+ 
+//==============================================================================
+// Create a variable
+//==============================================================================
+DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
+    const std::string & Name, unsigned ArgIdx, DIFile *Unit, unsigned LineNo,
+    AllocaInst *Alloca)
+{
+  if (isDebug()) {
+    DILocalVariable *D = DBuilder->createParameterVariable(
+      SP, Name, ArgIdx, Unit, LineNo, KSDbgInfo.getDoubleTy(*DBuilder),
+      true);
+
+    DBuilder->insertDeclare(Alloca, D, DBuilder->createExpression(),
+        DebugLoc::get(LineNo, 0, SP),
+        Builder_.GetInsertBlock());
+
+    return D;
+  }
+  else {
+    return nullptr;
+  }
 }
 
-IRBuilder<> CodeGen::createBuilder(Function *TheFunction) 
+
+////////////////////////////////////////////////////////////////////////////////
+// Variable Interface
+////////////////////////////////////////////////////////////////////////////////
+  
+AllocaInst* CodeGen::moveVariable(const std::string & From, const std::string & To)
 {
-  auto & Block = TheFunction->getEntryBlock();
-  return IRBuilder<>(&Block, Block.begin());
+  auto it = VariableTable_.find(From);
+  auto Var = it->second;
+  VariableTable_.erase(it);
+  VariableTable_.emplace( To, Var );
+  return Var;
 }
+    
 
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
@@ -155,6 +268,22 @@ AllocaInst *CodeGen::createVariable(Function *TheFunction,
   auto Alloca = TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
   VariableTable_[VarName] = Alloca;
   return Alloca;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Array Interface
+////////////////////////////////////////////////////////////////////////////////
+  
+//==============================================================================
+// Move an array from one key to another
+//==============================================================================
+ArrayType & CodeGen::moveArray(const std::string & From, const std::string & To)
+{
+  auto it = ArrayTable_.find(From);
+  auto Array = it->second;
+  ArrayTable_.erase(it);
+  auto nit = ArrayTable_.emplace( To, std::move(Array) );
+  return nit.first->second;
 }
     
 //==============================================================================
@@ -347,107 +476,63 @@ void CodeGen::destroyArrays() {
 }
 
 
-//==============================================================================
-// JIT the current module
-//==============================================================================
-JIT::VModuleKey CodeGen::doJIT()
-{
-  auto H = TheJIT_.addModule(std::move(TheModule_));
-  initializeModuleAndPassManager();
-  return H;
-}
+////////////////////////////////////////////////////////////////////////////////
+// Function Interface
+////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-// Search the JIT for a symbol
+// Get the function
 //==============================================================================
-JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
-{ return TheJIT_.findSymbol(Symbol); }
-
-//==============================================================================
-// Delete a JITed module
-//==============================================================================
-void CodeGen::removeJIT( JIT::VModuleKey H )
-{ TheJIT_.removeModule(H); }
-
-//==============================================================================
-// Finalize whatever needs to be
-//==============================================================================
-void CodeGen::finalize() {
-  if (DBuilder) DBuilder->finalize();
-}
-
-//==============================================================================
-// Create a debug function type
-//==============================================================================
-DISubroutineType *CodeGen::createFunctionType(unsigned NumArgs, DIFile *Unit) {
+Function *CodeGen::getFunction(std::string Name) {
+  // First, see if the function has already been added to the current module.
+  if (auto F = TheModule_->getFunction(Name))
+    return F;
   
-  if (!isDebug()) return nullptr;
+  // see if this is an available intrinsic, try installing it first
+  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
+    return F;
 
-  SmallVector<Metadata *, 8> EltTys;
-  DIType *DblTy = KSDbgInfo.getDoubleTy(*DBuilder);
-
-  // Add the result type.
-  EltTys.push_back(DblTy);
-
-  for (unsigned i = 0, e = NumArgs; i != e; ++i)
-    EltTys.push_back(DblTy);
-
-  return DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(EltTys));
-}
-  
-DIFile * CodeGen::createFile() {
-  if (isDebug())
-    return DBuilder->createFile(KSDbgInfo.TheCU->getFilename(),
-        KSDbgInfo.TheCU->getDirectory());
-  else
-    return nullptr;
+  // If not, check whether we can codegen the declaration from some existing
+  // prototype.
+  auto fit = FunctionTable_.find(Name);
+  return runFuncVisitor(*fit->second);
 }
 
 //==============================================================================
-// create a subprogram DIE
+// Insert the function
 //==============================================================================
-DISubprogram * CodeGen::createSubprogram(
-    unsigned LineNo,
-    unsigned ScopeLine,
-    const std::string & Name,
-    unsigned arg_size,
-    DIFile * Unit)
+PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
 {
-  if (isDebug()) {
-    DIScope *FContext = Unit;
-    DISubprogram *SP = DBuilder->createFunction(
-        FContext, Name, StringRef(), Unit, LineNo,
-        createFunctionType(arg_size, Unit), ScopeLine,
-        DINode::FlagPrototyped, DISubprogram::SPFlagDefinition);
-    return SP;
-  }
-  else {
-    return nullptr;
-  }
+  auto & P = FunctionTable_[Proto->getName()];
+  P = std::move(Proto);
+  return *P;
 }
- 
+
+////////////////////////////////////////////////////////////////////////////////
+// Task Interface
+////////////////////////////////////////////////////////////////////////////////
+
 //==============================================================================
-// Create a variable
-//==============================================================================
-DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
-    const std::string & Name, unsigned ArgIdx, DIFile *Unit, unsigned LineNo,
-    AllocaInst *Alloca)
+TaskInfo & CodeGen::insertTask(const std::string & Name, Function* F)
 {
-  if (isDebug()) {
-    DILocalVariable *D = DBuilder->createParameterVariable(
-      SP, Name, ArgIdx, Unit, LineNo, KSDbgInfo.getDoubleTy(*DBuilder),
-      true);
-
-    DBuilder->insertDeclare(Alloca, D, DBuilder->createExpression(),
-        DebugLoc::get(LineNo, 0, SP),
-        Builder_.GetInsertBlock());
-
-    return D;
-  }
-  else {
-    return nullptr;
-  }
+  auto TaskName = F->getName();
+  auto Id = static_cast<int>(TaskTable_.size()+1);
+  auto it = TaskTable_.emplace(Name, TaskInfo{Id, TaskName, F});
+  return it.first->second;
 }
+
+//==============================================================================
+void CodeGen::updateTask(const std::string & Name)
+{
+  auto & Task = TaskTable_.at(Name);
+  auto TaskS = findSymbol(Task.getName().c_str());
+  Task.setAddress( (intptr_t)cantFail(TaskS.getAddress()) );
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Visitor Interface
+////////////////////////////////////////////////////////////////////////////////
 
 
 //==============================================================================
@@ -654,6 +739,21 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     case tok_lt:
       ValueResult_ = Builder_.CreateFCmpULT(L, R, "cmptmp");
       return;
+    case tok_le:
+      ValueResult_ = Builder_.CreateFCmpULE(L, R, "cmptmp");
+      return;
+    case tok_gt:
+      ValueResult_ = Builder_.CreateFCmpUGT(L, R, "cmptmp");
+      return;
+    case tok_ge:
+      ValueResult_ = Builder_.CreateFCmpUGE(L, R, "cmptmp");
+      return;
+    case tok_eq:
+      ValueResult_ = Builder_.CreateFCmpUEQ(L, R, "cmptmp");
+      return;
+    case tok_ne:
+      ValueResult_ = Builder_.CreateFCmpUNE(L, R, "cmptmp");
+      return;
     } 
   }
   else {
@@ -672,6 +772,21 @@ void CodeGen::dispatch(BinaryExprAST& e) {
       return;
     case tok_lt:
       ValueResult_ = Builder_.CreateICmpSLT(L, R, "cmptmp");
+      return;
+    case tok_le:
+      ValueResult_ = Builder_.CreateICmpSLE(L, R, "cmptmp");
+      return;
+    case tok_gt:
+      ValueResult_ = Builder_.CreateICmpSGT(L, R, "cmptmp");
+      return;
+    case tok_ge:
+      ValueResult_ = Builder_.CreateICmpSGE(L, R, "cmptmp");
+      return;
+    case tok_eq:
+      ValueResult_ = Builder_.CreateICmpEQ(L, R, "cmptmp");
+      return;
+    case tok_ne:
+      ValueResult_ = Builder_.CreateICmpNE(L, R, "cmptmp");
       return;
     }
   }

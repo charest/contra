@@ -11,6 +11,9 @@
 
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+/// AST plotting class
+////////////////////////////////////////////////////////////////////////////////
 class Vizualizer : public AstDispatcher {
 
   std::ofstream OutputStream_;
@@ -34,12 +37,8 @@ public:
     if (OutputStream_) OutputStream_.close();
   }
 
-  std::ostream & out() { return *out_; }
-
   void start() { out() << "digraph {" << std::endl; }
   void stop() { out() << "}" << std::endl; }
-
-  std::string makeLabel(const std::string &, const std::string & = "");
 
   // Codegen function
   template<typename T>
@@ -47,6 +46,8 @@ public:
   {
     e.accept(*this);
   }
+
+private:
    
   void dispatch(ValueExprAST<int_t>&) override;
   void dispatch(ValueExprAST<real_t>&) override;
@@ -63,8 +64,10 @@ public:
   void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
+  
+  std::ostream & out() { return *out_; }
 
-private:
+  std::string makeLabel(const std::string &, const std::string & = "");
 
   template<typename T>
   void dumpNumericVal(ValueExprAST<T>&);
