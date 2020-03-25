@@ -50,14 +50,21 @@ enum Token {
   tok_end,
   tok_return,
   tok_task,
+
+  // special binary
+  tok_eq,
+  tok_ne,
+  tok_le,
+  tok_ge,
   
   // file seperators
   tok_eof = -1,
   tok_sep = ';',
   
   // binary
-  tok_eq = '=',
+  tok_asgmt = '=',
   tok_lt = '<',
+  tok_gt = '>',
   tok_add = '+',
   tok_sub = '-',
   tok_mul = '*',

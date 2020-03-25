@@ -21,12 +21,16 @@ public:
   BinopPrecedence() {
     // Install standard binary operators.
     // 1 is lowest precedence.
-    Precedence_[tok_eq] = 2;
+    Precedence_[tok_asgmt] = 2;
+    Precedence_[tok_eq] = 10;
     Precedence_[tok_lt] = 10;
+    Precedence_[tok_le] = 10;
+    Precedence_[tok_gt] = 10;
+    Precedence_[tok_ge] = 10;
     Precedence_[tok_add] = 20;
     Precedence_[tok_sub] = 20;
     Precedence_[tok_mul] = 40;
-    Precedence_[tok_div] = 50;
+    Precedence_[tok_div] = 40;
     // highest.
   }
 
@@ -38,6 +42,9 @@ public:
     else
       return {false, -1};
   }
+
+  auto count(char key) const
+  { return Precedence_.count(key); }
 
   int& operator[]( char key ) { return Precedence_[key]; }
   int& at( char key ) { return Precedence_.at(key); }

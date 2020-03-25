@@ -324,6 +324,7 @@ Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<NodeAST> LHS)
     // If BinOp binds less tightly with RHS than the operator after RHS, let
     // the pending operator take RHS as its LHS.
     int NextPrec = getTokPrecedence();
+
     if (TokPrec < NextPrec) {
       RHS = parseBinOpRHS(TokPrec + 1, std::move(RHS));
     }
@@ -388,7 +389,7 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
 std::unique_ptr<NodeAST> Parser::parseUnary() {
 
   // If the current token is not an operator, it must be a primary expr.
-  if (!isascii(CurTok_) || CurTok_ == '(' || CurTok_ == ',') {
+  if (!isTokOperator() || CurTok_ == '(' || CurTok_ == ',') {
     auto P = parsePrimary();
     return P;
   }
@@ -465,7 +466,7 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
   // Read the optional initializer.
   std::unique_ptr<NodeAST> Init;
   auto EqLoc = getCurLoc();
-  if (CurTok_ == '=') {
+  if (CurTok_ == tok_asgmt) {
     getNextToken(); // eat the '='.
     
     if (CurTok_ == '[')

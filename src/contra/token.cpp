@@ -13,6 +13,10 @@ void Tokens::setup() {
 
   // add non-keywords here
   TokenMap = {
+    { tok_eq, "==" },
+    { tok_ne, "!=" },
+    { tok_le, "<=" },
+    { tok_ge, ">=" },
     { tok_eof, "eof" },
     { tok_identifier, "identifier" },
     { tok_int_number, "integer_number" },

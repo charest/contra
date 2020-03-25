@@ -175,7 +175,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
   auto RightType = runExprVisitor(RightExpr);
   auto LeftType = runExprVisitor(LeftExpr);
 
-  if (OpCode == '=') {
+  if (OpCode == tok_asgmt) {
     // Assignment requires the LHS to be an identifier.
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a
@@ -224,7 +224,12 @@ void Analyzer::dispatch(BinaryExprAST& e)
     TypeResult_ = CommonType;
     e.setType(TypeResult_);
     return;
+  case tok_eq:
+  case tok_ne:
   case tok_lt:
+  case tok_le:
+  case tok_gt:
+  case tok_ge:
     TypeResult_ = BoolType_;
     e.setType(TypeResult_);
     return;
@@ -264,8 +269,10 @@ void Analyzer::dispatch(CallExprAST& e)
       checkIsCastable(ArgType, ParamType, e.ArgExprs_[i]->getLoc());
       e.ArgExprs_[i] = insertCastOp( std::move(e.ArgExprs_[i]), ParamType);
     }
-
   }
+
+  for (int i=NumFixedArgs; i<NumArgs; ++i)
+    auto ArgType = runExprVisitor(*e.ArgExprs_[i]);
 
   TypeResult_ = FunRes->getReturnType(); 
   e.setType(TypeResult_);

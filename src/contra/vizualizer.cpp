@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "token.hpp"
 #include "vizualizer.hpp"
 
 namespace contra {
@@ -116,7 +117,7 @@ void Vizualizer::dispatch(UnaryExprAST& e)
 void Vizualizer::dispatch(BinaryExprAST& e)
 {
   auto my_ind = ind_;
-  std::string Op( 1, e.getOperand() );
+  std::string Op = Tokens::getName(e.getOperand());
   out() << "node" << my_ind << "[label=" << makeLabel(e.getClassName(), Op)
     << "];" << std::endl;
   out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Left];" << std::endl;

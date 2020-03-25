@@ -602,7 +602,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
   emitLocation(&e);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
-  if (e.OpCode_ == '=') {
+  if (e.OpCode_ == tok_asgmt) {
     // Assignment requires the LHS to be an identifier.
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a

@@ -51,9 +51,6 @@ public:
 
   /// GetTokPrecedence - Get the precedence of the pending binary operator token.
   int getTokPrecedence() const {
-    if (!isascii(CurTok_))
-      return -1;
-
     // Make sure it's a declared binop.
     auto TokPrecIt = BinopPrecedence_->find(CurTok_);
     if (TokPrecIt.found) 
@@ -61,6 +58,9 @@ public:
     else
       return -1;
   }
+
+  bool isTokOperator() const
+  { return BinopPrecedence_->count(CurTok_); }
 
   const auto & getCurLoc() const { return TheLex_.getCurLoc(); }
   const auto & getLexLoc() const { return TheLex_.getLexLoc(); }

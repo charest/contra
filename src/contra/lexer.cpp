@@ -42,7 +42,7 @@ int Lexer::gettok() {
   while (isspace(LastChar_))
     LastChar_ = advance();
   
-  //auto NextChar = peek();
+  auto NextChar = peek();
   CurLoc_ = LexLoc_;
 
   //----------------------------------------------------------------------------
@@ -145,6 +145,29 @@ int Lexer::gettok() {
     IdentifierStr_ = unescape(quoted);
     LastChar_ = advance();
     return tok_string;
+  }
+  
+  //----------------------------------------------------------------------------
+  // Comparison operators
+  if (LastChar_ == '=' && NextChar == '=') {
+    advance(); // eat next =
+    LastChar_ = advance();
+    return tok_eq;
+  }
+  if (LastChar_ == '<' && NextChar == '=') {
+    advance(); // eat next =
+    LastChar_ = advance();
+    return tok_le;
+  }
+  if (LastChar_ == '>' && NextChar == '=') {
+    advance(); // eat next =
+    LastChar_ = advance();
+    return tok_ge;
+  }
+  if (LastChar_ == '!' && NextChar == '=') {
+    advance(); // eat next =
+    LastChar_ = advance();
+    return tok_ne;
   }
 
   //----------------------------------------------------------------------------
