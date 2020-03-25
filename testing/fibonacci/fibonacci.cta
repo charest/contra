@@ -20,7 +20,6 @@ function fibonacci(fib_num : i64) -> i64
     res = sum(f1, f2)
   end
 
-  print("shouldnt", f1)
   return res
 
 end
