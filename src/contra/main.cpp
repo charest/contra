@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
   Interp.setInteractive( args.count("__positional") == 0 );
   Interp.setVerbose( args.count("v") );
   Interp.setDebug( args.count("g") );
+  Interp.setOverwrite( args.count("f") );
   Interp.setOptimized( args.count("O") );
   if (args.count("i")) Interp.setDumpIR(args.at("i"));
   if (args.count("d")) Interp.setDumpDot(args.at("d"));

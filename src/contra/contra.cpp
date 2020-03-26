@@ -9,6 +9,44 @@ using namespace llvm;
 namespace contra {
 
 //==============================================================================
+//  Main setup function
+//==============================================================================
+void Contra::setup(const std::string & FileName)
+{
+  ThePrecedence_ = std::make_shared<BinopPrecedence>();
+
+  if (FileName.empty())
+    TheParser_ = std::make_unique<Parser>(ThePrecedence_);
+  else
+    TheParser_ = std::make_unique<Parser>(ThePrecedence_, FileName);
+
+  TheCG_ = std::make_unique<CodeGen>(IsDebug_);
+
+  if (IRFileName_ == "-") {
+    IRFileStream_ = &llvm::outs();
+  }
+  else if (!IRFileName_.empty()) {
+    std::error_code EC;
+    if (!isOverwrite() && file_exists(IRFileName_))
+      THROW_CONTRA_ERROR("File '" << IRFileName_
+          << "' already exists!  Use -f to overwrite.");
+    IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC, llvm::sys::fs::F_None);
+    IRFileStream_ = IRFile_.get();
+  }
+
+  if (DotFileName_ == "-") {
+    TheViz_ = std::make_unique<Vizualizer>(std::cout);
+  }
+  else if (!DotFileName_.empty()) {
+    TheViz_ = std::make_unique<Vizualizer>(DotFileName_, isOverwrite());
+  }
+  if (TheViz_) TheViz_->start();
+
+
+  TheAnalyser_ = std::make_unique<Analyzer>(ThePrecedence_);
+}
+
+//==============================================================================
 // Top-Level definition handler
 //==============================================================================
 void Contra::handleFunction()

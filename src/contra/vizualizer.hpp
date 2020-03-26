@@ -3,6 +3,7 @@
 
 #include "config.hpp"
 #include "dispatcher.hpp"
+#include "file_utils.hpp"
 #include "string_utils.hpp"
 
 #include <iostream>
@@ -25,8 +26,11 @@ public:
   Vizualizer(std::ostream & out = std::cout) : out_(&out)
   {}
 
-  Vizualizer(const std::string & FileName)
+  Vizualizer(const std::string & FileName, bool Overwrite = false)
   {
+    if (!Overwrite && file_exists(FileName))
+      THROW_CONTRA_ERROR("File '" << FileName
+          << "' already exists!  Use -f to overwrite.");
     OutputStream_.open(FileName.c_str());
     out_ = &OutputStream_;
   }

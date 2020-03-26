@@ -3,6 +3,7 @@
 
 #include "analysis.hpp"
 #include "codegen.hpp"
+#include "file_utils.hpp"
 #include "llvm.hpp"
 #include "parser.hpp"
 #include "vizualizer.hpp"
@@ -17,6 +18,7 @@ class Contra : public ErrorDispatcher {
   bool IsVerbose_ = false;
   bool IsDebug_ = false;
   bool IsOptimized_ = false;
+  bool IsOverwrite_ = false;
 
   std::string OutputFileName_;
   std::string IRFileName_;
@@ -43,37 +45,7 @@ public:
   }
 
 
-  void setup(const std::string & FileName)
-  {
-    ThePrecedence_ = std::make_shared<BinopPrecedence>();
-
-    if (FileName.empty())
-      TheParser_ = std::make_unique<Parser>(ThePrecedence_);
-    else
-      TheParser_ = std::make_unique<Parser>(ThePrecedence_, FileName);
-
-    TheCG_ = std::make_unique<CodeGen>(IsDebug_);
-
-    if (IRFileName_ == "-") {
-      IRFileStream_ = &llvm::outs();
-    }
-    else if (!IRFileName_.empty()) {
-      std::error_code EC;
-      IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC, llvm::sys::fs::F_None);
-      IRFileStream_ = IRFile_.get();
-    }
-
-    if (DotFileName_ == "-") {
-      TheViz_ = std::make_unique<Vizualizer>(std::cout);
-    }
-    else if (!DotFileName_.empty()) {
-      TheViz_ = std::make_unique<Vizualizer>(DotFileName_);
-    }
-    if (TheViz_) TheViz_->start();
-
-
-    TheAnalyser_ = std::make_unique<Analyzer>(ThePrecedence_);
-  }
+  void setup(const std::string & FileName);
   
   bool isInteractive() const { return IsInteractive_; };
   void setInteractive(bool IsInteractive=true)
@@ -88,6 +60,9 @@ public:
   
   bool isDebug() const { return IsDebug_; }
   void setDebug(bool IsDebug=true) { IsDebug_=IsDebug; }
+
+  bool isOverwrite() const { return IsOverwrite_; }
+  void setOverwrite(bool IsOverwrite=true) { IsOverwrite_=IsOverwrite; }
 
   bool isOptimized() const { return IsDebug_; }
   void setOptimized(bool IsOptimized=true) { IsOptimized_=IsOptimized; }

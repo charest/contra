@@ -74,6 +74,7 @@ int processArguments(
               << " [--debug,-g]"
               << " [--dump-ir,-i IR_FILE]"
               << " [--dump-dot,-d DOT_FILE]"
+              << " [--force,-f]"
               << " [--help,-h]"
               << " [--optimize,-O]"
               << " [--output,-o OUTPUT_FILE]"
@@ -84,10 +85,11 @@ int processArguments(
     std::cout << "\t--debug:\t Turn off optimizations." << std::endl;
     std::cout << "\t--dump-ir:\t Dump IR." << std::endl;
     std::cout << "\t--dump-dot:\t Dump AST." << std::endl;
+    std::cout << "\t--force:\t\t Overrite output files." << std::endl;
+    std::cout << "\t--help:\t\t Print a help message." << std::endl;
     std::cout << "\t--optimize:\t Optimize." << std::endl;
     std::cout << "\t--output:\t Output object file to OUTPUT_FILE." << std::endl;
     std::cout << "\t--verbose:\t Print debug information." << std::endl;
-    std::cout << "\t--help:\t\t Print a help message." << std::endl;
   };
 
   // Define the options
@@ -95,6 +97,7 @@ int processArguments(
     {
       {"debug",           no_argument, 0, 'g'},
       {"compile",         no_argument, 0, 'c'},
+      {"force",           no_argument, 0, 'f'},
       {"help",            no_argument, 0, 'h'},
       {"dump-ir",   required_argument, 0, 'i'},
       {"dump-dot",  required_argument, 0, 'd'},
@@ -103,7 +106,7 @@ int processArguments(
       {"verbose",         no_argument, 0, 'v'},
       {0, 0, 0, 0}
     };
-  const char * short_options = "d:ghi:cOo:v";
+  const char * short_options = "d:gfhi:cOo:v";
 
   // parse the arguments
   auto ret = parseArguments(argc, argv, long_options, short_options, args);
