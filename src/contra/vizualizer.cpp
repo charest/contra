@@ -26,13 +26,30 @@ std::string Vizualizer::makeLabel(const std::string & Type, const std::string & 
 }
 
 //==============================================================================
+int_t Vizualizer::createLink(int_t From,  const std::string & Label)
+{
+
+  out() << "node" << From << " -> node" << ind_+1;
+  if (!Label.empty()) out() << " [label=" << Label << "]";
+  out() << ";" << std::endl;
+  ind_++;
+  return ind_;
+}
+
+//==============================================================================
+void Vizualizer::labelNode(int_t ind, const std::string & Label)
+{
+  if (!Label.empty())
+    out() << "node" << ind << "[label=" << Label <<  "];" << std::endl;
+
+}
+
+
+//==============================================================================
 template<typename T>
 void Vizualizer::dumpNumericVal(ValueExprAST<T>& e)
 {
-  std::stringstream ss;
-  ss << e.getVal();
-  out() << "node" << ind_ << "[label=" << makeLabel(e.getClassName(), ss.str())
-    <<  "];" << std::endl;
+  labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getVal()));
 }
 
 //==============================================================================
@@ -44,15 +61,15 @@ void Vizualizer::dumpBlock(ASTBlock & Block, int_t link_to,
 
   bool IsExpanded = Num>1 || ForceExpanded;
 
-  std::string extra = !IsExpanded ? " [label="+Label+"]" : "";
+  std::string extra = !IsExpanded ? Label : "";
   
   if (IsExpanded) {
-    out() << "node" << link_to << " -> node" << ++ind_ << ";" << std::endl; 
-    out() << "node" << ind_ << "[label=" << Label << "];" << std::endl;
+    createLink(link_to);
+    labelNode(ind_, Label);
     link_to = ind_;
   }
   for (unsigned i=0; i<Num; ++i) {
-    out() << "node" << link_to << " -> node" << ++ind_ << extra << ";" << std::endl;
+    createLink(link_to, extra);
     runVisitor(*Block[i]);
   }
 }
@@ -80,8 +97,7 @@ void Vizualizer::dispatch(ValueExprAST<std::string>& e)
     str.append("...");
   }
   str.append("\"");
-  out() << "node" << ind_ << "[label=" << makeLabel(e.getClassName(), str)
-    <<  "];" << std::endl;
+  labelNode(ind_, makeLabel(e.getClassName(), str));
 }
 
 //==============================================================================
@@ -90,11 +106,10 @@ void Vizualizer::dispatch(VariableExprAST& e)
   auto Name = e.getName();
   if (e.isArray()) Name += "[]";
 
-  out() << "node" << ind_ << "[label=" << makeLabel(e.getClassName(), Name)
-    << "];" << std::endl;
+  labelNode(ind_, makeLabel(e.getClassName(), Name));
 
   if (e.isArray()) {
-    out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
+    createLink(ind_);
     runVisitor(*e.IndexExpr_);
   }
 }
@@ -102,22 +117,21 @@ void Vizualizer::dispatch(VariableExprAST& e)
 //==============================================================================
 void Vizualizer::dispatch(ArrayExprAST& e)
 {
-  out() << "node" << ind_ << "[label=\"ArrayExprAST\"];" << std::endl;
+  labelNode(ind_, e.getClassName());
 }
 
 //==============================================================================
 void Vizualizer::dispatch(CastExprAST& e)
 {
-  out() << "node" << ind_ << "[label=\"CastExprAST\"];" << std::endl;
+  labelNode(ind_, e.getClassName());
 }
 
 //==============================================================================
 void Vizualizer::dispatch(UnaryExprAST& e)
 {
-  auto my_ind = ind_;
-  out() << "node" << my_ind << "[label=\"UnaryExprAST\"];" << std::endl;
-  out() << "node" << my_ind << " -> node" << ++ind_ << ";" << std::endl;
-  e.OpExpr_->accept(*this);
+  labelNode(ind_, e.getClassName());
+  createLink(ind_);
+  runVisitor(*e.OpExpr_);
 }
 
 //==============================================================================
@@ -125,11 +139,10 @@ void Vizualizer::dispatch(BinaryExprAST& e)
 {
   auto my_ind = ind_;
   std::string Op = Tokens::getName(e.getOperand());
-  out() << "node" << my_ind << "[label=" << makeLabel(e.getClassName(), Op)
-    << "];" << std::endl;
-  out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Left];" << std::endl;
+  labelNode(my_ind, makeLabel(e.getClassName(), Op));
+  createLink(my_ind, "Left" );
   runVisitor(*e.LeftExpr_);
-  out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Right];" << std::endl;
+  createLink(my_ind, "Right" );
   runVisitor(*e.RightExpr_);
 }
 
@@ -137,11 +150,9 @@ void Vizualizer::dispatch(BinaryExprAST& e)
 void Vizualizer::dispatch(CallExprAST& e)
 {
   auto my_ind = ind_;
-  out() << "node" << my_ind << "[label=" << makeLabel(e.getClassName(), e.getName()) 
-    << "];" << std::endl;
+  labelNode( my_ind, makeLabel(e.getClassName(), e.getName()));
   for (unsigned i=0; i<e.ArgExprs_.size(); ++i) {
-    out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Arg" << i
-      << "];" << std::endl;
+    createLink(my_ind, Formatter() << "Arg" << i );    
     runVisitor(*e.ArgExprs_[i]);
   }
 }
@@ -150,14 +161,13 @@ void Vizualizer::dispatch(CallExprAST& e)
 void Vizualizer::dispatch(ForStmtAST& e)
 {
   auto my_ind = ind_;
-  out() << "node" << my_ind << "[label=" << makeLabel(e.getClassName(),
-      e.getVarName()) << "];" << std::endl;
-  out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Start];" << std::endl;
+  labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
+  createLink(my_ind, "Start");
   runVisitor(*e.StartExpr_);
-  out() << "node" << my_ind << " -> node" << ++ind_ << " [label=End];" << std::endl;
+  createLink(my_ind, "End");
   runVisitor(*e.EndExpr_);
   if (e.StepExpr_) {
-    out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Step];" << std::endl;
+    createLink(my_ind, "Step");
     runVisitor(*e.StepExpr_);
   }
   dumpBlock(e.BodyExprs_, my_ind, "Body");
@@ -168,15 +178,14 @@ void Vizualizer::dispatch(IfStmtAST& e)
 {
   auto store_ind = ind_;
   bool force_expanded = (e.ThenExpr_.size()>1 || e.ElseExpr_.size()>1);
-  out() << "node" << ind_ << "[label=" << e.getClassName() << "];" << std::endl;
-  out() << "node" << ind_ << " -> node" << ++ind_;
+  labelNode(ind_, e.getClassName());
+
+  std::string Label = !force_expanded ? "Cond" : "";
+  createLink(ind_, Label);
+
   if (force_expanded) {
-    out() << ";" << std::endl;
-    out() << "node" << ind_ << "[label=Cond];" << std::endl;
-    out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
-  }
-  else {
-    out() << " [label=Cond];" << std::endl;
+    labelNode(ind_, "Cond");
+    createLink(ind_);
   }
 
   runVisitor(*e.CondExpr_);
@@ -189,61 +198,52 @@ void Vizualizer::dispatch(IfStmtAST& e)
 //==============================================================================
 void Vizualizer::dispatch(VarDeclAST& e)
 {
-  Formatter fmt;
-  fmt << e.getNames();
-  out() << "node" << ind_ << "[label=" << makeLabel(e.getClassName(), fmt.str())
-    << "];" << std::endl;
-  out() << "node" << ind_ << " -> node" << ++ind_ << " [label=Init];" << std::endl;
+  labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getNames()));
+  createLink(ind_, "Init");
   runVisitor(*e.InitExpr_);
 }
 
 //==============================================================================
 void Vizualizer::dispatch(ArrayDeclAST& e)
 {
-  Formatter fmt;
-  fmt << e.getNames();
   auto my_ind = ind_;
-  out() << "node" << my_ind << "[label=" << makeLabel(e.getClassName(), fmt.str()) 
-    << "];" << std::endl;
+  labelNode(my_ind, makeLabel(e.getClassName(), Formatter() << e.getNames()));
   
   if (e.hasSize()) {
-    out() << "node" << my_ind << " -> node" << ++ind_
-      << " [label=Size];" << std::endl;
+    createLink(my_ind, "Size");
     runVisitor(*e.SizeExpr_);
   }
 
-  out() << "node" << my_ind << " -> node" << ++ind_ << " [label=Init];" << std::endl;
+  createLink(my_ind, "Init");
   e.InitExpr_->accept(*this);
 }
 
 //==============================================================================
 void Vizualizer::dispatch(PrototypeAST& e)
-{ std::cout << "PrototypeAST" << std::endl; }
+{ labelNode(ind_, e.getClassName()); }
 
 //==============================================================================
 void Vizualizer::dispatch(FunctionAST& e)
 {
-  auto fun_ind = ++ind_;
+  auto fun_ind = ind_;
   out() << "subgraph cluster" << fun_ind << " {" << std::endl;
-  out() << "node" << fun_ind << "[label=" <<
-    makeLabel(e.getClassName(), e.getName()) << "];" << std::endl;
+  labelNode(fun_ind, makeLabel(e.getClassName(), e.getName()));
 
   dumpBlock(e.BodyExprs_, fun_ind, "Body");
 
   if (e.ReturnExpr_) {
-    out() << "node" << fun_ind << " -> node" << ++ind_;
     auto NumBody = e.BodyExprs_.size();
+    std::string Label = NumBody<=1 ? "Return" : "";
+    createLink(fun_ind, Label);
     if (NumBody>1) {
-      out() << ";" << std::endl;
-      out() << "node" << ind_ << "[label=Return];" << std::endl;
-      out() << "node" << ind_ << " -> node" << ++ind_ << ";" << std::endl;
-    }
-    else {
-      out() << " [label=Return];" << std::endl;
+      labelNode(ind_, "Return");
+      createLink(ind_);
     }
     runVisitor(*e.ReturnExpr_);
   }
   out() << "}" << std::endl;
+
+  ind_++;
 }
 
 }

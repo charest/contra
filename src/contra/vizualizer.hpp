@@ -69,6 +69,10 @@ private:
 
   std::string makeLabel(const std::string &, const std::string & = "");
 
+  int_t createLink(int_t, const std::string & = "");
+
+  void labelNode(int_t, const std::string & = "");
+
   template<typename T>
   void dumpNumericVal(ValueExprAST<T>&);
 

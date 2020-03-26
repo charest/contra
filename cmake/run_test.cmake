@@ -91,7 +91,7 @@ foreach( _iter RANGE ${_iter_max} )
   if(new_std)
 
     MESSAGE(STATUS "Rebuilding standards.")
-    configure_file(${output_file} ${_blessed} COPYONLY)
+    configure_file(${_test} ${_blessed} COPYONLY)
 
   # COMPARE
   else()

@@ -26,7 +26,7 @@ void Contra::handleFunction()
     if (dumpIR()) FnIR->print(*IRFileStream_);
     if (IsOptimized_) TheCG_->optimize(FnIR);
     if (!isCompiled()) {
-      auto H = TheCG_->doJIT();
+      TheCG_->doJIT();
       if (IsTask) TheCG_->updateTask(Name);
     }
   }

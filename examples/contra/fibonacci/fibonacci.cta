@@ -1,21 +1,21 @@
-task sum( f1 : i64, f2 : i64)
+task sum( f1 : i64, f2 : i64) -> i64
   return f1 + f2
 end
 
-task fibonacci(fib_num : i64)
+task fibonacci(fib_num : i64) -> i64
   
   var res = 0
 
-  if (fib_num == 0)
+  if (fib_num == 0) then
     res = 0
-  else if (fib_num == 1)
+  elif (fib_num == 1) then
     res = 1
   else
     var fib1 = fib_num-1
-    f1 = fibonacci(fib1)
+    var f1 = fibonacci(fib1)
 
     var fib2 = fib_num-2
-    f2 = fibonacci(fib2)
+    var f2 = fibonacci(fib2)
 
     res = sum(f1, f2)
   end

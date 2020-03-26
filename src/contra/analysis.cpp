@@ -83,8 +83,6 @@ Analyzer::insertFunction(
 Analyzer::VariableEntry
 Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
 {
-  int idx = 0;
-  int sz = std::distance( VariableTable_.begin(), VariableTable_.end() );
   for ( const auto & ST : VariableTable_ ) {
     auto it = ST.find(Name);
     if (it != ST.end()) return it->second;

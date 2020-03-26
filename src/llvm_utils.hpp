@@ -91,7 +91,7 @@ namespace {
   auto llvmValue( llvm::LLVMContext & TheContext, T Val )
   { return LlvmType<T>::getValue(TheContext, Val); }
 
-  auto llvmTypes(const std::vector<llvm::Value*> & Vals)
+  inline auto llvmTypes(const std::vector<llvm::Value*> & Vals)
   {
     std::vector<llvm::Type*> Types;
     Types.reserve(Vals.size());
