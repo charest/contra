@@ -366,6 +366,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
   case tok_sub:
   case tok_mul:
   case tok_div:
+  case tok_mod:
     TypeResult_ = CommonType;
     e.setType(TypeResult_);
     return;

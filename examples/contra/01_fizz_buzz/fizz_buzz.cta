@@ -1,0 +1,18 @@
+task fizzbuzz()
+  if number % 15 == 0:
+      print number, "fizzbuzz"
+  else if number % 5 == 0:
+      print number, "buzz"
+  else if number % 3 == 0:
+      print number, "fizz"
+  else:
+      print number
+end
+
+task main()
+  for i in 1 to 100 do
+    fizzbuzz(i)
+  end
+end
+
+main()

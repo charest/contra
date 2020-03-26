@@ -1,0 +1,81 @@
+digraph {
+subgraph cluster0 {
+node0[label=<FunctionAST<BR /><FONT POINT-SIZE="12">fizzbuzz</FONT>>];
+node0 -> node1 [label=Body];
+node1[label=IfStmtAST];
+node1 -> node2 [label=Cond];
+node2[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">==</FONT>>];
+node2 -> node3 [label=Left];
+node3[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">%</FONT>>];
+node3 -> node4 [label=Left];
+node4[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+node3 -> node5 [label=Right];
+node5[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">15</FONT>>];
+node2 -> node6 [label=Right];
+node6[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">0</FONT>>];
+node1 -> node7 [label=Then];
+node7[label=<CallExprAST<BR /><FONT POINT-SIZE="12">print</FONT>>];
+node7 -> node8 [label=Arg0];
+node8[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"fizzbuzz %d..."</FONT>>];
+node7 -> node9 [label=Arg1];
+node9[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+node1 -> node10 [label=Else];
+node10[label=IfStmtAST];
+node10 -> node11 [label=Cond];
+node11[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">==</FONT>>];
+node11 -> node12 [label=Left];
+node12[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">%</FONT>>];
+node12 -> node13 [label=Left];
+node13[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+node12 -> node14 [label=Right];
+node14[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">5</FONT>>];
+node11 -> node15 [label=Right];
+node15[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">0</FONT>>];
+node10 -> node16 [label=Then];
+node16[label=<CallExprAST<BR /><FONT POINT-SIZE="12">print</FONT>>];
+node16 -> node17 [label=Arg0];
+node17[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"buzz %d
+"</FONT>>];
+node16 -> node18 [label=Arg1];
+node18[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+node10 -> node19 [label=Else];
+node19[label=IfStmtAST];
+node19 -> node20 [label=Cond];
+node20[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">==</FONT>>];
+node20 -> node21 [label=Left];
+node21[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">%</FONT>>];
+node21 -> node22 [label=Left];
+node22[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+node21 -> node23 [label=Right];
+node23[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">3</FONT>>];
+node20 -> node24 [label=Right];
+node24[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">0</FONT>>];
+node19 -> node25 [label=Then];
+node25[label=<CallExprAST<BR /><FONT POINT-SIZE="12">print</FONT>>];
+node25 -> node26 [label=Arg0];
+node26[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"fizz %d
+"</FONT>>];
+node25 -> node27 [label=Arg1];
+node27[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+node19 -> node28 [label=Else];
+node28[label=<CallExprAST<BR /><FONT POINT-SIZE="12">print</FONT>>];
+node28 -> node29 [label=Arg0];
+node29[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"%d
+"</FONT>>];
+node28 -> node30 [label=Arg1];
+node30[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number</FONT>>];
+}
+subgraph cluster31 {
+node31[label=<FunctionAST<BR /><FONT POINT-SIZE="12">main</FONT>>];
+node31 -> node32 [label=Body];
+node32[label=<ForStmtAST<BR /><FONT POINT-SIZE="12">i</FONT>>];
+node32 -> node33 [label=Start];
+node33[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">1</FONT>>];
+node32 -> node34 [label=End];
+node34[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">100</FONT>>];
+node32 -> node35 [label=Body];
+node35[label=<CallExprAST<BR /><FONT POINT-SIZE="12">fizzbuzz</FONT>>];
+node35 -> node36 [label=Arg0];
+node36[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">i</FONT>>];
+}
+}

@@ -736,6 +736,9 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     case tok_div:
       ValueResult_ = Builder_.CreateFDiv(L, R, "divtmp");
       return;
+    case tok_mod:
+      ValueResult_ = Builder_.CreateFRem(L, R, "remtmp");
+      return;
     case tok_lt:
       ValueResult_ = Builder_.CreateFCmpULT(L, R, "cmptmp");
       return;
@@ -769,6 +772,9 @@ void CodeGen::dispatch(BinaryExprAST& e) {
       return;
     case tok_div:
       ValueResult_ = Builder_.CreateSDiv(L, R, "divtmp");
+      return;
+    case tok_mod:
+      ValueResult_ = Builder_.CreateSRem(L, R, "divtmp");
       return;
     case tok_lt:
       ValueResult_ = Builder_.CreateICmpSLT(L, R, "cmptmp");

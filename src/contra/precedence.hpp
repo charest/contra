@@ -31,6 +31,7 @@ public:
     Precedence_[tok_sub] = 20;
     Precedence_[tok_mul] = 40;
     Precedence_[tok_div] = 40;
+    Precedence_[tok_mod] = 40;
     // highest.
   }
 

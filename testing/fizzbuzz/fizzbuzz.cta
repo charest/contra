@@ -1,0 +1,19 @@
+function fizzbuzz(number : i64)
+  if (number % 15 == 0) then
+    print("fizzbuzz %d\n", number) 
+  elif (number % 5 == 0) then
+    print("buzz %d\n", number) 
+  elif (number % 3 == 0) then
+    print("fizz %d\n", number) 
+  else
+    print("%d\n", number) 
+  end
+end
+
+function main()
+  for i in 1 to 100 do
+    fizzbuzz(i)
+  end
+end
+
+main()
