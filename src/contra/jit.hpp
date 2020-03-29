@@ -14,6 +14,7 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/DynamicLibrary.h"
@@ -41,7 +42,9 @@ public:
   using VModuleKey = llvm::orc::VModuleKey;
 
   JIT() 
-    : Resolver(
+    : 
+      MM(std::make_shared<llvm::SectionMemoryManager>()),
+      Resolver(
         llvm::orc::createLegacyLookupResolver(
           ES,
           [this](const std::string &Name) { return findMangledSymbol(Name); },
@@ -54,17 +57,18 @@ public:
         llvm::AcknowledgeORCv1Deprecation,
         ES,
         [this](VModuleKey) {
-          return ObjLayerT::Resources{
-            std::make_shared<llvm::SectionMemoryManager>(), Resolver
-          };
+          return ObjLayerT::Resources{MM, Resolver};
         }
       ),
       CompileLayer(
         llvm::AcknowledgeORCv1Deprecation,
           ObjectLayer,
           Compiler(*TM)
-      ) 
+      )
   {
+
+
+    //EE = std::make_unique<LLVMLinkInOrcMCJITReplacement>(MM, Resolver, TM);
     std::string ErrMsgStr;
     llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr); 
     if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(LEGION_LIBRARY, &ErrMsgStr) )
@@ -95,12 +99,14 @@ private:
   JITSymbol findMangledSymbol(const std::string &Name);
 
   llvm::orc::ExecutionSession ES;
+  std::shared_ptr<llvm::SectionMemoryManager> MM;
   std::shared_ptr<llvm::orc::SymbolResolver> Resolver;
   std::unique_ptr<llvm::TargetMachine> TM;
   const llvm::DataLayout DL;
   ObjLayerT ObjectLayer;
   CompileLayerT CompileLayer;
   std::vector<VModuleKey> ModuleKeys;
+  //std::unique_ptr<llvm::ExecutionEngine> EE;
 };
 
 } // end namespace

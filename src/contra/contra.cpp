@@ -63,10 +63,7 @@ void Contra::handleFunction()
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);
     if (IsOptimized_) TheCG_->optimize(FnIR);
-    if (!isCompiled()) {
-      TheCG_->doJIT();
-      if (IsTask) TheCG_->updateTask(Name);
-    }
+    if (!isCompiled()) TheCG_->doJIT();
   }
   catch (const ContraError & e) {
     reportError(e);

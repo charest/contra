@@ -17,7 +17,7 @@ class TaskInfo {
   int Id_ = -1;
   std::string Name_;
   llvm::Function * Function_ = nullptr;
-  intptr_t Address_ = 0;
+  bool IsTop_ = false;
 
 public:
 
@@ -28,17 +28,19 @@ public:
   const auto & getName() const { return Name_; }
   auto getFunction() const { return Function_; }
 
-  void setAddress(intptr_t Address) { Address_ = Address; }
-  intptr_t getAddress() const { 
-    if (!Address_) return reinterpret_cast<intptr_t>(Function_);
-    else return Address_;
-  }
+  bool isTop() const { return IsTop_; }
+  void setTop(bool IsTop = true) { IsTop_ = IsTop; }
 };
 
 //==============================================================================
 // Main tasking interface
 //==============================================================================
 class AbstractTasker {
+
+  unsigned IdCounter_ = 0;
+  bool IsStarted_ = false;
+  
+  std::map<std::string, TaskInfo> TaskTable_;
 
 protected:
 
@@ -50,14 +52,45 @@ public:
   AbstractTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & TheContext) :
     Builder_(TheBuilder), TheContext_(TheContext)
   {}
-
-  virtual llvm::Function* wrap(llvm::Module &, const std::string &, llvm::Function*) const = 0;
-  virtual void preregister(llvm::Module &, const std::string &, const TaskInfo &) const = 0;
-  virtual void set_top(llvm::Module &, int) const = 0;
-  virtual llvm::Value* start(llvm::Module &, int, char **) const = 0;
-
+  
   virtual ~AbstractTasker() = default;
 
+  virtual llvm::Function* wrapTask(llvm::Module &, const std::string &, llvm::Function*) = 0;
+
+  virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
+  virtual void postregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
+  
+  virtual void setTop(llvm::Module &, int) = 0;
+  virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
+  
+  virtual void launch(llvm::Module &, const std::string &, const TaskInfo &,
+      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
+  
+  void preregisterTasks(llvm::Module &);
+  void postregisterTasks(llvm::Module &);
+  
+  // startup interface
+  llvm::Value* start(llvm::Module & TheModule, int Argc, char ** Argv);
+  
+  bool isStarted() const { return IsStarted_; }
+  void setStarted() { IsStarted_ = true; }
+  
+  // Task table interface
+  TaskInfo & insertTask(const std::string & Name, llvm::Function* F);
+
+  bool isTask(const std::string & Name) const
+  { return TaskTable_.count(Name); }
+
+  const auto & getTask(const std::string & Name) const
+  { return TaskTable_.at(Name); }
+
+  
+
+protected:
+  
+  auto getNextId() { return IdCounter_++; }
+
+  // type helpers
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;
   llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
   void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;

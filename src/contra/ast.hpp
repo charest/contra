@@ -265,6 +265,7 @@ protected:
   
   std::string Callee_;
   ASTBlock ArgExprs_;
+  bool IsTopTask_ = false;
 
 public:
 
@@ -275,6 +276,9 @@ public:
   {}
 
   const std::string & getName() const { return Callee_; }
+
+  void setTopTask(bool TopTask = true) { IsTopTask_ = TopTask; }
+  bool isTopTask() { return IsTopTask_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
   
@@ -543,6 +547,7 @@ protected:
   std::unique_ptr<PrototypeAST> ProtoExpr_;
   ASTBlock BodyExprs_;
   std::unique_ptr<NodeAST> ReturnExpr_;
+  bool IsTop_ = false;
   bool IsTask_ = false;
 
 public:
@@ -556,9 +561,10 @@ public:
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<NodeAST> Return)
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-      ReturnExpr_(std::move(Return))
+      ReturnExpr_(std::move(Return)), IsTop_(true)
   {}
 
+  auto isTop() const { return IsTop_; }
   auto isTask() const { return IsTask_; }
   const std::string &getName() const { return ProtoExpr_->getName(); }
   

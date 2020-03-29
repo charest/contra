@@ -6,18 +6,20 @@
 #include "context.hpp"
 #include "dispatcher.hpp"
 #include "precedence.hpp"
+#include "scope.hpp"
 #include "symbols.hpp"
 
 #include <iostream>
 #include <forward_list>
 #include <fstream>
+#include <set>
 
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Semantec analyzer class
 ////////////////////////////////////////////////////////////////////////////////
-class Analyzer : public AstDispatcher {
+class Analyzer : public AstDispatcher, public Scoper {
 public:
 
   using TypeEntry = std::shared_ptr<TypeDef>;
@@ -28,6 +30,7 @@ private:
 
   std::map<std::string, TypeEntry> TypeTable_;
   std::map<std::string, FunctionEntry> FunctionTable_;
+  std::set<std::string> TaskTable_; 
   
   std::forward_list< std::map<std::string, VariableEntry> > VariableTable_;
   
@@ -41,20 +44,18 @@ private:
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
+
+  bool HaveTopLevelTask_ = false;
  
-  static constexpr int DefaultScope = 0;
-  int Scope_ = DefaultScope;
-  
-  int createScope() {
+  Scoper::value_type createScope() override {
     VariableTable_.push_front({});
-    Scope_++;
-    return Scope_;
+    return Scoper::createScope();
   }
   
-  void resetScope(int Scope) {
-    for (int i=Scope; i<Scope_; ++i)
+  void resetScope(Scoper::value_type Scope) override {
+    for (int i=Scope; i<getScope(); ++i)
       VariableTable_.pop_front();
-    Scope_ = Scope;
+    Scoper::resetScope(Scope);
   }
 
 public:
@@ -66,6 +67,7 @@ public:
     TypeTable_.emplace( Context::StrType->getName(),  Context::StrType);
     TypeTable_.emplace( Context::BoolType->getName(), Context::BoolType);
     TypeTable_.emplace( Context::VoidType->getName(), Context::VoidType);
+    VariableTable_.push_front({}); // global table
   }
 
   virtual ~Analyzer() = default;
@@ -90,11 +92,12 @@ private:
   }
 
   template<typename T>
-  auto runStmtVisitor(T&e, int Scope)
+  auto runStmtVisitor(T&e)
   {
-    resetScope(Scope);
-    DestinationType_ = VariableType{};
-    return runExprVisitor(e);
+    auto OrigScope = getScope();
+    auto V = runExprVisitor(e);
+    resetScope(OrigScope);
+    return V;
   }
 
 
@@ -128,6 +131,13 @@ private:
 
   VariableEntry
     insertVariable(const Identifier & Id, const VariableType & VarType);
+  
+  struct VariableTableResult {
+    decltype(VariableTable_)::value_type::iterator Result;
+    bool IsFound = false;
+  };
+
+  VariableTableResult findVariable(const std::string & Name);
 
   // function interface
   FunctionEntry
@@ -155,6 +165,13 @@ private:
 
   VariableType promote(const VariableType & LeftType, const VariableType & RightType,
       const SourceLocation & Loc);
+  
+  // Task interface
+  void insertTask(const std::string & Name)
+  { TaskTable_.emplace(Name); }
+
+  bool isTask(const std::string & Name) const
+  { return TaskTable_.count(Name); }
 
 };
 

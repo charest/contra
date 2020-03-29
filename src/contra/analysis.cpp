@@ -80,13 +80,23 @@ Analyzer::insertFunction(
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
+Analyzer::VariableTableResult
+Analyzer::findVariable(const std::string & Name)
+{
+  for ( auto & ST : VariableTable_ ) {
+    auto it = ST.find(Name);
+    if (it != ST.end()) return VariableTableResult{it, true};
+  }
+  return VariableTableResult{{}, false};
+}
+
+
+//==============================================================================
 Analyzer::VariableEntry
 Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
 {
-  for ( const auto & ST : VariableTable_ ) {
-    auto it = ST.find(Name);
-    if (it != ST.end()) return it->second;
-  }
+  auto res = findVariable(Name);  
+  if (res.IsFound) return res.Result->second;
   THROW_NAME_ERROR("Variable '" << Name << "' has not been"
      << " previously defined", Loc);
   return {};
@@ -103,10 +113,11 @@ Analyzer::insertVariable(const Identifier & Id, const VariableType & VarType)
   const auto & Name = Id.getName();
   const auto & Loc = Id.getLoc();
   auto S = std::make_shared<VariableDef>(Name, Loc, VarType);
-  auto it = VariableTable_.front().emplace(Name, std::move(S));
-  if (!it.second)
+  auto res = findVariable(Name);
+  if (res.IsFound)
     THROW_NAME_ERROR("Variable '" << Name << "' has been"
         << " previously defined", Loc);
+  auto it = VariableTable_.front().emplace(Name, std::move(S));
   return it.first->second;
 }
 
@@ -391,20 +402,35 @@ void Analyzer::dispatch(BinaryExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(CallExprAST& e)
 {
-  auto FunRes = getFunction(e.Callee_, e.getLoc());
-
+  const auto & FunName = e.getName();
+  auto FunRes = getFunction(FunName, e.getLoc());
+  
   int NumArgs = e.ArgExprs_.size();
   int NumFixedArgs = FunRes->getNumArgs();
 
+  //std::cout << "Scope is " << Scope_ << " vs " << GlobalScope<< std::endl;
+
+  if (isTask(FunName) && isGlobalScope()) {
+    if (HaveTopLevelTask_)  
+      THROW_NAME_ERROR("You are not allowed to have more than one top-level task.",
+          e.getLoc());
+    if (NumArgs > 0)
+      THROW_NAME_ERROR("You are not allowed to pass arguments to the top-level task.",
+          e.getLoc());
+    HaveTopLevelTask_ = true;
+    e.setTopTask();
+  }
+
+
   if (FunRes->isVarArg()) {
     if (NumArgs < NumFixedArgs)
-      THROW_NAME_ERROR("Variadic function '" << e.Callee_
+      THROW_NAME_ERROR("Variadic function '" << FunName
           << "', must have at least " << NumFixedArgs << " arguments, but only "
           << NumArgs << " provided.", e.getLoc());
   }
   else {
     if (NumFixedArgs != NumArgs)
-      THROW_NAME_ERROR("Incorrect number of arguments specified for '" << e.Callee_
+      THROW_NAME_ERROR("Incorrect number of arguments specified for '" << FunName
           << "', " << NumArgs << " provided but expected " << NumFixedArgs, e.getLoc());
   }
 
@@ -429,29 +455,31 @@ void Analyzer::dispatch(ForStmtAST& e)
 {
   auto VarId = e.VarId_;
   
-  auto OldScope = Scope_;
-  auto InnerScope = createScope();
+  auto OldScope = getScope();
+  createScope();
 
   auto LoopVar = insertVariable(VarId, I64Type_);
 
-  auto StartType = runStmtVisitor(*e.StartExpr_, InnerScope);
+
+  auto StartType = runStmtVisitor(*e.StartExpr_);
   if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
         e.StartExpr_->getLoc() );
 
-  auto EndType = runStmtVisitor(*e.EndExpr_, InnerScope);
+  auto EndType = runStmtVisitor(*e.EndExpr_);
   if (EndType != I64Type_ )
     THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
         e.EndExpr_->getLoc() );
 
   if (e.StepExpr_) {
-    auto StepType = runStmtVisitor(*e.StepExpr_, InnerScope);
+    auto StepType = runStmtVisitor(*e.StepExpr_);
     if (StepType != I64Type_ )
       THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
           e.StepExpr_->getLoc() );
   }
 
-  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt, InnerScope);
+  createScope();
+  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt);
 
   resetScope(OldScope);
   TypeResult_ = VoidType_;
@@ -465,15 +493,15 @@ void Analyzer::dispatch(IfStmtAST& e)
   if (CondType != BoolType_ )
     THROW_NAME_ERROR( "If condition must result in boolean type.", CondExpr.getLoc() );
 
-  auto OldScope = Scope_;
-  auto InnerScope = createScope();
-  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt, InnerScope);
-  
+  auto OldScope = getScope();
+  createScope();
+  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt);
   resetScope(OldScope);
-  InnerScope = createScope();
-  for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt, InnerScope);
-  
+
+  createScope();
+  for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt);
   resetScope(OldScope);
+
   TypeResult_ = VoidType_;
 }
 
@@ -495,6 +523,8 @@ void Analyzer::dispatch(VarDeclAST& e)
     checkIsCastable(InitType, VarType, e.InitExpr_->getLoc());
     e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), VarType);
   }
+  
+  if (isGlobalScope()) VarType.setGlobal();
 
   int NumVars = e.VarIds_.size();
   for (int i=0; i<NumVars; ++i) {
@@ -544,6 +574,8 @@ void Analyzer::dispatch(ArrayDeclAST& e)
 
   }
   //----------------------------------------------------------------------------
+  
+  if (isGlobalScope()) VarType.setGlobal();
 
   int NumVars = e.VarIds_.size();
   for (int i=0; i<NumVars; ++i) {
@@ -584,8 +616,11 @@ void Analyzer::dispatch(PrototypeAST& e)
 //==============================================================================
 void Analyzer::dispatch(FunctionAST& e)
 {
-  auto OldScope = Scope_;
-  auto InnerScope = createScope();
+  //std::cout << " Before function Scope is " << Scope_ << " vs " << GlobalScope<< std::endl;
+  //std::cout << " Before function Scope is " << std::distance(VariableTable_.begin(),
+  //    VariableTable_.end()) << std::endl;
+  auto OldScope = getScope();
+  if (!e.isTop()) createScope();
 
   auto & ProtoExpr = *e.ProtoExpr_;
   const auto & FnId = ProtoExpr.Id_;
@@ -612,10 +647,10 @@ void Analyzer::dispatch(FunctionAST& e)
   for (unsigned i=0; i<NumArgs; ++i)
     insertVariable(ArgIds[i], ArgTypes[i]);
   
-  for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B, InnerScope);
+  for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B);
   
   if (e.ReturnExpr_) {
-    auto RetType = runStmtVisitor(*e.ReturnExpr_, InnerScope);
+    auto RetType = runStmtVisitor(*e.ReturnExpr_);
     if (ProtoExpr.isAnonExpr())
       ProtoExpr.setReturnType(RetType);
     else if (RetType != ProtoType->getReturnType())
@@ -624,6 +659,8 @@ void Analyzer::dispatch(FunctionAST& e)
           << "converted to the type '" << ProtoType->getReturnType() << "'.",
           e.ReturnExpr_->getLoc());
   }
+  
+  if (e.isTask()) insertTask(FnName);
   
   resetScope(OldScope);
   

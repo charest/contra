@@ -6,6 +6,8 @@
 #include "dispatcher.hpp"
 #include "tasking.hpp"
 #include "jit.hpp"
+#include "llvm_utils.hpp"
+#include "scope.hpp"
 #include "symbols.hpp" 
 
 #include "llvm/IR/DIBuilder.h"
@@ -14,6 +16,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 
+#include <forward_list>
 #include <map>
 #include <memory>
 #include <string>
@@ -25,17 +28,18 @@ class PrototypeAST;
 class JIT;
 class DebugInfo;
 
-class CodeGen : public AstDispatcher {
+class CodeGen : public AstDispatcher, public Scoper {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
   using Type = llvm::Type;
   using Value = llvm::Value;
-
+  
   // LLVM builder types  
   llvm::LLVMContext TheContext_;
   llvm::IRBuilder<> Builder_;
   std::unique_ptr<llvm::Module> TheModule_;
+  std::unique_ptr<llvm::ExecutionEngine> TheEngine_;
   
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
   JIT TheJIT_;
@@ -45,10 +49,13 @@ class CodeGen : public AstDispatcher {
   Function* FunctionResult_ = nullptr;
 
   std::map<std::string, Type*> TypeTable_;
-  std::map<std::string, AllocaInst*> VariableTable_;
+  
+  std::forward_list< std::map<std::string, Value*> > VariableTable_;
+
   std::map<std::string, ArrayType> ArrayTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
-  std::map<std::string, TaskInfo> TaskTable_;
+  
+  using ArrayIterator = decltype(ArrayTable_)::const_iterator;
 
   // debug extras
   std::unique_ptr<llvm::DIBuilder> DBuilder;
@@ -131,7 +138,7 @@ public:
 
   llvm::DILocalVariable *createVariable( llvm::DISubprogram *SP,
       const std::string & Name, unsigned ArgIdx, llvm::DIFile *Unit,
-      unsigned LineNo, AllocaInst *Alloca);
+      unsigned LineNo, Value *Alloca);
 
   void emitLocation(NodeAST * ast) { 
     if (isDebug()) KSDbgInfo.emitLocation(Builder_, ast);
@@ -172,6 +179,16 @@ private:
     e.accept(*this);
     return ValueResult_;
   }
+  
+  // Codegen function
+  template<typename T>
+  Value* runStmtVisitor(T&e)
+  {
+    auto OrigScope = getScope();
+    auto V = runExprVisitor(e);
+    resetScope(OrigScope);
+    return V;
+  }
 
   // Visitees 
   void dispatch(ValueExprAST<int_t>&) override;
@@ -190,6 +207,18 @@ private:
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
   
+
+  //============================================================================
+  // Scope interface
+  //============================================================================
+
+  Scoper::value_type createScope() override {
+    VariableTable_.push_front({});
+    return Scoper::createScope();
+  }
+  
+  void resetScope(Scoper::value_type Scope) override;
+  
   //============================================================================
   // Type interface
   //============================================================================
@@ -200,16 +229,30 @@ private:
   Type* getLLVMType(const Identifier & Id)
   { return TypeTable_.at(Id.getName()); }
 
+  template<typename T>
+  Value* getTypeSize(Type* ElementType)
+  {
+    using namespace llvm;
+    auto TheBlock = Builder_.GetInsertBlock();
+    auto PtrType = ElementType->getPointerTo();
+    auto Index = ConstantInt::get(TheContext_, APInt(32, 1, true));
+    auto Null = Constant::getNullValue(PtrType);
+    auto SizeGEP = Builder_.CreateGEP(ElementType, Null, Index, "size");
+    auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
+            llvmType<T>(TheContext_), "sizei", TheBlock);
+    return DataSize;
+  }
+
+
   //============================================================================
   // Variable interface
   //============================================================================
-  AllocaInst *createVariable(Function *TheFunction,
-    const std::string &VarName, Type* VarType);
+  Value* createVariable(Function *TheFunction,
+    const std::string &VarName, Type* VarType, bool IsGlobal=false);
   
-  AllocaInst *getVariable(const std::string & VarName)
-  { return VariableTable_.at(VarName); }
+  Value* getVariable(const std::string & VarName);
 
-  AllocaInst* moveVariable(const std::string & From, const std::string & To);
+  Value* moveVariable(const std::string & From, const std::string & To);
 
   //============================================================================
   // Array interface
@@ -228,23 +271,23 @@ private:
 
   // Initializes a bunch of arrays with a value
   void initArrays( Function *TheFunction, 
-      const std::vector<AllocaInst*> & VarList,
+      const std::vector<Value*> & VarList,
       Value * InitVal,
       Value * SizeExpr );
 
   // initializes an array with a list of values
   void initArray( Function *TheFunction, 
-      AllocaInst* Var,
+      Value* Var,
       const std::vector<Value *> InitVals );
   
   // copies one array to another
   void copyArrays( Function *TheFunction, 
-      AllocaInst* Src,
-      const std::vector<AllocaInst*> Tgts,
+      Value* Src,
+      const std::vector<Value*> Tgts,
       Value * SizeExpr);
 
   // destroy all arrays
-  void destroyArrays();
+  void destroyArrays(const std::vector< std::pair<ArrayIterator, Value*> > &);
 
   
   //============================================================================
@@ -256,22 +299,6 @@ public:
 
 private:
   Function *getFunction(std::string Name); 
-  
-  //============================================================================
-  // Task interface
-  //============================================================================
-
-  TaskInfo & insertTask(const std::string & Name, Function* F);
-
-  bool isTask(const std::string & Name) const
-  { return TaskTable_.count(Name); }
-
-  auto getTask(const std::string & Name) const
-  { return TaskTable_.at(Name); }
-
-public: 
-
-  void updateTask(const std::string & Name);
   
 };
 

@@ -1,3 +1,3 @@
 add_subdirectory(00_hello_world)
-add_subdirectory(01_fizz_buzz)
+add_subdirectory(01_fizzbuzz)
 add_subdirectory(02_fibonacci)

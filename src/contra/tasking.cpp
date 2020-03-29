@@ -69,5 +69,35 @@ void AbstractTasker::store(Value* Val, AllocaInst * Alloca) const
     Builder_.CreateStore(Val, Alloca);
   }
 }
+  
+//==============================================================================
+Value* AbstractTasker::start(llvm::Module & TheModule, int Argc, char ** Argv)
+{ 
+  setStarted();
+  return startRuntime(TheModule, Argc, Argv);
+};
+
+//==============================================================================
+TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
+{
+  auto TaskName = F->getName();
+  auto Id = getNextId();
+  auto it = TaskTable_.emplace(Name, TaskInfo{Id, TaskName, F});
+  return it.first->second;
+}
+
+//==============================================================================
+void AbstractTasker::preregisterTasks(llvm::Module & TheModule)
+{
+  for (const auto & task_pair : TaskTable_ )
+    preregisterTask(TheModule, task_pair.first, task_pair.second);
+}
+
+//==============================================================================
+void AbstractTasker::postregisterTasks(llvm::Module & TheModule)
+{
+  for (const auto & task_pair : TaskTable_ )
+    postregisterTask(TheModule, task_pair.first, task_pair.second);
+}
  
 } // namespace

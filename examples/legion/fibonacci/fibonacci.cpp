@@ -209,7 +209,7 @@ int main(int argc, char **argv)
       .idempotent=false,
       .replicable=false};
 
-    legion_task_id_t variant_id =
+    //legion_task_id_t variant_id =
       legion_runtime_preregister_task_variant_fnptr(
         TOP_LEVEL_TASK_ID,
         AUTO_GENERATE_ID,
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
       .idempotent=false,
       .replicable=false};
 
-    legion_task_id_t variant_id =
+    //legion_task_id_t variant_id =
       legion_runtime_preregister_task_variant_fnptr(
         FIBONACCI_TASK_ID,
         AUTO_GENERATE_ID,
@@ -263,7 +263,7 @@ int main(int argc, char **argv)
       .idempotent=false,
       .replicable=false};
 
-    legion_task_id_t variant_id =
+    //legion_task_id_t variant_id =
       legion_runtime_preregister_task_variant_fnptr(
         SUM_TASK_ID,
         AUTO_GENERATE_ID,
