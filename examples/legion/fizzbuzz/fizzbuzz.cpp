@@ -31,16 +31,14 @@ void top_level_task(
     &ctx,
     &runtime);
 
-  int i = 100; // Default value
-
-  //for (int i = 1; i <= num; i++) {
+  for (int i = 1; i <= 100; i++) {
     legion_task_argument_t task_args;
     task_args.args = &i;
     task_args.arglen = sizeof(i);
     legion_task_launcher_t launcher =
       legion_task_launcher_create(FIZZBUZZ_TASK_ID, task_args, legion_predicate_true(), 0, 0);
     legion_task_launcher_execute(runtime, ctx, launcher);
-  //}
+  }
   
 
   void* retval = nullptr;

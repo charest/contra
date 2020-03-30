@@ -195,7 +195,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     auto ArgPtrT = ArgT->getPointerTo();
     auto TheBlock = Builder_.GetInsertBlock();
     auto ArgC = CastInst::Create(CastInst::BitCast, ArgGEP, ArgPtrT, "casttmp", TheBlock);
-    Builder_.CreateStore( ArgC, ArgA );
+    Builder_.CreateMemCpy(ArgA, 1, ArgC, 1, ArgSizes[ArgIdx]); 
     // increment
     auto NewOffsetV = Builder_.CreateAdd(OffsetV, ArgSizes[ArgIdx], "addoffset");
     Builder_.CreateStore( NewOffsetV, OffsetA );
@@ -533,6 +533,9 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   for (unsigned i=0; i<NumArgs; i++) {
     auto ArgT = ArgVs[i]->getType();
     auto ArgPtrT = ArgT->getPointerTo();
+    // copy argument into an alloca
+    auto ArgA = createEntryBlockAlloca(TheFunction, ArgT, "tmpalloca");
+    Builder_.CreateStore( ArgVs[i], ArgA );
     // load offset
     ArgSizeGEP = createGEP(1, "arglen");
     ArgSizeV = Builder_.CreateLoad(ArgSizeT, ArgSizeGEP);
@@ -540,9 +543,7 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
     ArgDataGEP = createGEP(0, "args");
     auto ArgDataPtrV = Builder_.CreateLoad(ArgDataT, ArgDataGEP, "args.ptr");
     auto OffsetArgDataPtrV = Builder_.CreateGEP(ArgDataPtrV, ArgSizeV, "args.offset");
-    auto ArgInt = llvmValue<intptr_t>(TheContext_, (intptr_t)(ArgVs[i]));
-    auto ArgPtrV = CastInst::Create(Instruction::IntToPtr, ArgInt, ArgPtrT, "argptr", TheBlock);
-    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgPtrV, 1, ArgSizes[i]); 
+    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgA, 1, ArgSizes[i]); 
     // increment
     auto NewSizeV = Builder_.CreateAdd(ArgSizeV, ArgSizes[i], "addoffset");
     ArgSizeGEP = createGEP(1, "arglen");
