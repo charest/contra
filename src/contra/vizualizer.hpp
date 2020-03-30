@@ -68,6 +68,7 @@ private:
   void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
+  void dispatch(TaskAST&) override;
   
   std::ostream & out() { return *out_; }
 

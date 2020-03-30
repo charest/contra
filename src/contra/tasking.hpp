@@ -17,16 +17,19 @@ class TaskInfo {
   int Id_ = -1;
   std::string Name_;
   llvm::Function * Function_ = nullptr;
+  llvm::FunctionType * FunctionType_ = nullptr;
   bool IsTop_ = false;
 
 public:
 
   TaskInfo(int Id, const std::string & Name, llvm::Function * Func)
-    : Id_(Id), Name_(Name), Function_(Func) {}
+    : Id_(Id), Name_(Name), Function_(Func), FunctionType_(Func->getFunctionType())
+  {}
 
   auto getId() const { return Id_; }
   const auto & getName() const { return Name_; }
   auto getFunction() const { return Function_; }
+  auto getFunctionType() const { return FunctionType_; }
 
   bool isTop() const { return IsTop_; }
   void setTop(bool IsTop = true) { IsTop_ = IsTop; }
@@ -55,12 +58,18 @@ public:
   
   virtual ~AbstractTasker() = default;
 
-  virtual llvm::Function* wrapTask(llvm::Module &, const std::string &, llvm::Function*) = 0;
+  struct PreambleResult {
+    llvm::Function* TheFunction;
+    std::vector<llvm::AllocaInst*> ArgAllocas;
+  };
+
+  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &, llvm::Function*) = 0;
+  virtual void taskPostamble(llvm::Module &, llvm::Value*) = 0;
 
   virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
   virtual void postregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
   
-  virtual void setTop(llvm::Module &, int) = 0;
+  virtual void setTopLevelTask(llvm::Module &, int) = 0;
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
   
   virtual void launch(llvm::Module &, const std::string &, const TaskInfo &,

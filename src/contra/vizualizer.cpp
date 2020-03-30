@@ -246,4 +246,8 @@ void Vizualizer::dispatch(FunctionAST& e)
   ind_++;
 }
 
+//==============================================================================
+void Vizualizer::dispatch(TaskAST& e)
+{ dispatch(static_cast<FunctionAST&>(e)); }
+
 }

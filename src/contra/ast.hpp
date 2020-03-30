@@ -277,8 +277,8 @@ public:
 
   const std::string & getName() const { return Callee_; }
 
-  void setTopTask(bool TopTask = true) { IsTopTask_ = TopTask; }
-  bool isTopTask() { return IsTopTask_; }
+  void setTopLevelTask(bool TopTask = true) { IsTopTask_ = TopTask; }
+  bool isTopLevelTask() { return IsTopTask_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
   
@@ -547,13 +547,13 @@ protected:
   std::unique_ptr<PrototypeAST> ProtoExpr_;
   ASTBlock BodyExprs_;
   std::unique_ptr<NodeAST> ReturnExpr_;
-  bool IsTop_ = false;
+  bool IsTopExpression_ = false;
   bool IsTask_ = false;
 
 public:
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
-      std::unique_ptr<NodeAST> Return, bool IsTask)
+      std::unique_ptr<NodeAST> Return, bool IsTask = false)
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
         BodyExprs_(std::move(Body)), ReturnExpr_(std::move(Return)),
         IsTask_(IsTask)
@@ -561,10 +561,10 @@ public:
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<NodeAST> Return)
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-      ReturnExpr_(std::move(Return)), IsTop_(true)
+      ReturnExpr_(std::move(Return)), IsTopExpression_(true)
   {}
 
-  auto isTop() const { return IsTop_; }
+  auto isTopLevelExpression() const { return IsTopExpression_; }
   auto isTask() const { return IsTask_; }
   const std::string &getName() const { return ProtoExpr_->getName(); }
   
@@ -572,6 +572,28 @@ public:
 
   virtual std::string getClassName() const override
   { return "FunctionAST"; };
+
+  friend class Analyzer;
+  friend class CodeGen;
+  friend class Vizualizer;
+
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/// TaskAST - This class represents a function definition itself.
+////////////////////////////////////////////////////////////////////////////////
+class TaskAST : public FunctionAST {
+public:
+
+  TaskAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
+      std::unique_ptr<NodeAST> Return)
+      : FunctionAST(std::move(Proto), std::move(Body), std::move(Return), true)
+  {}
+
+  virtual void accept(AstDispatcher& dispatcher) override;
+
+  virtual std::string getClassName() const override
+  { return "TaskAST"; };
 
   friend class Analyzer;
   friend class CodeGen;

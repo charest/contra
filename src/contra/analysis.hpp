@@ -118,6 +118,7 @@ private:
   void dispatch(PrototypeAST&) override;
 
   void dispatch(FunctionAST&) override;
+  void dispatch(TaskAST&) override;
   
   // base type interface
   TypeEntry getBaseType(const std::string & Name, const SourceLocation & Loc);

@@ -114,6 +114,38 @@ inline llvm::Value* llvmString(llvm::LLVMContext & TheContext,
   return StrV;
 }
 
+
+//============================================================================  
+inline llvm::IRBuilder<> createBuilder(llvm::Function *TheFunction)
+{
+  auto & Block = TheFunction->getEntryBlock();
+  return llvm::IRBuilder<>(&Block, Block.begin());
+}
+
+//============================================================================  
+inline llvm::AllocaInst* createEntryBlockAlloca(llvm::Function *TheFunction,
+  llvm::Type* Ty, const std::string & Name)
+{
+  auto TmpB = createBuilder(TheFunction);
+  return TmpB.CreateAlloca(Ty, nullptr, Name.c_str());
+}
+
+//============================================================================  
+template<typename T>
+llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType)
+{
+  using namespace llvm;
+  auto & TheContext = Builder.getContext();
+  auto TheBlock = Builder.GetInsertBlock();
+  auto PtrType = ElementType->getPointerTo();
+  auto Index = ConstantInt::get(TheContext, APInt(32, 1, true));
+  auto Null = Constant::getNullValue(PtrType);
+  auto SizeGEP = Builder.CreateGEP(ElementType, Null, Index, "size");
+  auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
+          llvmType<T>(TheContext), "sizei", TheBlock);
+  return DataSize;
+}
+
 } // namespace
 
 #endif // CONFIG_HPP

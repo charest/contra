@@ -566,9 +566,13 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
   
   // eat end
   getNextToken();
-  
-  return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body),
-      std::move(Return), IsTask);
+ 
+  if (IsTask)
+    return std::make_unique<TaskAST>(std::move(Proto), std::move(Body),
+      std::move(Return));
+  else
+    return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body),
+      std::move(Return));
 }
 
 //==============================================================================

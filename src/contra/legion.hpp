@@ -20,13 +20,14 @@ public:
     AbstractTasker(TheBuilder, TheContext)
   {}
 
-  virtual llvm::Function* wrapTask(llvm::Module &, const std::string &,
+  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
       llvm::Function*) override;
+  virtual void taskPostamble(llvm::Module &, llvm::Value*) override;
   
   virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) override;
   virtual void postregisterTask(llvm::Module &, const std::string &, const TaskInfo &) override;
   
-  virtual void setTop(llvm::Module &, int) override;
+  virtual void setTopLevelTask(llvm::Module &, int) override;
   
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) override;
   

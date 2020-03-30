@@ -418,7 +418,7 @@ void Analyzer::dispatch(CallExprAST& e)
       THROW_NAME_ERROR("You are not allowed to pass arguments to the top-level task.",
           e.getLoc());
     HaveTopLevelTask_ = true;
-    e.setTopTask();
+    e.setTopLevelTask();
   }
 
 
@@ -620,7 +620,7 @@ void Analyzer::dispatch(FunctionAST& e)
   //std::cout << " Before function Scope is " << std::distance(VariableTable_.begin(),
   //    VariableTable_.end()) << std::endl;
   auto OldScope = getScope();
-  if (!e.isTop()) createScope();
+  if (!e.isTopLevelExpression()) createScope();
 
   auto & ProtoExpr = *e.ProtoExpr_;
   const auto & FnId = ProtoExpr.Id_;
@@ -665,5 +665,9 @@ void Analyzer::dispatch(FunctionAST& e)
   resetScope(OldScope);
   
 }
+
+//==============================================================================
+void Analyzer::dispatch(TaskAST& e)
+{ dispatch( static_cast<FunctionAST&>(e) ); }
 
 }

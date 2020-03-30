@@ -87,4 +87,8 @@ void PrototypeAST::accept(AstDispatcher& dispatcher)
 void FunctionAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
+//==============================================================================
+void TaskAST::accept(AstDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
+
 } // namespace

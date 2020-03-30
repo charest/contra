@@ -92,8 +92,6 @@ public:
   llvm::IRBuilder<> & getBuilder() { return Builder_; }
   llvm::LLVMContext & getContext() { return TheContext_; }
   llvm::Module & getModule() { return *TheModule_; }
-
-  static llvm::IRBuilder<> createBuilder(Function *TheFunction);
   
   //============================================================================
   // Optimization / Module interface
@@ -206,7 +204,11 @@ private:
   void dispatch(ArrayDeclAST&) override;
   void dispatch(PrototypeAST&) override;
   void dispatch(FunctionAST&) override;
+  void dispatch(TaskAST&) override;
   
+
+  // visitor helper
+  llvm::Value* codegenFunctionBody(FunctionAST& e);
 
   //============================================================================
   // Scope interface
@@ -229,20 +231,10 @@ private:
   Type* getLLVMType(const Identifier & Id)
   { return TypeTable_.at(Id.getName()); }
 
+
   template<typename T>
   Value* getTypeSize(Type* ElementType)
-  {
-    using namespace llvm;
-    auto TheBlock = Builder_.GetInsertBlock();
-    auto PtrType = ElementType->getPointerTo();
-    auto Index = ConstantInt::get(TheContext_, APInt(32, 1, true));
-    auto Null = Constant::getNullValue(PtrType);
-    auto SizeGEP = Builder_.CreateGEP(ElementType, Null, Index, "size");
-    auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
-            llvmType<T>(TheContext_), "sizei", TheBlock);
-    return DataSize;
-  }
-
+  { return ::getTypeSize<T>(Builder_, ElementType); }
 
   //============================================================================
   // Variable interface
@@ -253,6 +245,8 @@ private:
   Value* getVariable(const std::string & VarName);
 
   Value* moveVariable(const std::string & From, const std::string & To);
+
+  void insertVariable(const std::string &VarName, AllocaInst* VarAlloca);
 
   //============================================================================
   // Array interface

@@ -21,6 +21,7 @@ class VarDeclAST;
 class ArrayDeclAST;
 class PrototypeAST;
 class FunctionAST;
+class TaskAST;
 
 class AstDispatcher {
 public:
@@ -45,6 +46,7 @@ public:
   virtual void dispatch(PrototypeAST&) = 0;
   
   virtual void dispatch(FunctionAST&) = 0;
+  virtual void dispatch(TaskAST&e) = 0;
 };
 
 }

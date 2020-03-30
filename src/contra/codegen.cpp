@@ -82,18 +82,6 @@ CodeGen::~CodeGen() {
   if (DBuilder) DBuilder->finalize();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// LLVM accessors
-////////////////////////////////////////////////////////////////////////////////
-
-//==============================================================================
-// Create temp builder
-//==============================================================================
-IRBuilder<> CodeGen::createBuilder(Function *TheFunction) 
-{
-  auto & Block = TheFunction->getEntryBlock();
-  return IRBuilder<>(&Block, Block.begin());
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Optimization / Module interface
@@ -313,13 +301,21 @@ Value* CodeGen::createVariable(Function *TheFunction,
     NewVar = GVar;
   }
   else {
-    auto TmpB = createBuilder(TheFunction);
-    NewVar = TmpB.CreateAlloca(VarType, nullptr, VarName.c_str());
+    NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
   }
   
   VariableTable_.front()[VarName] = NewVar;
   return NewVar;
 }
+
+//==============================================================================
+/// Insert an already allocated variable
+//==============================================================================
+void CodeGen::insertVariable(const std::string &VarName, AllocaInst* VarAlloca)
+{
+  VariableTable_.front()[VarName] = VarAlloca;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Array Interface
@@ -346,8 +342,6 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
     Type * ElementType, Value * SizeExpr)
 {
 
-  auto TmpB = createBuilder(TheFunction);
-
   Function *F; 
   F = TheModule_->getFunction("allocate");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
@@ -358,7 +352,7 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
 
   Value* CallInst = Builder_.CreateCall(F, TotalSize, VarName+"vectmp");
   auto ResType = CallInst->getType();
-  auto AllocInst = TmpB.CreateAlloca(ResType, 0, VarName+"vec");
+  auto AllocInst = createEntryBlockAlloca(TheFunction, ResType, VarName+"vec");
   Builder_.CreateStore(CallInst, AllocInst);
 
   std::vector<Value*> MemberIndices(2);
@@ -387,9 +381,7 @@ void CodeGen::initArrays( Function *TheFunction,
     Value * SizeExpr )
 {
 
-  auto TmpB = createBuilder(TheFunction);
-  
-  auto Alloca = TmpB.CreateAlloca(llvmType<int_t>(TheContext_), nullptr, "__i");
+  auto Alloca = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
   Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
@@ -463,9 +455,7 @@ void CodeGen::copyArrays(
     Value * NumElements)
 {
 
-  auto TmpB = createBuilder(TheFunction);
-
-  auto Alloca = TmpB.CreateAlloca(llvmType<int_t>(TheContext_), nullptr, "__i");
+  auto Alloca = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
   Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
@@ -860,20 +850,15 @@ void CodeGen::dispatch(CallExprAST &e) {
   if (IsTask) {
     auto TaskI = Tasker_->getTask(Name);
     
-    if (e.isTopTask()) {
+    if (e.isTopLevelTask()) {
       if (Tasker_->isStarted())
         Tasker_->postregisterTasks(*TheModule_);
       else
         Tasker_->preregisterTasks(*TheModule_);
-    }
-  
-    if (e.isTopTask()) {
-      Tasker_->setTop(*TheModule_, TaskI.getId());
+      Tasker_->setTopLevelTask(*TheModule_, TaskI.getId());
       Tasker_->start(*TheModule_, Argc_, Argv_);
-    std::cout << "Starting Top " << Name << std::endl;
     }
     else {
-    std::cout << "Lauynching " << Name << std::endl;
       std::vector<Value*> ArgSizes;
       for (auto V : ArgVs) ArgSizes.emplace_back( getTypeSize<size_t>(V->getType()) );
       Tasker_->launch(*TheModule_, Name, TaskI, ArgVs, ArgSizes);
@@ -1228,6 +1213,25 @@ void CodeGen::dispatch(PrototypeAST &e) {
   FunctionResult_ = F;
 
 }
+ 
+
+//==============================================================================
+/// FunctionAST Helper
+//==============================================================================
+Value* CodeGen::codegenFunctionBody(FunctionAST& e)
+{
+  for ( auto & stmt : e.BodyExprs_ )
+  {
+    emitLocation(stmt.get());
+    runStmtVisitor(*stmt);
+  }
+
+  // Finish off the function.
+  Value* RetVal = nullptr;
+  if ( e.ReturnExpr_ ) RetVal = runStmtVisitor(*e.ReturnExpr_);
+
+  return RetVal;
+}
 
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
@@ -1235,7 +1239,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
 void CodeGen::dispatch(FunctionAST& e)
 {
   auto OldScope = getScope();
-  if (!e.isTop()) createScope();
+  if (!e.isTopLevelExpression()) createScope();
 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
@@ -1285,17 +1289,9 @@ void CodeGen::dispatch(FunctionAST& e)
   
   }
  
+  // codegen the function body
+  auto RetVal = codegenFunctionBody(e);
 
-  for ( auto & stmt : e.BodyExprs_ )
-  {
-    emitLocation(stmt.get());
-    runStmtVisitor(*stmt);
-  }
-
-  // Finish off the function.
-  Value* RetVal = nullptr;
-  if ( e.ReturnExpr_ ) RetVal = runStmtVisitor(*e.ReturnExpr_);
-  
   // garbage collection
   resetScope(OldScope);
   
@@ -1308,17 +1304,52 @@ void CodeGen::dispatch(FunctionAST& e)
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
    
-  if (e.isTask()) {
-    auto WrapperF = Tasker_->wrapTask(*TheModule_, Name, TheFunction);
-    Tasker_->insertTask(Name, WrapperF);
-    FunctionResult_ = WrapperF;
-  }
-  else {
-    FunctionResult_ = TheFunction;
-  }
+  FunctionResult_ = TheFunction;
 
 }
 
+//==============================================================================
+/// TaskAST - This class represents a function definition itself.
+//==============================================================================
+void CodeGen::dispatch(TaskAST& e)
+{
+  auto OldScope = getScope();
+  if (!e.isTopLevelExpression()) createScope();
 
+  // Transfer ownership of the prototype to the FunctionProtos map, but keep a
+  // reference to it for use below.
+  auto & P = insertFunction( std::move(e.ProtoExpr_) );
+  const auto & Name = P.getName();
+  auto TheFunction = getFunction(Name);
+  
+  // generate wrapped task
+  auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
+
+  // insert arguments into variable table
+  unsigned ArgIdx = 0;
+  for (auto &Arg : TheFunction->args())
+    insertVariable(Arg.getName(), Wrapper.ArgAllocas[ArgIdx++]);
+
+  
+  // codegen the function body
+  auto RetVal = codegenFunctionBody(e);
+  
+  // Finish wrapped task
+  Tasker_->taskPostamble(*TheModule_, RetVal);
+
+  // garbage collection
+  resetScope(OldScope);
+  
+  // Finish off the function.  Tasks always return void
+  Builder_.CreateRetVoid();
+  
+  // Validate the generated code, checking for consistency.
+  verifyFunction(*Wrapper.TheFunction);
+  
+  // insert the task 
+  Tasker_->insertTask(Name, Wrapper.TheFunction);
+  FunctionResult_ = Wrapper.TheFunction;
+
+}
 
 } // namespace
