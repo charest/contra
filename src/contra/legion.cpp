@@ -212,15 +212,65 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
 //==============================================================================
 void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
 {
+
   // temporaries
   auto RuntimeT = RuntimeAlloca_->getType()->getPointerElementType();
   auto ContextT = ContextAlloca_->getType()->getPointerElementType();
   auto RuntimeV = Builder_.CreateLoad(RuntimeT, RuntimeAlloca_, "runtime");
   auto ContextV = Builder_.CreateLoad(ContextT, ContextAlloca_, "context");
-
+  
   auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto RetvalV = Constant::getNullValue(VoidPtrT);
-  auto RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
+
+  Value* RetvalV = Constant::getNullValue(VoidPtrT);
+  Value* RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
+
+  AllocaInst* RetvalA;
+  auto RetvalT = VoidPtrT;
+
+  
+  //----------------------------------------------------------------------------
+  // Have return value
+  if (ResultV) {
+    
+    auto TheFunction = Builder_.GetInsertBlock()->getParent();
+    
+    // store result
+    auto ResultT = ResultV->getType();
+    auto ResultA = createEntryBlockAlloca(TheFunction, ResultT, "result");
+    Builder_.CreateStore( ResultV, ResultA );
+
+    // return size
+    RetsizeV = getTypeSize<size_t>(Builder_, ResultT);
+    auto RetsizeT = RetsizeV->getType();
+    auto RetsizeA = createEntryBlockAlloca(TheFunction, RetsizeT, "retsize");
+    Builder_.CreateStore( RetsizeV, RetsizeA );
+
+    // allocate space for return value
+    RetsizeV = Builder_.CreateLoad(RetsizeT, RetsizeA);
+    auto ByteT = VoidPtrT->getPointerElementType();
+    
+    auto TmpA = Builder_.CreateAlloca(ByteT, nullptr); // not needed but InsertAtEnd doesnt work
+    auto MallocI = CallInst::CreateMalloc(TmpA, RetsizeT, ByteT, RetsizeV,
+        nullptr, nullptr, "retval" );
+    TmpA->eraseFromParent();
+
+    RetvalA = createEntryBlockAlloca(TheFunction, RetvalT, "retval");
+    Builder_.CreateStore(MallocI, RetvalA );
+
+    // copy data
+    RetvalV = Builder_.CreateLoad(RetvalT, RetvalA);
+    RetsizeV = Builder_.CreateLoad(RetsizeT, RetsizeA);
+    Builder_.CreateMemCpy(RetvalV, 1, ResultA, 1, RetsizeV); 
+
+
+    // final loads
+    RetsizeV = Builder_.CreateLoad(RetsizeT, RetsizeA);
+    RetvalV = Builder_.CreateLoad(RetvalT, RetvalA);
+    
+  }
+
+  //----------------------------------------------------------------------------
+  // Call postable
 
   // args
   std::vector<Value*> PostambleArgVs = { RuntimeV, ContextV, RetvalV, RetsizeV };
@@ -233,6 +283,17 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   auto PostambleF = TheModule.getOrInsertFunction("legion_task_postamble", PostambleT);
   
   Builder_.CreateCall(PostambleF, PostambleArgVs, "preamble");
+  
+  //----------------------------------------------------------------------------
+  // Free memory
+  if (ResultV) {
+    auto RetvalT = RetvalV->getType();
+    RetvalV = Builder_.CreateLoad(RetvalT, RetvalA);
+    auto TmpA = Builder_.CreateAlloca(VoidT, nullptr); // not needed but InsertAtEnd doesnt work
+    CallInst::CreateFree(RetvalV, TmpA);
+    TmpA->eraseFromParent();
+  }
+
   
   reset();
 }
@@ -514,8 +575,7 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto TheBlock = Builder_.GetInsertBlock();
   auto OneV = llvmValue<std::size_t>(TheContext_, 1);
   auto SizeT = llvmType<std::size_t>(TheContext_);
-  auto TmpA = Builder_.CreateAlloca(ByteT, nullptr); // not needed but InsertAtEnd
-                                                     // doesnt work
+  auto TmpA = Builder_.CreateAlloca(ByteT, nullptr); // not needed but InsertAtEnd doesnt work
   auto MallocI = CallInst::CreateMalloc(TmpA, SizeT, ByteT, ArgSizeV,
       OneV, nullptr, "args" );
   TmpA->eraseFromParent();
@@ -634,8 +694,7 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   // Deallocate storate
   ArgDataGEP = createGEP(0, "args");
   auto ArgDataPtrV = Builder_.CreateLoad(ArgDataT, ArgDataGEP, "args.ptr");
-  TmpA = Builder_.CreateAlloca(VoidT, nullptr); // not needed but InsertAtEnd
-                                                     // doesnt work
+  TmpA = Builder_.CreateAlloca(VoidT, nullptr); // not needed but InsertAtEnd doesnt work
   CallInst::CreateFree(ArgDataPtrV, TmpA);
   TmpA->eraseFromParent();
 }

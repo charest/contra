@@ -68,6 +68,7 @@ class VariableType {
 
   std::shared_ptr<TypeDef> Type_;
   bool IsArray_ = false;
+  bool IsFuture_ = false;
   bool IsGlobal_ = false;
 
 public:
@@ -91,6 +92,10 @@ public:
 
   bool isGlobal() const { return IsGlobal_; }
   void setGlobal(bool IsGlobal=true) { IsGlobal_ = IsGlobal; }
+  
+  bool isFuture() const { return IsFuture_; }
+  void setFuture(bool IsFuture=true) { IsFuture_ = IsFuture; }
+
 
   bool isNumber() const { return (!IsArray_ && Type_->isNumber()); }
 

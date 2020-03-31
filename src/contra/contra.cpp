@@ -56,7 +56,6 @@ void Contra::handleFunction()
 
   try {
     auto FnAST = TheParser_->parseFunction();
-    auto IsTask = FnAST->isTask();
     auto Name = FnAST->getName();
     if (dumpDot()) TheViz_->runVisitor(*FnAST);
     TheAnalyser_->runFuncVisitor(*FnAST);

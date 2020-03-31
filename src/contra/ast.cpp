@@ -24,6 +24,10 @@ void ArrayExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
+void FutureExprAST::accept(AstDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
+
+//==============================================================================
 void CastExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 

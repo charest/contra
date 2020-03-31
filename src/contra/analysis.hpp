@@ -106,6 +106,7 @@ private:
   void dispatch(ValueExprAST<std::string>&) override;
   void dispatch(VariableExprAST&) override;
   void dispatch(ArrayExprAST&) override;
+  void dispatch(FutureExprAST&) override;
   void dispatch(CastExprAST&) override;
   void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;

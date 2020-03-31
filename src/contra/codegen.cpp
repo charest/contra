@@ -648,6 +648,15 @@ void CodeGen::dispatch(ArrayExprAST &e)
 }
   
 //==============================================================================
+// ArrayExprAST - Expression class for arrays.
+//==============================================================================
+void CodeGen::dispatch(FutureExprAST &e)
+{
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  THROW_CONTRA_ERROR("FUTURE NOT IMPLEMENTED YET");
+}
+
+//==============================================================================
 // CastExprAST - Expression class for casts.
 //==============================================================================
 void CodeGen::dispatch(CastExprAST &e)

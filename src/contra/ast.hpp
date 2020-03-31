@@ -171,6 +171,29 @@ public:
 };
 
 //==============================================================================
+/// FutureExprAST - Expression class for referencing a future.
+//==============================================================================
+class FutureExprAST : public ExprAST {
+protected:
+
+  std::unique_ptr<NodeAST> ValueExpr_;
+
+public:
+
+  FutureExprAST(std::unique_ptr<NodeAST> ValueExpr)
+    : ExprAST(ValueExpr->getLoc()), ValueExpr_(std::move(ValueExpr))
+  {}
+  
+  virtual void accept(AstDispatcher& dispatcher) override;
+  
+  virtual std::string getClassName() const override
+  { return "FutureExprAST"; };
+
+  NodeAST* getValueExpr() { return ValueExpr_.get(); }
+
+};
+
+//==============================================================================
 /// CastExprAST - Expression class for casts
 //==============================================================================
 class CastExprAST : public ExprAST {

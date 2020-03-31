@@ -121,6 +121,14 @@ void Vizualizer::dispatch(ArrayExprAST& e)
 }
 
 //==============================================================================
+void Vizualizer::dispatch(FutureExprAST& e)
+{
+  labelNode(ind_, e.getClassName());
+  createLink(ind_);
+  runVisitor(*e.getValueExpr());
+}
+
+//==============================================================================
 void Vizualizer::dispatch(CastExprAST& e)
 {
   labelNode(ind_, e.getClassName());
