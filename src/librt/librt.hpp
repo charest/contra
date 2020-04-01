@@ -23,16 +23,21 @@ class RunTimeLib {
 
   template<typename T>
   static bool _setup() {
+    SetupMap.emplace( T::Name, T::setup );
     InstallMap.emplace( T::Name, T::install );
     SemantecMap.emplace( T::Name, T::check );
     return true;
   }
   template<typename T, typename U, typename...Args>
   static bool _setup() {
+    SetupMap.emplace( T::Name, T::setup );
     InstallMap.emplace( T::Name, T::install );
     SemantecMap.emplace( T::Name, T::check );
     return _setup<U, Args...>();
   }
+  
+  typedef void (*SetupFunctionPointer) (llvm::LLVMContext &);
+  static std::map<std::string, SetupFunctionPointer> SetupMap;
 
   typedef llvm::Function* (*LlvmFunctionPointer) (llvm::LLVMContext &, llvm::Module &);
   static std::map<std::string, LlvmFunctionPointer> InstallMap;
@@ -42,7 +47,7 @@ class RunTimeLib {
 
 public:
 
-  static void setup();
+  static void setup(llvm::LLVMContext &);
 
   static llvm::Function* tryInstall(llvm::LLVMContext &TheContext,
       llvm::Module &TheModule, const std::string & Name)

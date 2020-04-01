@@ -124,7 +124,7 @@ inline llvm::IRBuilder<> createBuilder(llvm::Function *TheFunction)
 
 //============================================================================  
 inline llvm::AllocaInst* createEntryBlockAlloca(llvm::Function *TheFunction,
-  llvm::Type* Ty, const std::string & Name)
+  llvm::Type* Ty, const std::string & Name = "")
 {
   auto TmpB = createBuilder(TheFunction);
   return TmpB.CreateAlloca(Ty, nullptr, Name.c_str());

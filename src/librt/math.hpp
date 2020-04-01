@@ -14,18 +14,21 @@ namespace librt {
 
 struct CSqrt {
   static const std::string Name;
+  static void setup(llvm::LLVMContext &) {}
   static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
   static std::shared_ptr<contra::FunctionDef> check();
 };
 
 struct CAbs {
   static const std::string Name;
+  static void setup(llvm::LLVMContext &) {}
   static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
   static std::shared_ptr<contra::FunctionDef> check();
 };
 
 struct CMax {
   static const std::string Name;
+  static void setup(llvm::LLVMContext &) {}
   static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
   static std::shared_ptr<contra::FunctionDef> check();
 };

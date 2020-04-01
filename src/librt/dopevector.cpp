@@ -4,6 +4,7 @@
 #include "llvm_utils.hpp"
 
 #include <cstdlib>
+#include <iostream>
 
 extern "C" {
 
@@ -17,10 +18,10 @@ struct dopevector_t {
 //==============================================================================
 /// memory allocation
 //==============================================================================
-dopevector_t allocate(int_t size)
+dopevector_t allocate(int_t size, int_t data_size)
 {
   dopevector_t dv;
-  dv.data = malloc(size);
+  dv.data = malloc(size*data_size);
   dv.size = size;
   return dv;
 }
@@ -39,6 +40,10 @@ namespace librt {
 
 using namespace llvm;
 
+Type* DopeVector::DopeVectorType = nullptr;
+const std::string Allocate::Name = "allocate";
+const std::string DeAllocate::Name = "deallocate";
+
 //==============================================================================
 // Create the dopevector type 
 //==============================================================================
@@ -48,23 +53,29 @@ Type * createDopeVectorType(LLVMContext & TheContext)
   auto VoidPointerType = llvmType<void*>(TheContext);
   auto IntType = llvmType<int_t>(TheContext);
 
-  std::vector<Type*> members{ VoidPointerType, IntType}; 
+  std::vector<Type*> members{ VoidPointerType, IntType }; 
   DopeVectorType->setBody( members );
 
   return DopeVectorType;
 }
 
 //==============================================================================
+// Sets up whatever is needed for allocate
+//==============================================================================
+void DopeVector::setup(LLVMContext & TheContext)
+{ 
+  if (!DopeVectorType)
+    DopeVectorType = createDopeVectorType(TheContext);
+}
+
+//==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
-const std::string Allocate::Name = "allocate";
-
 Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
 {
-  auto DopeVectorType = createDopeVectorType(TheContext);
   auto IntType = llvmType<int_t>(TheContext);
 
-  std::vector<Type*> Args = {IntType};
+  std::vector<Type*> Args = {IntType, IntType};
   auto AllocateType = FunctionType::get( DopeVectorType, Args, false );
 
   auto AllocateFun = Function::Create(AllocateType, Function::InternalLinkage,
@@ -75,11 +86,8 @@ Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
 //==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
-const std::string DeAllocate::Name = "deallocate";
-
 Function *DeAllocate::install(LLVMContext & TheContext, Module & TheModule)
 {
-  auto DopeVectorType = createDopeVectorType(TheContext);
   auto VoidType = Type::getVoidTy(TheContext);
 
   std::vector<Type*> Args = {DopeVectorType};

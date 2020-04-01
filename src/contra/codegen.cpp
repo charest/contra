@@ -9,6 +9,7 @@
 #include "token.hpp"
 
 #include "librt/librt.hpp"
+#include "librt/dopevector.hpp"
 
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
@@ -40,9 +41,12 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 
   Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
+  librt::RunTimeLib::setup(TheContext_);
+
   I64Type_  = llvmType<int_t>(TheContext_);
   F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
+  ArrayType_ = librt::DopeVector::DopeVectorType;
 
   TypeTable_.emplace( Context::I64Type->getName(),  I64Type_);
   TypeTable_.emplace( Context::F64Type->getName(),  F64Type_);
@@ -240,11 +244,15 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 ////////////////////////////////////////////////////////////////////////////////  
 void CodeGen::resetScope(Scoper::value_type Scope)
 {
-  std::vector< std::pair<ArrayIterator, Value*> > Arrays;
+  std::map<std::string, Value*> Arrays;
   for (int i=Scope; i<getScope(); ++i) {
-    for ( const auto & entry : VariableTable_.front() ) {
-      auto it = ArrayTable_.find(entry.first);
-      if (it != ArrayTable_.end()) Arrays.emplace_back(it, entry.second);
+    for ( const auto & entry_pair : VariableTable_.front() ) {
+      const auto & Name = entry_pair.first;
+      auto VarE = entry_pair.second;
+      auto Alloca = VarE.getAlloca();
+      auto IsOwner = VarE.isOwner();
+      if (isArray(Alloca) && IsOwner) 
+        Arrays.emplace(Name, Alloca);
     }
     VariableTable_.pop_front();
   }
@@ -259,25 +267,25 @@ void CodeGen::resetScope(Scoper::value_type Scope)
 //==============================================================================
 // Move a variable
 //==============================================================================
-Value* CodeGen::moveVariable(const std::string & From, const std::string & To)
+CodeGen::VariableEntry * CodeGen::moveVariable(const std::string & From, const std::string & To)
 {
   auto & CurrTab = VariableTable_.front();
   auto it = CurrTab.find(From);
   auto Var = it->second;
   CurrTab.erase(it);  
-  CurrTab[To] = Var;
+  auto new_it = CurrTab.emplace(To, Var);
   
-  return Var;
+  return &new_it.first->second;
 }
     
 //==============================================================================
 // Get a variable
 //==============================================================================
-Value* CodeGen::getVariable(const std::string & VarName)
+CodeGen::VariableEntry * CodeGen::getVariable(const std::string & VarName)
 { 
   for ( auto & ST : VariableTable_ ) {
     auto it = ST.find(VarName);
-    if (it != ST.end()) return it->second;
+    if (it != ST.end()) return &it->second;
   }
   return nullptr;
 }
@@ -286,7 +294,7 @@ Value* CodeGen::getVariable(const std::string & VarName)
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-Value* CodeGen::createVariable(Function *TheFunction,
+CodeGen::VariableEntry * CodeGen::createVariable(Function *TheFunction,
   const std::string &VarName, Type* VarType, bool IsGlobal)
 {
   Value* NewVar;
@@ -303,41 +311,64 @@ Value* CodeGen::createVariable(Function *TheFunction,
   else {
     NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
   }
-  
-  VariableTable_.front()[VarName] = NewVar;
-  return NewVar;
+
+  return insertVariable(VarName, VariableEntry{NewVar, VarType});
 }
 
 //==============================================================================
 /// Insert an already allocated variable
 //==============================================================================
-void CodeGen::insertVariable(const std::string &VarName, AllocaInst* VarAlloca)
-{
-  VariableTable_.front()[VarName] = VarAlloca;
+CodeGen::VariableEntry *
+CodeGen::insertVariable(const std::string &VarName, VariableEntry VarE)
+{ 
+  auto it = VariableTable_.front().emplace(VarName, VarE);
+  return &it.first->second;
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // Array Interface
 ////////////////////////////////////////////////////////////////////////////////
-  
+
 //==============================================================================
-// Move an array from one key to another
+///  Is the variable an array
 //==============================================================================
-ArrayType & CodeGen::moveArray(const std::string & From, const std::string & To)
+bool CodeGen::isArray(Type* Ty)
+{ return ArrayType_ == Ty; }
+
+bool CodeGen::isArray(Value* V)
 {
-  auto it = ArrayTable_.find(From);
-  auto Array = it->second;
-  ArrayTable_.erase(it);
-  auto nit = ArrayTable_.emplace( To, std::move(Array) );
-  return nit.first->second;
+  auto Ty = V->getType();
+  if (isa<AllocaInst>(V)) Ty = Ty->getPointerElementType();
+  return isArray(Ty);
 }
-    
+
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-ArrayType
+CodeGen::VariableEntry * CodeGen::createArray(Function *TheFunction,
+  const std::string &VarName, Type* ElementT, bool IsGlobal)
+{
+  Value* NewVar;
+
+  if (IsGlobal) {
+    THROW_CONTRA_ERROR("Global arrays are not implemented yet.");
+  }
+  else {
+    NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
+  }
+
+  auto it = VariableTable_.front().emplace(VarName, VariableEntry{NewVar, ElementT});
+  return &it.first->second;
+}
+
+
+//==============================================================================
+/// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+/// the function.  This is used for mutable variables etc.
+//==============================================================================
+CodeGen::VariableEntry *
 CodeGen::createArray(Function *TheFunction, const std::string &VarName,
     Type * ElementType, Value * SizeExpr)
 {
@@ -348,39 +379,31 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
 
 
   auto DataSize = getTypeSize<int_t>(ElementType);
-  auto TotalSize = Builder_.CreateMul(SizeExpr, DataSize, "multmp");
 
-  Value* CallInst = Builder_.CreateCall(F, TotalSize, VarName+"vectmp");
+  std::vector<Value*> ArgVs = {SizeExpr, DataSize};
+  Value* CallInst = Builder_.CreateCall(F, ArgVs, VarName+"vectmp");
   auto ResType = CallInst->getType();
   auto AllocInst = createEntryBlockAlloca(TheFunction, ResType, VarName+"vec");
   Builder_.CreateStore(CallInst, AllocInst);
-
-  std::vector<Value*> MemberIndices(2);
-  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-  MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-
-  auto GEPInst = Builder_.CreateGEP(ResType, AllocInst, MemberIndices,
-      VarName+"vec.ptr");
-  auto LoadedInst = Builder_.CreateLoad(GEPInst->getType()->getPointerElementType(),
-      GEPInst, VarName+"vec.val");
-
-  auto TheBlock = Builder_.GetInsertBlock();
-  auto PtrType = ElementType->getPointerTo();
-  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, PtrType, "casttmp", TheBlock);
-
-  ArrayTable_[VarName] = ArrayType{AllocInst, Cast, SizeExpr};
-  return ArrayTable_[VarName];
+  
+  return insertVariable(VarName, {AllocInst, ElementType, SizeExpr});
 }
  
 //==============================================================================
 // Initialize Array
 //==============================================================================
 void CodeGen::initArrays( Function *TheFunction,
-    const std::vector<Value*> & VarList,
-    Value * InitVal,
-    Value * SizeExpr )
+    const std::vector<Value*> & ArrayAs,
+    Value * InitV,
+    Value * SizeV,
+    Type * ElementT)
 {
+  
+  // create allocas to the pointers
+  auto ElementPtrT = ElementT->getPointerTo();
+  auto ArrayPtrAs = createArrayPointerAllocas(TheFunction, ArrayAs, ElementT);
 
+  // create a loop
   auto Alloca = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
   Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
@@ -391,17 +414,18 @@ void CodeGen::initArrays( Function *TheFunction,
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
   auto CurVar = Builder_.CreateLoad(llvmType<int_t>(TheContext_), Alloca);
-  auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeExpr, "initcond");
+  auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeV, "initcond");
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
 
-  for ( auto i : VarList) {
-    auto LoadType = i->getType()->getPointerElementType();
-    auto Load = Builder_.CreateLoad(LoadType, i, "ptr"); 
-    auto GEP = Builder_.CreateGEP(Load, CurVar, "offset");
-    Builder_.CreateStore(InitVal, GEP);
+  // store value
+  for ( auto ArrayPtrA : ArrayPtrAs) {
+    auto ArrayPtrV = Builder_.CreateLoad(ElementPtrT, ArrayPtrA, "ptr"); 
+    auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, CurVar, "offset");
+    Builder_.CreateStore(InitV, ArrayGEP);
   }
 
+  // increment loop
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
   auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
   Builder_.CreateStore(NextVar, Alloca);
@@ -414,34 +438,36 @@ void CodeGen::initArrays( Function *TheFunction,
 //==============================================================================
 void CodeGen::initArray(
     Function *TheFunction, 
-    Value* Var,
-    const std::vector<Value *> InitVals )
+    Value* ArrayA,
+    const std::vector<Value *> InitVs,
+    Type* ElementT )
 {
-  auto NumVals = InitVals.size();
+  auto NumVals = InitVs.size();
   auto TheBlock = Builder_.GetInsertBlock();
-
-  auto LoadType = Var->getType()->getPointerElementType();
-  auto ValType = LoadType->getPointerElementType();
-  auto Load = Builder_.CreateLoad(LoadType, Var, "ptr"); 
+  
+  // create allocas to the pointers
+  auto ElementPtrT = ElementT->getPointerTo();
+  auto ArrayPtrA = createArrayPointerAlloca(TheFunction, ArrayA, ElementT);
   
   for (std::size_t i=0; i<NumVals; ++i) {
-    auto Index = llvmValue<int_t>(TheContext_, i);
-    auto GEP = Builder_.CreateGEP(Load, Index, "offset");
-    auto Init = InitVals[i];
-    auto InitType = Init->getType();
-    if ( InitType->isFloatingPointTy() && ValType->isIntegerTy() ) {
-      auto Cast = CastInst::Create(Instruction::FPToSI, Init,
+    auto IndexV = llvmValue<int_t>(TheContext_, i);
+    auto ArrayPtrV = Builder_.CreateLoad(ElementPtrT, ArrayPtrA, "ptr");
+    auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, IndexV, "offset");
+    auto InitV = InitVs[i];
+    auto InitT = InitV->getType();
+    if ( InitT->isFloatingPointTy() && ElementT->isIntegerTy() ) {
+      auto Cast = CastInst::Create(Instruction::FPToSI, InitV,
           llvmType<int_t>(TheContext_), "cast", TheBlock);
-      Init = Cast;
+      InitV = Cast;
     }
-    else if ( InitType->isIntegerTy() && ValType->isFloatingPointTy() ) {
-      auto Cast = CastInst::Create(Instruction::SIToFP, Init,
+    else if ( InitT->isIntegerTy() && ElementT->isFloatingPointTy() ) {
+      auto Cast = CastInst::Create(Instruction::SIToFP, InitV,
           llvmType<real_t>(TheContext_), "cast", TheBlock);
-      Init = Cast;
+      InitV = Cast;
     }
-    else if (InitType!=ValType)
+    else if (InitT!=ElementT)
       THROW_CONTRA_ERROR("Unknown cast operation");
-    Builder_.CreateStore(Init, GEP);
+    Builder_.CreateStore(InitV, ArrayGEP);
   }
 }
 
@@ -450,51 +476,162 @@ void CodeGen::initArray(
 //==============================================================================
 void CodeGen::copyArrays(
     Function *TheFunction,
-    Value* Src,
-    const std::vector<Value*> Tgts,
-    Value * NumElements)
+    Value* SrcArrayA,
+    const std::vector<Value*> TgtArrayAs,
+    Value * NumElements,
+    Type * ElementT)
 {
+  // create allocas to the pointers
+  auto ElementPtrT = ElementT->getPointerTo();
+  auto SrcArrayPtrA = createArrayPointerAlloca(TheFunction, SrcArrayA, ElementT);
+  auto TgtArrayPtrAs = createArrayPointerAllocas(TheFunction, TgtArrayAs, ElementT);
 
-  auto Alloca = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
-  Value * StartVal = llvmValue<int_t>(TheContext_, 0);
-  Builder_.CreateStore(StartVal, Alloca);
+  auto CounterA = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
+  Value * StartV = llvmValue<int_t>(TheContext_, 0);
+  Builder_.CreateStore(StartV, CounterA);
   
   auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
   auto LoopBB =   BasicBlock::Create(TheContext_, "init", TheFunction);
   auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder_.CreateLoad(llvmType<int_t>(TheContext_), Alloca);
-  auto EndCond = Builder_.CreateICmpSLT(CurVar, NumElements, "initcond");
+  auto CounterV = Builder_.CreateLoad(llvmType<int_t>(TheContext_), CounterA);
+  auto EndCond = Builder_.CreateICmpSLT(CounterV, NumElements, "initcond");
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
     
-  auto PtrType = Src->getType()->getPointerElementType();
-  auto ValType = PtrType->getPointerElementType();
+  auto SrcArrayPtrV = Builder_.CreateLoad(ElementPtrT, SrcArrayPtrA, "srcptr"); 
+  auto SrcGEP = Builder_.CreateGEP(SrcArrayPtrV, CounterV, "srcoffset");
+  auto SrcV = Builder_.CreateLoad(ElementT, SrcGEP, "srcval");
 
-  auto SrcLoad = Builder_.CreateLoad(PtrType, Src, "srcptr"); 
-  auto SrcGEP = Builder_.CreateGEP(SrcLoad, CurVar, "srcoffset");
-  auto SrcVal = Builder_.CreateLoad(ValType, SrcLoad, "srcval");
-
-  for ( auto T : Tgts ) {
-    auto TgtLoad = Builder_.CreateLoad(PtrType, T, "tgtptr"); 
-    auto TgtGEP = Builder_.CreateGEP(TgtLoad, CurVar, "tgtoffset");
-    Builder_.CreateStore(SrcVal, TgtGEP);
+  for ( auto TgtArrayPtrA :  TgtArrayPtrAs ) {
+    auto TgtArrayPtrV = Builder_.CreateLoad(ElementPtrT, TgtArrayPtrA, "tgtptr"); 
+    auto TgtGEP = Builder_.CreateGEP(TgtArrayPtrV, CounterV, "tgtoffset");
+    Builder_.CreateStore(SrcV, TgtGEP);
   }
 
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
-  auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
-  Builder_.CreateStore(NextVar, Alloca);
+  auto NextVar = Builder_.CreateAdd(CounterV, StepVal, "nextvar");
+  Builder_.CreateStore(NextVar, CounterA);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(AfterBB);
+}
+
+//==============================================================================
+/// Load an array pointer from the dopevecter
+//==============================================================================
+Value* CodeGen::loadArrayPointer(
+    Value* ArrayAlloca,
+    Type * ElementType,
+    const std::string &VarName)
+{
+  std::vector<Value*> MemberIndices(2);
+  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
+  MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 0, true));
+
+  auto ResType = ArrayAlloca->getType()->getPointerElementType();
+  auto GEPInst = Builder_.CreateGEP(ResType, ArrayAlloca, MemberIndices,
+      VarName+"vec.ptr");
+  auto LoadedInst = Builder_.CreateLoad(GEPInst->getType()->getPointerElementType(),
+      GEPInst, VarName+"vec.val");
+
+  auto TheBlock = Builder_.GetInsertBlock();
+  auto PtrType = ElementType->getPointerTo();
+  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, PtrType, "casttmp", TheBlock);
+  return Cast;
+}
+
+//==============================================================================
+// Load an arrayarray into an alloca
+//==============================================================================
+Value* CodeGen::createArrayPointerAlloca(
+    Function *TheFunction,
+    Value* ArrayA,
+    Type* ElementT )
+{
+  auto ElementPtrT = ElementT->getPointerTo();
+  auto ArrayV = loadArrayPointer(ArrayA, ElementT);
+  auto ArrayPtrA = createEntryBlockAlloca(TheFunction, ElementPtrT);
+  Builder_.CreateStore(ArrayV, ArrayPtrA);
+  return ArrayPtrA;
+}
+
+  
+//==============================================================================
+// Load a bunch of arrays into allocas
+//==============================================================================
+std::vector<Value*> CodeGen::createArrayPointerAllocas(
+    Function *TheFunction,
+    const std::vector<Value*> & ArrayAs,
+    Type* ElementT )
+{
+  std::vector<Value*> ArrayPtrAs;
+  for ( auto ArrayA : ArrayAs) {
+    auto ArrayPtrA = createArrayPointerAlloca(TheFunction, ArrayA, ElementT);
+    ArrayPtrAs.emplace_back(ArrayPtrA);
+  }
+
+  return ArrayPtrAs;
+}
+
+//==============================================================================
+// Load an array value
+//==============================================================================
+Value* CodeGen::getArraySize(Value* ArrayA, const std::string & Name)
+{
+  std::vector<Value*> MemberIndices(2);
+  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
+  MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 1, true));
+
+  auto ArrayT = ArrayA->getType()->getPointerElementType();
+  auto ArrayGEP = Builder_.CreateGEP(ArrayT, ArrayA, MemberIndices, Name+".size");
+  auto SizeV = Builder_.CreateLoad(ArrayGEP->getType()->getPointerElementType(),
+      ArrayGEP, Name+".size");
+  return SizeV;
 }
   
 
 //==============================================================================
+// Load an array value
+//==============================================================================
+Value* CodeGen::loadArrayValue(Value* ArrayA, Value* IndexV, Type* ElementT,
+    const std::string & Name)
+{
+  auto ArrayPtrV = loadArrayPointer(ArrayA, ElementT, Name);
+  auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, IndexV, Name+".offset");
+  return Builder_.CreateLoad(ElementT, ArrayGEP, Name+".i");
+}
+
+//==============================================================================
+// Store array value
+//==============================================================================
+void CodeGen::storeArrayValue(Value* ValueV, Value* ArrayA, Value* IndexV,
+    const std::string & Name)
+{
+  auto ElementT = ValueV->getType();
+  auto ArrayPtrV = loadArrayPointer(ArrayA, ElementT, Name);
+  auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, IndexV, Name+".offset");
+  Builder_.CreateStore(ValueV, ArrayGEP);
+}
+  
+  
+//==============================================================================
+// Destroy an array
+//==============================================================================
+void CodeGen::destroyArray(const std::string & Name, Value* Alloca)
+{
+  auto F = TheModule_->getFunction("deallocate");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
+
+  auto AllocaT = Alloca->getType()->getPointerElementType();
+  auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
+  Builder_.CreateCall(F, Vec, Name+"dealloctmp");
+}
+
+//==============================================================================
 // Destroy all arrays
 //==============================================================================
-void CodeGen::destroyArrays(
-    const std::vector< std::pair<ArrayIterator, Value*> > & Arrays)
+void CodeGen::destroyArrays(const std::map<std::string, Value*> & Arrays)
 {
   if (Arrays.empty()) return;
 
@@ -503,15 +640,7 @@ void CodeGen::destroyArrays(
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
   
   for ( auto & pair : Arrays )
-  {
-    auto it = pair.first;
-    const auto & Name = it->first;
-    auto Alloca = pair.second;
-    auto AllocaT = Alloca->getType()->getPointerElementType();
-    auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
-    Builder_.CreateCall(F, Vec, Name+"dealloctmp");
-    ArrayTable_.erase(it);
-  }
+  { destroyArray(pair.first, pair.second); }
 }
 
 
@@ -588,7 +717,8 @@ void CodeGen::dispatch(VariableExprAST& e)
   auto Name = e.getName();
 
   // Look this variable up in the function.
-  Value* V = getVariable(e.getName());
+  auto VarE = getVariable(e.getName());
+  Value * V = VarE->getAlloca();
   
   // Load the value.
   auto Ty = V->getType();
@@ -598,16 +728,13 @@ void CodeGen::dispatch(VariableExprAST& e)
     auto GV = TheModule_->getOrInsertGlobal(e.getName(), Ty);
     V = GV;
   }
-  auto Load = Builder_.CreateLoad(Ty, V, "val."+Name);
 
   if ( e.isArray() ) {
-    Ty = Ty->getPointerElementType();
     auto IndexVal = runExprVisitor(*e.IndexExpr_);
-    auto GEP = Builder_.CreateGEP(Load, IndexVal, Name+".offset");
-    ValueResult_ = Builder_.CreateLoad(Ty, GEP, Name+".i");
+    ValueResult_ = loadArrayValue(V, IndexVal, VarE->getType(), Name);
   }
   else {
-    ValueResult_ = Load;
+    ValueResult_ = Builder_.CreateLoad(Ty, V, "val."+Name);
   }
 }
 
@@ -620,7 +747,6 @@ void CodeGen::dispatch(ArrayExprAST &e)
   
   // the llvm variable type
   auto VarType = getLLVMType(e.getType());
-  auto VarPointerType = VarType->getPointerTo();
 
   std::vector<Value*> InitVals;
   InitVals.reserve(e.ValExprs_.size());
@@ -635,16 +761,16 @@ void CodeGen::dispatch(ArrayExprAST &e)
     SizeExpr = llvmValue<int_t>(TheContext_, e.ValExprs_.size());
   }
 
-  auto Array = createArray(TheFunction, "__tmp", VarType, SizeExpr );
-  auto Alloca = createVariable(TheFunction, "__tmp", VarPointerType);
-  Builder_.CreateStore(Array.Data, Alloca);
+  auto ArrayE = createArray(TheFunction, "__tmp", VarType, SizeExpr );
+  auto ArrayA = ArrayE->getAlloca();
 
   if (e.SizeExpr_) 
-    initArrays(TheFunction, {Alloca}, InitVals[0], SizeExpr);
+    initArrays(TheFunction, {ArrayA}, InitVals[0], SizeExpr, VarType);
   else
-    initArray(TheFunction, Alloca, InitVals);
+    initArray(TheFunction, ArrayA, InitVals, VarType);
 
-  ValueResult_ =  Alloca;
+  auto Ty = ArrayA->getType()->getPointerElementType();
+  ValueResult_ =  Builder_.CreateLoad(Ty, ArrayA, "__tmp");
 }
   
 //==============================================================================
@@ -728,19 +854,16 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 
     // Look up the name.
     const auto & VarName = LHSE->getName();
-    Value *Variable = getVariable(VarName);
+    auto VarE = getVariable(VarName);
+    Value* Variable = VarE->getAlloca();
 
     // array element access
-    if (Variable->getType()->getPointerElementType()->isPointerTy()) {
-      auto Ty = Variable->getType()->getPointerElementType();
-      auto Load = Builder_.CreateLoad(Ty, Variable, "ptr."+VarName);
+    if (isArray(Variable)) {
       auto IndexVal = runExprVisitor(*LHSE->IndexExpr_);
-      auto GEP = Builder_.CreateGEP(Load, IndexVal, VarName+"aoffset");
-      Builder_.CreateStore(Val, GEP);
+      storeArrayValue(Val, Variable, IndexVal, VarName);
     }
-    else {
+    else
       Builder_.CreateStore(Val, Variable);
-    }
     ValueResult_ = Val;
     return;
   }
@@ -984,7 +1107,8 @@ void CodeGen::dispatch(ForStmtAST& e) {
 
   // Create an alloca for the variable in the entry block.
   auto LLType = llvmType<int_t>(TheContext_);
-  auto Alloca = createVariable(TheFunction, e.VarId_.getName(), LLType);
+  auto VarE = createVariable(TheFunction, e.VarId_.getName(), LLType);
+  auto Alloca = VarE->getAlloca();
   
   emitLocation(&e);
 
@@ -1098,7 +1222,8 @@ void CodeGen::dispatch(VarDeclAST & e) {
 
   // Register all variables and emit their initializer.
   for (const auto & VarId : e.VarIds_) {  
-    auto Alloca = createVariable(TheFunction, VarId.getName(), VarType, Ty.isGlobal());
+    auto VarE = createVariable(TheFunction, VarId.getName(), VarType, Ty.isGlobal());
+    auto Alloca = VarE->getAlloca();
     if (Ty.isGlobal())
       cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
     else
@@ -1125,7 +1250,6 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
   // the llvm variable type
   const auto & Ty = e.getType();
   auto VarType = getLLVMType(Ty);
-  auto VarPointerType = VarType->getPointerTo();
     
   int NumVars = e.VarIds_.size();
 
@@ -1134,27 +1258,24 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
   auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.InitExpr_.get());
   if (ArrayAST) {
 
-    runExprVisitor(*ArrayAST);
+    ValueResult_ = runExprVisitor(*ArrayAST);
 
     // transfer to first
     const auto & VarName = e.VarIds_[0].getName();
-    auto Array = moveArray("__tmp", VarName);
-    auto Alloca = moveVariable("__tmp", VarName);
-    
-    auto SizeExpr = Array.Size;
-    ValueResult_ = Array.Data;
+    auto VarE = moveVariable("__tmp", VarName);
+    auto Alloca = VarE->getAlloca();
+
+    auto SizeExpr = getArraySize(Alloca, VarName);
   
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;
     for (int i=1; i<NumVars; ++i) {
       const auto & VarName = e.VarIds_[i].getName();
-      auto Array = createArray(TheFunction, VarName, VarType, SizeExpr);
-      auto Alloca = createVariable(TheFunction, VarName, VarPointerType, Ty.isGlobal());
-      Builder_.CreateStore(Array.Data, Alloca);
-      ArrayAllocas.emplace_back( Alloca ); 
+      auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
+      ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
     }
 
-    copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr );
+    copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr, VarE->getType() );
 
   }
   
@@ -1177,13 +1298,11 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
     std::vector<Value*> ArrayAllocas;
     for (const auto & VarId : e.VarIds_) {
       const auto & VarName = VarId.getName();
-      auto Array = createArray(TheFunction, VarName, VarType, SizeExpr);
-      auto Alloca = createVariable(TheFunction, VarName, VarPointerType, Ty.isGlobal());
-      ArrayAllocas.emplace_back(Alloca);
-      Builder_.CreateStore(Array.Data, Alloca);
+      auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
+      ArrayAllocas.emplace_back(ArrayE->getAlloca());
     }
 
-    initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr);
+    initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarType);
 
     ValueResult_ = InitVal;
 
@@ -1205,7 +1324,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
 
   for (unsigned i=0; i<NumArgs; ++i) {
     auto VarType = getLLVMType(e.ArgTypeIds_[i]);
-    if (e.ArgIsArray_[i]) VarType = VarType->getPointerTo();
+    if (e.ArgIsArray_[i]) VarType = ArrayType_;
     ArgTypes.emplace_back(VarType);
   }
   
@@ -1285,10 +1404,15 @@ void CodeGen::dispatch(FunctionAST& e)
     auto ArgType = P.ArgTypes_[ArgIdx];
     // the llvm variable type
     auto LLType = getLLVMType(ArgType);
-    if (ArgType.isArray()) LLType = LLType->getPointerTo();
 
     // Create an alloca for this variable.
-    auto Alloca = createVariable(TheFunction, Arg.getName(), LLType);
+    VariableEntry* VarE;
+    if (ArgType.isArray())
+      VarE = createArray(TheFunction, Arg.getName(), LLType);
+    else
+      VarE = createVariable(TheFunction, Arg.getName(), LLType);
+    VarE->setOwner(false);
+    auto Alloca = VarE->getAlloca();
     
     // Create a debug descriptor for the variable.
     createVariable( SP, Arg.getName(), ++ArgIdx, Unit, LineNo, Alloca);
@@ -1336,8 +1460,12 @@ void CodeGen::dispatch(TaskAST& e)
 
   // insert arguments into variable table
   unsigned ArgIdx = 0;
-  for (auto &Arg : TheFunction->args())
-    insertVariable(Arg.getName(), Wrapper.ArgAllocas[ArgIdx++]);
+  for (auto &Arg : TheFunction->args()) {
+    auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
+    auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
+    auto NewEntry = VariableEntry(Alloca, AllocaT);
+    insertVariable(Arg.getName(), NewEntry);
+  }
 
   
   // codegen the function body

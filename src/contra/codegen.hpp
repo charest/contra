@@ -49,13 +49,26 @@ class CodeGen : public AstDispatcher, public Scoper {
   Function* FunctionResult_ = nullptr;
 
   std::map<std::string, Type*> TypeTable_;
-  
-  std::forward_list< std::map<std::string, Value*> > VariableTable_;
+ 
+  class VariableEntry {
+    Value* Alloca_ = nullptr;
+    Type* Type_ = nullptr;
+    Value* Size_ = nullptr;
+    bool IsOwner_ = true;
+  public:
+    VariableEntry() = default;
+    VariableEntry(Value* Alloca, Type* Type, Value* Size = nullptr)
+      : Alloca_(Alloca), Type_(Type), Size_(Size) {}
+    auto getAlloca() const { return Alloca_; }
+    auto getType() const { return Type_; }
+    auto getSize() const { return Size_; }
+    void setOwner(bool IsOwner=true) { IsOwner_=IsOwner; }
+    auto isOwner() const { return IsOwner_; }
+  };
 
-  std::map<std::string, ArrayType> ArrayTable_;
+  using VariableTable = std::map<std::string, VariableEntry>;
+  std::forward_list< VariableTable > VariableTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
-  
-  using ArrayIterator = decltype(ArrayTable_)::const_iterator;
 
   // debug extras
   std::unique_ptr<llvm::DIBuilder> DBuilder;
@@ -64,6 +77,7 @@ class CodeGen : public AstDispatcher, public Scoper {
   Type* I64Type_ = nullptr;
   Type* F64Type_ = nullptr;
   Type* VoidType_ = nullptr;
+  Type* ArrayType_ = nullptr;
 
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
@@ -240,51 +254,69 @@ private:
   //============================================================================
   // Variable interface
   //============================================================================
-  Value* createVariable(Function *TheFunction,
+  VariableEntry * createVariable(Function *TheFunction,
     const std::string &VarName, Type* VarType, bool IsGlobal=false);
   
-  Value* getVariable(const std::string & VarName);
+  VariableEntry * getVariable(const std::string & VarName);
 
-  Value* moveVariable(const std::string & From, const std::string & To);
+  VariableEntry * moveVariable(const std::string & From, const std::string & To);
 
-  void insertVariable(const std::string &VarName, AllocaInst* VarAlloca);
+  VariableEntry * insertVariable(const std::string &VarName, VariableEntry VarEntry);
 
   //============================================================================
   // Array interface
   //============================================================================
+ 
+  // is the value an array
+  bool isArray(Type* Ty);
+  bool isArray(Value* Val);
 
-  auto getArray(const std::string & Name)
-  { return ArrayTable_.at(Name); }
-
-  ArrayType & moveArray(const std::string & From, const std::string & To);
-  
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
-  ArrayType
-  createArray(Function *TheFunction, const std::string &VarName,
+  VariableEntry * createArray(Function *TheFunction, const std::string &VarName,
       Type* PtrType, Value * SizeExpr );
+  
+  VariableEntry * createArray(Function *TheFunction, const std::string &VarName,
+      Type* ElementType, bool IsGlobal=false);
 
   // Initializes a bunch of arrays with a value
   void initArrays( Function *TheFunction, 
       const std::vector<Value*> & VarList,
       Value * InitVal,
-      Value * SizeExpr );
+      Value * SizeExpr,
+      Type * ElementType );
 
   // initializes an array with a list of values
   void initArray( Function *TheFunction, 
       Value* Var,
-      const std::vector<Value *> InitVals );
+      const std::vector<Value *> InitVals,
+      Type * ElementType );
   
   // copies one array to another
   void copyArrays( Function *TheFunction, 
       Value* Src,
       const std::vector<Value*> Tgts,
-      Value * SizeExpr);
+      Value * SizeExpr,
+      Type * ElementType);
 
   // destroy all arrays
-  void destroyArrays(const std::vector< std::pair<ArrayIterator, Value*> > &);
+  void destroyArray(const std::string &, Value*);
+  void destroyArrays(const std::map<std::string, Value*> &);
 
-  
+  // load an array value
+  Value* loadArrayValue(Value*, Value*, Type*, const std::string &);
+
+  // store an array value
+  void storeArrayValue(Value*, Value*, Value*, const std::string &);
+
+  // Load an array
+  Value* loadArrayPointer(Value*, Type*, const std::string & = "");
+  Value* createArrayPointerAlloca(Function *, Value*, Type*);
+  std::vector<Value*> createArrayPointerAllocas(Function *, const std::vector<Value*> &, Type*);
+
+  // get an arrays size
+  Value* getArraySize(Value*, const std::string &);
+
   //============================================================================
   // Function interface
   //============================================================================

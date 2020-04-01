@@ -66,9 +66,6 @@ int main(int argc, char** argv) {
   // install tokens
   Tokens::setup();
 
-  // setup runtime
-  librt::RunTimeLib::setup();
-
   // create the parser
   Interp.setup(source_filename);
 
