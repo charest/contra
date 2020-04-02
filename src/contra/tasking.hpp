@@ -26,8 +26,17 @@ public:
     : Id_(Id), Name_(Name), Function_(Func), FunctionType_(Func->getFunctionType())
   {}
 
+  TaskInfo(int Id) : Id_(Id)
+  {}
+
   auto getId() const { return Id_; }
   const auto & getName() const { return Name_; }
+  
+  void setFunction(llvm::Function* F) {
+    Name_ = F->getName();
+    Function_ = F;
+    FunctionType_ = F->getFunctionType();
+  }
   auto getFunction() const { return Function_; }
   auto getFunctionType() const { return FunctionType_; }
 
@@ -73,7 +82,7 @@ public:
   virtual void setTopLevelTask(llvm::Module &, int) = 0;
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
   
-  virtual llvm::Value* launch(llvm::Module &, const std::string &, const TaskInfo &,
+  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
 
   virtual llvm::Value* getFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
@@ -90,6 +99,7 @@ public:
   
   // Task table interface
   TaskInfo & insertTask(const std::string & Name, llvm::Function* F);
+  TaskInfo & insertTask(const std::string & Name);
 
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }

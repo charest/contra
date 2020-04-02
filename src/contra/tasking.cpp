@@ -78,6 +78,14 @@ Value* AbstractTasker::start(llvm::Module & TheModule, int Argc, char ** Argv)
 };
 
 //==============================================================================
+TaskInfo & AbstractTasker::insertTask(const std::string & Name)
+{
+  auto Id = getNextId();
+  auto it = TaskTable_.emplace(Name, TaskInfo{Id});
+  return it.first->second;
+}
+
+//==============================================================================
 TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 {
   auto TaskName = F->getName();

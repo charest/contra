@@ -56,7 +56,7 @@ public:
   
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) override;
   
-  virtual llvm::Value* launch(llvm::Module &, const std::string &, const TaskInfo &,
+  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) override;
   
   virtual llvm::Value* getFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*) override;

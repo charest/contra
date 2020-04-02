@@ -978,6 +978,7 @@ void CodeGen::dispatch(CallExprAST &e) {
   }
 
   //----------------------------------------------------------------------------
+  std::cout << e.Callee_ << ", " << IsTask << std::endl;
   if (IsTask) {
     auto TaskI = Tasker_->getTask(Name);
     Value* FutureA = nullptr;
@@ -993,7 +994,7 @@ void CodeGen::dispatch(CallExprAST &e) {
     else {
       std::vector<Value*> ArgSizes;
       for (auto V : ArgVs) ArgSizes.emplace_back( getTypeSize<size_t>(V->getType()) );
-      FutureA = Tasker_->launch(*TheModule_, Name, TaskI, ArgVs, ArgSizes);
+      FutureA = Tasker_->launch(*TheModule_, Name, TaskI.getId(), ArgVs, ArgSizes);
     }
   
     auto CalleeT = CalleeF->getFunctionType()->getReturnType();
@@ -1464,6 +1465,9 @@ void CodeGen::dispatch(TaskAST& e)
   const auto & Name = P.getName();
   auto TheFunction = getFunction(Name);
   
+  // insert the task 
+  auto & TaskI = Tasker_->insertTask(Name);
+  
   // generate wrapped task
   auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
 
@@ -1492,8 +1496,8 @@ void CodeGen::dispatch(TaskAST& e)
   // Validate the generated code, checking for consistency.
   verifyFunction(*Wrapper.TheFunction);
   
-  // insert the task 
-  Tasker_->insertTask(Name, Wrapper.TheFunction);
+  // set the finished function
+  TaskI.setFunction(Wrapper.TheFunction);
   FunctionResult_ = Wrapper.TheFunction;
 
 }

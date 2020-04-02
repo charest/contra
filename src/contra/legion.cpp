@@ -530,7 +530,7 @@ llvm::Value* LegionTasker::startRuntime(llvm::Module &TheModule, int Argc, char 
 // Launch a task
 //==============================================================================
 llvm::Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
-    const TaskInfo & TaskI, const std::vector<llvm::Value*> & ArgVs,
+    int TaskId, const std::vector<llvm::Value*> & ArgVs,
     const std::vector<llvm::Value*> & ArgSizes )
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
@@ -603,7 +603,7 @@ llvm::Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto MapperIdV = llvmValue(TheContext_, MapperIdType_, 0); 
   auto MappingTagIdV = llvmValue(TheContext_, MappingTagIdType_, 0); 
   auto PredicateV = load(PredicateA, TheModule, "predicate");
-  auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskI.getId());
+  auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskId);
   
   auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
   ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
