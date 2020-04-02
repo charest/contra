@@ -1,9 +1,9 @@
 #include "config.hpp"
-#include "llvm_utils.hpp"
 
 #include "codegen.hpp"
 #include "errors.hpp"
 #include "legion.hpp"
+#include "utils/llvm_utils.hpp"
 
 #include "legion/legion_c.h"
 
@@ -12,6 +12,7 @@
 namespace contra {
 
 using namespace llvm;
+using namespace utils;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker

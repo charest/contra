@@ -1,5 +1,4 @@
 #include "config.hpp"
-#include "llvm_utils.hpp"
 
 #include "ast.hpp"
 #include "codegen.hpp"
@@ -11,6 +10,8 @@
 #include "librt/librt.hpp"
 #include "librt/dopevector.hpp"
 
+#include "utils/llvm_utils.hpp"
+
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/LinkAllPasses.h"
@@ -21,6 +22,7 @@
 #include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
 
 using namespace llvm;
+using namespace utils;
 
 namespace contra {
 
@@ -687,7 +689,7 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
 void CodeGen::dispatch(ValueExprAST<int_t> & e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmValue<int_t>(TheContext_, e.Val_);
+  ValueResult_ = llvmValue<int_t>(TheContext_, e.getVal());
 }
 
 //==============================================================================
@@ -696,7 +698,7 @@ void CodeGen::dispatch(ValueExprAST<int_t> & e)
 void CodeGen::dispatch(ValueExprAST<real_t> & e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmValue(TheContext_, e.Val_);
+  ValueResult_ = llvmValue(TheContext_, e.getVal());
 }
 
 //==============================================================================
@@ -705,7 +707,7 @@ void CodeGen::dispatch(ValueExprAST<real_t> & e)
 void CodeGen::dispatch(ValueExprAST<std::string>& e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmString(TheContext_, getModule(), e.Val_);
+  ValueResult_ = llvmString(TheContext_, getModule(), e.getVal());
 }
  
 //==============================================================================
@@ -730,7 +732,7 @@ void CodeGen::dispatch(VariableExprAST& e)
   }
 
   if ( e.isArray() ) {
-    auto IndexVal = runExprVisitor(*e.IndexExpr_);
+    auto IndexVal = runExprVisitor(*e.getIndexExpr());
     ValueResult_ = loadArrayValue(V, IndexVal, VarE->getType(), Name);
   }
   else {
@@ -749,22 +751,22 @@ void CodeGen::dispatch(ArrayExprAST &e)
   auto VarType = getLLVMType(e.getType());
 
   std::vector<Value*> InitVals;
-  InitVals.reserve(e.ValExprs_.size());
-  for ( auto & E : e.ValExprs_ ) 
+  InitVals.reserve(e.getNumVals());
+  for ( const auto & E : e.getValExprs() ) 
     InitVals.emplace_back( runExprVisitor(*E) );
 
   Value* SizeExpr = nullptr;
-  if (e.SizeExpr_) {
-    SizeExpr = runExprVisitor(*e.SizeExpr_);
+  if (e.hasSize()) {
+    SizeExpr = runExprVisitor(*e.getSizeExpr());
   }
   else {
-    SizeExpr = llvmValue<int_t>(TheContext_, e.ValExprs_.size());
+    SizeExpr = llvmValue<int_t>(TheContext_, e.getNumVals());
   }
 
   auto ArrayE = createArray(TheFunction, "__tmp", VarType, SizeExpr );
   auto ArrayA = ArrayE->getAlloca();
 
-  if (e.SizeExpr_) 
+  if (e.hasSize()) 
     initArrays(TheFunction, {ArrayA}, InitVals[0], SizeExpr, VarType);
   else
     initArray(TheFunction, ArrayA, InitVals, VarType);
@@ -787,7 +789,7 @@ void CodeGen::dispatch(FutureExprAST &e)
 //==============================================================================
 void CodeGen::dispatch(CastExprAST &e)
 {
-  auto FromVal = runExprVisitor(*e.FromExpr_);
+  auto FromVal = runExprVisitor(*e.getFromExpr());
   auto FromType = ValueResult_->getType();
 
   auto ToType = getLLVMType(e.getType());
@@ -812,11 +814,11 @@ void CodeGen::dispatch(CastExprAST &e)
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 void CodeGen::dispatch(UnaryExprAST & e) {
-  auto OperandV = runExprVisitor(*e.OpExpr_); 
+  auto OperandV = runExprVisitor(*e.getOpExpr()); 
   
   if (OperandV->getType()->isFloatingPointTy()) {
   
-    switch (e.OpCode_) {
+    switch (e.getOperand()) {
     case tok_sub:
       ValueResult_ = Builder_.CreateFNeg(OperandV, "negtmp");
       return;
@@ -824,14 +826,14 @@ void CodeGen::dispatch(UnaryExprAST & e) {
 
   }
   else {
-    switch (e.OpCode_) {
+    switch (e.getOperand()) {
     case tok_sub:
       ValueResult_ = Builder_.CreateNeg(OperandV, "negtmp");
       return;
     }
   }
 
-  auto F = getFunction(std::string("unary") + e.OpCode_);
+  auto F = getFunction(std::string("unary") + e.getOperand());
   emitLocation(&e);
   ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
 }
@@ -843,14 +845,14 @@ void CodeGen::dispatch(BinaryExprAST& e) {
   emitLocation(&e);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
-  if (e.OpCode_ == tok_asgmt) {
+  if (e.getOperand() == tok_asgmt) {
     // Assignment requires the LHS to be an identifier.
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a
     // dynamic_cast for automatic error checking.
-    auto LHSE = dynamic_cast<VariableExprAST*>(e.LeftExpr_.get());
+    auto LHSE = dynamic_cast<VariableExprAST*>(e.getLeftExpr());
     // Codegen the RHS.
-    auto Val = runExprVisitor(*e.RightExpr_);
+    auto Val = runExprVisitor(*e.getRightExpr());
 
     // Look up the name.
     const auto & VarName = LHSE->getName();
@@ -859,7 +861,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 
     // array element access
     if (isArray(Variable)) {
-      auto IndexVal = runExprVisitor(*LHSE->IndexExpr_);
+      auto IndexVal = runExprVisitor(*LHSE->getIndexExpr());
       storeArrayValue(Val, Variable, IndexVal, VarName);
     }
     else
@@ -868,15 +870,15 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     return;
   }
 
-  Value *L = runExprVisitor(*e.LeftExpr_);
-  Value *R = runExprVisitor(*e.RightExpr_);
+  Value *L = runExprVisitor(*e.getLeftExpr());
+  Value *R = runExprVisitor(*e.getRightExpr());
 
   auto l_is_real = L->getType()->isFloatingPointTy();
   auto r_is_real = R->getType()->isFloatingPointTy();
   bool is_real =  (l_is_real && r_is_real);
 
   if (is_real) {
-    switch (e.OpCode_) {
+    switch (e.getOperand()) {
     case tok_add:
       ValueResult_ = Builder_.CreateFAdd(L, R, "addtmp");
       return;
@@ -913,7 +915,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     } 
   }
   else {
-    switch (e.OpCode_) {
+    switch (e.getOperand()) {
     case tok_add:
       ValueResult_ = Builder_.CreateAdd(L, R, "addtmp");
       return;
@@ -952,7 +954,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = getFunction(std::string("binary") + e.OpCode_);
+  auto F = getFunction(std::string("binary") + e.getOperand());
 
   Value *Ops[] = { L, R };
   ValueResult_ = Builder_.CreateCall(F, Ops, "binop");
@@ -965,20 +967,19 @@ void CodeGen::dispatch(CallExprAST &e) {
   emitLocation(&e);
 
   // Look up the name in the global module table.
-  auto CalleeF = getFunction(e.Callee_);
+  auto CalleeF = getFunction(e.getName());
   //auto NumFixedArgs = FunType->getNumParams();
  
   const auto & Name = e.getName();
   auto IsTask = Tasker_->isTask(Name);
     
   std::vector<Value *> ArgVs;
-  for (unsigned i = 0; i<e.ArgExprs_.size(); ++i) {
-    auto A = runExprVisitor(*e.ArgExprs_[i]);
+  for (unsigned i = 0; i<e.getNumArgs(); ++i) {
+    auto A = runExprVisitor(*e.getArgExpr(i));
     ArgVs.push_back(A);
   }
 
   //----------------------------------------------------------------------------
-  std::cout << e.Callee_ << ", " << IsTask << std::endl;
   if (IsTask) {
     auto TaskI = Tasker_->getTask(Name);
     Value* FutureA = nullptr;
@@ -1020,19 +1021,19 @@ void CodeGen::dispatch(CallExprAST &e) {
 void CodeGen::dispatch(IfStmtAST & e) {
   emitLocation(&e);
 
-  if ( e.ThenExpr_.empty() && e.ElseExpr_.empty() ) {
+  if ( e.getThenExprs().empty() && e.getElseExprs().empty() ) {
     ValueResult_ = Constant::getNullValue(VoidType_);
     return;
   }
 
-  Value *CondV = runExprVisitor(*e.CondExpr_);
+  Value *CondV = runExprVisitor(*e.getCondExpr());
 
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
   BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  BasicBlock *ElseBB = e.ElseExpr_.empty() ? nullptr : BasicBlock::Create(TheContext_, "else");
+  BasicBlock *ElseBB = e.getElseExprs().empty() ? nullptr : BasicBlock::Create(TheContext_, "else");
   BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
 
   if (ElseBB)
@@ -1045,7 +1046,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
 
   auto OldScope = getScope();
   createScope();
-  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt);
+  for ( const auto & stmt : e.getThenExprs() ) runStmtVisitor(*stmt);
   resetScope(OldScope);
 
   // get first non phi instruction
@@ -1063,7 +1064,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
     Builder_.SetInsertPoint(ElseBB);
 
     createScope();
-    for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt); 
+    for ( const auto & stmt : e.getElseExprs() ) runStmtVisitor(*stmt); 
     resetScope(OldScope);
 
     // get first non phi
@@ -1116,13 +1117,13 @@ void CodeGen::dispatch(ForStmtAST& e) {
 
   // Create an alloca for the variable in the entry block.
   auto LLType = llvmType<int_t>(TheContext_);
-  auto VarE = createVariable(TheFunction, e.VarId_.getName(), LLType);
+  auto VarE = createVariable(TheFunction, e.getVarName(), LLType);
   auto Alloca = VarE->getAlloca();
   
   emitLocation(&e);
 
   // Emit the start code first, without 'variable' in scope.
-  auto StartVal = runStmtVisitor(*e.StartExpr_);
+  auto StartVal = runStmtVisitor(*e.getStartExpr());
   if (StartVal->getType()->isFloatingPointTy())
     THROW_IMPLEMENTED_ERROR("Cast required for start value");
 
@@ -1144,11 +1145,11 @@ void CodeGen::dispatch(ForStmtAST& e) {
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  auto EndCond = runStmtVisitor(*e.EndExpr_);
+  auto EndCond = runStmtVisitor(*e.getEndExpr());
   if (EndCond->getType()->isFloatingPointTy())
     THROW_IMPLEMENTED_ERROR("Cast required for end condition");
  
-  if (e.Loop_ == ForStmtAST::LoopType::Until) {
+  if (e.getLoopType() == ForStmtAST::LoopType::Until) {
     Value *One = llvmValue<int_t>(TheContext_, 1);
     EndCond = Builder_.CreateSub(EndCond, One, "loopsub");
   }
@@ -1167,7 +1168,7 @@ void CodeGen::dispatch(ForStmtAST& e) {
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
   createScope();
-  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt);
+  for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
   resetScope(InnerScope);
 
 
@@ -1181,8 +1182,8 @@ void CodeGen::dispatch(ForStmtAST& e) {
 
   // Emit the step value.
   Value *StepVal = nullptr;
-  if (e.StepExpr_) {
-    StepVal = runStmtVisitor(*e.StepExpr_);
+  if (e.hasStep()) {
+    StepVal = runStmtVisitor(*e.getStepExpr());
     if (StepVal->getType()->isFloatingPointTy())
       THROW_IMPLEMENTED_ERROR("Cast required for step value");
   } else {
@@ -1222,7 +1223,7 @@ void CodeGen::dispatch(VarDeclAST & e) {
   //    var a = a in ...   # refers to outer 'a'.
 
   // Emit initializer first
-  auto InitVal = runExprVisitor(*e.InitExpr_);
+  auto InitVal = runExprVisitor(*e.getInitExpr());
   //auto IType = InitVal->getType();
   
   // the llvm variable type
@@ -1230,7 +1231,7 @@ void CodeGen::dispatch(VarDeclAST & e) {
   auto VarType = getLLVMType(Ty);
 
   // Register all variables and emit their initializer.
-  for (const auto & VarId : e.VarIds_) {  
+  for (const auto & VarId : e.getVarIds()) {  
     auto VarE = createVariable(TheFunction, VarId.getName(), VarType, Ty.isGlobal());
     auto Alloca = VarE->getAlloca();
     if (Ty.isGlobal())
@@ -1260,17 +1261,17 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
   const auto & Ty = e.getType();
   auto VarType = getLLVMType(Ty);
     
-  int NumVars = e.VarIds_.size();
+  int NumVars = e.getNumVars();
 
   //---------------------------------------------------------------------------
   // Array already on right hand side
-  auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.InitExpr_.get());
+  auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.getInitExpr());
   if (ArrayAST) {
 
     ValueResult_ = runExprVisitor(*ArrayAST);
 
     // transfer to first
-    const auto & VarName = e.VarIds_[0].getName();
+    const auto & VarName = e.getVarId(0).getName();
     auto VarE = moveVariable("__tmp", VarName);
     auto Alloca = VarE->getAlloca();
 
@@ -1280,7 +1281,7 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;
     for (int i=1; i<NumVars; ++i) {
-      const auto & VarName = e.VarIds_[i].getName();
+      const auto & VarName = e.getVarId(i).getName();
       auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
       ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
     }
@@ -1294,19 +1295,19 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
   else {
   
     // Emit initializer first
-    auto InitVal = runExprVisitor(*e.InitExpr_);
+    auto InitVal = runExprVisitor(*e.getInitExpr());
 
     // create a size expr
     Value* SizeExpr = nullptr;
-    if (e.SizeExpr_)
-      SizeExpr = runExprVisitor(*e.SizeExpr_);
+    if (e.hasSize())
+      SizeExpr = runExprVisitor(*e.getSizeExpr());
     // otherwise scalar
     else
       SizeExpr = llvmValue<int_t>(TheContext_, 1);
  
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;
-    for (const auto & VarId : e.VarIds_) {
+    for (const auto & VarId : e.getVarIds()) {
       const auto & VarName = VarId.getName();
       auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
       ArrayAllocas.emplace_back(ArrayE->getAlloca());
@@ -1327,26 +1328,26 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
 //==============================================================================
 void CodeGen::dispatch(PrototypeAST &e) {
 
-  unsigned NumArgs = e.ArgIds_.size();
+  unsigned NumArgs = e.getNumArgs();
 
   std::vector<Type *> ArgTypes;
   ArgTypes.reserve(NumArgs);
 
   for (unsigned i=0; i<NumArgs; ++i) {
-    auto VarType = getLLVMType(e.ArgTypeIds_[i]);
-    if (e.ArgIsArray_[i]) VarType = ArrayType_;
+    auto VarType = getLLVMType(e.getArgTypeId(i));
+    if (e.isArgArray(i)) VarType = ArrayType_;
     ArgTypes.emplace_back(VarType);
   }
   
   Type* ReturnType = VoidType_;
-  if (e.ReturnType_) ReturnType = getLLVMType(e.ReturnType_);
+  if (e.getReturnType()) ReturnType = getLLVMType(e.getReturnType());
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
-  Function *F = Function::Create(FT, Function::ExternalLinkage, e.Id_.getName(), &getModule());
+  Function *F = Function::Create(FT, Function::ExternalLinkage, e.getName(), &getModule());
 
   // Set names for all arguments.
   unsigned Idx = 0;
-  for (auto &Arg : F->args()) Arg.setName(e.ArgIds_[Idx++].getName());
+  for (auto &Arg : F->args()) Arg.setName(e.getArgName(Idx++));
 
   FunctionResult_ = F;
 
@@ -1358,7 +1359,7 @@ void CodeGen::dispatch(PrototypeAST &e) {
 //==============================================================================
 Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 {
-  for ( auto & stmt : e.BodyExprs_ )
+  for ( auto & stmt : e.getBodyExprs() )
   {
     emitLocation(stmt.get());
     runStmtVisitor(*stmt);
@@ -1366,7 +1367,7 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 
   // Finish off the function.
   Value* RetVal = nullptr;
-  if ( e.ReturnExpr_ ) RetVal = runStmtVisitor(*e.ReturnExpr_);
+  if ( e.getReturnExpr() ) RetVal = runStmtVisitor(*e.getReturnExpr());
 
   return RetVal;
 }
@@ -1381,7 +1382,7 @@ void CodeGen::dispatch(FunctionAST& e)
 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
-  auto & P = insertFunction( std::move(e.ProtoExpr_) );
+  auto & P = insertFunction( std::move(e.moveProtoExpr()) );
   const auto & Name = P.getName();
   auto TheFunction = getFunction(Name);
 
@@ -1411,7 +1412,7 @@ void CodeGen::dispatch(FunctionAST& e)
   for (auto &Arg : TheFunction->args()) {
 
     // get arg type
-    auto ArgType = P.ArgTypes_[ArgIdx];
+    auto ArgType = P.getArgType(ArgIdx);
     // the llvm variable type
     auto LLType = getLLVMType(ArgType);
 
@@ -1461,7 +1462,7 @@ void CodeGen::dispatch(TaskAST& e)
 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
-  auto & P = insertFunction( std::move(e.ProtoExpr_) );
+  auto & P = insertFunction( std::move(e.moveProtoExpr()) );
   const auto & Name = P.getName();
   auto TheFunction = getFunction(Name);
   

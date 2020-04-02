@@ -53,7 +53,7 @@ void Vizualizer::dumpNumericVal(ValueExprAST<T>& e)
 }
 
 //==============================================================================
-void Vizualizer::dumpBlock(ASTBlock & Block, int_t link_to,
+void Vizualizer::dumpBlock(const ASTBlock & Block, int_t link_to,
     const std::string & Label, bool ForceExpanded)
 {
   auto Num = Block.size();
@@ -110,7 +110,7 @@ void Vizualizer::dispatch(VariableExprAST& e)
 
   if (e.isArray()) {
     createLink(ind_);
-    runVisitor(*e.IndexExpr_);
+    runVisitor(*e.getIndexExpr());
   }
 }
 
@@ -139,7 +139,7 @@ void Vizualizer::dispatch(UnaryExprAST& e)
 {
   labelNode(ind_, e.getClassName());
   createLink(ind_);
-  runVisitor(*e.OpExpr_);
+  runVisitor(*e.getOpExpr());
 }
 
 //==============================================================================
@@ -149,9 +149,9 @@ void Vizualizer::dispatch(BinaryExprAST& e)
   std::string Op = Tokens::getName(e.getOperand());
   labelNode(my_ind, makeLabel(e.getClassName(), Op));
   createLink(my_ind, "Left" );
-  runVisitor(*e.LeftExpr_);
+  runVisitor(*e.getLeftExpr());
   createLink(my_ind, "Right" );
-  runVisitor(*e.RightExpr_);
+  runVisitor(*e.getRightExpr());
 }
 
 //==============================================================================
@@ -159,9 +159,9 @@ void Vizualizer::dispatch(CallExprAST& e)
 {
   auto my_ind = ind_;
   labelNode( my_ind, makeLabel(e.getClassName(), e.getName()));
-  for (unsigned i=0; i<e.ArgExprs_.size(); ++i) {
+  for (unsigned i=0; i<e.getNumArgs(); ++i) {
     createLink(my_ind, Formatter() << "Arg" << i );    
-    runVisitor(*e.ArgExprs_[i]);
+    runVisitor(*e.getArgExpr(i));
   }
 }
 
@@ -171,21 +171,21 @@ void Vizualizer::dispatch(ForStmtAST& e)
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
   createLink(my_ind, "Start");
-  runVisitor(*e.StartExpr_);
+  runVisitor(*e.getStartExpr());
   createLink(my_ind, "End");
-  runVisitor(*e.EndExpr_);
-  if (e.StepExpr_) {
+  runVisitor(*e.getEndExpr());
+  if (e.hasStep()) {
     createLink(my_ind, "Step");
-    runVisitor(*e.StepExpr_);
+    runVisitor(*e.getStepExpr());
   }
-  dumpBlock(e.BodyExprs_, my_ind, "Body");
+  dumpBlock(e.getBodyExprs(), my_ind, "Body");
 }
 
 //==============================================================================
 void Vizualizer::dispatch(IfStmtAST& e)
 {
   auto store_ind = ind_;
-  bool force_expanded = (e.ThenExpr_.size()>1 || e.ElseExpr_.size()>1);
+  bool force_expanded = (e.getThenExprs().size()>1 || e.getElseExprs().size()>1);
   labelNode(ind_, e.getClassName());
 
   std::string Label = !force_expanded ? "Cond" : "";
@@ -196,11 +196,11 @@ void Vizualizer::dispatch(IfStmtAST& e)
     createLink(ind_);
   }
 
-  runVisitor(*e.CondExpr_);
+  runVisitor(*e.getCondExpr());
   
-  dumpBlock(e.ThenExpr_, store_ind, "Then", force_expanded);
+  dumpBlock(e.getThenExprs(), store_ind, "Then", force_expanded);
 
-  dumpBlock(e.ElseExpr_, store_ind, "Else", force_expanded);
+  dumpBlock(e.getElseExprs(), store_ind, "Else", force_expanded);
 }
 
 //==============================================================================
@@ -208,7 +208,7 @@ void Vizualizer::dispatch(VarDeclAST& e)
 {
   labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getNames()));
   createLink(ind_, "Init");
-  runVisitor(*e.InitExpr_);
+  runVisitor(*e.getInitExpr());
 }
 
 //==============================================================================
@@ -219,11 +219,11 @@ void Vizualizer::dispatch(ArrayDeclAST& e)
   
   if (e.hasSize()) {
     createLink(my_ind, "Size");
-    runVisitor(*e.SizeExpr_);
+    runVisitor(*e.getSizeExpr());
   }
 
   createLink(my_ind, "Init");
-  e.InitExpr_->accept(*this);
+  e.getInitExpr()->accept(*this);
 }
 
 //==============================================================================
@@ -237,17 +237,17 @@ void Vizualizer::dispatch(FunctionAST& e)
   out() << "subgraph cluster" << fun_ind << " {" << std::endl;
   labelNode(fun_ind, makeLabel(e.getClassName(), e.getName()));
 
-  dumpBlock(e.BodyExprs_, fun_ind, "Body");
+  dumpBlock(e.getBodyExprs(), fun_ind, "Body");
 
-  if (e.ReturnExpr_) {
-    auto NumBody = e.BodyExprs_.size();
+  if (e.getReturnExpr()) {
+    auto NumBody = e.getNumBodyExprs();
     std::string Label = NumBody<=1 ? "Return" : "";
     createLink(fun_ind, Label);
     if (NumBody>1) {
       labelNode(ind_, "Return");
       createLink(ind_);
     }
-    runVisitor(*e.ReturnExpr_);
+    runVisitor(*e.getReturnExpr());
   }
   out() << "}" << std::endl;
 

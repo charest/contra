@@ -1,6 +1,5 @@
 #include "contra.hpp"
 #include "errors.hpp"
-#include "inputs.hpp"
 
 #include <iostream>
 

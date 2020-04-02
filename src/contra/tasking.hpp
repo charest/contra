@@ -1,48 +1,13 @@
 #ifndef CONTRA_TASKING_HPP
 #define CONTRA_TASKING_HPP
 
-#include "llvm/IR/IRBuilder.h"
+#include "taskinfo.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
 
 namespace contra {
-
-
-//==============================================================================
-// Task info
-//==============================================================================
-class TaskInfo {
-  int Id_ = -1;
-  std::string Name_;
-  llvm::Function * Function_ = nullptr;
-  llvm::FunctionType * FunctionType_ = nullptr;
-  bool IsTop_ = false;
-
-public:
-
-  TaskInfo(int Id, const std::string & Name, llvm::Function * Func)
-    : Id_(Id), Name_(Name), Function_(Func), FunctionType_(Func->getFunctionType())
-  {}
-
-  TaskInfo(int Id) : Id_(Id)
-  {}
-
-  auto getId() const { return Id_; }
-  const auto & getName() const { return Name_; }
-  
-  void setFunction(llvm::Function* F) {
-    Name_ = F->getName();
-    Function_ = F;
-    FunctionType_ = F->getFunctionType();
-  }
-  auto getFunction() const { return Function_; }
-  auto getFunctionType() const { return FunctionType_; }
-
-  bool isTop() const { return IsTop_; }
-  void setTop(bool IsTop = true) { IsTop_ = IsTop; }
-};
 
 //==============================================================================
 // Main tasking interface
@@ -113,12 +78,30 @@ protected:
   
   auto getNextId() { return IdCounter_++; }
 
-  // type helpers
+  // helpers
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;
   llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
   void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;
   llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;
   void store(llvm::Value*, llvm::AllocaInst *) const;
+
+  llvm::Value* offsetPointer(llvm::AllocaInst* PointerA, llvm::AllocaInst* OffsetA,
+      const std::string & Name = "");
+    
+  void increment(llvm::Value* OffsetA, llvm::Value* IncrV,
+      const std::string & Name = "");
+   
+  void memCopy(llvm::Value* SrcGEP, llvm::AllocaInst* TgtA, llvm::Value* SizeV, 
+      const std::string & Name = "");
+
+  llvm::Value* accessStructMember(llvm::AllocaInst* StructA, int i,
+      const std::string & Name = "");
+  
+  llvm::Value* loadStructMember(llvm::AllocaInst* StructA, int i,
+      const std::string & Name = "");
+  
+  void storeStructMember(llvm::Value* ValueV, llvm::AllocaInst* StructA, int i,
+      const std::string & Name = "");
 };
 
 } // namespace

@@ -92,10 +92,6 @@ public:
   { dispatcher.dispatch(*this); }
   
   virtual std::string getClassName() const override;
-
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
   
 };
 
@@ -133,12 +129,9 @@ public:
   { return "VariableExprAST"; };
 
   const std::string &getName() const { return Name_; }
+  auto getIndexExpr() const { return IndexExpr_.get(); }
   
   bool isArray() const { return static_cast<bool>(IndexExpr_); }
-
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
 };
 
 //==============================================================================
@@ -163,10 +156,14 @@ public:
   { return "ArrayExprAST"; };
 
   bool hasSize() const { return static_cast<bool>(SizeExpr_); }
+  auto getSizeExpr() const { return SizeExpr_.get(); }
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  auto getNumVals() const { return ValExprs_.size(); }
+  auto getValExpr(int i) const { return ValExprs_[i].get(); }
+  const auto & getValExprs() const { return ValExprs_; }
+
+  auto moveValExpr(int i) { return std::move(ValExprs_[i]); }
+  auto setValExpr(int i, std::unique_ptr<NodeAST> Expr) { ValExprs_[i] = std::move(Expr); }
 
 };
 
@@ -218,9 +215,8 @@ public:
   virtual std::string getClassName() const override
   { return "CastExprAST"; };
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  const auto & getTypeId() const { return TypeId_; }
+  auto getFromExpr() const { return FromExpr_.get(); }
   
 };
 
@@ -246,9 +242,8 @@ public:
   virtual std::string getClassName() const override
   { return "UnaryExprAST"; };
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  auto getOperand() const { return OpCode_; }
+  auto getOpExpr() const { return OpExpr_.get(); }
 };
 
 //==============================================================================
@@ -268,16 +263,20 @@ public:
     : ExprAST(Loc), OpCode_(Op), LeftExpr_(std::move(lhs)), RightExpr_(std::move(rhs))
   {}
 
-  char getOperand() const { return OpCode_; }
+  auto getOperand() const { return OpCode_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
   
   virtual std::string getClassName() const override
   { return "BinaryExprAST"; };
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  auto getLeftExpr() const { return LeftExpr_.get(); }
+  auto moveLeftExpr() { return std::move(LeftExpr_); }
+  auto setLeftExpr(std::unique_ptr<NodeAST> Expr) { LeftExpr_ = std::move(Expr); }
+
+  auto getRightExpr() const { return RightExpr_.get(); }
+  auto moveRightExpr() { return std::move(RightExpr_); }
+  auto setRightExpr(std::unique_ptr<NodeAST> Expr) { RightExpr_ = std::move(Expr); }
 };
 
 //==============================================================================
@@ -308,10 +307,11 @@ public:
   virtual std::string getClassName() const override
   { return "CallExprAST"; };
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  auto getNumArgs() const { return ArgExprs_.size(); }
+  auto getArgExpr(int i) const { return ArgExprs_[i].get(); }
   
+  auto moveArgExpr(int i) { return std::move(ArgExprs_[i]); }
+  auto setArgExpr(int i, std::unique_ptr<NodeAST> Expr) { ArgExprs_[i] = std::move(Expr); }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -352,10 +352,10 @@ public:
   static std::unique_ptr<NodeAST> makeNested( 
     std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> > & Conds,
     ASTBlockList & Blocks );
-  
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+
+  auto getCondExpr() const { return CondExpr_.get(); }
+  const auto & getThenExprs() const { return ThenExpr_; }
+  const auto & getElseExprs() const { return ElseExpr_; }
 };
 
 //==============================================================================
@@ -395,12 +395,19 @@ public:
   virtual std::string getClassName() const override
   { return "ForStmtAST"; };
 
-  const std::string & getVarName() const
-  { return VarId_.getName(); }
+  const std::string & getVarName() const { return VarId_.getName(); }
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  const auto & getVarId() const { return VarId_; }
+
+  auto getLoopType() const { return Loop_; }
+  
+  const auto & getBodyExprs() const { return BodyExprs_; }
+
+  auto getStartExpr() const { return StartExpr_.get(); }
+  auto getEndExpr() const { return EndExpr_.get(); }
+
+  auto hasStep() const { return static_cast<bool>(StepExpr_); }
+  auto getStepExpr() const { return StepExpr_.get(); }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -455,10 +462,16 @@ public:
       strs.emplace_back( Id.getName() );
     return strs;
   }
- 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+
+  const auto & getTypeId() const { return TypeId_; }
+
+  auto getNumVars() const { return VarIds_.size(); }
+  const auto & getVarIds() const { return VarIds_; }
+  const auto & getVarId(int i) const { return VarIds_[i]; }
+
+  auto getInitExpr() const { return InitExpr_.get(); }
+  auto moveInitExpr() { return std::move(InitExpr_); }
+  auto setInitExpr(std::unique_ptr<NodeAST> Init) { InitExpr_ = std::move(Init); }
 };
 
 //==============================================================================
@@ -486,10 +499,7 @@ public:
   { return "ArrayDeclAST"; };
 
   bool hasSize() const { return static_cast<bool>(SizeExpr_); }
-
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  auto getSizeExpr() const { return SizeExpr_.get(); }
   
 };
 
@@ -539,6 +549,7 @@ public:
   { return "PrototypeAST"; };
   
   const std::string &getName() const { return Id_.getName(); }
+  const auto & getId() const { return Id_; }
 
   bool isUnaryOp() const { return IsOperator_ && ArgIds_.size() == 1; }
   bool isBinaryOp() const { return IsOperator_ && ArgIds_.size() == 2; }
@@ -550,15 +561,27 @@ public:
     return Name[Name.size() - 1];
   }
 
-  void setReturnType(const VariableType & ReturnType)
-  { ReturnType_ = ReturnType; }
-
   unsigned getBinaryPrecedence() const { return Precedence_; }
   auto getLoc() const { return Id_.getLoc(); }
+
+  const auto & getReturnType() const { return ReturnType_; }
+  void setReturnType(const VariableType & ReturnType) { ReturnType_ = ReturnType; }
+
+  auto hasReturn() const { return static_cast<bool>(ReturnTypeId_); }
+  const auto & getReturnTypeId() const { return *ReturnTypeId_; }
+
+  auto getNumArgs() const { return ArgIds_.size(); } 
+  const auto & getArgTypeId(int i) const { return ArgTypeIds_[i]; }
+  const auto & getArgId(int i) const { return ArgIds_[i]; }
+  const auto & getArgName(int i) const { return ArgIds_[i].getName(); }
   
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
+  auto isArgArray(int i) const { return ArgIsArray_[i]; } 
+
+  const auto & getArgType(int i) { return ArgTypes_[i]; }
+
+  void setArgTypes(const std::vector<VariableType> & ArgTypes)
+  { ArgTypes_ = ArgTypes; }
+  
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -572,6 +595,7 @@ protected:
   std::unique_ptr<NodeAST> ReturnExpr_;
   bool IsTopExpression_ = false;
   bool IsTask_ = false;
+  std::string Name_;
 
 public:
 
@@ -579,27 +603,31 @@ public:
       std::unique_ptr<NodeAST> Return, bool IsTask = false)
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
         BodyExprs_(std::move(Body)), ReturnExpr_(std::move(Return)),
-        IsTask_(IsTask)
+        IsTask_(IsTask), Name_(ProtoExpr_->getName())
   {}
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<NodeAST> Return)
       : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-      ReturnExpr_(std::move(Return)), IsTopExpression_(true)
+        ReturnExpr_(std::move(Return)), IsTopExpression_(true),
+        Name_(ProtoExpr_->getName())
   {}
 
   auto isTopLevelExpression() const { return IsTopExpression_; }
   auto isTask() const { return IsTask_; }
-  const std::string &getName() const { return ProtoExpr_->getName(); }
+  const std::string &getName() const { return Name_; }
   
   virtual void accept(AstDispatcher& dispatcher) override;
 
   virtual std::string getClassName() const override
   { return "FunctionAST"; };
 
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
-
+  auto getReturnExpr() const { return ReturnExpr_.get(); }
+  
+  auto getProtoExpr() const { return ProtoExpr_.get(); }
+  auto moveProtoExpr() { return std::move(ProtoExpr_); }
+  
+  auto getNumBodyExprs() const { return BodyExprs_.size(); }
+  const auto & getBodyExprs() const { return BodyExprs_; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -617,10 +645,6 @@ public:
 
   virtual std::string getClassName() const override
   { return "TaskAST"; };
-
-  friend class Analyzer;
-  friend class CodeGen;
-  friend class Vizualizer;
 
 };
 

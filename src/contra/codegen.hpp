@@ -1,14 +1,14 @@
 #ifndef CONTRA_CODEGEN_HPP
 #define CONTRA_CODEGEN_HPP
 
-#include "array.hpp"
 #include "debug.hpp"
 #include "dispatcher.hpp"
 #include "tasking.hpp"
 #include "jit.hpp"
-#include "llvm_utils.hpp"
 #include "scope.hpp"
 #include "symbols.hpp" 
+
+#include "utils/llvm_utils.hpp"
 
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Function.h"
@@ -249,7 +249,7 @@ private:
 
   template<typename T>
   Value* getTypeSize(Type* ElementType)
-  { return ::getTypeSize<T>(Builder_, ElementType); }
+  { return utils::getTypeSize<T>(Builder_, ElementType); }
 
   //============================================================================
   // Variable interface

@@ -69,9 +69,74 @@ void AbstractTasker::store(Value* Val, AllocaInst * Alloca) const
     Builder_.CreateStore(Val, Alloca);
   }
 }
+//==============================================================================
+Value* AbstractTasker::offsetPointer(AllocaInst* PointerA, AllocaInst* OffsetA,
+    const std::string & Name)
+{
+  std::string Str = Name.empty() ? "" : Name + ".";
+  // load
+  auto OffsetT = OffsetA->getAllocatedType();
+  auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, Str+"offset");
+  // offset 
+  auto PointerT = PointerA->getAllocatedType();
+  auto BaseT = PointerT->getPointerElementType();
+  auto TaskArgsV = Builder_.CreateLoad(PointerT, PointerA, Str+"ptr");
+  return Builder_.CreateGEP(BaseT, TaskArgsV, OffsetV, Str+"gep");
+}
   
 //==============================================================================
-Value* AbstractTasker::start(llvm::Module & TheModule, int Argc, char ** Argv)
+void AbstractTasker::increment(Value* OffsetA, Value* IncrV,
+    const std::string & Name)
+{
+  std::string Str = Name.empty() ? "" : Name + ".";
+  auto OffsetT = OffsetA->getType()->getPointerElementType();
+  auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, Str);
+  auto NewOffsetV = Builder_.CreateAdd(OffsetV, IncrV, Str+"add");
+  Builder_.CreateStore( NewOffsetV, OffsetA );
+}
+ 
+//==============================================================================
+void AbstractTasker::memCopy(Value* SrcGEP, AllocaInst* TgtA, Value* SizeV, 
+    const std::string & Name)
+{
+  std::string Str = Name.empty() ? "" : Name + ".";
+  auto TgtPtrT = TgtA->getType();
+  auto TheBlock = Builder_.GetInsertBlock();
+  auto SrcPtrC = CastInst::Create(CastInst::BitCast, SrcGEP, TgtPtrT, "casttmp", TheBlock);
+  Builder_.CreateMemCpy(TgtA, 1, SrcPtrC, 1, SizeV); 
+}
+
+//==============================================================================
+Value* AbstractTasker::accessStructMember(AllocaInst* StructA, int i,
+    const std::string & Name)
+{
+  std::vector<Value*> MemberIndices = {
+     ConstantInt::get(TheContext_, APInt(32, 0, true)),
+     ConstantInt::get(TheContext_, APInt(32, i, true))
+  };
+  auto StructT = StructA->getAllocatedType();
+  return Builder_.CreateGEP(StructT, StructA, MemberIndices, Name);
+}
+
+//==============================================================================
+Value* AbstractTasker::loadStructMember(AllocaInst* StructA, int i,
+    const std::string & Name)
+{
+  auto ValueGEP = accessStructMember(StructA, i, Name);
+  auto ValueT = ValueGEP->getType()->getPointerElementType();
+  return Builder_.CreateLoad(ValueT, ValueGEP, Name);
+}
+
+//==============================================================================
+void AbstractTasker::storeStructMember(Value* ValueV, AllocaInst* StructA, int i,
+    const std::string & Name)
+{
+  auto ValueGEP = accessStructMember(StructA, i, Name);
+  Builder_.CreateStore(ValueV, ValueGEP );
+}
+  
+//==============================================================================
+Value* AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 { 
   setStarted();
   return startRuntime(TheModule, Argc, Argv);
@@ -81,7 +146,7 @@ Value* AbstractTasker::start(llvm::Module & TheModule, int Argc, char ** Argv)
 TaskInfo & AbstractTasker::insertTask(const std::string & Name)
 {
   auto Id = getNextId();
-  auto it = TaskTable_.emplace(Name, TaskInfo{Id});
+  auto it = TaskTable_.emplace(Name, TaskInfo(Id));
   return it.first->second;
 }
 
@@ -90,19 +155,19 @@ TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 {
   auto TaskName = F->getName();
   auto Id = getNextId();
-  auto it = TaskTable_.emplace(Name, TaskInfo{Id, TaskName, F});
+  auto it = TaskTable_.emplace(Name, TaskInfo(Id, TaskName, F));
   return it.first->second;
 }
 
 //==============================================================================
-void AbstractTasker::preregisterTasks(llvm::Module & TheModule)
+void AbstractTasker::preregisterTasks(Module & TheModule)
 {
   for (const auto & task_pair : TaskTable_ )
     preregisterTask(TheModule, task_pair.first, task_pair.second);
 }
 
 //==============================================================================
-void AbstractTasker::postregisterTasks(llvm::Module & TheModule)
+void AbstractTasker::postregisterTasks(Module & TheModule)
 {
   for (const auto & task_pair : TaskTable_ )
     postregisterTask(TheModule, task_pair.first, task_pair.second);

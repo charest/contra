@@ -1,7 +1,7 @@
 #include "dopevector.hpp"
 #include "llvm_includes.hpp"
 
-#include "llvm_utils.hpp"
+#include "utils/llvm_utils.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -39,6 +39,7 @@ void deallocate(dopevector_t dv)
 namespace librt {
 
 using namespace llvm;
+using namespace utils;
 
 Type* DopeVector::DopeVectorType = nullptr;
 const std::string Allocate::Name = "allocate";

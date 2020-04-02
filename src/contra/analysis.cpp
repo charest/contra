@@ -215,13 +215,13 @@ void Analyzer::dispatch(VariableExprAST& e)
   auto VarType = Var->getType();
 
   // array index
-  if (e.IndexExpr_) {
-    auto Loc = e.IndexExpr_->getLoc();
+  if (e.getIndexExpr()) {
+    auto Loc = e.getIndexExpr()->getLoc();
     
     if (!VarType.isArray())
       THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
     
-    auto IndexType = runExprVisitor(*e.IndexExpr_);
+    auto IndexType = runExprVisitor(*e.getIndexExpr());
     if (IndexType != I64Type_)
       THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
           << "evaluate to an integer.", Loc );
@@ -237,14 +237,14 @@ void Analyzer::dispatch(VariableExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(ArrayExprAST& e)
 {
-  if (e.SizeExpr_) {
-    auto SizeType = runExprVisitor(*e.SizeExpr_);
+  if (e.hasSize()) {
+    auto SizeType = runExprVisitor(*e.getSizeExpr());
     if (SizeType != I64Type_)
       THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
-          e.SizeExpr_->getLoc());
+          e.getSizeExpr()->getLoc());
   }
 
-  int NumVals = e.ValExprs_.size();
+  int NumVals = e.getNumVals();
   
   VariableTypeList ValTypes;
   ValTypes.reserve(NumVals);
@@ -252,7 +252,7 @@ void Analyzer::dispatch(ArrayExprAST& e)
   VariableType CommonType;
 
   for (int i=0; i<NumVals; ++i) {
-    auto & ValExpr = *e.ValExprs_[i];
+    auto & ValExpr = *e.getValExpr(i);
     auto ValType = runExprVisitor(ValExpr);
     if (i==0) CommonType = ValType;
     else      CommonType = promote(ValType, CommonType, ValExpr.getLoc());
@@ -267,9 +267,9 @@ void Analyzer::dispatch(ArrayExprAST& e)
   for (int i=0; i<NumVals; ++i) {
     const auto & ValType = ValTypes[i];
     if (CommonType != ValType) {
-      auto Loc = e.ValExprs_[i]->getLoc();
+      auto Loc = e.getValExpr(i)->getLoc();
       checkIsCastable(ValType, CommonType, Loc);
-      e.ValExprs_[i] = insertCastOp(std::move(e.ValExprs_[i]), CommonType);
+      e.setValExpr(i, insertCastOp(std::move(e.moveValExpr(i)), CommonType) );
     }
   }
 
@@ -289,8 +289,8 @@ void Analyzer::dispatch(FutureExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(CastExprAST& e)
 {
-  auto FromType = runExprVisitor(*e.FromExpr_);
-  auto TypeId = e.TypeId_;
+  auto FromType = runExprVisitor(*e.getFromExpr());
+  auto TypeId = e.getTypeId();
   auto ToType = VariableType(getBaseType(TypeId));
   checkIsCastable(FromType, ToType, e.getLoc());
   TypeResult_ = VariableType(ToType);
@@ -300,8 +300,8 @@ void Analyzer::dispatch(CastExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(UnaryExprAST& e)
 {
-  auto OpCode = e.OpCode_;
-  auto OpType = runExprVisitor(*e.OpExpr_);
+  auto OpCode = e.getOperand();
+  auto OpType = runExprVisitor(*e.getOpExpr());
   auto Loc = e.getLoc();
 
   if (OpType.isArray())
@@ -328,10 +328,10 @@ void Analyzer::dispatch(UnaryExprAST& e)
 void Analyzer::dispatch(BinaryExprAST& e)
 {
   auto Loc = e.getLoc();
-  auto OpCode = e.OpCode_;
+  auto OpCode = e.getOperand();
 
-  auto & RightExpr = *e.RightExpr_;
-  auto & LeftExpr = *e.LeftExpr_;
+  auto & RightExpr = *e.getRightExpr();
+  auto & LeftExpr = *e.getLeftExpr();
   
   auto RightLoc = RightExpr.getLoc();
   auto LeftLoc = LeftExpr.getLoc();
@@ -344,7 +344,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a
     // dynamic_cast for automatic error checking.
-    auto LHSE = dynamic_cast<VariableExprAST*>(e.LeftExpr_.get());
+    auto LHSE = dynamic_cast<VariableExprAST*>(e.getLeftExpr());
     if (!LHSE)
       THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
 
@@ -355,8 +355,8 @@ void Analyzer::dispatch(BinaryExprAST& e)
 
     if (RightType.getBaseType() != LeftType.getBaseType()) {
       checkIsCastable(RightType, LeftType, Loc);
-      e.RightExpr_ = insertCastOp(std::move(e.RightExpr_), LeftType);
-      RightExpr = *e.RightExpr_;
+      e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
+      RightExpr = *e.getRightExpr();
     }
     
     TypeResult_ = LeftType;
@@ -375,9 +375,9 @@ void Analyzer::dispatch(BinaryExprAST& e)
     checkIsCastable(LeftType, RightType, LeftLoc);
     CommonType = promote(LeftType, RightType, Loc);
     if (RightType != CommonType)
-      e.RightExpr_ = insertCastOp(std::move(e.RightExpr_), CommonType );
+      e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), CommonType ) );
     else
-      e.LeftExpr_ = insertCastOp(std::move(e.LeftExpr_), CommonType );
+      e.setLeftExpr( insertCastOp(std::move(e.moveLeftExpr()), CommonType ) );
   }
 
   switch (OpCode) {
@@ -413,7 +413,7 @@ void Analyzer::dispatch(CallExprAST& e)
   const auto & FunName = e.getName();
   auto FunRes = getFunction(FunName, e.getLoc());
   
-  int NumArgs = e.ArgExprs_.size();
+  int NumArgs = e.getNumArgs();
   int NumFixedArgs = FunRes->getNumArgs();
 
   //std::cout << "Scope is " << Scope_ << " vs " << GlobalScope<< std::endl;
@@ -443,16 +443,16 @@ void Analyzer::dispatch(CallExprAST& e)
   }
 
   for (int i=0; i<NumFixedArgs; ++i) {
-    auto ArgType = runExprVisitor(*e.ArgExprs_[i]);
+    auto ArgType = runExprVisitor(*e.getArgExpr(i));
     auto ParamType = FunRes->getArgType(i);
     if (ArgType != ParamType) {
-      checkIsCastable(ArgType, ParamType, e.ArgExprs_[i]->getLoc());
-      e.ArgExprs_[i] = insertCastOp( std::move(e.ArgExprs_[i]), ParamType);
+      checkIsCastable(ArgType, ParamType, e.getArgExpr(i)->getLoc());
+      e.setArgExpr(i, insertCastOp( std::move(e.moveArgExpr(i)), ParamType) );
     }
   }
 
   for (int i=NumFixedArgs; i<NumArgs; ++i)
-    auto ArgType = runExprVisitor(*e.ArgExprs_[i]);
+    auto ArgType = runExprVisitor(*e.getArgExpr(i));
 
   TypeResult_ = FunRes->getReturnType(); 
 
@@ -463,7 +463,7 @@ void Analyzer::dispatch(CallExprAST& e)
 //==============================================================================
 void Analyzer::dispatch(ForStmtAST& e)
 {
-  auto VarId = e.VarId_;
+  auto VarId = e.getVarId();
   
   auto OldScope = getScope();
   createScope();
@@ -471,25 +471,25 @@ void Analyzer::dispatch(ForStmtAST& e)
   auto LoopVar = insertVariable(VarId, I64Type_);
 
 
-  auto StartType = runStmtVisitor(*e.StartExpr_);
+  auto StartType = runStmtVisitor(*e.getStartExpr());
   if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
-        e.StartExpr_->getLoc() );
+        e.getStartExpr()->getLoc() );
 
-  auto EndType = runStmtVisitor(*e.EndExpr_);
+  auto EndType = runStmtVisitor(*e.getEndExpr());
   if (EndType != I64Type_ )
     THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
-        e.EndExpr_->getLoc() );
+        e.getEndExpr()->getLoc() );
 
-  if (e.StepExpr_) {
-    auto StepType = runStmtVisitor(*e.StepExpr_);
+  if (e.hasStep()) {
+    auto StepType = runStmtVisitor(*e.getStepExpr());
     if (StepType != I64Type_ )
       THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
-          e.StepExpr_->getLoc() );
+          e.getStepExpr()->getLoc() );
   }
 
   createScope();
-  for ( auto & stmt : e.BodyExprs_ ) runStmtVisitor(*stmt);
+  for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
 
   resetScope(OldScope);
   TypeResult_ = VoidType_;
@@ -498,18 +498,17 @@ void Analyzer::dispatch(ForStmtAST& e)
 //==============================================================================
 void Analyzer::dispatch(IfStmtAST& e)
 {
-  auto & CondExpr = *e.CondExpr_;
-  auto CondType = runExprVisitor(CondExpr);
+  auto CondType = runExprVisitor(*e.getCondExpr());
   if (CondType != BoolType_ )
-    THROW_NAME_ERROR( "If condition must result in boolean type.", CondExpr.getLoc() );
+    THROW_NAME_ERROR( "If condition must result in boolean type.", e.getCondExpr()->getLoc() );
 
   auto OldScope = getScope();
   createScope();
-  for ( auto & stmt : e.ThenExpr_ ) runStmtVisitor(*stmt);
+  for ( const auto & stmt : e.getThenExprs() ) runStmtVisitor(*stmt);
   resetScope(OldScope);
 
   createScope();
-  for ( auto & stmt : e.ElseExpr_ ) runStmtVisitor(*stmt);
+  for ( const auto & stmt : e.getElseExprs() ) runStmtVisitor(*stmt);
   resetScope(OldScope);
 
   TypeResult_ = VoidType_;
@@ -519,26 +518,26 @@ void Analyzer::dispatch(IfStmtAST& e)
 void Analyzer::dispatch(VarDeclAST& e)
 {
   // check if there is a specified type, if there is, get it
-  auto TypeId = e.TypeId_;
+  auto TypeId = e.getTypeId();
   VariableType VarType;
   if (TypeId) {
     VarType = VariableType(getBaseType(TypeId), e.isArray());
     DestinationType_ = VarType;
   }
   
-  auto InitType = runExprVisitor(*e.InitExpr_);
+  auto InitType = runExprVisitor(*e.getInitExpr());
   if (!VarType) VarType = InitType;
 
   if (VarType != InitType) {
-    checkIsCastable(InitType, VarType, e.InitExpr_->getLoc());
-    e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), VarType);
+    checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
+    e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
   }
   
   if (isGlobalScope()) VarType.setGlobal();
 
-  int NumVars = e.VarIds_.size();
+  int NumVars = e.getNumVars();
   for (int i=0; i<NumVars; ++i) {
-    auto VarId = e.VarIds_[i];
+    auto VarId = e.getVarId(i);
     insertVariable(VarId, VarType);
   }
 
@@ -551,14 +550,14 @@ void Analyzer::dispatch(ArrayDeclAST& e)
 {
 
   // check if there is a specified type, if there is, get it
-  auto TypeId = e.TypeId_;
+  auto TypeId = e.getTypeId();
   VariableType VarType;
   if (TypeId) {
     VarType = VariableType(getBaseType(TypeId), e.isArray());
     DestinationType_ = VarType;
   }
   
-  auto InitType = runExprVisitor(*e.InitExpr_);
+  auto InitType = runExprVisitor(*e.getInitExpr());
   if (!VarType) VarType = InitType;
 
   //----------------------------------------------------------------------------
@@ -571,15 +570,15 @@ void Analyzer::dispatch(ArrayDeclAST& e)
   
     auto ElementType = VariableType(VarType, false);
     if (ElementType != InitType) {
-      checkIsCastable(InitType, ElementType, e.InitExpr_->getLoc());
-      e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), ElementType);
+      checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
+      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
     }
  
-    if (e.SizeExpr_) {
-      auto SizeType = runExprVisitor(*e.SizeExpr_);
+    if (e.hasSize()) {
+      auto SizeType = runExprVisitor(*e.getSizeExpr());
       if (SizeType != I64Type_)
         THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
-           e.SizeExpr_->getLoc());
+           e.getSizeExpr()->getLoc());
     }
 
   }
@@ -587,9 +586,9 @@ void Analyzer::dispatch(ArrayDeclAST& e)
   
   if (isGlobalScope()) VarType.setGlobal();
 
-  int NumVars = e.VarIds_.size();
+  int NumVars = e.getNumVars();
   for (int i=0; i<NumVars; ++i) {
-    auto VarId = e.VarIds_[i];
+    auto VarId = e.getVarId(i);
     insertVariable(VarId, VarType);
   }
 
@@ -602,24 +601,26 @@ void Analyzer::dispatch(ArrayDeclAST& e)
 //==============================================================================
 void Analyzer::dispatch(PrototypeAST& e)
 {
-  int NumArgs = e.ArgIds_.size();
+  int NumArgs = e.getNumArgs();
 
-  auto & ArgTypes = e.ArgTypes_;
+  std::vector<VariableType> ArgTypes;
   ArgTypes.reserve( NumArgs );
   
   for (int i=0; i<NumArgs; ++i) {
     // check type specifier
-    const auto & TypeId = e.ArgTypeIds_[i];
-    auto ArgType = VariableType( getBaseType(TypeId), e.ArgIsArray_[i] );
+    const auto & TypeId = e.getArgTypeId(i);
+    auto ArgType = VariableType( getBaseType(TypeId), e.isArgArray(i) );
     ArgTypes.emplace_back(std::move(ArgType));
   }
 
-  auto & RetType = e.ReturnType_ = VoidType_;
- 
-  if (e.ReturnTypeId_)
-    RetType = VariableType( getBaseType(*e.ReturnTypeId_) );
+  e.setArgTypes(ArgTypes);
 
-  insertFunction(e.Id_, ArgTypes, RetType);
+  auto RetType = VoidType_;
+  if (e.hasReturn())
+    RetType = VariableType( getBaseType(e.getReturnTypeId()) );
+  e.setReturnType(RetType);
+
+  insertFunction(e.getId(), ArgTypes, RetType);
 
 }
 
@@ -632,21 +633,21 @@ void Analyzer::dispatch(FunctionAST& e)
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();
 
-  auto & ProtoExpr = *e.ProtoExpr_;
-  const auto & FnId = ProtoExpr.Id_;
+  auto & ProtoExpr = *e.getProtoExpr();
+  const auto & FnId = ProtoExpr.getId();
   auto FnName = FnId.getName();
   auto Loc = FnId.getLoc();
 
   runFuncVisitor(ProtoExpr);
   auto ProtoType = getFunction(FnId);
 
-  const auto & ArgIds = ProtoExpr.ArgIds_;
+  auto NumArgIds = ProtoExpr.getNumArgs();
   const auto & ArgTypes = ProtoType->getArgTypes();
   auto NumArgs = ArgTypes.size();
   
-  if (NumArgs != ArgIds.size())
+  if (NumArgs != NumArgIds)
     THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
-        << "', does not match definition.  Expected " << ArgIds.size()
+        << "', does not match definition.  Expected " << NumArgIds
         << " but got " << NumArgs, Loc);
 
   // If this is an operator, install it.
@@ -655,19 +656,19 @@ void Analyzer::dispatch(FunctionAST& e)
 
   // Record the function arguments in the NamedValues map.
   for (unsigned i=0; i<NumArgs; ++i)
-    insertVariable(ArgIds[i], ArgTypes[i]);
+    insertVariable(ProtoExpr.getArgId(i), ArgTypes[i]);
   
-  for ( auto & B : e.BodyExprs_ ) runStmtVisitor(*B);
+  for ( const auto & B : e.getBodyExprs() ) runStmtVisitor(*B);
   
-  if (e.ReturnExpr_) {
-    auto RetType = runStmtVisitor(*e.ReturnExpr_);
+  if (e.getReturnExpr()) {
+    auto RetType = runStmtVisitor(*e.getReturnExpr());
     if (ProtoExpr.isAnonExpr())
       ProtoExpr.setReturnType(RetType);
     else if (RetType != ProtoType->getReturnType())
       THROW_NAME_ERROR("Function return type does not match prototype for '"
           << FnName << "'.  The type '" << RetType << "' cannot be "
           << "converted to the type '" << ProtoType->getReturnType() << "'.",
-          e.ReturnExpr_->getLoc());
+          e.getReturnExpr()->getLoc());
   }
   
   if (e.isTask()) insertTask(FnName);

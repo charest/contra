@@ -8,8 +8,9 @@
 #include "llvm/IR/IRBuilder.h"
 
 #include <type_traits>
+#include <vector>
 
-namespace {
+namespace utils {
 
 //============================================================================
 // Helper structs to convert between LLVM and our types
@@ -99,61 +100,27 @@ template<typename T>
 auto llvmType( llvm::LLVMContext & TheContext )
 { return LlvmType<T>::getType(TheContext); }
 
-inline auto llvmTypes(const std::vector<llvm::Value*> & Vals)
-{
-  std::vector<llvm::Type*> Types;
-  Types.reserve(Vals.size());
-  for (const auto & V : Vals) Types.emplace_back(V->getType());
-  return Types;
-}
+std::vector<llvm::Type*> llvmTypes(const std::vector<llvm::Value*> & Vals);
 
 //============================================================================  
-
-inline llvm::Value* llvmString(llvm::LLVMContext & TheContext,
-    llvm::Module &TheModule, const std::string & Str)
-{
-  using namespace llvm;
-  auto ConstantArray = ConstantDataArray::getString(TheContext, Str);
-  auto GVStr = new GlobalVariable(TheModule, ConstantArray->getType(), true,
-      GlobalValue::InternalLinkage, ConstantArray);
-  auto ZeroC = Constant::getNullValue(IntegerType::getInt32Ty(TheContext));
-  auto StrV = ConstantExpr::getGetElementPtr(
-      IntegerType::getInt8Ty(TheContext), GVStr, ZeroC, true);
-  return StrV;
-}
+// create a string
+llvm::Value* llvmString(llvm::LLVMContext & TheContext,
+    llvm::Module &TheModule, const std::string & Str);
 
 
 //============================================================================  
-inline llvm::IRBuilder<> createBuilder(llvm::Function *TheFunction)
-{
-  auto & Block = TheFunction->getEntryBlock();
-  return llvm::IRBuilder<>(&Block, Block.begin());
-}
+// create a temporary builder
+llvm::IRBuilder<> createBuilder(llvm::Function *TheFunction);
 
 //============================================================================  
-inline llvm::AllocaInst* createEntryBlockAlloca(llvm::Function *TheFunction,
-  llvm::Type* Ty, const std::string & Name = "")
-{
-  auto TmpB = createBuilder(TheFunction);
-  return TmpB.CreateAlloca(Ty, nullptr, Name.c_str());
-}
+// create an entry block alloca
+llvm::AllocaInst* createEntryBlockAlloca(llvm::Function *TheFunction,
+  llvm::Type* Ty, const std::string & Name = "");
 
 //============================================================================  
-inline
+// get a types size
 llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType,
-    llvm::Type* ResultType )
-{
-  using namespace llvm;
-  auto & TheContext = Builder.getContext();
-  auto TheBlock = Builder.GetInsertBlock();
-  auto PtrType = ElementType->getPointerTo();
-  auto Index = ConstantInt::get(TheContext, APInt(32, 1, true));
-  auto Null = Constant::getNullValue(PtrType);
-  auto SizeGEP = Builder.CreateGEP(ElementType, Null, Index, "size");
-  auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
-          ResultType, "sizei", TheBlock);
-  return DataSize;
-}
+    llvm::Type* ResultType );
 
 template<typename T>
 llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType)

@@ -2,14 +2,14 @@
 #include "math.hpp"
 
 #include "config.hpp"
-#include "llvm_utils.hpp"
-
 #include "contra/context.hpp"
 #include "contra/symbols.hpp"
+#include "utils/llvm_utils.hpp"
 
 namespace librt {
 
 using namespace contra;
+using namespace utils;
 using namespace llvm;
 
 //==============================================================================

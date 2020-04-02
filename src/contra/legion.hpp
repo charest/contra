@@ -74,67 +74,6 @@ protected:
   llvm::StructType* createTaskConfigOptionsType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskArgumentsType(const std::string &, llvm::LLVMContext &);
 
-  llvm::Value* offsetPointer(llvm::AllocaInst* PointerA, llvm::AllocaInst* OffsetA,
-      const std::string & Name = "")
-  {
-    std::string Str = Name.empty() ? "" : Name + ".";
-    // load
-    auto OffsetT = OffsetA->getAllocatedType();
-    auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, Str+"offset");
-    // offset 
-    auto PointerT = PointerA->getAllocatedType();
-    auto BaseT = PointerT->getPointerElementType();
-    auto TaskArgsV = Builder_.CreateLoad(PointerT, PointerA, Str+"ptr");
-    return Builder_.CreateGEP(BaseT, TaskArgsV, OffsetV, Str+"gep");
-  }
-    
-  void increment(llvm::Value* OffsetA, llvm::Value* IncrV,
-      const std::string & Name = "")
-  {
-    std::string Str = Name.empty() ? "" : Name + ".";
-    auto OffsetT = OffsetA->getType()->getPointerElementType();
-    auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, Str);
-    auto NewOffsetV = Builder_.CreateAdd(OffsetV, IncrV, Str+"add");
-    Builder_.CreateStore( NewOffsetV, OffsetA );
-  }
-   
-  void memCopy(llvm::Value* SrcGEP, llvm::AllocaInst* TgtA, llvm::Value* SizeV, 
-      const std::string & Name = "")
-  {
-    using namespace llvm;
-    std::string Str = Name.empty() ? "" : Name + ".";
-    auto TgtPtrT = TgtA->getType();
-    auto TheBlock = Builder_.GetInsertBlock();
-    auto SrcPtrC = CastInst::Create(CastInst::BitCast, SrcGEP, TgtPtrT, "casttmp", TheBlock);
-    Builder_.CreateMemCpy(TgtA, 1, SrcPtrC, 1, SizeV); 
-  }
-
-  llvm::Value* accessStructMember(llvm::AllocaInst* StructA, int i, const std::string & Name = "")
-  {
-    using namespace llvm;
-    std::vector<Value*> MemberIndices = {
-       ConstantInt::get(TheContext_, APInt(32, 0, true)),
-       ConstantInt::get(TheContext_, APInt(32, i, true))
-    };
-    auto StructT = StructA->getAllocatedType();
-    return Builder_.CreateGEP(StructT, StructA, MemberIndices, Name);
-  }
-  
-  llvm::Value* loadStructMember(llvm::AllocaInst* StructA, int i, const std::string & Name = "")
-  {
-    using namespace llvm;
-    auto ValueGEP = accessStructMember(StructA, i, Name);
-    auto ValueT = ValueGEP->getType()->getPointerElementType();
-    return Builder_.CreateLoad(ValueT, ValueGEP, Name);
-  }
-  
-  void storeStructMember(llvm::Value* ValueV, llvm::AllocaInst* StructA, int i,
-      const std::string & Name = "")
-  {
-    using namespace llvm;
-    auto ValueGEP = accessStructMember(StructA, i, Name);
-    Builder_.CreateStore(ValueV, ValueGEP );
-  }
 };
 
 } // namepsace

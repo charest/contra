@@ -2,10 +2,9 @@
 #include "print.hpp"
 
 #include "config.hpp"
-#include "llvm_utils.hpp"
-
 #include "contra/context.hpp"
 #include "contra/symbols.hpp"
+#include "utils/llvm_utils.hpp"
 
 #include <cstdarg>
 
@@ -30,6 +29,7 @@ void print(const char *format, ...)
 namespace librt {
 
 using namespace contra;
+using namespace utils;
 using namespace llvm;
 
 //==============================================================================

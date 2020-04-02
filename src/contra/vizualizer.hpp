@@ -82,7 +82,8 @@ private:
   template<typename T>
   void dumpNumericVal(ValueExprAST<T>&);
 
-  void dumpBlock(ASTBlock &, int_t, const std::string &, bool = false);
+  void dumpBlock(const ASTBlock &, int_t, const std::string &, bool = false);
+
 
 };
 

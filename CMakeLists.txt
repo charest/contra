@@ -29,9 +29,7 @@ set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 # configure targets
 #------------------------------------------------------------------------------#
 
-add_library( librt )
 add_executable( contra )
-target_link_libraries(contra PUBLIC librt)
 
 
 #------------------------------------------------------------------------------#
@@ -90,8 +88,6 @@ endif()
 # build library
 #------------------------------------------------------------------------------#
 
-target_include_directories(librt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_include_directories(librt PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
 add_subdirectory(src)
