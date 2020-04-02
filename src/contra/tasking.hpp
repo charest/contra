@@ -63,6 +63,7 @@ public:
     std::vector<llvm::AllocaInst*> ArgAllocas;
   };
 
+  // abstraact interface
   virtual PreambleResult taskPreamble(llvm::Module &, const std::string &, llvm::Function*) = 0;
   virtual void taskPostamble(llvm::Module &, llvm::Value*) = 0;
 
@@ -72,12 +73,15 @@ public:
   virtual void setTopLevelTask(llvm::Module &, int) = 0;
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
   
-  virtual void launch(llvm::Module &, const std::string &, const TaskInfo &,
+  virtual llvm::Value* launch(llvm::Module &, const std::string &, const TaskInfo &,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
-  
+
+  virtual llvm::Value* getFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
+
+  // registration
   void preregisterTasks(llvm::Module &);
   void postregisterTasks(llvm::Module &);
-  
+
   // startup interface
   llvm::Value* start(llvm::Module & TheModule, int Argc, char ** Argv);
   
@@ -103,7 +107,7 @@ protected:
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;
   llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
   void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;
-  llvm::Value* load(llvm::AllocaInst *, const llvm::Module &, std::string) const;
+  llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;
   void store(llvm::Value*, llvm::AllocaInst *) const;
 };
 

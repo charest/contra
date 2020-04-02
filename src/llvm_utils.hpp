@@ -84,12 +84,20 @@ struct LlvmType<
 // Utility functions to get LLVM types and values
 
 template<typename T>
-auto llvmType( llvm::LLVMContext & TheContext )
-{ return LlvmType<T>::getType(TheContext); }
-
-template<typename T>
 auto llvmValue( llvm::LLVMContext & TheContext, T Val )
 { return LlvmType<T>::getValue(TheContext, Val); }
+
+template<typename T>
+llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
+{
+  auto Size = sizeof(T) * 8;
+  auto IsSigned = std::is_signed<T>::value;
+  return llvm::Constant::getIntegerValue(Ty, llvm::APInt(Size, Val, IsSigned));
+}
+
+template<typename T>
+auto llvmType( llvm::LLVMContext & TheContext )
+{ return LlvmType<T>::getType(TheContext); }
 
 inline auto llvmTypes(const std::vector<llvm::Value*> & Vals)
 {
@@ -131,8 +139,9 @@ inline llvm::AllocaInst* createEntryBlockAlloca(llvm::Function *TheFunction,
 }
 
 //============================================================================  
-template<typename T>
-llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType)
+inline
+llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType,
+    llvm::Type* ResultType )
 {
   using namespace llvm;
   auto & TheContext = Builder.getContext();
@@ -142,8 +151,15 @@ llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType)
   auto Null = Constant::getNullValue(PtrType);
   auto SizeGEP = Builder.CreateGEP(ElementType, Null, Index, "size");
   auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
-          llvmType<T>(TheContext), "sizei", TheBlock);
+          ResultType, "sizei", TheBlock);
   return DataSize;
+}
+
+template<typename T>
+llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType)
+{
+  auto & TheContext = Builder.getContext();
+  return getTypeSize(Builder, ElementType, llvmType<T>(TheContext));
 }
 
 } // namespace

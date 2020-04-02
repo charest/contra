@@ -13,15 +13,52 @@ namespace contra {
 
 using namespace llvm;
 
+////////////////////////////////////////////////////////////////////////////////
+// Legion tasker
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+// Constructor
+//==============================================================================
+LegionTasker::LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & TheContext) :
+  AbstractTasker(TheBuilder, TheContext)
+{
+  VoidPtrType_ = llvmType<void*>(TheContext_);
+  ByteType_ = VoidPtrType_->getPointerElementType();
+  VoidType_ = llvmType<void>(TheContext_);
+  SizeType_ = llvmType<std::size_t>(TheContext_);
+  Int32Type_ = llvmType<int>(TheContext_);
+  BoolType_ = llvmType<bool>(TheContext_);
+  RealmIdType_ = llvmType<realm_id_t>(TheContext_);
+  NumRegionsType_ = llvmType<std::uint32_t>(TheContext_); 
+  TaskVariantIdType_ = llvmType<legion_variant_id_t>(TheContext_);
+  TaskIdType_ = llvmType<legion_task_id_t>(TheContext_);
+  ProcIdType_ = llvmType<legion_processor_kind_t>(TheContext_);
+  MapperIdType_ = llvmType<legion_mapper_id_t>(TheContext_); 
+  MappingTagIdType_ = llvmType<legion_mapping_tag_id_t>(TheContext_);
+
+  TaskType_ = createOpaqueType("legion_task_t", TheContext_);
+  RegionType_ = createOpaqueType("legion_physical_region_t", TheContext_);
+  ContextType_ = createOpaqueType("legion_context_t", TheContext_);
+  RuntimeType_ = createOpaqueType("legion_runtime_t", TheContext_);
+  ExecSetType_ = createOpaqueType("legion_execution_constraint_set_t", TheContext_);
+  LayoutSetType_ = createOpaqueType("legion_task_layout_constraint_set_t", TheContext_);
+  PredicateType_ = createOpaqueType("legion_predicate_t", TheContext_);
+  LauncherType_ = createOpaqueType("legion_task_launcher_t", TheContext_);
+  FutureType_ = createOpaqueType("legion_future_t", TheContext_);
+  TaskConfigType_ = createTaskConfigOptionsType("task_config_options_t", TheContext_);
+  TaskArgsType_ = createTaskArgumentsType("legion_task_argument_t", TheContext_);
+}
+
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * createOpaqueType(const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createOpaqueType(
+    const std::string & Name, LLVMContext & TheContext)
 {
   auto OpaqueType = StructType::create( TheContext, Name );
-  auto VoidPointerType = llvmType<void*>(TheContext);
 
-  std::vector<Type*> members{ VoidPointerType }; 
+  std::vector<Type*> members{ VoidPtrType_ }; 
   OpaqueType->setBody( members );
 
   return OpaqueType;
@@ -30,10 +67,10 @@ StructType * createOpaqueType(const std::string & Name, LLVMContext & TheContext
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * createTaskConfigOptionsType(const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createTaskConfigOptionsType(
+    const std::string & Name, LLVMContext & TheContext)
 {
-  auto BoolType = llvmType<bool>(TheContext);
-  std::vector<Type*> members(4, BoolType);
+  std::vector<Type*> members(4, BoolType_);
   auto OptionsType = StructType::create( TheContext, members, Name );
   return OptionsType;
 }
@@ -41,14 +78,14 @@ StructType * createTaskConfigOptionsType(const std::string & Name, LLVMContext &
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * createTaskArgumentsType(const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createTaskArgumentsType(
+    const std::string & Name, LLVMContext & TheContext)
 {
-  auto VoidPointerType = llvmType<void*>(TheContext);
-  auto SizeType = llvmType<std::size_t>(TheContext);
-  std::vector<Type*> members = { VoidPointerType, SizeType };
+  std::vector<Type*> members = { VoidPtrType_, SizeType_ };
   auto NewType = StructType::create( TheContext, members, Name );
   return NewType;
 }
+
 
 //==============================================================================
 // Create the function wrapper
@@ -56,19 +93,14 @@ StructType * createTaskArgumentsType(const std::string & Name, LLVMContext & The
 LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     const std::string & Name, Function* TaskF)
 {
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto VoidT = llvmType<void>(TheContext_);
-  auto SizeT = llvmType<std::size_t>(TheContext_);
-  auto RealmIdT = llvmType<realm_id_t>(TheContext_);
-
   //----------------------------------------------------------------------------
   // Create task wrapper
   std::string TaskName = "__" + Name + "_task__";
 
   std::vector<Type *> WrapperArgTs =
-    {VoidPtrT, SizeT, VoidPtrT, SizeT, RealmIdT};
+    {VoidPtrType_, SizeType_, VoidPtrType_, SizeType_, RealmIdType_};
   
-  auto WrapperT = FunctionType::get(VoidT, WrapperArgTs, false);
+  auto WrapperT = FunctionType::get(VoidType_, WrapperArgTs, false);
   auto WrapperF = Function::Create(WrapperT, Function::ExternalLinkage,
       TaskName, &TheModule);
  
@@ -110,42 +142,37 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   }
 
   // loads
-  auto DataV = Builder_.CreateLoad(VoidPtrT, WrapperArgVs[0], "data");
-  auto DataLenV = Builder_.CreateLoad(SizeT, WrapperArgVs[1], "datalen");
-  //auto UserDataV = Builder_.CreateLoad(VoidPtrT, WrapperArgVs[2], "userdata");
-  //auto UserLenV = Builder_.CreateLoad(SizeT, WrapperArgVs[3], "userlen");
-  auto ProcIdV = Builder_.CreateLoad(RealmIdT, WrapperArgVs[4], "proc_id");
+  auto DataV = Builder_.CreateLoad(VoidPtrType_, WrapperArgVs[0], "data");
+  auto DataLenV = Builder_.CreateLoad(SizeType_, WrapperArgVs[1], "datalen");
+  //auto UserDataV = Builder_.CreateLoad(VoidPtrType_, WrapperArgVs[2], "userdata");
+  //auto UserLenV = Builder_.CreateLoad(SizeType_, WrapperArgVs[3], "userlen");
+  auto ProcIdV = Builder_.CreateLoad(RealmIdType_, WrapperArgVs[4], "proc_id");
 
   //----------------------------------------------------------------------------
   // call to preamble
 
   // create temporaries
-  auto TaskT = createOpaqueType("legion_task_t", TheContext_);
-  auto TaskA = createEntryBlockAlloca(WrapperF, TaskT, "task.alloca");
+  auto TaskA = createEntryBlockAlloca(WrapperF, TaskType_, "task.alloca");
  
-  auto RegionT = createOpaqueType("legion_physical_region_t", TheContext_);
-  auto RegionsT = RegionT->getPointerTo();
+  auto RegionsT = RegionType_->getPointerTo();
   auto RegionsA = createEntryBlockAlloca(WrapperF, RegionsT, "regions.alloca");
   auto NullV = Constant::getNullValue(RegionsT);
   Builder_.CreateStore(NullV, RegionsA);
 
-  auto NumRegionsT = llvmType<std::uint32_t>(TheContext_); 
-  auto NumRegionsA = createEntryBlockAlloca(WrapperF, NumRegionsT, "num_regions");
-  auto ZeroV = llvmValue<std::uint32_t>(TheContext_, 0);
+  auto NumRegionsA = createEntryBlockAlloca(WrapperF, NumRegionsType_, "num_regions");
+  auto ZeroV = llvmValue(TheContext_, NumRegionsType_, 0);
   Builder_.CreateStore(ZeroV, NumRegionsA);
  
-  auto ContextT = createOpaqueType("legion_context_t", TheContext_);
-  ContextAlloca_ = createEntryBlockAlloca(WrapperF, ContextT, "context.alloca");
+  ContextAlloca_ = createEntryBlockAlloca(WrapperF, ContextType_, "context.alloca");
 
-  auto RuntimeT = createOpaqueType("legion_runtime_t", TheContext_);
-  RuntimeAlloca_ = createEntryBlockAlloca(WrapperF, RuntimeT, "runtime.alloca");
+  RuntimeAlloca_ = createEntryBlockAlloca(WrapperF, RuntimeType_, "runtime.alloca");
 
   // args
   std::vector<Value*> PreambleArgVs = { DataV, DataLenV, ProcIdV,
     TaskA, RegionsA, NumRegionsA, ContextAlloca_, RuntimeAlloca_ };
   auto PreambleArgTs = llvmTypes(PreambleArgVs);
   
-  auto PreambleT = FunctionType::get(VoidT, PreambleArgTs, false);
+  auto PreambleT = FunctionType::get(VoidType_, PreambleArgTs, false);
   auto PreambleF = TheModule.getOrInsertFunction("legion_task_preamble", PreambleT);
   
   Builder_.CreateCall(PreambleF, PreambleArgVs, "preamble");
@@ -154,12 +181,12 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   // Get task args
 
   auto TaskRV = load(TaskA, TheModule, "task");
-  auto TaskGetArgsT = FunctionType::get(VoidPtrT, TaskRV->getType(), false);
+  auto TaskGetArgsT = FunctionType::get(VoidPtrType_, TaskRV->getType(), false);
   auto TaskGetArgsF = TheModule.getOrInsertFunction("legion_task_get_args", TaskGetArgsT);
   
   Value* TaskArgsV = Builder_.CreateCall(TaskGetArgsF, TaskRV, "args");
   
-  auto TaskArgsA = createEntryBlockAlloca(WrapperF, VoidPtrT, "args.alloca");
+  auto TaskArgsA = createEntryBlockAlloca(WrapperF, VoidPtrType_, "args.alloca");
   Builder_.CreateStore(TaskArgsV, TaskArgsA);
      
   //----------------------------------------------------------------------------
@@ -172,7 +199,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   //----------------------------------------------------------------------------
   // unpack user variables
     
-  auto OffsetT = SizeT;
+  auto OffsetT = SizeType_;
   auto OffsetA = createEntryBlockAlloca(WrapperF, OffsetT, "offset.alloca");
   ZeroV = Constant::getNullValue(OffsetT);
   Builder_.CreateStore(ZeroV, OffsetA);
@@ -181,24 +208,17 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
 
   ArgIdx = 0;
   for (auto &Arg : TaskF->args()) {
-    // load
-    auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, "offset");
     // offset 
-    auto ByteT = VoidPtrT->getPointerElementType();
-    auto TaskArgsV = Builder_.CreateLoad(VoidPtrT, TaskArgsA, "args");
-    auto ArgGEP = Builder_.CreateGEP(ByteT, TaskArgsV, OffsetV, "args.gep");
+    auto ArgGEP = offsetPointer(TaskArgsA, OffsetA, "args");
     // extract
     auto ArgT = Arg.getType();
     auto ArgN = Arg.getName().str() + ".alloca";
     auto ArgA = createEntryBlockAlloca(WrapperF, ArgT, ArgN);
     TaskArgAs.emplace_back(ArgA);
-    auto ArgPtrT = ArgT->getPointerTo();
-    auto TheBlock = Builder_.GetInsertBlock();
-    auto ArgC = CastInst::Create(CastInst::BitCast, ArgGEP, ArgPtrT, "casttmp", TheBlock);
-    Builder_.CreateMemCpy(ArgA, 1, ArgC, 1, ArgSizes[ArgIdx]); 
+    // copy
+    memCopy(ArgGEP, ArgA, ArgSizes[ArgIdx]);
     // increment
-    auto NewOffsetV = Builder_.CreateAdd(OffsetV, ArgSizes[ArgIdx], "addoffset");
-    Builder_.CreateStore( NewOffsetV, OffsetA );
+    increment(OffsetA, ArgSizes[ArgIdx], "offset");
     ArgIdx++;
   }
 
@@ -214,18 +234,14 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
 {
 
   // temporaries
-  auto RuntimeT = RuntimeAlloca_->getType()->getPointerElementType();
-  auto ContextT = ContextAlloca_->getType()->getPointerElementType();
-  auto RuntimeV = Builder_.CreateLoad(RuntimeT, RuntimeAlloca_, "runtime");
-  auto ContextV = Builder_.CreateLoad(ContextT, ContextAlloca_, "context");
+  auto RuntimeV = Builder_.CreateLoad(RuntimeType_, RuntimeAlloca_, "runtime");
+  auto ContextV = Builder_.CreateLoad(ContextType_, ContextAlloca_, "context");
   
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-
-  Value* RetvalV = Constant::getNullValue(VoidPtrT);
+  Value* RetvalV = Constant::getNullValue(VoidPtrType_);
   Value* RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
 
   AllocaInst* RetvalA;
-  auto RetvalT = VoidPtrT;
+  auto RetvalT = VoidPtrType_;
 
   
   //----------------------------------------------------------------------------
@@ -240,17 +256,16 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
     Builder_.CreateStore( ResultV, ResultA );
 
     // return size
-    RetsizeV = getTypeSize<size_t>(Builder_, ResultT);
     auto RetsizeT = RetsizeV->getType();
+    RetsizeV = getTypeSize(Builder_, ResultT, RetsizeT);
     auto RetsizeA = createEntryBlockAlloca(TheFunction, RetsizeT, "retsize");
     Builder_.CreateStore( RetsizeV, RetsizeA );
 
     // allocate space for return value
     RetsizeV = Builder_.CreateLoad(RetsizeT, RetsizeA);
-    auto ByteT = VoidPtrT->getPointerElementType();
     
-    auto TmpA = Builder_.CreateAlloca(ByteT, nullptr); // not needed but InsertAtEnd doesnt work
-    auto MallocI = CallInst::CreateMalloc(TmpA, RetsizeT, ByteT, RetsizeV,
+    auto TmpA = Builder_.CreateAlloca(ByteType_, nullptr); // not needed but InsertAtEnd doesnt work
+    auto MallocI = CallInst::CreateMalloc(TmpA, RetsizeT, ByteType_, RetsizeV,
         nullptr, nullptr, "retval" );
     TmpA->eraseFromParent();
 
@@ -278,8 +293,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   std::vector<Type*> PostambleArgTs = llvmTypes(PostambleArgVs);
 
   // call
-  auto VoidT = llvmType<void>(TheContext_);
-  auto PostambleT = FunctionType::get(VoidT, PostambleArgTs, false);
+  auto PostambleT = FunctionType::get(VoidType_, PostambleArgTs, false);
   auto PostambleF = TheModule.getOrInsertFunction("legion_task_postamble", PostambleT);
   
   Builder_.CreateCall(PostambleF, PostambleArgVs, "preamble");
@@ -289,7 +303,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   if (ResultV) {
     auto RetvalT = RetvalV->getType();
     RetvalV = Builder_.CreateLoad(RetvalT, RetvalA);
-    auto TmpA = Builder_.CreateAlloca(VoidT, nullptr); // not needed but InsertAtEnd doesnt work
+    auto TmpA = Builder_.CreateAlloca(VoidType_, nullptr); // not needed but InsertAtEnd doesnt work
     CallInst::CreateFree(RetvalV, TmpA);
     TmpA->eraseFromParent();
   }
@@ -309,26 +323,24 @@ void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string &
 
   //----------------------------------------------------------------------------
   // execution_constraint_set
-  auto ExecSetT = createOpaqueType("legion_execution_constraint_set_t", TheContext_);
-  auto ExecSetRT = reduceStruct(ExecSetT, TheModule);
+  auto ExecSetRT = reduceStruct(ExecSetType_, TheModule);
   
   auto ExecT = FunctionType::get(ExecSetRT, false);
   auto ExecF = TheModule.getOrInsertFunction("legion_execution_constraint_set_create", ExecT);
   
   Value* ExecSetRV = Builder_.CreateCall(ExecF, None, "execution_constraint");
   
-  auto ExecSetA = createEntryBlockAlloca(TheFunction, ExecSetT, "execution_constraint.alloca");
+  auto ExecSetA = createEntryBlockAlloca(TheFunction, ExecSetType_, "execution_constraint.alloca");
   store(ExecSetRV, ExecSetA);
   
   //----------------------------------------------------------------------------
   // add constraint
   
-  auto VoidT = llvmType<void>(TheContext_);
-  auto ProcIdV = llvmValue<legion_processor_kind_t>(TheContext_, LOC_PROC);  
+  auto ProcIdV = llvmValue(TheContext_, ProcIdType_, LOC_PROC);  
   auto ExecSetV = load(ExecSetA, TheModule, "execution_constraint");
   std::vector<Value*> AddExecArgVs = {ExecSetV, ProcIdV};
   auto AddExecArgTs = llvmTypes(AddExecArgVs);
-  auto AddExecT = FunctionType::get(VoidT, AddExecArgTs, false);
+  auto AddExecT = FunctionType::get(VoidType_, AddExecArgTs, false);
   auto AddExecF = TheModule.getOrInsertFunction(
       "legion_execution_constraint_set_add_processor_constraint", AddExecT);
 
@@ -337,8 +349,7 @@ void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string &
   //----------------------------------------------------------------------------
   // task_layout_constraint_set
  
-  auto LayoutSetT = createOpaqueType("legion_task_layout_constraint_set_t", TheContext_);
-  auto LayoutSetRT = reduceStruct(LayoutSetT, TheModule);
+  auto LayoutSetRT = reduceStruct(LayoutSetType_, TheModule);
 
   auto LayoutT = FunctionType::get(LayoutSetRT, false);
   auto LayoutF = TheModule.getOrInsertFunction(
@@ -346,28 +357,24 @@ void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string &
   
   Value* LayoutSetRV = Builder_.CreateCall(LayoutF, None, "layout_constraint");
   
-  auto LayoutSetA = createEntryBlockAlloca(TheFunction, LayoutSetT, "layout_constraint.alloca");
+  auto LayoutSetA = createEntryBlockAlloca(TheFunction, LayoutSetType_, "layout_constraint.alloca");
   store(LayoutSetRV, LayoutSetA);
   
   //----------------------------------------------------------------------------
   // options
-  auto TaskConfigT = createTaskConfigOptionsType("task_config_options_t", TheContext_);
-  auto TaskConfigA = createEntryBlockAlloca(TheFunction, TaskConfigT, "options");
-  auto BoolT = TaskConfigT->getElementType(0);
+  auto TaskConfigA = createEntryBlockAlloca(TheFunction, TaskConfigType_, "options");
+  auto BoolT = TaskConfigType_->getElementType(0);
   auto FalseV = Constant::getNullValue(BoolT);
   Builder_.CreateMemSet(TaskConfigA, FalseV, 4, 1); 
   
   //----------------------------------------------------------------------------
   // registration
   
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto TaskIdVariantT = llvmType<legion_variant_id_t>(TheContext_);
-  
   auto TaskT = Task.getFunction()->getFunctionType();
   auto TaskF = TheModule.getOrInsertFunction(Task.getName(), TaskT).getCallee();
   
-  Value* TaskIdV = llvmValue<legion_task_id_t>(TheContext_, Task.getId());
-  auto TaskIdVariantV = llvmValue<legion_variant_id_t>(TheContext_, AUTO_GENERATE_ID);
+  Value* TaskIdV = llvmValue(TheContext_, TaskIdType_, Task.getId());
+  auto TaskIdVariantV = llvmValue(TheContext_, TaskVariantIdType_, AUTO_GENERATE_ID);
   auto TaskNameV = llvmString(TheContext_, TheModule, Name + " task");
   auto VariantNameV = llvmString(TheContext_, TheModule, Name + " variant");
 
@@ -376,7 +383,7 @@ void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string &
  
   auto TaskConfigV = load(TaskConfigA, TheModule, "options");
 
-  auto UserDataV = Constant::getNullValue(VoidPtrT);
+  auto UserDataV = Constant::getNullValue(VoidPtrType_);
   auto UserLenV = llvmValue<std::size_t>(TheContext_, 0);
 
   auto TrueV = Constant::getNullValue(BoolT);
@@ -385,7 +392,7 @@ void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string &
     VariantNameV, TrueV, ExecSetV, LayoutSetV, TaskConfigV, TaskF, UserDataV, UserLenV };
   
   auto PreArgTs = llvmTypes(PreArgVs);
-  auto PreRetT = TaskIdVariantT;
+  auto PreRetT = TaskVariantIdType_;
 
   auto PreT = FunctionType::get(PreRetT, PreArgTs, false);
   auto PreF = TheModule.getOrInsertFunction(
@@ -405,8 +412,7 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
 
   //----------------------------------------------------------------------------
   // execution_constraint_set
-  auto ExecSetT = createOpaqueType("legion_execution_constraint_set_t", TheContext_);
-  auto ExecSetRT = reduceStruct(ExecSetT, TheModule);
+  auto ExecSetRT = reduceStruct(ExecSetType_, TheModule);
   
   auto ExecT = FunctionType::get(ExecSetRT, false);
   auto ExecF = TheModule.getOrInsertFunction("legion_execution_constraint_set_create",
@@ -414,18 +420,17 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
   
   Value* ExecSetRV = Builder_.CreateCall(ExecF, None, "execution_constraint");
   
-  auto ExecSetA = createEntryBlockAlloca(TheFunction, ExecSetT, "execution_constraint.alloca");
+  auto ExecSetA = createEntryBlockAlloca(TheFunction, ExecSetType_, "execution_constraint.alloca");
   store(ExecSetRV, ExecSetA);
   
   //----------------------------------------------------------------------------
   // add constraint
   
-  auto VoidT = llvmType<void>(TheContext_);
-  auto ProcIdV = llvmValue<legion_processor_kind_t>(TheContext_, LOC_PROC);  
+  auto ProcIdV = llvmValue(TheContext_, ProcIdType_, LOC_PROC);  
   auto ExecSetV = load(ExecSetA, TheModule, "execution_constraint");
   std::vector<Value*> AddExecArgVs = {ExecSetV, ProcIdV};
   auto AddExecArgTs = llvmTypes(AddExecArgVs);
-  auto AddExecT = FunctionType::get(VoidT, AddExecArgTs, false);
+  auto AddExecT = FunctionType::get(VoidType_, AddExecArgTs, false);
   auto AddExecF = TheModule.getOrInsertFunction(
       "legion_execution_constraint_set_add_processor_constraint", AddExecT);
 
@@ -434,8 +439,7 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
   //----------------------------------------------------------------------------
   // task_layout_constraint_set
  
-  auto LayoutSetT = createOpaqueType("legion_task_layout_constraint_set_t", TheContext_);
-  auto LayoutSetRT = reduceStruct(LayoutSetT, TheModule);
+  auto LayoutSetRT = reduceStruct(LayoutSetType_, TheModule);
 
   auto LayoutT = FunctionType::get(LayoutSetRT, false);
   auto LayoutF = TheModule.getOrInsertFunction(
@@ -443,28 +447,24 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
   
   Value* LayoutSetRV = Builder_.CreateCall(LayoutF, None, "layout_constraint");
   
-  auto LayoutSetA = createEntryBlockAlloca(TheFunction, LayoutSetT, "layout_constraint.alloca");
+  auto LayoutSetA = createEntryBlockAlloca(TheFunction, LayoutSetType_, "layout_constraint.alloca");
   store(LayoutSetRV, LayoutSetA);
   
   //----------------------------------------------------------------------------
   // options
-  auto TaskConfigT = createTaskConfigOptionsType("task_config_options_t", TheContext_);
-  auto TaskConfigA = createEntryBlockAlloca(TheFunction, TaskConfigT, "options");
-  auto BoolT = TaskConfigT->getElementType(0);
+  auto TaskConfigA = createEntryBlockAlloca(TheFunction, TaskConfigType_, "options");
+  auto BoolT = TaskConfigType_->getElementType(0);
   auto FalseV = Constant::getNullValue(BoolT);
   Builder_.CreateMemSet(TaskConfigA, FalseV, 4, 1); 
   
   //----------------------------------------------------------------------------
   // registration
   
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto TaskIdVariantT = llvmType<legion_variant_id_t>(TheContext_);
- 
   auto TaskT = Task.getFunctionType();
   auto TaskF = TheModule.getOrInsertFunction(Task.getName(), TaskT).getCallee();
   
-  Value* TaskIdV = llvmValue<legion_task_id_t>(TheContext_, Task.getId());
-  auto TaskIdVariantV = llvmValue<legion_variant_id_t>(TheContext_, AUTO_GENERATE_ID);
+  Value* TaskIdV = llvmValue(TheContext_, TaskIdType_, Task.getId());
+  auto TaskIdVariantV = llvmValue(TheContext_, TaskVariantIdType_, AUTO_GENERATE_ID);
   auto TaskNameV = llvmString(TheContext_, TheModule, Name + " task");
   auto VariantNameV = llvmString(TheContext_, TheModule, Name + " variant");
 
@@ -473,14 +473,14 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
  
   auto TaskConfigV = load(TaskConfigA, TheModule, "options");
 
-  auto UserDataV = Constant::getNullValue(VoidPtrT);
+  auto UserDataV = Constant::getNullValue(VoidPtrType_);
   auto UserLenV = llvmValue<std::size_t>(TheContext_, 0);
 
   std::vector<Value*> PreArgVs = { TaskIdV, TaskIdVariantV, TaskNameV,
     VariantNameV, ExecSetV, LayoutSetV, TaskConfigV, TaskF, UserDataV, UserLenV };
   
   auto PreArgTs = llvmTypes(PreArgVs);
-  auto PreRetT = TaskIdVariantT;
+  auto PreRetT = TaskVariantIdType_;
 
   auto PreT = FunctionType::get(PreRetT, PreArgTs, false);
   auto PreF = TheModule.getOrInsertFunction(
@@ -495,13 +495,11 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
 void LegionTasker::setTopLevelTask(llvm::Module &TheModule, int TaskId )
 {
 
-  auto VoidT = llvmType<void>(TheContext_);
-  
-  auto TaskIdV = llvmValue<legion_task_id_t>(TheContext_, TaskId);
+  auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskId);
   std::vector<Value*> SetArgVs = { TaskIdV };
   auto SetArgTs = llvmTypes(SetArgVs);
 
-  auto SetT = FunctionType::get(VoidT, SetArgTs, false);
+  auto SetT = FunctionType::get(VoidType_, SetArgTs, false);
   auto SetF = TheModule.getOrInsertFunction(
       "legion_runtime_set_top_level_task_id", SetT);
 
@@ -513,17 +511,15 @@ void LegionTasker::setTopLevelTask(llvm::Module &TheModule, int TaskId )
 //==============================================================================
 llvm::Value* LegionTasker::startRuntime(llvm::Module &TheModule, int Argc, char ** Argv)
 {
-  auto VoidPtrArrayT = llvmType<void*>(TheContext_)->getPointerTo();
-  auto IntT = llvmType<int>(TheContext_);
-  auto BoolT = llvmType<bool>(TheContext_);
+  auto VoidPtrArrayT = VoidPtrType_->getPointerTo();
 
-  std::vector<Type*> StartArgTs = { IntT, VoidPtrArrayT, BoolT };
-  auto StartT = FunctionType::get(IntT, StartArgTs, false);
+  std::vector<Type*> StartArgTs = { Int32Type_, VoidPtrArrayT, BoolType_ };
+  auto StartT = FunctionType::get(Int32Type_, StartArgTs, false);
   auto StartF = TheModule.getOrInsertFunction("legion_runtime_start", StartT);
 
-  auto ArgcV = llvmValue<int_t>(TheContext_, Argc);
+  auto ArgcV = llvmValue(TheContext_, Int32Type_, Argc);
   auto ArgvV = Constant::getNullValue(VoidPtrArrayT);
-  auto BackV = llvmValue<bool>(TheContext_, false);
+  auto BackV = llvmValue(TheContext_, BoolType_, false);
 
   std::vector<Value*> StartArgVs = { ArgcV, ArgvV, BackV };
   auto RetI = Builder_.CreateCall(StartF, StartArgVs, "start");
@@ -533,90 +529,64 @@ llvm::Value* LegionTasker::startRuntime(llvm::Module &TheModule, int Argc, char 
 //==============================================================================
 // Launch a task
 //==============================================================================
-void LegionTasker::launch(Module &TheModule, const std::string & Name,
+llvm::Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
     const TaskInfo & TaskI, const std::vector<llvm::Value*> & ArgVs,
     const std::vector<llvm::Value*> & ArgSizes )
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
-  auto TaskArgsT = createTaskArgumentsType("legion_task_argument_t", TheContext_);
-  auto TaskArgsA = createEntryBlockAlloca(TheFunction, TaskArgsT, "args.alloca");
-
-  //----------------------------------------------------------------------------
-  std::vector<Value*> MemberIndices(2);
-  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true)); 
-
-  auto createGEP = [&](int id, const std::string & Name) {
-    MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, id, true));
-    return Builder_.CreateGEP(TaskArgsT, TaskArgsA, MemberIndices, Name);
-  };
+  auto TaskArgsA = createEntryBlockAlloca(TheFunction, TaskArgsType_, "args.alloca");
   
   //----------------------------------------------------------------------------
   // First count sizes
 
-  auto ArgSizeGEP = createGEP(1, "arglen");
-  auto ArgSizeT = TaskArgsT->getElementType(1);
+  auto ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
+  auto ArgSizeT = TaskArgsType_->getElementType(1);
   Builder_.CreateStore( Constant::getNullValue(ArgSizeT), ArgSizeGEP );
-  auto ArgSizeV = Builder_.CreateLoad(ArgSizeT, ArgSizeGEP);
 
   auto NumArgs = ArgVs.size();
   for (unsigned i=0; i<NumArgs; i++) {
-    auto NewSizeV = Builder_.CreateAdd(ArgSizeV, ArgSizes[i], "addoffset");
-    ArgSizeGEP = createGEP(1, "arglen");
-    Builder_.CreateStore( NewSizeV, ArgSizeGEP );
-    ArgSizeV = Builder_.CreateLoad(ArgSizeT, ArgSizeGEP);
+    ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
+    increment(ArgSizeGEP, ArgSizes[i], "addoffset");
   }
   
  
   //----------------------------------------------------------------------------
   // Allocate storate
-  
-  auto ByteT = llvmType<char>(TheContext_);
-  auto TheBlock = Builder_.GetInsertBlock();
-  auto OneV = llvmValue<std::size_t>(TheContext_, 1);
-  auto SizeT = llvmType<std::size_t>(TheContext_);
-  auto TmpA = Builder_.CreateAlloca(ByteT, nullptr); // not needed but InsertAtEnd doesnt work
-  auto MallocI = CallInst::CreateMalloc(TmpA, SizeT, ByteT, ArgSizeV,
-      OneV, nullptr, "args" );
+ 
+  auto ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
+  auto TmpA = Builder_.CreateAlloca(ByteType_, nullptr); // not needed but InsertAtEnd doesnt work
+  auto MallocI = CallInst::CreateMalloc(TmpA, SizeType_, ByteType_, ArgSizeV,
+      nullptr, nullptr, "args" );
   TmpA->eraseFromParent();
-  
-  auto ArgDataGEP = createGEP(0, "args");
-  auto ArgDataT = TaskArgsT->getElementType(0);
-  Builder_.CreateStore(MallocI, ArgDataGEP );
+  storeStructMember(MallocI, TaskArgsA, 0, "args");
  
   //----------------------------------------------------------------------------
   // Copy args
   
-  ArgSizeGEP = createGEP(1, "arglen");
-  Builder_.CreateStore( Constant::getNullValue(ArgSizeT), ArgSizeGEP );
-
+  storeStructMember( Constant::getNullValue(ArgSizeT), TaskArgsA, 1, "arglen");
+  
   for (unsigned i=0; i<NumArgs; i++) {
     auto ArgT = ArgVs[i]->getType();
-    auto ArgPtrT = ArgT->getPointerTo();
     // copy argument into an alloca
     auto ArgA = createEntryBlockAlloca(TheFunction, ArgT, "tmpalloca");
     Builder_.CreateStore( ArgVs[i], ArgA );
     // load offset
-    ArgSizeGEP = createGEP(1, "arglen");
-    ArgSizeV = Builder_.CreateLoad(ArgSizeT, ArgSizeGEP);
+    ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
     // copy
-    ArgDataGEP = createGEP(0, "args");
-    auto ArgDataPtrV = Builder_.CreateLoad(ArgDataT, ArgDataGEP, "args.ptr");
+    auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
     auto OffsetArgDataPtrV = Builder_.CreateGEP(ArgDataPtrV, ArgSizeV, "args.offset");
     Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgA, 1, ArgSizes[i]); 
     // increment
-    auto NewSizeV = Builder_.CreateAdd(ArgSizeV, ArgSizes[i], "addoffset");
-    ArgSizeGEP = createGEP(1, "arglen");
-    Builder_.CreateStore( NewSizeV, ArgSizeGEP );
-    ArgSizeV = Builder_.CreateLoad(ArgSizeT, ArgSizeGEP);
+    ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
+    increment(ArgSizeGEP, ArgSizes[i], "addoffset");
   }
 
   
   //----------------------------------------------------------------------------
   // Predicate
     
-  auto PredicateT = createOpaqueType("legion_predicate_t", TheContext_);
-  auto PredicateRT = reduceStruct(PredicateT, TheModule);
+  auto PredicateRT = reduceStruct(PredicateType_, TheModule);
   
   auto PredicateTrueT = FunctionType::get(PredicateRT, false);
   auto PredicateTrueF = TheModule.getOrInsertFunction(
@@ -624,27 +594,23 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   
   Value* PredicateRV = Builder_.CreateCall(PredicateTrueF, None, "pred_true");
   
-  auto PredicateA = createEntryBlockAlloca(TheFunction, PredicateT, "predicate.alloca");
+  auto PredicateA = createEntryBlockAlloca(TheFunction, PredicateType_, "predicate.alloca");
   store(PredicateRV, PredicateA);
   
   //----------------------------------------------------------------------------
   // Launch
-  
-  auto MapperIdV = llvmValue<legion_mapper_id_t>(TheContext_, 0); 
-  auto MappingTagIdV = llvmValue<legion_mapping_tag_id_t>(TheContext_, 0); 
+ 
+  auto MapperIdV = llvmValue(TheContext_, MapperIdType_, 0); 
+  auto MappingTagIdV = llvmValue(TheContext_, MappingTagIdType_, 0); 
   auto PredicateV = load(PredicateA, TheModule, "predicate");
-  auto TaskIdV = llvmValue<legion_task_id_t>(TheContext_, TaskI.getId());
+  auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskI.getId());
   
-  ArgDataGEP = createGEP(0, "args");
-  auto ArgDataV = Builder_.CreateLoad(ArgDataT, ArgDataGEP, "args");
-  
-  ArgSizeGEP = createGEP(1, "arglen");
-  ArgSizeV = Builder_.CreateLoad(ArgSizeT, ArgSizeGEP, "arglen");
+  auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
+  ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
 
-  auto LauncherT = createOpaqueType("legion_task_launcher_t", TheContext_);
-  auto LauncherRT = reduceStruct(LauncherT, TheModule);
+  auto LauncherRT = reduceStruct(LauncherType_, TheModule);
 
-  std::vector<Value*> LaunchArgVs = {TaskIdV, ArgDataV, ArgSizeV, 
+  std::vector<Value*> LaunchArgVs = {TaskIdV, ArgDataPtrV, ArgSizeV, 
     PredicateV, MapperIdV, MappingTagIdV};
   auto LaunchArgTs = llvmTypes(LaunchArgVs);
   auto LaunchRetT = LauncherRT;
@@ -653,7 +619,7 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto LaunchF = TheModule.getOrInsertFunction("legion_task_launcher_create", LaunchT);
 
   Value* LauncherRV = Builder_.CreateCall(LaunchF, LaunchArgVs, "launcher_create");
-  auto LauncherA = createEntryBlockAlloca(TheFunction, LauncherT, "task_launcher.alloca");
+  auto LauncherA = createEntryBlockAlloca(TheFunction, LauncherType_, "task_launcher.alloca");
   store(LauncherRV, LauncherA);
   
   //----------------------------------------------------------------------------
@@ -667,14 +633,13 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   std::vector<Value*> ExecArgVs = { RuntimeV, ContextV, LauncherRV };
   auto ExecArgTs = llvmTypes(ExecArgVs);
   
-  auto FutureT = createOpaqueType("legion_future_t", TheContext_);
-  auto FutureRT = reduceStruct(FutureT, TheModule);
+  auto FutureRT = reduceStruct(FutureType_, TheModule);
   
   auto ExecT = FunctionType::get(FutureRT, ExecArgTs, false);
   auto ExecF = TheModule.getOrInsertFunction("legion_task_launcher_execute", ExecT);
   
   auto FutureRV = Builder_.CreateCall(ExecF, ExecArgVs, "launcher_exec");
-  auto FutureA = createEntryBlockAlloca(TheFunction, FutureT, "future.alloca");
+  auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "future.alloca");
   store(FutureRV, FutureA);
 
   //----------------------------------------------------------------------------
@@ -682,9 +647,7 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   
   LauncherRV = load(LauncherA, TheModule, "task_launcher");
 
-  auto VoidT = llvmType<void>(TheContext_);
-
-  auto DestroyT = FunctionType::get(VoidT, LauncherRT, false);
+  auto DestroyT = FunctionType::get(VoidType_, LauncherRT, false);
   auto DestroyF = TheModule.getOrInsertFunction("legion_task_launcher_destroy", DestroyT);
 
   Builder_.CreateCall(DestroyF, LauncherRV, "launcher_destroy");
@@ -692,11 +655,38 @@ void LegionTasker::launch(Module &TheModule, const std::string & Name,
   
   //----------------------------------------------------------------------------
   // Deallocate storate
-  ArgDataGEP = createGEP(0, "args");
-  auto ArgDataPtrV = Builder_.CreateLoad(ArgDataT, ArgDataGEP, "args.ptr");
-  TmpA = Builder_.CreateAlloca(VoidT, nullptr); // not needed but InsertAtEnd doesnt work
+  ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
+  TmpA = Builder_.CreateAlloca(VoidType_, nullptr); // not needed but InsertAtEnd doesnt work
   CallInst::CreateFree(ArgDataPtrV, TmpA);
   TmpA->eraseFromParent();
+
+  return FutureA;
+}
+
+//==============================================================================
+// get a future value
+//==============================================================================
+llvm::Value* LegionTasker::getFuture(Module &TheModule, llvm::Value* FutureA,
+    llvm::Type *DataT, llvm::Value* DataSizeV)
+{
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  
+  // args
+  auto FutureRV = load(FutureA, TheModule, "future");
+  auto FutureRT = reduceStruct(FutureType_, TheModule);
+  auto GetFutureT = FunctionType::get(VoidPtrType_, FutureRT, false);
+  auto GetFutureF = TheModule.getOrInsertFunction("legion_future_get_untyped_pointer",
+      GetFutureT);
+
+  Value* DataPtrV = Builder_.CreateCall(GetFutureF, FutureRV, "future");
+  auto DataPtrA = createEntryBlockAlloca(TheFunction, VoidPtrType_, "future.alloca");
+  Builder_.CreateStore(DataPtrV, DataPtrA);
+
+  DataPtrV = Builder_.CreateLoad(VoidPtrType_, DataPtrA);
+  auto DataA = createEntryBlockAlloca(TheFunction, DataT);
+  memCopy(DataPtrV, DataA, DataSizeV);
+
+  return DataA;
 }
 
 }

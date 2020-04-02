@@ -455,6 +455,8 @@ void Analyzer::dispatch(CallExprAST& e)
     auto ArgType = runExprVisitor(*e.ArgExprs_[i]);
 
   TypeResult_ = FunRes->getReturnType(); 
+
+    ///e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), VarType);
   e.setType(TypeResult_);
 }
 

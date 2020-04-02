@@ -36,7 +36,7 @@ void AbstractTasker::sanitize(std::vector<Value*> & Vs, const Module &TheModule 
 { for (auto & V : Vs ) V = sanitize(V, TheModule); }
 
 //==============================================================================
-Value* AbstractTasker::load(AllocaInst * Alloca, const Module &TheModule,
+Value* AbstractTasker::load(Value * Alloca, const Module &TheModule,
     std::string Str) const
 {
   if (!Str.empty()) Str += ".";
@@ -58,7 +58,7 @@ Value* AbstractTasker::load(AllocaInst * Alloca, const Module &TheModule,
 void AbstractTasker::store(Value* Val, AllocaInst * Alloca) const
 {
   auto BaseT = Alloca->getType()->getPointerElementType();
-  if (auto StructT = dyn_cast<StructType>(BaseT)) {
+  if (isa<StructType>(BaseT)) {
     std::vector<Value*> MemberIndices(2);
     MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
     MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 0, true));

@@ -778,7 +778,7 @@ void CodeGen::dispatch(ArrayExprAST &e)
 //==============================================================================
 void CodeGen::dispatch(FutureExprAST &e)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  //auto TheFunction = Builder_.GetInsertBlock()->getParent();
   THROW_CONTRA_ERROR("FUTURE NOT IMPLEMENTED YET");
 }
 
@@ -966,9 +966,8 @@ void CodeGen::dispatch(CallExprAST &e) {
 
   // Look up the name in the global module table.
   auto CalleeF = getFunction(e.Callee_);
-  //auto FunType = CalleeF->getFunctionType();
   //auto NumFixedArgs = FunType->getNumParams();
-  
+ 
   const auto & Name = e.getName();
   auto IsTask = Tasker_->isTask(Name);
     
@@ -981,6 +980,7 @@ void CodeGen::dispatch(CallExprAST &e) {
   //----------------------------------------------------------------------------
   if (IsTask) {
     auto TaskI = Tasker_->getTask(Name);
+    Value* FutureA = nullptr;
     
     if (e.isTopLevelTask()) {
       if (Tasker_->isStarted())
@@ -993,10 +993,18 @@ void CodeGen::dispatch(CallExprAST &e) {
     else {
       std::vector<Value*> ArgSizes;
       for (auto V : ArgVs) ArgSizes.emplace_back( getTypeSize<size_t>(V->getType()) );
-      Tasker_->launch(*TheModule_, Name, TaskI, ArgVs, ArgSizes);
+      FutureA = Tasker_->launch(*TheModule_, Name, TaskI, ArgVs, ArgSizes);
     }
-
-    ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+  
+    auto CalleeT = CalleeF->getFunctionType()->getReturnType();
+    if (!CalleeT->isVoidTy() && FutureA) {
+      auto DataSizeV = getTypeSize<int_t>(CalleeT);
+      auto CalleeA = Tasker_->getFuture(*TheModule_, FutureA, CalleeT, DataSizeV); 
+      ValueResult_ = Builder_.CreateLoad(CalleeT, CalleeA);
+    }
+    else {
+      ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+    }
   }
   //----------------------------------------------------------------------------
   else {
@@ -1265,7 +1273,8 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
     auto VarE = moveVariable("__tmp", VarName);
     auto Alloca = VarE->getAlloca();
 
-    auto SizeExpr = getArraySize(Alloca, VarName);
+    //auto SizeExpr = getArraySize(Alloca, VarName);
+    auto SizeExpr = VarE->getSize();
   
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;

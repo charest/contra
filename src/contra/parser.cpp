@@ -568,10 +568,8 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
   getNextToken();
  
   if (IsTask) {
-    std::unique_ptr<NodeAST> Future = Return ?
-      std::make_unique<FutureExprAST>(std::move(Return)) : nullptr;
     return std::make_unique<TaskAST>(std::move(Proto), std::move(Body),
-      std::move(Future));
+      std::move(Return));
   }
   else
     return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body),
