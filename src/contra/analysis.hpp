@@ -16,17 +16,6 @@
 
 namespace contra {
 
-class TaskEntry {
-  std::map< std::vector<bool>, int > Variants_;
-public:
-  auto addVariant( const std::vector<bool> & IsFuture ) {
-    auto it = Variants_.emplace( IsFuture, Variants_.size() );
-    return it.first->second;
-  }
-  const auto & getVariants() const { return Variants_; }
-};
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Semantec analyzer class
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +30,7 @@ private:
 
   std::map<std::string, TypeEntry> TypeTable_;
   std::map<std::string, FunctionEntry> FunctionTable_;
-  std::map<std::string, TaskEntry> TaskTable_; 
+  std::set<std::string> TaskTable_; 
   
   std::forward_list< std::map<std::string, VariableEntry> > VariableTable_;
   
@@ -181,13 +170,7 @@ private:
   
   // Task interface
   void insertTask(const std::string & Name)
-  { TaskTable_.emplace(Name, TaskEntry{}); }
-
-  auto & getTask(const std::string & Name)
-  {
-    auto it = TaskTable_.find(Name);
-    return it->second;
-  }
+  { TaskTable_.emplace(Name); }
 
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }

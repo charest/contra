@@ -293,7 +293,6 @@ protected:
   ASTBlock ArgExprs_;
   bool IsTopTask_ = false;
   std::vector<VariableType> ArgTypes_;
-  std::unique_ptr<int> Variant_;
 
 public:
 
@@ -323,9 +322,6 @@ public:
   void setArgTypes(const std::vector<VariableType> & ArgTypes)
   { ArgTypes_ = ArgTypes; }
 
-  void setVariant(int Variant) { Variant_ = std::make_unique<int>(Variant); }
-  bool hasVariant() const { return static_cast<bool>(Variant_); }
-  auto getVariant() const { return *Variant_; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -650,8 +646,6 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 class TaskAST : public FunctionAST {
 
-  std::map<int, std::vector<bool>> TaskVariants_; 
-
 public:
 
   TaskAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
@@ -663,14 +657,6 @@ public:
 
   virtual std::string getClassName() const override
   { return "TaskAST"; };
-
-  void addVariants(const std::map<std::vector<bool>, int> & Variants)
-  {
-    for (const auto & Entry : Variants)
-      TaskVariants_.emplace(Entry.second, Entry.first);
-  }
-
-  const auto & getVariants() const { return TaskVariants_; }
 
 };
 

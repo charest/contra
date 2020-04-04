@@ -7,6 +7,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/IRBuilder.h"
 
+#include <iostream>
 #include <type_traits>
 #include <vector>
 
@@ -94,6 +95,7 @@ llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val
   auto Size = sizeof(T) * 8;
   auto IsSigned = std::is_signed<T>::value;
   return llvm::Constant::getIntegerValue(Ty, llvm::APInt(Size, Val, IsSigned));
+
 }
 
 template<typename T>

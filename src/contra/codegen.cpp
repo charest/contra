@@ -979,10 +979,8 @@ void CodeGen::dispatch(CallExprAST &e) {
 
   // Look up the name in the global module table.
   auto Name = e.getName();
-  std::cout << "Looking for " << Name << std::endl;
   auto CalleeF = getFunction(Name);
 
-  if (e.hasVariant()) Name += std::to_string(e.getVariant());
   auto IsTask = Tasker_->isTask(Name);
     
   std::vector<Value *> ArgVs;
@@ -1056,7 +1054,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
   resetScope(OldScope);
 
   // get first non phi instruction
-  auto ThenV = ThenBB->getFirstNonPHI();
+  ThenBB->getFirstNonPHI();
 
   Builder_.CreateBr(MergeBB);
 
@@ -1074,7 +1072,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
     resetScope(OldScope);
 
     // get first non phi
-    auto ElseV = ElseBB->getFirstNonPHI();
+    ElseBB->getFirstNonPHI();
 
     Builder_.CreateBr(MergeBB);
     // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
@@ -1468,56 +1466,49 @@ void CodeGen::dispatch(FunctionAST& e)
 //==============================================================================
 void CodeGen::dispatch(TaskAST& e)
 {
-  std::cout << "looping over variants for  " << e.getName() << ", " << e.getVariants().size() << std::endl;
-  for ( const auto & Variant : e.getVariants() ) {
+  auto OldScope = getScope();
+  if (!e.isTopLevelExpression()) createScope();
 
-    auto OldScope = getScope();
-    if (!e.isTopLevelExpression()) createScope();
-
-    // Transfer ownership of the prototype to the FunctionProtos map, but keep a
-    // reference to it for use below.
-    auto & P = insertFunction( std::move(e.moveProtoExpr()) );
-    auto Name = P.getName();
-    std::cout << "Generating function " << Name << std::endl;
-    auto TheFunction = getFunction(Name);
-    
-    // insert the task 
-    Name += std::to_string(Variant.first);
-    auto & TaskI = Tasker_->insertTask(Name);
-    
-    // generate wrapped task
-    auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
-
-    // insert arguments into variable table
-    unsigned ArgIdx = 0;
-    for (auto &Arg : TheFunction->args()) {
-      auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
-      auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
-      auto NewEntry = VariableEntry(Alloca, AllocaT);
-      insertVariable(Arg.getName(), NewEntry);
-    }
-
-    
-    // codegen the function body
-    auto RetVal = codegenFunctionBody(e);
-    
-    // Finish wrapped task
-    Tasker_->taskPostamble(*TheModule_, RetVal);
-
-    // garbage collection
-    resetScope(OldScope);
-    
-    // Finish off the function.  Tasks always return void
-    Builder_.CreateRetVoid();
-    
-    // Validate the generated code, checking for consistency.
-    verifyFunction(*Wrapper.TheFunction);
-    
-    // set the finished function
-    TaskI.setFunction(Wrapper.TheFunction);
-    FunctionResult_ = Wrapper.TheFunction;
+  // Transfer ownership of the prototype to the FunctionProtos map, but keep a
+  // reference to it for use below.
+  auto & P = insertFunction( std::move(e.moveProtoExpr()) );
+  auto Name = P.getName();
+  auto TheFunction = getFunction(Name);
   
-  }// variant
+  // insert the task 
+  auto & TaskI = Tasker_->insertTask(Name);
+  
+  // generate wrapped task
+  auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
+
+  // insert arguments into variable table
+  unsigned ArgIdx = 0;
+  for (auto &Arg : TheFunction->args()) {
+    auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
+    auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
+    auto NewEntry = VariableEntry(Alloca, AllocaT);
+    insertVariable(Arg.getName(), NewEntry);
+  }
+
+  
+  // codegen the function body
+  auto RetVal = codegenFunctionBody(e);
+  
+  // Finish wrapped task
+  Tasker_->taskPostamble(*TheModule_, RetVal);
+
+  // garbage collection
+  resetScope(OldScope);
+  
+  // Finish off the function.  Tasks always return void
+  Builder_.CreateRetVoid();
+  
+  // Validate the generated code, checking for consistency.
+  verifyFunction(*Wrapper.TheFunction);
+  
+  // set the finished function
+  TaskI.setFunction(Wrapper.TheFunction);
+  FunctionResult_ = Wrapper.TheFunction;
 
 }
 

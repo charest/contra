@@ -479,12 +479,6 @@ void Analyzer::dispatch(CallExprAST& e)
   TypeResult_ = FunRes->getReturnType(); 
   TypeResult_.setFuture(IsTask && TypeResult_!=VoidType_);
 
-  if (IsTask) {
-    auto TaskE = getTask(FunName);
-    auto VariantId = TaskE.addVariant(ArgIsFuture);
-    e.setVariant(VariantId);
-  }
-
   e.setArgTypes( ArgTypes );
   e.setType(TypeResult_);
 }
@@ -707,12 +701,6 @@ void Analyzer::dispatch(FunctionAST& e)
 
 //==============================================================================
 void Analyzer::dispatch(TaskAST& e)
-{
-  dispatch( static_cast<FunctionAST&>(e) );
-
-  const auto & FnName = e.getName();
-  const auto & TaskI = getTask(FnName);
-  e.addVariants(TaskI.getVariants());
-}
+{ dispatch( static_cast<FunctionAST&>(e) ); }
 
 }
