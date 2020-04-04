@@ -25,6 +25,7 @@ protected:
   llvm::Type* TaskVariantIdType_ = nullptr;
   llvm::Type* MapperIdType_ = nullptr;
   llvm::Type* MappingTagIdType_ = nullptr;
+  llvm::Type* FutureIdType_ = nullptr;
   
   llvm::StructType* TaskType_ = nullptr;
   llvm::StructType* RegionType_ = nullptr;
@@ -59,7 +60,8 @@ public:
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) override;
   
-  virtual llvm::Value* getFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*) override;
+  virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) override;
+  virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*) override;
 
   virtual ~LegionTasker() = default;
 

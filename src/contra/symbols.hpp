@@ -118,6 +118,7 @@ public:
 
   friend std::ostream &operator<<( std::ostream &out, const VariableType &obj )
   {
+    if (obj.IsFuture_) out << "(F)";
     if (obj.IsArray_) out << "[";
      out << obj.Type_->getName();
     if (obj.IsArray_) out << "]";

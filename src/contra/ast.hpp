@@ -111,6 +111,7 @@ protected:
   std::string Name_;
   std::unique_ptr<NodeAST> IndexExpr_;
   VariableType Type_;
+  bool NeedValue_ = true;
 
 public:
 
@@ -132,6 +133,9 @@ public:
   auto getIndexExpr() const { return IndexExpr_.get(); }
   
   bool isArray() const { return static_cast<bool>(IndexExpr_); }
+
+  void setNeedValue(bool NeedValue=true) { NeedValue_=NeedValue; }
+  bool needValue() const { return NeedValue_; }
 };
 
 //==============================================================================
@@ -288,6 +292,8 @@ protected:
   std::string Callee_;
   ASTBlock ArgExprs_;
   bool IsTopTask_ = false;
+  std::vector<VariableType> ArgTypes_;
+  std::unique_ptr<int> Variant_;
 
 public:
 
@@ -312,6 +318,14 @@ public:
   
   auto moveArgExpr(int i) { return std::move(ArgExprs_[i]); }
   auto setArgExpr(int i, std::unique_ptr<NodeAST> Expr) { ArgExprs_[i] = std::move(Expr); }
+  
+  const auto & getArgType(int i) { return ArgTypes_[i]; }
+  void setArgTypes(const std::vector<VariableType> & ArgTypes)
+  { ArgTypes_ = ArgTypes; }
+
+  void setVariant(int Variant) { Variant_ = std::make_unique<int>(Variant); }
+  bool hasVariant() const { return static_cast<bool>(Variant_); }
+  auto getVariant() const { return *Variant_; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -468,6 +482,7 @@ public:
   auto getNumVars() const { return VarIds_.size(); }
   const auto & getVarIds() const { return VarIds_; }
   const auto & getVarId(int i) const { return VarIds_[i]; }
+  const auto & getVarName(int i) const { return VarIds_[i].getName(); }
 
   auto getInitExpr() const { return InitExpr_.get(); }
   auto moveInitExpr() { return std::move(InitExpr_); }
@@ -634,6 +649,9 @@ public:
 /// TaskAST - This class represents a function definition itself.
 ////////////////////////////////////////////////////////////////////////////////
 class TaskAST : public FunctionAST {
+
+  std::map<int, std::vector<bool>> TaskVariants_; 
+
 public:
 
   TaskAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
@@ -645,6 +663,14 @@ public:
 
   virtual std::string getClassName() const override
   { return "TaskAST"; };
+
+  void addVariants(const std::map<std::vector<bool>, int> & Variants)
+  {
+    for (const auto & Entry : Variants)
+      TaskVariants_.emplace(Entry.second, Entry.first);
+  }
+
+  const auto & getVariants() const { return TaskVariants_; }
 
 };
 

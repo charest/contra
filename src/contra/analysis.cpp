@@ -416,9 +416,9 @@ void Analyzer::dispatch(CallExprAST& e)
   int NumArgs = e.getNumArgs();
   int NumFixedArgs = FunRes->getNumArgs();
 
-  //std::cout << "Scope is " << Scope_ << " vs " << GlobalScope<< std::endl;
+  auto IsTask = isTask(FunName);
 
-  if (isTask(FunName) && isGlobalScope()) {
+  if (IsTask && isGlobalScope()) {
     if (HaveTopLevelTask_)  
       THROW_NAME_ERROR("You are not allowed to have more than one top-level task.",
           e.getLoc());
@@ -441,22 +441,51 @@ void Analyzer::dispatch(CallExprAST& e)
       THROW_NAME_ERROR("Incorrect number of arguments specified for '" << FunName
           << "', " << NumArgs << " provided but expected " << NumFixedArgs, e.getLoc());
   }
+  
+  std::vector<VariableType> ArgTypes;
+  ArgTypes.reserve(NumArgs);
 
-  for (int i=0; i<NumFixedArgs; ++i) {
-    auto ArgType = runExprVisitor(*e.getArgExpr(i));
-    auto ParamType = FunRes->getArgType(i);
-    if (ArgType != ParamType) {
-      checkIsCastable(ArgType, ParamType, e.getArgExpr(i)->getLoc());
-      e.setArgExpr(i, insertCastOp( std::move(e.moveArgExpr(i)), ParamType) );
+  std::vector<bool> ArgIsFuture;
+  ArgIsFuture.reserve(NumArgs);
+
+  for (int i=0; i<NumArgs; ++i) {
+    auto ArgExpr = e.getArgExpr(i);
+    auto ArgType = runExprVisitor(*ArgExpr);
+    bool IsFuture = false;
+    auto VarExpr = dynamic_cast<VariableExprAST*>(ArgExpr);
+
+    bool ForceValue = false;
+    if (i<NumFixedArgs) {
+      auto ParamType = FunRes->getArgType(i);
+      if (ArgType != ParamType) {
+        checkIsCastable(ArgType, ParamType, ArgExpr->getLoc());
+        e.setArgExpr(i, insertCastOp( std::move(e.moveArgExpr(i)), ParamType) );
+        ForceValue = true;
+      }
     }
-  }
 
-  for (int i=NumFixedArgs; i<NumArgs; ++i)
-    auto ArgType = runExprVisitor(*e.getArgExpr(i));
+    if (VarExpr && ArgType.isFuture() && !ForceValue) {
+      VarExpr->setNeedValue(false);
+      IsFuture = true;
+    }
+    else {
+      IsFuture = true;
+    }
+
+    ArgIsFuture.emplace_back(IsFuture);
+    ArgTypes.emplace_back(ArgType);
+  } // args
 
   TypeResult_ = FunRes->getReturnType(); 
+  TypeResult_.setFuture(IsTask && TypeResult_!=VoidType_);
 
-    ///e.InitExpr_ = insertCastOp(std::move(e.InitExpr_), VarType);
+  if (IsTask) {
+    auto TaskE = getTask(FunName);
+    auto VariantId = TaskE.addVariant(ArgIsFuture);
+    e.setVariant(VariantId);
+  }
+
+  e.setArgTypes( ArgTypes );
   e.setType(TypeResult_);
 }
 
@@ -527,6 +556,7 @@ void Analyzer::dispatch(VarDeclAST& e)
   
   auto InitType = runExprVisitor(*e.getInitExpr());
   if (!VarType) VarType = InitType;
+  VarType.setFuture(InitType.isFuture());
 
   if (VarType != InitType) {
     checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
@@ -559,6 +589,7 @@ void Analyzer::dispatch(ArrayDeclAST& e)
   
   auto InitType = runExprVisitor(*e.getInitExpr());
   if (!VarType) VarType = InitType;
+  VarType.setFuture(InitType.isFuture());
 
   //----------------------------------------------------------------------------
   // Array already on right hand side
@@ -627,9 +658,6 @@ void Analyzer::dispatch(PrototypeAST& e)
 //==============================================================================
 void Analyzer::dispatch(FunctionAST& e)
 {
-  //std::cout << " Before function Scope is " << Scope_ << " vs " << GlobalScope<< std::endl;
-  //std::cout << " Before function Scope is " << std::distance(VariableTable_.begin(),
-  //    VariableTable_.end()) << std::endl;
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();
 
@@ -649,6 +677,8 @@ void Analyzer::dispatch(FunctionAST& e)
     THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
         << "', does not match definition.  Expected " << NumArgIds
         << " but got " << NumArgs, Loc);
+  
+  if (e.isTask()) insertTask(FnName);
 
   // If this is an operator, install it.
   if (ProtoExpr.isBinaryOp())
@@ -671,14 +701,18 @@ void Analyzer::dispatch(FunctionAST& e)
           e.getReturnExpr()->getLoc());
   }
   
-  if (e.isTask()) insertTask(FnName);
-  
   resetScope(OldScope);
   
 }
 
 //==============================================================================
 void Analyzer::dispatch(TaskAST& e)
-{ dispatch( static_cast<FunctionAST&>(e) ); }
+{
+  dispatch( static_cast<FunctionAST&>(e) );
+
+  const auto & FnName = e.getName();
+  const auto & TaskI = getTask(FnName);
+  e.addVariants(TaskI.getVariants());
+}
 
 }

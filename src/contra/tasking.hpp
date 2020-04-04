@@ -18,6 +18,7 @@ class AbstractTasker {
   bool IsStarted_ = false;
   
   std::map<std::string, TaskInfo> TaskTable_;
+  std::map<std::string, llvm::Value*> FutureTable_;
 
 protected:
 
@@ -50,7 +51,8 @@ public:
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
 
-  virtual llvm::Value* getFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
+  virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) = 0;
+  virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -72,6 +74,17 @@ public:
   const auto & getTask(const std::string & Name) const
   { return TaskTable_.at(Name); }
 
+  // future table interface
+  void createFuture(const std::string & Name, llvm::Value* Alloca)
+  { FutureTable_[Name] = Alloca; }
+
+  llvm::Value* getFuture(const std::string & Name)
+  { return FutureTable_.at(Name); }
+
+  llvm::Value* popFuture(const std::string & Name);
+
+  bool isFuture(const std::string & Name)
+  { return FutureTable_.count(Name); }
   
 
 protected:

@@ -720,23 +720,34 @@ void CodeGen::dispatch(VariableExprAST& e)
 
   // Look this variable up in the function.
   auto VarE = getVariable(e.getName());
-  Value * V = VarE->getAlloca();
+  Value * VarA = VarE->getAlloca();
   
   // Load the value.
-  auto Ty = V->getType();
-  Ty = Ty->getPointerElementType();
+  auto VarT = VarA->getType();
+  VarT = VarT->getPointerElementType();
   
-  if (isa<GlobalVariable>(V)) {
-    auto GV = TheModule_->getOrInsertGlobal(e.getName(), Ty);
-    V = GV;
+  if (isa<GlobalVariable>(VarA))
+    VarA = TheModule_->getOrInsertGlobal(e.getName(), VarT);
+
+  if (e.getType().isFuture() && Tasker_->isFuture(Name)) {
+    if (e.needValue()) {
+      auto FutureA = Tasker_->popFuture(Name);
+      auto DataSizeV = getTypeSize<int_t>(VarT);
+      auto VarV = Tasker_->loadFuture(*TheModule_, FutureA, VarT, DataSizeV);
+      Builder_.CreateStore(VarV, VarA);
+    }
+    else {
+      VarA = Tasker_->getFuture(Name);
+      VarT = VarA->getType()->getPointerElementType();
+    }
   }
 
   if ( e.isArray() ) {
     auto IndexVal = runExprVisitor(*e.getIndexExpr());
-    ValueResult_ = loadArrayValue(V, IndexVal, VarE->getType(), Name);
+    ValueResult_ = loadArrayValue(VarA, IndexVal, VarE->getType(), Name);
   }
   else {
-    ValueResult_ = Builder_.CreateLoad(Ty, V, "val."+Name);
+    ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
   }
 }
 
@@ -967,10 +978,11 @@ void CodeGen::dispatch(CallExprAST &e) {
   emitLocation(&e);
 
   // Look up the name in the global module table.
-  auto CalleeF = getFunction(e.getName());
-  //auto NumFixedArgs = FunType->getNumParams();
- 
-  const auto & Name = e.getName();
+  auto Name = e.getName();
+  std::cout << "Looking for " << Name << std::endl;
+  auto CalleeF = getFunction(Name);
+
+  if (e.hasVariant()) Name += std::to_string(e.getVariant());
   auto IsTask = Tasker_->isTask(Name);
     
   std::vector<Value *> ArgVs;
@@ -982,7 +994,7 @@ void CodeGen::dispatch(CallExprAST &e) {
   //----------------------------------------------------------------------------
   if (IsTask) {
     auto TaskI = Tasker_->getTask(Name);
-    Value* FutureA = nullptr;
+    Value* FutureV = nullptr;
     
     if (e.isTopLevelTask()) {
       if (Tasker_->isStarted())
@@ -995,18 +1007,12 @@ void CodeGen::dispatch(CallExprAST &e) {
     else {
       std::vector<Value*> ArgSizes;
       for (auto V : ArgVs) ArgSizes.emplace_back( getTypeSize<size_t>(V->getType()) );
-      FutureA = Tasker_->launch(*TheModule_, Name, TaskI.getId(), ArgVs, ArgSizes);
+      FutureV = Tasker_->launch(*TheModule_, Name, TaskI.getId(), ArgVs, ArgSizes);
     }
   
+    ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
     auto CalleeT = CalleeF->getFunctionType()->getReturnType();
-    if (!CalleeT->isVoidTy() && FutureA) {
-      auto DataSizeV = getTypeSize<int_t>(CalleeT);
-      auto CalleeA = Tasker_->getFuture(*TheModule_, FutureA, CalleeT, DataSizeV); 
-      ValueResult_ = Builder_.CreateLoad(CalleeT, CalleeA);
-    }
-    else {
-      ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
-    }
+    if (!CalleeT->isVoidTy() && FutureV) ValueResult_ = FutureV;
   }
   //----------------------------------------------------------------------------
   else {
@@ -1224,17 +1230,22 @@ void CodeGen::dispatch(VarDeclAST & e) {
 
   // Emit initializer first
   auto InitVal = runExprVisitor(*e.getInitExpr());
-  //auto IType = InitVal->getType();
-  
+  //auto InitType = InitVal->getType();
+
   // the llvm variable type
   const auto & Ty = e.getType();
   auto VarType = getLLVMType(Ty);
 
   // Register all variables and emit their initializer.
-  for (const auto & VarId : e.getVarIds()) {  
-    auto VarE = createVariable(TheFunction, VarId.getName(), VarType, Ty.isGlobal());
+  for (const auto & VarId : e.getVarIds()) {
+    const auto & VarName = VarId.getName();
+    auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());
     auto Alloca = VarE->getAlloca();
-    if (Ty.isGlobal())
+    if (Ty.isFuture()) {
+      auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
+      Builder_.CreateStore(InitVal, FutureA);
+    }
+    else if (Ty.isGlobal())
       cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
     else
       Builder_.CreateStore(InitVal, Alloca);
@@ -1457,49 +1468,56 @@ void CodeGen::dispatch(FunctionAST& e)
 //==============================================================================
 void CodeGen::dispatch(TaskAST& e)
 {
-  auto OldScope = getScope();
-  if (!e.isTopLevelExpression()) createScope();
+  std::cout << "looping over variants for  " << e.getName() << ", " << e.getVariants().size() << std::endl;
+  for ( const auto & Variant : e.getVariants() ) {
 
-  // Transfer ownership of the prototype to the FunctionProtos map, but keep a
-  // reference to it for use below.
-  auto & P = insertFunction( std::move(e.moveProtoExpr()) );
-  const auto & Name = P.getName();
-  auto TheFunction = getFunction(Name);
-  
-  // insert the task 
-  auto & TaskI = Tasker_->insertTask(Name);
-  
-  // generate wrapped task
-  auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
+    auto OldScope = getScope();
+    if (!e.isTopLevelExpression()) createScope();
 
-  // insert arguments into variable table
-  unsigned ArgIdx = 0;
-  for (auto &Arg : TheFunction->args()) {
-    auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
-    auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
-    auto NewEntry = VariableEntry(Alloca, AllocaT);
-    insertVariable(Arg.getName(), NewEntry);
-  }
+    // Transfer ownership of the prototype to the FunctionProtos map, but keep a
+    // reference to it for use below.
+    auto & P = insertFunction( std::move(e.moveProtoExpr()) );
+    auto Name = P.getName();
+    std::cout << "Generating function " << Name << std::endl;
+    auto TheFunction = getFunction(Name);
+    
+    // insert the task 
+    Name += std::to_string(Variant.first);
+    auto & TaskI = Tasker_->insertTask(Name);
+    
+    // generate wrapped task
+    auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
 
-  
-  // codegen the function body
-  auto RetVal = codegenFunctionBody(e);
-  
-  // Finish wrapped task
-  Tasker_->taskPostamble(*TheModule_, RetVal);
+    // insert arguments into variable table
+    unsigned ArgIdx = 0;
+    for (auto &Arg : TheFunction->args()) {
+      auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
+      auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
+      auto NewEntry = VariableEntry(Alloca, AllocaT);
+      insertVariable(Arg.getName(), NewEntry);
+    }
 
-  // garbage collection
-  resetScope(OldScope);
+    
+    // codegen the function body
+    auto RetVal = codegenFunctionBody(e);
+    
+    // Finish wrapped task
+    Tasker_->taskPostamble(*TheModule_, RetVal);
+
+    // garbage collection
+    resetScope(OldScope);
+    
+    // Finish off the function.  Tasks always return void
+    Builder_.CreateRetVoid();
+    
+    // Validate the generated code, checking for consistency.
+    verifyFunction(*Wrapper.TheFunction);
+    
+    // set the finished function
+    TaskI.setFunction(Wrapper.TheFunction);
+    FunctionResult_ = Wrapper.TheFunction;
   
-  // Finish off the function.  Tasks always return void
-  Builder_.CreateRetVoid();
-  
-  // Validate the generated code, checking for consistency.
-  verifyFunction(*Wrapper.TheFunction);
-  
-  // set the finished function
-  TaskI.setFunction(Wrapper.TheFunction);
-  FunctionResult_ = Wrapper.TheFunction;
+  }// variant
 
 }
 

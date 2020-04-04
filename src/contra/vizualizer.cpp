@@ -103,10 +103,12 @@ void Vizualizer::dispatch(ValueExprAST<std::string>& e)
 //==============================================================================
 void Vizualizer::dispatch(VariableExprAST& e)
 {
-  auto Name = e.getName();
-  if (e.isArray()) Name += "[]";
+  Formatter fmt;
+  fmt << e.getName();
+  if (e.isArray()) fmt << "[]";
+  if (e.getType()) fmt << " : " << e.getType();
 
-  labelNode(ind_, makeLabel(e.getClassName(), Name));
+  labelNode(ind_, makeLabel(e.getClassName(), fmt));
 
   if (e.isArray()) {
     createLink(ind_);
@@ -157,8 +159,12 @@ void Vizualizer::dispatch(BinaryExprAST& e)
 //==============================================================================
 void Vizualizer::dispatch(CallExprAST& e)
 {
+  Formatter fmt;
+  fmt << e.getName();
+  if (e.getType()) fmt << " : " << e.getType();
+
   auto my_ind = ind_;
-  labelNode( my_ind, makeLabel(e.getClassName(), e.getName()));
+  labelNode( my_ind, makeLabel(e.getClassName(), fmt));
   for (unsigned i=0; i<e.getNumArgs(); ++i) {
     createLink(my_ind, Formatter() << "Arg" << i );    
     runVisitor(*e.getArgExpr(i));
@@ -206,7 +212,11 @@ void Vizualizer::dispatch(IfStmtAST& e)
 //==============================================================================
 void Vizualizer::dispatch(VarDeclAST& e)
 {
-  labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getNames()));
+  Formatter fmt;
+  fmt << e.getNames();
+  if (e.getType()) fmt << " : " << e.getType();
+
+  labelNode(ind_, makeLabel(e.getClassName(), fmt.str()));
   createLink(ind_, "Init");
   runVisitor(*e.getInitExpr());
 }
@@ -214,8 +224,12 @@ void Vizualizer::dispatch(VarDeclAST& e)
 //==============================================================================
 void Vizualizer::dispatch(ArrayDeclAST& e)
 {
+  Formatter fmt;
+  fmt << e.getNames();
+  if (e.getType()) fmt << " : " << e.getType();
+
   auto my_ind = ind_;
-  labelNode(my_ind, makeLabel(e.getClassName(), Formatter() << e.getNames()));
+  labelNode(my_ind, makeLabel(e.getClassName(), fmt));
   
   if (e.hasSize()) {
     createLink(my_ind, "Size");

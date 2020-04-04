@@ -160,6 +160,15 @@ TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 }
 
 //==============================================================================
+Value* AbstractTasker::popFuture(const std::string & Name)
+{
+  auto it = FutureTable_.find(Name);
+  auto res = it->second;
+  FutureTable_.erase(it);
+  return res;
+}
+
+//==============================================================================
 void AbstractTasker::preregisterTasks(Module & TheModule)
 {
   for (const auto & task_pair : TaskTable_ )

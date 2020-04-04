@@ -56,8 +56,8 @@ void Contra::handleFunction()
   try {
     auto FnAST = TheParser_->parseFunction();
     auto Name = FnAST->getName();
-    if (dumpDot()) TheViz_->runVisitor(*FnAST);
     TheAnalyser_->runFuncVisitor(*FnAST);
+    if (dumpDot()) TheViz_->runVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);
     if (IsOptimized_) TheCG_->optimize(FnIR);
@@ -81,8 +81,8 @@ void Contra::handleDefinition()
 
   try {
     auto FnAST = TheParser_->parseDefinition();
-    if (dumpDot()) TheViz_->runVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
+    if (dumpDot()) TheViz_->runVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);
     if (!isCompiled()) TheCG_->doJIT();
   }
