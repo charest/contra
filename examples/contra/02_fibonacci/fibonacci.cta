@@ -24,6 +24,11 @@ task fibonacci(fib_num : i64) -> i64
 
 end
 
+task print_result(i : i64, result : i64)
+  print("Fibonacci(%d) = %d\n", i, result)
+end
+
+
 task top_level()
   
   var num_fibonacci = 7
@@ -31,9 +36,10 @@ task top_level()
 
   #var fib_results = [0; num_fibonacci]
   
+  
   for i in 0 until num_fibonacci do
     #fib_results[i] = fibonacci(i)
-    print("Fibonacci(%d) = %d\n", i, fibonacci(i))
+    print_result(i, fibonacci(i))
   end
 
   #for i in 0 until num_fibonacci do

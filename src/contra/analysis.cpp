@@ -330,14 +330,11 @@ void Analyzer::dispatch(BinaryExprAST& e)
   auto Loc = e.getLoc();
   auto OpCode = e.getOperand();
 
-  auto & RightExpr = *e.getRightExpr();
-  auto & LeftExpr = *e.getLeftExpr();
+  auto RightLoc = e.getRightExpr()->getLoc();
+  auto LeftLoc = e.getLeftExpr()->getLoc();
   
-  auto RightLoc = RightExpr.getLoc();
-  auto LeftLoc = LeftExpr.getLoc();
-  
-  auto RightType = runExprVisitor(RightExpr);
-  auto LeftType = runExprVisitor(LeftExpr);
+  auto RightType = runExprVisitor(*e.getRightExpr());
+  auto LeftType = runExprVisitor(*e.getLeftExpr());
 
   if (OpCode == tok_asgmt) {
     // Assignment requires the LHS to be an identifier.
@@ -356,7 +353,6 @@ void Analyzer::dispatch(BinaryExprAST& e)
     if (RightType.getBaseType() != LeftType.getBaseType()) {
       checkIsCastable(RightType, LeftType, Loc);
       e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
-      RightExpr = *e.getRightExpr();
     }
     
     TypeResult_ = LeftType;
@@ -468,9 +464,6 @@ void Analyzer::dispatch(CallExprAST& e)
       VarExpr->setNeedValue(false);
       IsFuture = true;
     }
-    else {
-      IsFuture = true;
-    }
 
     ArgIsFuture.emplace_back(IsFuture);
     ArgTypes.emplace_back(ArgType);
@@ -550,11 +543,13 @@ void Analyzer::dispatch(VarDeclAST& e)
   
   auto InitType = runExprVisitor(*e.getInitExpr());
   if (!VarType) VarType = InitType;
-  VarType.setFuture(InitType.isFuture());
 
   if (VarType != InitType) {
     checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
     e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
+  }
+  else {
+    VarType.setFuture(InitType.isFuture());
   }
   
   if (isGlobalScope()) VarType.setGlobal();

@@ -167,6 +167,16 @@ Value* AbstractTasker::popFuture(const std::string & Name)
   FutureTable_.erase(it);
   return res;
 }
+  
+//==============================================================================
+void AbstractTasker::destroyFutures(Module & TheModule,
+    const std::set<std::string> & Futures)
+{
+  for (const auto & FutureN : Futures ) {
+    auto FutureA = popFuture(FutureN);
+    destroyFuture(TheModule, FutureA); 
+  }
+}
 
 //==============================================================================
 void AbstractTasker::preregisterTasks(Module & TheModule)

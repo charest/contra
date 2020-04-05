@@ -4,6 +4,7 @@
 #include "taskinfo.hpp"
 
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -51,8 +52,10 @@ public:
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
 
+  virtual bool isFuture(llvm::Value*) const = 0;
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) = 0;
   virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
+  virtual void destroyFuture(llvm::Module &, llvm::Value*) = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -85,6 +88,8 @@ public:
 
   bool isFuture(const std::string & Name)
   { return FutureTable_.count(Name); }
+
+  void destroyFutures(llvm::Module &, const std::set<std::string> &);
   
 
 protected:

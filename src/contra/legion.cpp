@@ -288,6 +288,8 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     // copy
     auto ArgV = loadFuture(TheModule, FutureA, ArgT, ArgSizes[i]);
     Builder_.CreateStore( ArgV, ArgA );
+    // consume the future
+    destroyFuture(TheModule, FutureA);
     // increment
     increment(FutureIndexA, llvmValue(TheContext_, FutureIndexT, 1), "futureid");
     // finish then
@@ -810,6 +812,7 @@ llvm::Value* LegionTasker::loadFuture(Module &TheModule, llvm::Value* FutureA,
 
   return Builder_.CreateLoad(FutureType_, DataA, "future");;
 }
+
 //==============================================================================
 // insert a future value
 //==============================================================================
@@ -819,6 +822,30 @@ llvm::Value* LegionTasker::createFuture(Module &, llvm::Function* TheFunction,
   auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "future.alloca");
   AbstractTasker::createFuture(Name, FutureA);
   return FutureA;
+}
+
+//==============================================================================
+// destroey a future value
+//==============================================================================
+void LegionTasker::destroyFuture(Module &TheModule, llvm::Value* FutureA)
+{
+  // args
+  auto FutureRV = load(FutureA, TheModule, "future");
+  auto FutureRT = reduceStruct(FutureType_, TheModule);
+  auto DestroyFutureT = FunctionType::get(VoidType_, FutureRT, false);
+  auto DestroyFutureF = TheModule.getOrInsertFunction("legion_future_destroy",
+      DestroyFutureT);
+  Builder_.CreateCall(DestroyFutureF, FutureRV, "future");
+}
+
+//==============================================================================
+// Is this a future type
+//==============================================================================
+bool LegionTasker::isFuture(Value* FutureA) const
+{
+  auto FutureT = FutureA->getType();
+  if (isa<AllocaInst>(FutureA)) FutureT = FutureT->getPointerElementType();
+  return (FutureT == FutureType_);
 }
 
 }

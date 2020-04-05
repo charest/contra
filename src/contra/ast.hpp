@@ -69,7 +69,8 @@ public:
   virtual ~ExprAST() = default;
   
   void setType(const VariableType & Type) { Type_ = Type; }
-  const VariableType getType() const { return Type_; }
+  const auto & getType() const { return Type_; }
+  auto & getType() { return Type_; }
 
 };
 
@@ -434,7 +435,7 @@ public:
   virtual ~DeclAST() = default;
   
   void setType(const VariableType & Type) { Type_ = Type; }
-  const VariableType getType() const { return Type_; }
+  const auto & getType() const { return Type_; }
 
 };
 

@@ -247,6 +247,8 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 void CodeGen::resetScope(Scoper::value_type Scope)
 {
   std::map<std::string, Value*> Arrays;
+  std::set<std::string> Futures;
+
   for (int i=Scope; i<getScope(); ++i) {
     for ( const auto & entry_pair : VariableTable_.front() ) {
       const auto & Name = entry_pair.first;
@@ -255,10 +257,14 @@ void CodeGen::resetScope(Scoper::value_type Scope)
       auto IsOwner = VarE.isOwner();
       if (isArray(Alloca) && IsOwner) 
         Arrays.emplace(Name, Alloca);
+      if (Tasker_->isFuture(Name))
+        Futures.emplace(Name);
     }
     VariableTable_.pop_front();
   }
-  destroyArrays(Arrays);
+
+  destroyArrays(Arrays); 
+  Tasker_->destroyFutures(*TheModule_, Futures);
   Scoper::resetScope(Scope);
 }
 
@@ -735,6 +741,7 @@ void CodeGen::dispatch(VariableExprAST& e)
       auto DataSizeV = getTypeSize<int_t>(VarT);
       auto VarV = Tasker_->loadFuture(*TheModule_, FutureA, VarT, DataSizeV);
       Builder_.CreateStore(VarV, VarA);
+      Tasker_->destroyFuture(*TheModule_, FutureA);
     }
     else {
       VarA = Tasker_->getFuture(Name);
@@ -863,21 +870,45 @@ void CodeGen::dispatch(BinaryExprAST& e) {
     // dynamic_cast for automatic error checking.
     auto LHSE = dynamic_cast<VariableExprAST*>(e.getLeftExpr());
     // Codegen the RHS.
-    auto Val = runExprVisitor(*e.getRightExpr());
+    auto VariableV = runExprVisitor(*e.getRightExpr());
 
     // Look up the name.
     const auto & VarName = LHSE->getName();
     auto VarE = getVariable(VarName);
-    Value* Variable = VarE->getAlloca();
+    Value* VariableA = VarE->getAlloca();
 
     // array element access
-    if (isArray(Variable)) {
-      auto IndexVal = runExprVisitor(*LHSE->getIndexExpr());
-      storeArrayValue(Val, Variable, IndexVal, VarName);
+    if (isArray(VariableA)) {
+      auto IndexV = runExprVisitor(*LHSE->getIndexExpr());
+      storeArrayValue(VariableV, VariableA, IndexV, VarName);
     }
-    else
-      Builder_.CreateStore(Val, Variable);
-    ValueResult_ = Val;
+    // future access
+    else if (Tasker_->isFuture(VariableV)) {
+      Value* FutureA;
+      if (isa<AllocaInst>(VariableV)) {
+        FutureA = VariableV;
+      }
+      else if (Tasker_->isFuture(VarName)) {
+        FutureA = Tasker_->popFuture(VarName);
+      }
+      else {
+        auto TheFunction = Builder_.GetInsertBlock()->getParent();
+        Tasker_->createFuture(*TheModule_, TheFunction, VarName);
+        FutureA = Tasker_->popFuture(VarName);
+        Builder_.CreateStore(VariableV, FutureA);
+      }
+      auto VariableT = VarE->getType();
+      auto DataSizeV = getTypeSize<int_t>(VariableT);
+      auto VariableV = Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
+      Builder_.CreateStore(VariableV, VariableA);
+      Tasker_->destroyFuture(*TheModule_, FutureA);
+    }
+    // scalar access
+    else {
+      Builder_.CreateStore(VariableV, VariableA);
+    }
+
+    ValueResult_ = VariableV;
     return;
   }
 
