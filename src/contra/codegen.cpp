@@ -794,15 +794,6 @@ void CodeGen::dispatch(ArrayExprAST &e)
 }
   
 //==============================================================================
-// ArrayExprAST - Expression class for arrays.
-//==============================================================================
-void CodeGen::dispatch(FutureExprAST &e)
-{
-  //auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  THROW_CONTRA_ERROR("FUTURE NOT IMPLEMENTED YET");
-}
-
-//==============================================================================
 // CastExprAST - Expression class for casts.
 //==============================================================================
 void CodeGen::dispatch(CastExprAST &e)
@@ -1244,6 +1235,11 @@ void CodeGen::dispatch(ForStmtAST& e) {
   resetScope(OldScope);
   ValueResult_ = UndefValue::get(VoidType_);
 }
+
+//==============================================================================
+void CodeGen::dispatch(ForeachStmtAST& e)
+{ dispatch( static_cast<ForStmtAST&>(e) ); }
+  
 
 //==============================================================================
 // VarDefExprAST - Expression class for var/in

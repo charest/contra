@@ -279,14 +279,6 @@ void Analyzer::dispatch(ArrayExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(FutureExprAST& e)
-{
-  auto Ty = runExprVisitor(*e.getValueExpr());
-  Ty.setFuture();
-  e.setType(Ty);
-}
-
-//==============================================================================
 void Analyzer::dispatch(CastExprAST& e)
 {
   auto FromType = runExprVisitor(*e.getFromExpr());
@@ -510,6 +502,10 @@ void Analyzer::dispatch(ForStmtAST& e)
   resetScope(OldScope);
   TypeResult_ = VoidType_;
 }
+
+//==============================================================================
+void Analyzer::dispatch(ForeachStmtAST& e)
+{ dispatch( static_cast<ForStmtAST&>(e) ); }
 
 //==============================================================================
 void Analyzer::dispatch(IfStmtAST& e)

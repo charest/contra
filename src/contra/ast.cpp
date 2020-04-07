@@ -24,10 +24,6 @@ void ArrayExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================
-void FutureExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
-
-//==============================================================================
 void CastExprAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
@@ -73,6 +69,10 @@ void IfStmtAST::accept(AstDispatcher& dispatcher)
 
 //==============================================================================
 void ForStmtAST::accept(AstDispatcher& dispatcher)
+{ dispatcher.dispatch(*this); }
+
+//==============================================================================
+void ForeachStmtAST::accept(AstDispatcher& dispatcher)
 { dispatcher.dispatch(*this); }
 
 //==============================================================================

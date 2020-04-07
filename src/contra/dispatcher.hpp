@@ -11,13 +11,13 @@ template<typename T> class ValueExprAST;
 
 class VariableExprAST;
 class ArrayExprAST;
-class FutureExprAST;
 class CastExprAST;
 class UnaryExprAST;
 class BinaryExprAST;
 class CallExprAST;
 class IfStmtAST;
 class ForStmtAST;
+class ForeachStmtAST;
 class VarDeclAST;
 class ArrayDeclAST;
 class PrototypeAST;
@@ -34,7 +34,6 @@ public:
   virtual void dispatch(ValueExprAST<std::string>&) = 0;
   virtual void dispatch(VariableExprAST&) = 0;
   virtual void dispatch(ArrayExprAST&) = 0;
-  virtual void dispatch(FutureExprAST&) = 0;
   virtual void dispatch(CastExprAST&) = 0;
   virtual void dispatch(UnaryExprAST&) = 0;
   virtual void dispatch(BinaryExprAST&) = 0;
@@ -42,6 +41,7 @@ public:
 
   virtual void dispatch(IfStmtAST&) = 0;
   virtual void dispatch(ForStmtAST&) = 0;
+  virtual void dispatch(ForeachStmtAST&) = 0;
 
   virtual void dispatch(VarDeclAST&) = 0;
   virtual void dispatch(ArrayDeclAST&) = 0;

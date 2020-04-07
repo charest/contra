@@ -123,14 +123,6 @@ void Vizualizer::dispatch(ArrayExprAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(FutureExprAST& e)
-{
-  labelNode(ind_, e.getClassName());
-  createLink(ind_);
-  runVisitor(*e.getValueExpr());
-}
-
-//==============================================================================
 void Vizualizer::dispatch(CastExprAST& e)
 {
   labelNode(ind_, e.getClassName());
@@ -186,6 +178,10 @@ void Vizualizer::dispatch(ForStmtAST& e)
   }
   dumpBlock(e.getBodyExprs(), my_ind, "Body");
 }
+
+//==============================================================================
+void Vizualizer::dispatch(ForeachStmtAST& e)
+{ dispatch( static_cast<ForStmtAST&>(e) ); }
 
 //==============================================================================
 void Vizualizer::dispatch(IfStmtAST& e)

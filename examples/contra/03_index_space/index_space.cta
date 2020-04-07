@@ -1,0 +1,35 @@
+task index_space(id : i64, ilocal : i64, iglobal : i64) -> i64
+  
+  print("Hello world from task %d, with local arg %d, and global arg %d!\n",
+		id, ilocal, iglobal)
+
+  return 2*ilocal
+end
+
+
+task top_level()
+  
+  var num_points = 10
+  print("Running hello world redux for %d points...\n", num_points)
+
+  var received : [i64; num_points] = 0
+  foreach i in 0 until num_points do
+    #received[i] = index_space(i, i+10, num_points)
+    index_space(i, i+10, num_points)
+  end
+
+  #var all_passed = 0
+  #for i in 0 until num_points do
+  #  if (received[i] != 2*(i+10)) then
+  #    all_passed = 1
+  #  end
+  #end
+
+  #if (all_passed == 1) then
+  #  print("All checks passed!\n")
+  #end
+     
+
+end
+
+top_level()

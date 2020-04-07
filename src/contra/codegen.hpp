@@ -208,12 +208,12 @@ private:
   void dispatch(ValueExprAST<std::string>&) override;
   void dispatch(VariableExprAST&) override;
   void dispatch(ArrayExprAST&) override;
-  void dispatch(FutureExprAST&) override;
   void dispatch(CastExprAST&) override;
   void dispatch(UnaryExprAST&) override;
   void dispatch(BinaryExprAST&) override;
   void dispatch(CallExprAST&) override;
   void dispatch(ForStmtAST&) override;
+  void dispatch(ForeachStmtAST&) override;
   void dispatch(IfStmtAST&) override;
   void dispatch(VarDeclAST&) override;
   void dispatch(ArrayDeclAST&) override;

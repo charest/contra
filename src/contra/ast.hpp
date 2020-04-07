@@ -173,29 +173,6 @@ public:
 };
 
 //==============================================================================
-/// FutureExprAST - Expression class for referencing a future.
-//==============================================================================
-class FutureExprAST : public ExprAST {
-protected:
-
-  std::unique_ptr<NodeAST> ValueExpr_;
-
-public:
-
-  FutureExprAST(std::unique_ptr<NodeAST> ValueExpr)
-    : ExprAST(ValueExpr->getLoc()), ValueExpr_(std::move(ValueExpr))
-  {}
-  
-  virtual void accept(AstDispatcher& dispatcher) override;
-  
-  virtual std::string getClassName() const override
-  { return "FutureExprAST"; };
-
-  NodeAST* getValueExpr() { return ValueExpr_.get(); }
-
-};
-
-//==============================================================================
 /// CastExprAST - Expression class for casts
 //==============================================================================
 class CastExprAST : public ExprAST {
@@ -419,6 +396,28 @@ public:
 
   auto hasStep() const { return static_cast<bool>(StepExpr_); }
   auto getStepExpr() const { return StepExpr_.get(); }
+};
+
+//==============================================================================
+// ForEachExprAST - Expression class for for/in.
+//==============================================================================
+class ForeachStmtAST : public ForStmtAST {
+
+public:
+  
+  ForeachStmtAST(const SourceLocation & Loc,
+      const Identifier &VarId,
+      std::unique_ptr<NodeAST> Start,
+      std::unique_ptr<NodeAST> End,
+      std::unique_ptr<NodeAST> Step,
+      ASTBlock Body,
+      LoopType Loop = LoopType::To) :
+    ForStmtAST(Loc, VarId, std::move(Start), std::move(End), std::move(Step),
+        std::move(Body), Loop)
+  {}
+  
+  virtual void accept(AstDispatcher& dispatcher) override;
+  
 };
 
 ////////////////////////////////////////////////////////////////////////////////

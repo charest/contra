@@ -1,6 +1,8 @@
 #ifndef CONTRA_SOURCELOC_HPP
 #define CONTRA_SOURCELOC_HPP
 
+#include <iostream>
+
 namespace contra {
 
 class SourceLocation {
@@ -15,6 +17,11 @@ public:
   int incrementCol() { Col_++; return Col_; }
   void reset() { Line_ = 1; Col_ = 0; }
   void newLine() { Line_++; Col_ = 0; }
+  friend std::ostream &operator<<( std::ostream &out, const SourceLocation &obj ) { 
+     out << "Line : " << obj.getLine() << ", Col : " << obj.getCol();
+     return out;            
+  }
+
 };
 
 }
