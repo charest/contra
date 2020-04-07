@@ -187,28 +187,28 @@ Analyzer::promote(
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-void Analyzer::dispatch(ValueExprAST<int_t>& e)
+void Analyzer::visit(ValueExprAST<int_t>& e)
 {
   TypeResult_ = I64Type_;
   e.setType(TypeResult_);
 }
 
 //==============================================================================
-void Analyzer::dispatch(ValueExprAST<real_t>& e)
+void Analyzer::visit(ValueExprAST<real_t>& e)
 {
   TypeResult_ = F64Type_;
   e.setType(TypeResult_);
 }
 
 //==============================================================================
-void Analyzer::dispatch(ValueExprAST<std::string>& e)
+void Analyzer::visit(ValueExprAST<std::string>& e)
 {
   TypeResult_ = StrType_;
   e.setType(TypeResult_);
 }
 
 //==============================================================================
-void Analyzer::dispatch(VariableExprAST& e)
+void Analyzer::visit(VariableExprAST& e)
 {
   const auto & Name = e.getName();
   auto Var = getVariable(Name, e.getLoc());
@@ -235,7 +235,7 @@ void Analyzer::dispatch(VariableExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(ArrayExprAST& e)
+void Analyzer::visit(ArrayExprAST& e)
 {
   if (e.hasSize()) {
     auto SizeType = runExprVisitor(*e.getSizeExpr());
@@ -279,7 +279,7 @@ void Analyzer::dispatch(ArrayExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(CastExprAST& e)
+void Analyzer::visit(CastExprAST& e)
 {
   auto FromType = runExprVisitor(*e.getFromExpr());
   auto TypeId = e.getTypeId();
@@ -290,7 +290,7 @@ void Analyzer::dispatch(CastExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(UnaryExprAST& e)
+void Analyzer::visit(UnaryExprAST& e)
 {
   auto OpCode = e.getOperand();
   auto OpType = runExprVisitor(*e.getOpExpr());
@@ -317,7 +317,7 @@ void Analyzer::dispatch(UnaryExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(BinaryExprAST& e)
+void Analyzer::visit(BinaryExprAST& e)
 {
   auto Loc = e.getLoc();
   auto OpCode = e.getOperand();
@@ -396,7 +396,7 @@ void Analyzer::dispatch(BinaryExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(CallExprAST& e)
+void Analyzer::visit(CallExprAST& e)
 {
   const auto & FunName = e.getName();
   auto FunRes = getFunction(FunName, e.getLoc());
@@ -469,7 +469,7 @@ void Analyzer::dispatch(CallExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(ForStmtAST& e)
+void Analyzer::visit(ForStmtAST& e)
 {
   auto VarId = e.getVarId();
   
@@ -504,11 +504,11 @@ void Analyzer::dispatch(ForStmtAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(ForeachStmtAST& e)
-{ dispatch( static_cast<ForStmtAST&>(e) ); }
+void Analyzer::visit(ForeachStmtAST& e)
+{ visit( static_cast<ForStmtAST&>(e) ); }
 
 //==============================================================================
-void Analyzer::dispatch(IfStmtAST& e)
+void Analyzer::visit(IfStmtAST& e)
 {
   auto CondType = runExprVisitor(*e.getCondExpr());
   if (CondType != BoolType_ )
@@ -527,7 +527,7 @@ void Analyzer::dispatch(IfStmtAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(VarDeclAST& e)
+void Analyzer::visit(VarDeclAST& e)
 {
   // check if there is a specified type, if there is, get it
   auto TypeId = e.getTypeId();
@@ -561,7 +561,7 @@ void Analyzer::dispatch(VarDeclAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(ArrayDeclAST& e)
+void Analyzer::visit(ArrayDeclAST& e)
 {
 
   // check if there is a specified type, if there is, get it
@@ -615,7 +615,7 @@ void Analyzer::dispatch(ArrayDeclAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(PrototypeAST& e)
+void Analyzer::visit(PrototypeAST& e)
 {
   int NumArgs = e.getNumArgs();
 
@@ -641,7 +641,7 @@ void Analyzer::dispatch(PrototypeAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(FunctionAST& e)
+void Analyzer::visit(FunctionAST& e)
 {
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();
@@ -691,7 +691,7 @@ void Analyzer::dispatch(FunctionAST& e)
 }
 
 //==============================================================================
-void Analyzer::dispatch(TaskAST& e)
-{ dispatch( static_cast<FunctionAST&>(e) ); }
+void Analyzer::visit(TaskAST& e)
+{ visit( static_cast<FunctionAST&>(e) ); }
 
 }

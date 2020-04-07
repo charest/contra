@@ -2,7 +2,7 @@
 #define CONTRA_VIZUALIZER_HPP
 
 #include "config.hpp"
-#include "dispatcher.hpp"
+#include "visiter.hpp"
 #include "file_utils.hpp"
 #include "string_utils.hpp"
 
@@ -15,7 +15,7 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 /// AST plotting class
 ////////////////////////////////////////////////////////////////////////////////
-class Vizualizer : public AstDispatcher {
+class Vizualizer : public AstVisiter {
 
   std::ofstream OutputStream_;
   std::ostream * out_ = nullptr;
@@ -53,23 +53,23 @@ public:
 
 private:
    
-  void dispatch(ValueExprAST<int_t>&) override;
-  void dispatch(ValueExprAST<real_t>&) override;
-  void dispatch(ValueExprAST<std::string>&) override;
-  void dispatch(VariableExprAST&) override;
-  void dispatch(ArrayExprAST&) override;
-  void dispatch(CastExprAST&) override;
-  void dispatch(UnaryExprAST&) override;
-  void dispatch(BinaryExprAST&) override;
-  void dispatch(CallExprAST&) override;
-  void dispatch(ForStmtAST&) override;
-  void dispatch(ForeachStmtAST&) override;
-  void dispatch(IfStmtAST&) override;
-  void dispatch(VarDeclAST&) override;
-  void dispatch(ArrayDeclAST&) override;
-  void dispatch(PrototypeAST&) override;
-  void dispatch(FunctionAST&) override;
-  void dispatch(TaskAST&) override;
+  void visit(ValueExprAST<int_t>&) override;
+  void visit(ValueExprAST<real_t>&) override;
+  void visit(ValueExprAST<std::string>&) override;
+  void visit(VariableExprAST&) override;
+  void visit(ArrayExprAST&) override;
+  void visit(CastExprAST&) override;
+  void visit(UnaryExprAST&) override;
+  void visit(BinaryExprAST&) override;
+  void visit(CallExprAST&) override;
+  void visit(ForStmtAST&) override;
+  void visit(ForeachStmtAST&) override;
+  void visit(IfStmtAST&) override;
+  void visit(VarDeclAST&) override;
+  void visit(ArrayDeclAST&) override;
+  void visit(PrototypeAST&) override;
+  void visit(FunctionAST&) override;
+  void visit(TaskAST&) override;
   
   std::ostream & out() { return *out_; }
 

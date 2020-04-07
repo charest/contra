@@ -692,7 +692,7 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
 //==============================================================================
 // IntegerExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-void CodeGen::dispatch(ValueExprAST<int_t> & e)
+void CodeGen::visit(ValueExprAST<int_t> & e)
 {
   emitLocation(&e);
   ValueResult_ = llvmValue<int_t>(TheContext_, e.getVal());
@@ -701,7 +701,7 @@ void CodeGen::dispatch(ValueExprAST<int_t> & e)
 //==============================================================================
 // RealExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-void CodeGen::dispatch(ValueExprAST<real_t> & e)
+void CodeGen::visit(ValueExprAST<real_t> & e)
 {
   emitLocation(&e);
   ValueResult_ = llvmValue(TheContext_, e.getVal());
@@ -710,7 +710,7 @@ void CodeGen::dispatch(ValueExprAST<real_t> & e)
 //==============================================================================
 // StringExprAST - Expression class for string literals like "hello".
 //==============================================================================
-void CodeGen::dispatch(ValueExprAST<std::string>& e)
+void CodeGen::visit(ValueExprAST<std::string>& e)
 {
   emitLocation(&e);
   ValueResult_ = llvmString(TheContext_, getModule(), e.getVal());
@@ -719,7 +719,7 @@ void CodeGen::dispatch(ValueExprAST<std::string>& e)
 //==============================================================================
 // VariableExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
-void CodeGen::dispatch(VariableExprAST& e)
+void CodeGen::visit(VariableExprAST& e)
 {
 
   auto Name = e.getName();
@@ -761,7 +761,7 @@ void CodeGen::dispatch(VariableExprAST& e)
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
-void CodeGen::dispatch(ArrayExprAST &e)
+void CodeGen::visit(ArrayExprAST &e)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -796,7 +796,7 @@ void CodeGen::dispatch(ArrayExprAST &e)
 //==============================================================================
 // CastExprAST - Expression class for casts.
 //==============================================================================
-void CodeGen::dispatch(CastExprAST &e)
+void CodeGen::visit(CastExprAST &e)
 {
   auto FromVal = runExprVisitor(*e.getFromExpr());
   auto FromType = ValueResult_->getType();
@@ -822,7 +822,7 @@ void CodeGen::dispatch(CastExprAST &e)
 //==============================================================================
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
-void CodeGen::dispatch(UnaryExprAST & e) {
+void CodeGen::visit(UnaryExprAST & e) {
   auto OperandV = runExprVisitor(*e.getOpExpr()); 
   
   if (OperandV->getType()->isFloatingPointTy()) {
@@ -850,7 +850,7 @@ void CodeGen::dispatch(UnaryExprAST & e) {
 //==============================================================================
 // BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
-void CodeGen::dispatch(BinaryExprAST& e) {
+void CodeGen::visit(BinaryExprAST& e) {
   emitLocation(&e);
   
   // Special case '=' because we don't want to emit the LHS as an expression.
@@ -996,7 +996,7 @@ void CodeGen::dispatch(BinaryExprAST& e) {
 //==============================================================================
 // CallExprAST - Expression class for function calls.
 //==============================================================================
-void CodeGen::dispatch(CallExprAST &e) {
+void CodeGen::visit(CallExprAST &e) {
   emitLocation(&e);
 
   // Look up the name in the global module table.
@@ -1044,7 +1044,7 @@ void CodeGen::dispatch(CallExprAST &e) {
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
-void CodeGen::dispatch(IfStmtAST & e) {
+void CodeGen::visit(IfStmtAST & e) {
   emitLocation(&e);
 
   if ( e.getThenExprs().empty() && e.getElseExprs().empty() ) {
@@ -1134,7 +1134,7 @@ void CodeGen::dispatch(IfStmtAST & e) {
 //   br endcond, loop, endloop
 // outloop:
 //==============================================================================
-void CodeGen::dispatch(ForStmtAST& e) {
+void CodeGen::visit(ForStmtAST& e) {
   
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -1237,14 +1237,14 @@ void CodeGen::dispatch(ForStmtAST& e) {
 }
 
 //==============================================================================
-void CodeGen::dispatch(ForeachStmtAST& e)
-{ dispatch( static_cast<ForStmtAST&>(e) ); }
+void CodeGen::visit(ForeachStmtAST& e)
+{ visit( static_cast<ForStmtAST&>(e) ); }
   
 
 //==============================================================================
 // VarDefExprAST - Expression class for var/in
 //==============================================================================
-void CodeGen::dispatch(VarDeclAST & e) {
+void CodeGen::visit(VarDeclAST & e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   // Emit the initializer before adding the variable to scope, this prevents
@@ -1283,7 +1283,7 @@ void CodeGen::dispatch(VarDeclAST & e) {
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
 //==============================================================================
-void CodeGen::dispatch(ArrayDeclAST &e) {
+void CodeGen::visit(ArrayDeclAST &e) {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
   // Emit the initializer before adding the variable to scope, this prevents
@@ -1362,7 +1362,7 @@ void CodeGen::dispatch(ArrayDeclAST &e) {
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
-void CodeGen::dispatch(PrototypeAST &e) {
+void CodeGen::visit(PrototypeAST &e) {
 
   unsigned NumArgs = e.getNumArgs();
 
@@ -1411,7 +1411,7 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 //==============================================================================
 /// FunctionAST - This class represents a function definition itself.
 //==============================================================================
-void CodeGen::dispatch(FunctionAST& e)
+void CodeGen::visit(FunctionAST& e)
 {
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();
@@ -1491,7 +1491,7 @@ void CodeGen::dispatch(FunctionAST& e)
 //==============================================================================
 /// TaskAST - This class represents a function definition itself.
 //==============================================================================
-void CodeGen::dispatch(TaskAST& e)
+void CodeGen::visit(TaskAST& e)
 {
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();

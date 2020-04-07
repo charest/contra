@@ -1,7 +1,7 @@
 #ifndef CONTRA_AST_HPP
 #define CONTRA_AST_HPP
 
-#include "dispatcher.hpp"
+#include "visiter.hpp"
 #include "config.hpp"
 #include "errors.hpp"
 #include "identifier.hpp"
@@ -19,7 +19,7 @@
 namespace contra {
 
 class Parser;
-class AstDispatcher;
+class AstVisiter;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// NodeAST - Base class for all nodes.
@@ -34,7 +34,7 @@ public:
   
   virtual ~NodeAST() = default;
 
-  virtual void accept(AstDispatcher& dispatcher) = 0;
+  virtual void accept(AstVisiter& visiter) = 0;
 
   virtual std::string getClassName() const = 0;
   
@@ -89,8 +89,8 @@ public:
 
   const T & getVal() const { return Val_; }
   
-  void accept(AstDispatcher& dispatcher) override
-  { dispatcher.dispatch(*this); }
+  void accept(AstVisiter& visiter) override
+  { visiter.visit(*this); }
   
   virtual std::string getClassName() const override;
   
@@ -125,7 +125,7 @@ public:
     : ExprAST(Loc), Name_(Name), IndexExpr_(std::move(IndexExpr))
   {}
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "VariableExprAST"; };
@@ -155,7 +155,7 @@ public:
     : ExprAST(Loc), ValExprs_(std::move(Vals)), SizeExpr_(std::move(Size))
   {}
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "ArrayExprAST"; };
@@ -192,7 +192,7 @@ public:
       VariableType Type) : ExprAST(Loc, Type), FromExpr_(std::move(FromExpr))
   {}
 
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "CastExprAST"; };
@@ -219,7 +219,7 @@ public:
     : ExprAST(Loc), OpCode_(Opcode), OpExpr_(std::move(Operand))
   {}
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "UnaryExprAST"; };
@@ -247,7 +247,7 @@ public:
 
   auto getOperand() const { return OpCode_; }
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "BinaryExprAST"; };
@@ -285,7 +285,7 @@ public:
   void setTopLevelTask(bool TopTask = true) { IsTopTask_ = TopTask; }
   bool isTopLevelTask() { return IsTopTask_; }
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "CallExprAST"; };
@@ -332,7 +332,7 @@ public:
     : StmtAST(Loc), CondExpr_(std::move(Cond)), ThenExpr_(std::move(Then))
   {}
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "IfStmtAST"; };
@@ -378,7 +378,7 @@ public:
       Loop_(Loop)
   {}
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "ForStmtAST"; };
@@ -416,7 +416,7 @@ public:
         std::move(Body), Loop)
   {}
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
 };
 
@@ -460,7 +460,7 @@ public:
 
   virtual bool isArray() const { return false; }
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "VarDeclAST"; };
@@ -504,7 +504,7 @@ public:
   
   virtual bool isArray() const { return true; }
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "ArrayDeclAST"; };
@@ -554,7 +554,7 @@ public:
   {}
 
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "PrototypeAST"; };
@@ -627,7 +627,7 @@ public:
   auto isTask() const { return IsTask_; }
   const std::string &getName() const { return Name_; }
   
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
 
   virtual std::string getClassName() const override
   { return "FunctionAST"; };
@@ -653,7 +653,7 @@ public:
       : FunctionAST(std::move(Proto), std::move(Body), std::move(Return), true)
   {}
 
-  virtual void accept(AstDispatcher& dispatcher) override;
+  virtual void accept(AstVisiter& visiter) override;
 
   virtual std::string getClassName() const override
   { return "TaskAST"; };

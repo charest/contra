@@ -4,7 +4,7 @@
 #include "ast.hpp"
 #include "config.hpp"
 #include "context.hpp"
-#include "dispatcher.hpp"
+#include "visiter.hpp"
 #include "precedence.hpp"
 #include "scope.hpp"
 #include "symbols.hpp"
@@ -19,7 +19,7 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 /// Semantec analyzer class
 ////////////////////////////////////////////////////////////////////////////////
-class Analyzer : public AstDispatcher, public Scoper {
+class Analyzer : public AstVisiter, public Scoper {
 public:
 
   using TypeEntry = std::shared_ptr<TypeDef>;
@@ -101,25 +101,25 @@ private:
   }
 
 
-  void dispatch(ValueExprAST<int_t>&) override;
-  void dispatch(ValueExprAST<real_t>&) override;
-  void dispatch(ValueExprAST<std::string>&) override;
-  void dispatch(VariableExprAST&) override;
-  void dispatch(ArrayExprAST&) override;
-  void dispatch(CastExprAST&) override;
-  void dispatch(UnaryExprAST&) override;
-  void dispatch(BinaryExprAST&) override;
-  void dispatch(CallExprAST&) override;
+  void visit(ValueExprAST<int_t>&) override;
+  void visit(ValueExprAST<real_t>&) override;
+  void visit(ValueExprAST<std::string>&) override;
+  void visit(VariableExprAST&) override;
+  void visit(ArrayExprAST&) override;
+  void visit(CastExprAST&) override;
+  void visit(UnaryExprAST&) override;
+  void visit(BinaryExprAST&) override;
+  void visit(CallExprAST&) override;
 
-  void dispatch(ForStmtAST&) override;
-  void dispatch(ForeachStmtAST&) override;
-  void dispatch(IfStmtAST&) override;
-  void dispatch(VarDeclAST&) override;
-  void dispatch(ArrayDeclAST&) override;
-  void dispatch(PrototypeAST&) override;
+  void visit(ForStmtAST&) override;
+  void visit(ForeachStmtAST&) override;
+  void visit(IfStmtAST&) override;
+  void visit(VarDeclAST&) override;
+  void visit(ArrayDeclAST&) override;
+  void visit(PrototypeAST&) override;
 
-  void dispatch(FunctionAST&) override;
-  void dispatch(TaskAST&) override;
+  void visit(FunctionAST&) override;
+  void visit(TaskAST&) override;
   
   // base type interface
   TypeEntry getBaseType(const std::string & Name, const SourceLocation & Loc);

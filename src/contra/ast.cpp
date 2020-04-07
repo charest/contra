@@ -16,28 +16,28 @@ std::string StringExprAST::getClassName() const
 { return "StringExprAST"; }
 
 //==============================================================================
-void VariableExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void VariableExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void ArrayExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void ArrayExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void CastExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void CastExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void UnaryExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void UnaryExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void BinaryExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void BinaryExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void CallExprAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void CallExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
@@ -64,35 +64,35 @@ std::unique_ptr<NodeAST> IfStmtAST::makeNested(
 }
 
 //------------------------------------------------------------------------------
-void IfStmtAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void IfStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void ForStmtAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void ForStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void ForeachStmtAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void ForeachStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void VarDeclAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void VarDeclAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void ArrayDeclAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void ArrayDeclAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void PrototypeAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void PrototypeAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void FunctionAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void FunctionAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
-void TaskAST::accept(AstDispatcher& dispatcher)
-{ dispatcher.dispatch(*this); }
+void TaskAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 } // namespace

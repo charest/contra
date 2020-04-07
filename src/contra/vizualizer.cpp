@@ -79,15 +79,15 @@ void Vizualizer::dumpBlock(const ASTBlock & Block, int_t link_to,
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-void Vizualizer::dispatch(ValueExprAST<int_t>& e)
+void Vizualizer::visit(ValueExprAST<int_t>& e)
 { dumpNumericVal(e); }
 
 //==============================================================================
-void Vizualizer::dispatch(ValueExprAST<real_t>& e)
+void Vizualizer::visit(ValueExprAST<real_t>& e)
 { dumpNumericVal(e); }
 
 //==============================================================================
-void Vizualizer::dispatch(ValueExprAST<std::string>& e)
+void Vizualizer::visit(ValueExprAST<std::string>& e)
 {
   constexpr int MaxLen = 10;
   auto str = e.getVal();
@@ -101,7 +101,7 @@ void Vizualizer::dispatch(ValueExprAST<std::string>& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(VariableExprAST& e)
+void Vizualizer::visit(VariableExprAST& e)
 {
   Formatter fmt;
   fmt << e.getName();
@@ -117,19 +117,19 @@ void Vizualizer::dispatch(VariableExprAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ArrayExprAST& e)
+void Vizualizer::visit(ArrayExprAST& e)
 {
   labelNode(ind_, e.getClassName());
 }
 
 //==============================================================================
-void Vizualizer::dispatch(CastExprAST& e)
+void Vizualizer::visit(CastExprAST& e)
 {
   labelNode(ind_, e.getClassName());
 }
 
 //==============================================================================
-void Vizualizer::dispatch(UnaryExprAST& e)
+void Vizualizer::visit(UnaryExprAST& e)
 {
   labelNode(ind_, e.getClassName());
   createLink(ind_);
@@ -137,7 +137,7 @@ void Vizualizer::dispatch(UnaryExprAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(BinaryExprAST& e)
+void Vizualizer::visit(BinaryExprAST& e)
 {
   auto my_ind = ind_;
   std::string Op = Tokens::getName(e.getOperand());
@@ -149,7 +149,7 @@ void Vizualizer::dispatch(BinaryExprAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(CallExprAST& e)
+void Vizualizer::visit(CallExprAST& e)
 {
   Formatter fmt;
   fmt << e.getName();
@@ -164,7 +164,7 @@ void Vizualizer::dispatch(CallExprAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ForStmtAST& e)
+void Vizualizer::visit(ForStmtAST& e)
 {
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
@@ -180,11 +180,11 @@ void Vizualizer::dispatch(ForStmtAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ForeachStmtAST& e)
-{ dispatch( static_cast<ForStmtAST&>(e) ); }
+void Vizualizer::visit(ForeachStmtAST& e)
+{ visit( static_cast<ForStmtAST&>(e) ); }
 
 //==============================================================================
-void Vizualizer::dispatch(IfStmtAST& e)
+void Vizualizer::visit(IfStmtAST& e)
 {
   auto store_ind = ind_;
   bool force_expanded = (e.getThenExprs().size()>1 || e.getElseExprs().size()>1);
@@ -206,7 +206,7 @@ void Vizualizer::dispatch(IfStmtAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(VarDeclAST& e)
+void Vizualizer::visit(VarDeclAST& e)
 {
   Formatter fmt;
   fmt << e.getNames();
@@ -218,7 +218,7 @@ void Vizualizer::dispatch(VarDeclAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(ArrayDeclAST& e)
+void Vizualizer::visit(ArrayDeclAST& e)
 {
   Formatter fmt;
   fmt << e.getNames();
@@ -237,11 +237,11 @@ void Vizualizer::dispatch(ArrayDeclAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(PrototypeAST& e)
+void Vizualizer::visit(PrototypeAST& e)
 { labelNode(ind_, e.getClassName()); }
 
 //==============================================================================
-void Vizualizer::dispatch(FunctionAST& e)
+void Vizualizer::visit(FunctionAST& e)
 {
   auto fun_ind = ind_;
   out() << "subgraph cluster" << fun_ind << " {" << std::endl;
@@ -265,7 +265,7 @@ void Vizualizer::dispatch(FunctionAST& e)
 }
 
 //==============================================================================
-void Vizualizer::dispatch(TaskAST& e)
-{ dispatch(static_cast<FunctionAST&>(e)); }
+void Vizualizer::visit(TaskAST& e)
+{ visit(static_cast<FunctionAST&>(e)); }
 
 }

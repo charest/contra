@@ -16,11 +16,11 @@ class CodeError;
 //==============================================================================
 // Abstrct visitor for errors
 //==============================================================================
-class ErrorDispatcher {
+class ErrorVisiter {
 public:
-  virtual ~ErrorDispatcher() = default;
-  virtual void dispatch(const ContraError&) const = 0;
-  virtual void dispatch(const CodeError&) const = 0;
+  virtual ~ErrorVisiter() = default;
+  virtual void visit(const ContraError&) const = 0;
+  virtual void visit(const CodeError&) const = 0;
 };
 
 //==============================================================================
@@ -33,8 +33,8 @@ public:
   ContraError(const char *str) : std::runtime_error(str) {}
   ContraError(const std::string & str) : std::runtime_error(str) {}
   virtual ~ContraError() {}
-  virtual void accept(const ErrorDispatcher& dispatcher) const 
-  { dispatcher.dispatch(*this); }
+  virtual void accept(const ErrorVisiter& visiter) const 
+  { visiter.visit(*this); }
 };
 
 //==============================================================================
@@ -48,8 +48,8 @@ public:
   CodeError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
   SourceLocation getLoc() const { return Loc_; }
   virtual ~CodeError() {}
-  virtual void accept(const ErrorDispatcher& dispatcher) const override
-  { dispatcher.dispatch(*this); }
+  virtual void accept(const ErrorVisiter& visiter) const override
+  { visiter.visit(*this); }
 };
 
 

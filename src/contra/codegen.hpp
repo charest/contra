@@ -2,7 +2,7 @@
 #define CONTRA_CODEGEN_HPP
 
 #include "debug.hpp"
-#include "dispatcher.hpp"
+#include "visiter.hpp"
 #include "tasking.hpp"
 #include "jit.hpp"
 #include "scope.hpp"
@@ -28,7 +28,7 @@ class PrototypeAST;
 class JIT;
 class DebugInfo;
 
-class CodeGen : public AstDispatcher, public Scoper {
+class CodeGen : public AstVisiter, public Scoper {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
@@ -203,23 +203,23 @@ private:
   }
 
   // Visitees 
-  void dispatch(ValueExprAST<int_t>&) override;
-  void dispatch(ValueExprAST<real_t>&) override;
-  void dispatch(ValueExprAST<std::string>&) override;
-  void dispatch(VariableExprAST&) override;
-  void dispatch(ArrayExprAST&) override;
-  void dispatch(CastExprAST&) override;
-  void dispatch(UnaryExprAST&) override;
-  void dispatch(BinaryExprAST&) override;
-  void dispatch(CallExprAST&) override;
-  void dispatch(ForStmtAST&) override;
-  void dispatch(ForeachStmtAST&) override;
-  void dispatch(IfStmtAST&) override;
-  void dispatch(VarDeclAST&) override;
-  void dispatch(ArrayDeclAST&) override;
-  void dispatch(PrototypeAST&) override;
-  void dispatch(FunctionAST&) override;
-  void dispatch(TaskAST&) override;
+  void visit(ValueExprAST<int_t>&) override;
+  void visit(ValueExprAST<real_t>&) override;
+  void visit(ValueExprAST<std::string>&) override;
+  void visit(VariableExprAST&) override;
+  void visit(ArrayExprAST&) override;
+  void visit(CastExprAST&) override;
+  void visit(UnaryExprAST&) override;
+  void visit(BinaryExprAST&) override;
+  void visit(CallExprAST&) override;
+  void visit(ForStmtAST&) override;
+  void visit(ForeachStmtAST&) override;
+  void visit(IfStmtAST&) override;
+  void visit(VarDeclAST&) override;
+  void visit(ArrayDeclAST&) override;
+  void visit(PrototypeAST&) override;
+  void visit(FunctionAST&) override;
+  void visit(TaskAST&) override;
   
 
   // visitor helper
