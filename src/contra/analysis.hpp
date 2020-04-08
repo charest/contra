@@ -33,6 +33,7 @@ private:
   std::set<std::string> TaskTable_; 
   
   std::forward_list< std::map<std::string, VariableEntry> > VariableTable_;
+  std::forward_list< std::set<std::string> > VarAccessTable_;
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
@@ -44,17 +45,21 @@ private:
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
+  bool IsInsideTask_ = false;
 
   bool HaveTopLevelTask_ = false;
  
   Scoper::value_type createScope() override {
     VariableTable_.push_front({});
+    VarAccessTable_.push_front({});
     return Scoper::createScope();
   }
   
   void resetScope(Scoper::value_type Scope) override {
-    for (int i=Scope; i<getScope(); ++i)
+    for (int i=Scope; i<getScope(); ++i) {
       VariableTable_.pop_front();
+      VarAccessTable_.pop_front();
+    }
     Scoper::resetScope(Scope);
   }
 
@@ -68,6 +73,7 @@ public:
     TypeTable_.emplace( Context::BoolType->getName(), Context::BoolType);
     TypeTable_.emplace( Context::VoidType->getName(), Context::VoidType);
     VariableTable_.push_front({}); // global table
+    VarAccessTable_.push_front({});
   }
 
   virtual ~Analyzer() = default;
@@ -79,7 +85,10 @@ public:
       std::is_same<T, FunctionAST>::value || std::is_same<T, PrototypeAST>::value >
   >
   void runFuncVisitor(T&e)
-  { e.accept(*this); }
+  {
+    IsInsideTask_ = false;
+    e.accept(*this);
+  }
 
 private:
   
@@ -137,6 +146,7 @@ private:
   struct VariableTableResult {
     decltype(VariableTable_)::value_type::iterator Result;
     bool IsFound = false;
+    int Scope = 0;
   };
 
   VariableTableResult findVariable(const std::string & Name);

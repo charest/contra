@@ -37,11 +37,14 @@ public:
   struct PreambleResult {
     llvm::Function* TheFunction;
     std::vector<llvm::AllocaInst*> ArgAllocas;
+    llvm::AllocaInst* Index;
   };
 
   // abstraact interface
   virtual PreambleResult taskPreamble(llvm::Module &, const std::string &, llvm::Function*) = 0;
-  virtual void taskPostamble(llvm::Module &, llvm::Value*) = 0;
+  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
+      const std::vector<std::string> &, const std::vector<llvm::Type*> &, bool = false) = 0;
+  virtual void taskPostamble(llvm::Module &, llvm::Value* = nullptr) = 0;
 
   virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
   virtual void postregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;

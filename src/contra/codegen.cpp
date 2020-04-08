@@ -6,6 +6,7 @@
 #include "legion.hpp"
 #include "precedence.hpp"
 #include "token.hpp"
+#include "variable.hpp"
 
 #include "librt/librt.hpp"
 #include "librt/dopevector.hpp"
@@ -103,18 +104,22 @@ void CodeGen::initializeModuleAndPassManager()
     initializePassManager();
 }
 
+//==============================================================================
+// Create a new module
+//==============================================================================
+std::unique_ptr<Module> CodeGen::createModule(const std::string & Name)
+{
+  // Open a new module.
+  auto TheModule = std::make_unique<Module>(Name, TheContext_);
+  TheModule->setDataLayout(TheJIT_.getTargetMachine().createDataLayout());
+  return TheModule;
+}
 
 //==============================================================================
 // Initialize module
 //==============================================================================
-void CodeGen::initializeModule() {
-
-  // Open a new module.
-  TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
-  TheModule_->setDataLayout(TheJIT_.getTargetMachine().createDataLayout());
-
-}
-
+void CodeGen::initializeModule()
+{ TheModule_ = createModule("my cool jit"); }
 
 //==============================================================================
 // Initialize optimizer
@@ -275,7 +280,7 @@ void CodeGen::resetScope(Scoper::value_type Scope)
 //==============================================================================
 // Move a variable
 //==============================================================================
-CodeGen::VariableEntry * CodeGen::moveVariable(const std::string & From, const std::string & To)
+VariableAlloca * CodeGen::moveVariable(const std::string & From, const std::string & To)
 {
   auto & CurrTab = VariableTable_.front();
   auto it = CurrTab.find(From);
@@ -289,7 +294,7 @@ CodeGen::VariableEntry * CodeGen::moveVariable(const std::string & From, const s
 //==============================================================================
 // Get a variable
 //==============================================================================
-CodeGen::VariableEntry * CodeGen::getVariable(const std::string & VarName)
+VariableAlloca * CodeGen::getVariable(const std::string & VarName)
 { 
   for ( auto & ST : VariableTable_ ) {
     auto it = ST.find(VarName);
@@ -302,7 +307,7 @@ CodeGen::VariableEntry * CodeGen::getVariable(const std::string & VarName)
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-CodeGen::VariableEntry * CodeGen::createVariable(Function *TheFunction,
+VariableAlloca * CodeGen::createVariable(Function *TheFunction,
   const std::string &VarName, Type* VarType, bool IsGlobal)
 {
   Value* NewVar;
@@ -320,19 +325,28 @@ CodeGen::VariableEntry * CodeGen::createVariable(Function *TheFunction,
     NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
   }
 
-  return insertVariable(VarName, VariableEntry{NewVar, VarType});
+  return insertVariable(VarName, VariableAlloca{NewVar, VarType});
 }
 
 //==============================================================================
 /// Insert an already allocated variable
 //==============================================================================
-CodeGen::VariableEntry *
-CodeGen::insertVariable(const std::string &VarName, VariableEntry VarE)
+VariableAlloca *
+CodeGen::insertVariable(const std::string &VarName, VariableAlloca VarE)
 { 
   auto it = VariableTable_.front().emplace(VarName, VarE);
   return &it.first->second;
 }
 
+//==============================================================================
+/// Insert an already allocated variable
+//==============================================================================
+VariableAlloca *
+CodeGen::insertVariable(const std::string &VarName, Value* VarAlloca, Type* VarType)
+{ 
+  VariableAlloca VarE(VarAlloca, VarType);
+  return insertVariable(VarName, VarAlloca, VarType);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Array Interface
@@ -355,7 +369,7 @@ bool CodeGen::isArray(Value* V)
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-CodeGen::VariableEntry * CodeGen::createArray(Function *TheFunction,
+VariableAlloca * CodeGen::createArray(Function *TheFunction,
   const std::string &VarName, Type* ElementT, bool IsGlobal)
 {
   Value* NewVar;
@@ -367,7 +381,7 @@ CodeGen::VariableEntry * CodeGen::createArray(Function *TheFunction,
     NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
   }
 
-  auto it = VariableTable_.front().emplace(VarName, VariableEntry{NewVar, ElementT});
+  auto it = VariableTable_.front().emplace(VarName, VariableAlloca{NewVar, ElementT});
   return &it.first->second;
 }
 
@@ -376,7 +390,7 @@ CodeGen::VariableEntry * CodeGen::createArray(Function *TheFunction,
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-CodeGen::VariableEntry *
+VariableAlloca *
 CodeGen::createArray(Function *TheFunction, const std::string &VarName,
     Type * ElementType, Value * SizeExpr)
 {
@@ -1238,7 +1252,74 @@ void CodeGen::visit(ForStmtAST& e) {
 
 //==============================================================================
 void CodeGen::visit(ForeachStmtAST& e)
-{ visit( static_cast<ForStmtAST&>(e) ); }
+{
+  //----------------------------------------------------------------------------
+  if (IsInsideTask_) {
+
+    auto ParentFunction = Builder_.GetInsertBlock()->getParent();
+    std::string ParentFunN = ParentFunction->getName();
+    
+    // insert the task 
+    auto TaskN = ParentFunN + "__index_launch__";
+    auto & TaskI = Tasker_->insertTask(TaskN);
+
+    // get global args
+    std::vector<Type*> TaskArgTs;
+    std::vector<std::string> TaskArgNs;
+    for ( const auto & VarN : e.getAccessedVariables() ) {
+       auto VarE = getVariable(VarN);
+       TaskArgNs.emplace_back( VarN );
+       TaskArgTs.emplace_back( VarE->getType() ); 
+    }
+
+#if 0
+    auto StartV = runStmtVisitor(*e.getStartExpr());
+    auto StartA = createEntryBlockAlloca(ParentFunction, I64Type_, "start");
+    Builder_.CreateStore(StartV, StartA);
+  
+    auto EndV = runStmtVisitor(*e.getEndExpr());
+    if (e.getLoopType() == ForStmtAST::LoopType::Until) {
+      Value *OneV = llvmValue<int_t>(TheContext_, 1);
+      EndV = Builder_.CreateSub(EndV, OneV, "endsub");
+    }
+    auto EndA = createEntryBlockAlloca(ParentFunction, I64Type_, "end");
+    Builder_.CreateStore(EndV, EndA);
+#endif
+
+    // generate wrapped task
+    auto Wrapper = Tasker_->taskPreamble(*TheModule_, TaskN, TaskArgNs,
+        TaskArgTs, true);
+    
+    auto OldScope = getScope();
+    createScope();
+  
+    // insert arguments into variable table
+    for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
+      auto Alloca = Wrapper.ArgAllocas[ArgIdx];
+      auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
+      insertVariable(TaskArgNs[ArgIdx], Alloca, AllocaT);
+    }
+
+    // and the index
+    auto IndexA = Wrapper.Index;
+    auto IndexT = IndexA->getType()->getPointerElementType();
+    insertVariable(e.getVarName(), IndexA, IndexT);
+
+    // function body
+    for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+    resetScope(OldScope);
+ 
+    // finish task
+    Tasker_->taskPostamble(*TheModule_);
+
+    ValueResult_ = UndefValue::get(VoidType_);
+
+  }
+  //----------------------------------------------------------------------------
+  else {
+    visit( static_cast<ForStmtAST&>(e) );
+  }
+}
   
 
 //==============================================================================
@@ -1416,6 +1497,8 @@ void CodeGen::visit(FunctionAST& e)
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();
 
+  IsInsideTask_ = false;
+
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
   auto & P = insertFunction( std::move(e.moveProtoExpr()) );
@@ -1453,7 +1536,7 @@ void CodeGen::visit(FunctionAST& e)
     auto LLType = getLLVMType(ArgType);
 
     // Create an alloca for this variable.
-    VariableEntry* VarE;
+    VariableAlloca* VarE;
     if (ArgType.isArray())
       VarE = createArray(TheFunction, Arg.getName(), LLType);
     else
@@ -1495,13 +1578,15 @@ void CodeGen::visit(TaskAST& e)
 {
   auto OldScope = getScope();
   if (!e.isTopLevelExpression()) createScope();
-
+  
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
   auto & P = insertFunction( std::move(e.moveProtoExpr()) );
   auto Name = P.getName();
   auto TheFunction = getFunction(Name);
   
+  IsInsideTask_ = true;
+
   // insert the task 
   auto & TaskI = Tasker_->insertTask(Name);
   
@@ -1513,7 +1598,7 @@ void CodeGen::visit(TaskAST& e)
   for (auto &Arg : TheFunction->args()) {
     auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
     auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
-    auto NewEntry = VariableEntry(Alloca, AllocaT);
+    auto NewEntry = VariableAlloca(Alloca, AllocaT);
     insertVariable(Arg.getName(), NewEntry);
   }
 

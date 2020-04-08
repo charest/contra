@@ -27,6 +27,7 @@ enum Token {
 
   // loops
   tok_for,
+  tok_foreach,
   tok_in,
   tok_do,
   tok_to,

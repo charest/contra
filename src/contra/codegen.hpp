@@ -7,6 +7,7 @@
 #include "jit.hpp"
 #include "scope.hpp"
 #include "symbols.hpp" 
+#include "variable.hpp"
 
 #include "utils/llvm_utils.hpp"
 
@@ -27,13 +28,14 @@ class BinopPrecedence;
 class PrototypeAST;
 class JIT;
 class DebugInfo;
-
+ 
 class CodeGen : public AstVisiter, public Scoper {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
   using Type = llvm::Type;
   using Value = llvm::Value;
+  using VariableTable = std::map<std::string, VariableAlloca>;
   
   // LLVM builder types  
   llvm::LLVMContext TheContext_;
@@ -47,26 +49,10 @@ class CodeGen : public AstVisiter, public Scoper {
   // visitor results
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
+  bool IsInsideTask_ = false;
 
+  // symbol tables
   std::map<std::string, Type*> TypeTable_;
- 
-  class VariableEntry {
-    Value* Alloca_ = nullptr;
-    Type* Type_ = nullptr;
-    Value* Size_ = nullptr;
-    bool IsOwner_ = true;
-  public:
-    VariableEntry() = default;
-    VariableEntry(Value* Alloca, Type* Type, Value* Size = nullptr)
-      : Alloca_(Alloca), Type_(Type), Size_(Size) {}
-    auto getAlloca() const { return Alloca_; }
-    auto getType() const { return Type_; }
-    auto getSize() const { return Size_; }
-    void setOwner(bool IsOwner=true) { IsOwner_=IsOwner; }
-    auto isOwner() const { return IsOwner_; }
-  };
-
-  using VariableTable = std::map<std::string, VariableEntry>;
   std::forward_list< VariableTable > VariableTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
 
@@ -74,6 +60,7 @@ class CodeGen : public AstVisiter, public Scoper {
   std::unique_ptr<llvm::DIBuilder> DBuilder;
   DebugInfo KSDbgInfo;
 
+  // defined types
   Type* I64Type_ = nullptr;
   Type* F64Type_ = nullptr;
   Type* VoidType_ = nullptr;
@@ -112,6 +99,7 @@ public:
   //============================================================================
 
   /// Top-Level parsing and JIT Driver
+  std::unique_ptr<llvm::Module> createModule(const std::string & = "");
   void initializeModuleAndPassManager();
   void initializeModule();
   void initializePassManager();
@@ -177,6 +165,7 @@ public:
   Function* runFuncVisitor(T&e)
   {
     FunctionResult_ = nullptr;
+    IsInsideTask_ = false;
     e.accept(*this);
     return FunctionResult_;
   }
@@ -254,14 +243,15 @@ private:
   //============================================================================
   // Variable interface
   //============================================================================
-  VariableEntry * createVariable(Function *TheFunction,
+  VariableAlloca * createVariable(Function *TheFunction,
     const std::string &VarName, Type* VarType, bool IsGlobal=false);
   
-  VariableEntry * getVariable(const std::string & VarName);
+  VariableAlloca * getVariable(const std::string & VarName);
 
-  VariableEntry * moveVariable(const std::string & From, const std::string & To);
+  VariableAlloca * moveVariable(const std::string & From, const std::string & To);
 
-  VariableEntry * insertVariable(const std::string &VarName, VariableEntry VarEntry);
+  VariableAlloca * insertVariable(const std::string &VarName, VariableAlloca VarEntry);
+  VariableAlloca * insertVariable(const std::string &VarName, llvm::Value*, llvm::Type*);
 
   //============================================================================
   // Array interface
@@ -273,10 +263,10 @@ private:
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
-  VariableEntry * createArray(Function *TheFunction, const std::string &VarName,
+  VariableAlloca * createArray(Function *TheFunction, const std::string &VarName,
       Type* PtrType, Value * SizeExpr );
   
-  VariableEntry * createArray(Function *TheFunction, const std::string &VarName,
+  VariableAlloca * createArray(Function *TheFunction, const std::string &VarName,
       Type* ElementType, bool IsGlobal=false);
 
   // Initializes a bunch of arrays with a value

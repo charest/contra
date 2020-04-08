@@ -83,11 +83,13 @@ Analyzer::insertFunction(
 Analyzer::VariableTableResult
 Analyzer::findVariable(const std::string & Name)
 {
+  int depth = 0;
   for ( auto & ST : VariableTable_ ) {
     auto it = ST.find(Name);
-    if (it != ST.end()) return VariableTableResult{it, true};
+    if (it != ST.end()) return VariableTableResult{it, true, depth};
+    depth++;
   }
-  return VariableTableResult{{}, false};
+  return VariableTableResult{{}, false, depth};
 }
 
 
@@ -95,7 +97,12 @@ Analyzer::findVariable(const std::string & Name)
 Analyzer::VariableEntry
 Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
 {
-  auto res = findVariable(Name);  
+  auto res = findVariable(Name);
+
+  auto it = VarAccessTable_.begin();
+  for (int i=0; i<res.Scope; ++i) ++it;
+  it->emplace(Name); 
+
   if (res.IsFound) return res.Result->second;
   THROW_NAME_ERROR("Variable '" << Name << "' has not been"
      << " previously defined", Loc);
@@ -478,7 +485,6 @@ void Analyzer::visit(ForStmtAST& e)
 
   auto LoopVar = insertVariable(VarId, I64Type_);
 
-
   auto StartType = runStmtVisitor(*e.getStartExpr());
   if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
@@ -505,7 +511,12 @@ void Analyzer::visit(ForStmtAST& e)
 
 //==============================================================================
 void Analyzer::visit(ForeachStmtAST& e)
-{ visit( static_cast<ForStmtAST&>(e) ); }
+{
+  visit( static_cast<ForStmtAST&>(e) );
+  for ( const auto & ST : VarAccessTable_ )
+    for ( const auto & VarN : ST )
+      e.addAccessedVariable(VarN);
+}
 
 //==============================================================================
 void Analyzer::visit(IfStmtAST& e)
@@ -692,6 +703,9 @@ void Analyzer::visit(FunctionAST& e)
 
 //==============================================================================
 void Analyzer::visit(TaskAST& e)
-{ visit( static_cast<FunctionAST&>(e) ); }
+{
+  IsInsideTask_ = true;
+  visit( static_cast<FunctionAST&>(e) );
+}
 
 }

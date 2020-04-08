@@ -35,6 +35,7 @@ void Tokens::setup() {
     { tok_end, "end" },
     { tok_extern, "extern" },
     { tok_for, "for" },
+    { tok_foreach, "foreach" },
     { tok_function, "function" },
     { tok_if, "if" },
     { tok_in, "in" },

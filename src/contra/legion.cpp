@@ -38,6 +38,7 @@ LegionTasker::LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & T
   MapperIdType_ = llvmType<legion_mapper_id_t>(TheContext_); 
   MappingTagIdType_ = llvmType<legion_mapping_tag_id_t>(TheContext_);
   FutureIdType_ = llvmType<unsigned>(TheContext_);
+  CoordType_ = llvmType<legion_coord_t>(TheContext_);
 
   TaskType_ = createOpaqueType("legion_task_t", TheContext_);
   RegionType_ = createOpaqueType("legion_physical_region_t", TheContext_);
@@ -50,6 +51,7 @@ LegionTasker::LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & T
   FutureType_ = createOpaqueType("legion_future_t", TheContext_);
   TaskConfigType_ = createTaskConfigOptionsType("task_config_options_t", TheContext_);
   TaskArgsType_ = createTaskArgumentsType("legion_task_argument_t", TheContext_);
+  DomainPointType_ = createDomainPointType("legion_domain_point_t", TheContext_);
 }
 
 //==============================================================================
@@ -88,17 +90,28 @@ StructType * LegionTasker::createTaskArgumentsType(
   return NewType;
 }
 
+//==============================================================================
+// Create the opaque type
+//==============================================================================
+StructType * LegionTasker::createDomainPointType(
+    const std::string & Name, LLVMContext & TheContext)
+{
+  auto ArrayT = ArrayType::get(CoordType_, MAX_POINT_DIM); 
+  std::vector<Type*> members = { Int32Type_, ArrayT };
+  auto NewType = StructType::create( TheContext, members, Name );
+  return NewType;
+}
 
 //==============================================================================
 // Create the function wrapper
 //==============================================================================
 LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
-    const std::string & Name, Function* TaskF)
+    const std::string & TaskName, const std::vector<std::string> & TaskArgNs,
+    const std::vector<Type*> & TaskArgTs, bool IsIndex)
 {
   //----------------------------------------------------------------------------
   // Create task wrapper
-  std::string TaskName = "__" + Name + "_task__";
-
+  
   std::vector<Type *> WrapperArgTs =
     {VoidPtrType_, SizeType_, VoidPtrType_, SizeType_, RealmIdType_};
   
@@ -194,25 +207,20 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   //----------------------------------------------------------------------------
   // Allocas for task arguments
 
+  auto NumArgs = TaskArgTs.size();
   std::vector<AllocaInst*> TaskArgAs;
-  for (auto & Arg : TaskF->args()) {
-    auto ArgT = Arg.getType();
-    auto ArgN = Arg.getName().str() + ".alloca";
+  std::vector<Value*> ArgSizes;
+  for (unsigned i=0; i<NumArgs; ++i) {
+    auto ArgT = TaskArgTs[i];
+    auto ArgN = TaskArgNs[i] + ".alloca";
     auto ArgA = createEntryBlockAlloca(WrapperF, ArgT, ArgN);
     TaskArgAs.emplace_back(ArgA);
+    ArgSizes.emplace_back( getTypeSize<size_t>(Builder_, ArgT) );
   }
-  
-  //----------------------------------------------------------------------------
-  // Argument sizes
-  
-  std::vector<Value*> ArgSizes;
-  for (auto &Arg : TaskF->args())
-    ArgSizes.emplace_back( getTypeSize<size_t>(Builder_, Arg.getType()) );
   
   //----------------------------------------------------------------------------
   // get user types
 
-  auto NumArgs = TaskF->arg_size();
   auto ArrayT = ArrayType::get(BoolType_, NumArgs);
   auto ArrayA = createEntryBlockAlloca(WrapperF, ArrayT, "isfuture");
   auto ArgDataPtrV = Builder_.CreateLoad(VoidPtrType_, TaskArgsA, "args");
@@ -300,10 +308,56 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     WrapperF->getBasicBlockList().push_back(MergeBB);
     Builder_.SetInsertPoint(MergeBB);
   }
+  
+  //----------------------------------------------------------------------------
+  // If this is an index task
+  
+  AllocaInst* DomainPointA = nullptr;
+  if (IsIndex) {
+     
+    auto TaskRV = load(TaskA, TheModule, "task");
+    DomainPointA = createEntryBlockAlloca(WrapperF, DomainPointType_, "domain_point.alloca");
+
+    std::vector<Value*> GetIndexArgVs = {DomainPointA, TaskRV};
+    auto GetIndexArgTs = llvmTypes(GetIndexArgVs);
+    auto GetIndexT = FunctionType::get(VoidType_, GetIndexArgTs, false);
+    auto GetIndexF = TheModule.getFunction("legion_task_get_index_point");
+    if (!GetIndexF) {
+      GetIndexF = Function::Create(GetIndexT, Function::InternalLinkage,
+          "legion_task_get_index_point", &TheModule);
+    }
+ 
+    auto Arg = GetIndexF->arg_begin();
+    Arg->addAttr(Attribute::StructRet);
+    Builder_.CreateCall(GetIndexF, GetIndexArgVs, "domain_point");
+  
+  }
 
   //----------------------------------------------------------------------------
   // Function body
-  return {WrapperF, TaskArgAs}; 
+  return {WrapperF, TaskArgAs, DomainPointA}; 
+}
+
+//==============================================================================
+// Create the function wrapper
+//==============================================================================
+LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
+    const std::string & Name, Function* TaskF)
+{
+
+  std::string TaskName = "__" + Name + "_task__";
+  
+  std::vector<Type*> TaskArgTs;
+  std::vector<std::string> TaskArgNs;
+ 
+  for (auto & Arg : TaskF->args()) {
+    auto ArgT = Arg.getType();
+    auto ArgN = Arg.getName().str();
+    TaskArgTs.emplace_back(ArgT);
+    TaskArgNs.emplace_back(ArgN);
+  }
+
+  return taskPreamble(TheModule, TaskName, TaskArgNs, TaskArgTs);
 }
   
 //==============================================================================

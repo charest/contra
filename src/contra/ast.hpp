@@ -12,6 +12,7 @@
 #include <iostream>
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -403,6 +404,8 @@ public:
 //==============================================================================
 class ForeachStmtAST : public ForStmtAST {
 
+  std::set<std::string> AccessedVariables_;
+
 public:
   
   ForeachStmtAST(const SourceLocation & Loc,
@@ -417,6 +420,12 @@ public:
   {}
   
   virtual void accept(AstVisiter& visiter) override;
+
+  void addAccessedVariable(const std::string & VarName)
+  { AccessedVariables_.emplace(VarName); }
+
+  const auto & getAccessedVariables()
+  { return AccessedVariables_; }
   
 };
 

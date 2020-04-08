@@ -204,6 +204,9 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseForExpr() {
   auto ForLoc = getCurLoc();
+  
+  bool IsForEach = CurTok_ == tok_foreach;
+
   getNextToken(); // eat the for.
 
   if (CurTok_ != tok_identifier)
@@ -253,8 +256,14 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
   
   // make a for loop
   auto Id = Identifier{IdName, IdentLoc};
-  auto F = std::make_unique<ForStmtAST>(getCurLoc(), Id, std::move(Start),
+  std::unique_ptr<NodeAST> F;
+  if (IsForEach)
+    F = std::make_unique<ForeachStmtAST>(getCurLoc(), Id, std::move(Start),
       std::move(End), std::move(Step), std::move(Body), Loop);
+  else
+    F = std::make_unique<ForStmtAST>(getCurLoc(), Id, std::move(Start),
+      std::move(End), std::move(Step), std::move(Body), Loop);
+
   
   // eat end
   getNextToken();
@@ -285,6 +294,7 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
   case tok_if:
     return parseIfExpr();
   case tok_for:
+  case tok_foreach:
     return parseForExpr();
   case tok_var:
     return parseVarDefExpr();

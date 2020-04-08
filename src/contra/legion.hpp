@@ -26,6 +26,7 @@ protected:
   llvm::Type* MapperIdType_ = nullptr;
   llvm::Type* MappingTagIdType_ = nullptr;
   llvm::Type* FutureIdType_ = nullptr;
+  llvm::Type* CoordType_ = nullptr;
   
   llvm::StructType* TaskType_ = nullptr;
   llvm::StructType* RegionType_ = nullptr;
@@ -38,6 +39,7 @@ protected:
   llvm::StructType* FutureType_ = nullptr;
   llvm::StructType* TaskConfigType_ = nullptr;
   llvm::StructType* TaskArgsType_ = nullptr;
+  llvm::StructType* DomainPointType_ = nullptr;
   
   llvm::AllocaInst* ContextAlloca_ = nullptr;
   llvm::AllocaInst* RuntimeAlloca_ = nullptr;
@@ -48,6 +50,11 @@ public:
 
   virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
       llvm::Function*) override;
+
+  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
+      const std::vector<std::string> &, const std::vector<llvm::Type*> &,
+      bool IsIndex=false) override;
+
   virtual void taskPostamble(llvm::Module &, llvm::Value*) override;
   
   virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) override;
@@ -77,6 +84,7 @@ protected:
   llvm::StructType* createOpaqueType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskConfigOptionsType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskArgumentsType(const std::string &, llvm::LLVMContext &);
+  llvm::StructType* createDomainPointType(const std::string &, llvm::LLVMContext &);
 
 };
 
