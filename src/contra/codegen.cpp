@@ -105,21 +105,14 @@ void CodeGen::initializeModuleAndPassManager()
 }
 
 //==============================================================================
-// Create a new module
-//==============================================================================
-std::unique_ptr<Module> CodeGen::createModule(const std::string & Name)
-{
-  // Open a new module.
-  auto TheModule = std::make_unique<Module>(Name, TheContext_);
-  TheModule->setDataLayout(TheJIT_.getTargetMachine().createDataLayout());
-  return TheModule;
-}
-
-//==============================================================================
 // Initialize module
 //==============================================================================
 void CodeGen::initializeModule()
-{ TheModule_ = createModule("my cool jit"); }
+{
+  // Open a new module.
+  TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
+  TheModule_->setDataLayout(TheJIT_.getTargetMachine().createDataLayout());
+}
 
 //==============================================================================
 // Initialize optimizer
@@ -151,6 +144,18 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 JIT::VModuleKey CodeGen::doJIT()
 {
+  for (auto && EM : ExtraModules_) {
+    std::cout << "jitting extra modules" << std::endl;
+    EM->print(outs(), nullptr);
+    outs() << "\n";
+    TheJIT_.addModule( std::move(EM) );
+    std::cout << "done extra modules" << std::endl;
+  }
+    ExtraModules_.clear();
+    
+	TheModule_->print(outs(), nullptr);
+  outs() << "\n";
+
   auto TmpModule = std::move(TheModule_);
   initializeModuleAndPassManager();
   auto H = TheJIT_.addModule(std::move(TmpModule));
@@ -345,7 +350,7 @@ VariableAlloca *
 CodeGen::insertVariable(const std::string &VarName, Value* VarAlloca, Type* VarType)
 { 
   VariableAlloca VarE(VarAlloca, VarType);
-  return insertVariable(VarName, VarAlloca, VarType);
+  return insertVariable(VarName, VarE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1253,72 +1258,36 @@ void CodeGen::visit(ForStmtAST& e) {
 //==============================================================================
 void CodeGen::visit(ForeachStmtAST& e)
 {
-  //----------------------------------------------------------------------------
-  if (IsInsideTask_) {
+  auto ParentFunction = Builder_.GetInsertBlock()->getParent();
 
-    auto ParentFunction = Builder_.GetInsertBlock()->getParent();
-    std::string ParentFunN = ParentFunction->getName();
-    
-    // insert the task 
-    auto TaskN = ParentFunN + "__index_launch__";
-    auto & TaskI = Tasker_->insertTask(TaskN);
-
-    // get global args
-    std::vector<Type*> TaskArgTs;
-    std::vector<std::string> TaskArgNs;
-    for ( const auto & VarN : e.getAccessedVariables() ) {
-       auto VarE = getVariable(VarN);
-       TaskArgNs.emplace_back( VarN );
-       TaskArgTs.emplace_back( VarE->getType() ); 
-    }
-
-#if 0
-    auto StartV = runStmtVisitor(*e.getStartExpr());
-    auto StartA = createEntryBlockAlloca(ParentFunction, I64Type_, "start");
-    Builder_.CreateStore(StartV, StartA);
+  auto StartV = runStmtVisitor(*e.getStartExpr());
+  auto StartA = createEntryBlockAlloca(ParentFunction, I64Type_, "start");
+  Builder_.CreateStore(StartV, StartA);
   
-    auto EndV = runStmtVisitor(*e.getEndExpr());
-    if (e.getLoopType() == ForStmtAST::LoopType::Until) {
-      Value *OneV = llvmValue<int_t>(TheContext_, 1);
-      EndV = Builder_.CreateSub(EndV, OneV, "endsub");
-    }
-    auto EndA = createEntryBlockAlloca(ParentFunction, I64Type_, "end");
-    Builder_.CreateStore(EndV, EndA);
-#endif
-
-    // generate wrapped task
-    auto Wrapper = Tasker_->taskPreamble(*TheModule_, TaskN, TaskArgNs,
-        TaskArgTs, true);
-    
-    auto OldScope = getScope();
-    createScope();
+  auto EndV = runStmtVisitor(*e.getEndExpr());
+  if (e.getLoopType() == ForStmtAST::LoopType::Until) {
+    Value *OneV = llvmValue<int_t>(TheContext_, 1);
+    EndV = Builder_.CreateSub(EndV, OneV, "endsub");
+  }
+  auto EndA = createEntryBlockAlloca(ParentFunction, I64Type_, "end");
+  Builder_.CreateStore(EndV, EndA);
   
-    // insert arguments into variable table
-    for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
-      auto Alloca = Wrapper.ArgAllocas[ArgIdx];
-      auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
-      insertVariable(TaskArgNs[ArgIdx], Alloca, AllocaT);
-    }
-
-    // and the index
-    auto IndexA = Wrapper.Index;
-    auto IndexT = IndexA->getType()->getPointerElementType();
-    insertVariable(e.getVarName(), IndexA, IndexT);
-
-    // function body
-    for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
-    resetScope(OldScope);
- 
-    // finish task
-    Tasker_->taskPostamble(*TheModule_);
-
-    ValueResult_ = UndefValue::get(VoidType_);
-
+  std::vector<Value*> TaskArgVs;
+  std::vector<Value*> TaskArgSizes;
+  for ( const auto & VarN : e.getAccessedVariables() ) {
+    auto VarE = getVariable(VarN);
+    auto VarT = VarE->getType();
+    TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
+    auto VarV = Builder_.CreateLoad(VarT, VarE->getAlloca());
+    TaskArgVs.emplace_back(VarV); 
   }
-  //----------------------------------------------------------------------------
-  else {
-    visit( static_cast<ForStmtAST&>(e) );
-  }
+
+  auto TaskN = e.getName();
+  auto TaskI = Tasker_->getTask(TaskN);
+  Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgVs, TaskArgSizes,
+      StartA, EndA);
+  
+	ValueResult_ = UndefValue::get(VoidType_);
 }
   
 
@@ -1621,6 +1590,62 @@ void CodeGen::visit(TaskAST& e)
   // set the finished function
   TaskI.setFunction(Wrapper.TheFunction);
   FunctionResult_ = Wrapper.TheFunction;
+
+}
+
+//==============================================================================
+/// TaskAST - This class represents a function definition itself.
+//==============================================================================
+void CodeGen::visit(IndexTaskAST& e)
+{
+
+  auto OldScope = getScope();
+  if (!e.isTopLevelExpression()) createScope();
+  
+  IsInsideTask_ = true;
+
+  auto TaskN = e.getName();
+
+  // get global args
+  std::vector<Type*> TaskArgTs;
+  std::vector<std::string> TaskArgNs;
+  for ( const auto & VarE : e.getVariables() ) {
+    TaskArgNs.emplace_back( VarE->getName() );
+    TaskArgTs.emplace_back( getLLVMType(VarE->getType()) ); 
+  }
+  
+	// generate wrapped task
+  auto Wrapper = Tasker_->taskPreamble(*TheModule_, TaskN, TaskArgNs,
+      TaskArgTs, true);
+
+  // insert arguments into variable table
+  for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
+    auto Alloca = Wrapper.ArgAllocas[ArgIdx];
+    auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
+    insertVariable(TaskArgNs[ArgIdx], Alloca, AllocaT);
+  }
+
+  // and the index
+  auto IndexA = Wrapper.Index;
+  auto IndexT = IndexA->getType()->getPointerElementType();
+  insertVariable(e.getLoopVariableName(), IndexA, IndexT);
+
+  // function body
+  for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  
+  // finish task
+  Tasker_->taskPostamble(*TheModule_);
+  
+  // garbage collection
+  resetScope(OldScope);
+  
+	Builder_.CreateRetVoid();
+  
+	// register it
+  auto TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
+ 	verifyFunction(*Wrapper.TheFunction);
+
+	FunctionResult_ = Wrapper.TheFunction;
 
 }
 

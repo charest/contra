@@ -56,7 +56,15 @@ void Contra::handleFunction()
   try {
     auto FnAST = TheParser_->parseFunction();
     auto Name = FnAST->getName();
+    std::cout << "handling " << Name << std::endl;
     TheAnalyser_->runFuncVisitor(*FnAST);
+
+    for (auto & e : TheAnalyser_->ExtraFunctions_) {
+      TheCG_->runFuncVisitor(*e);
+			TheCG_->doJIT();
+		}
+    TheAnalyser_->ExtraFunctions_.clear();
+
     if (dumpDot()) TheViz_->runVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);

@@ -54,6 +54,9 @@ public:
   
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
+  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
+      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &,
+      llvm::Value*, llvm::Value*) = 0;
 
   virtual bool isFuture(llvm::Value*) const = 0;
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) = 0;
@@ -76,6 +79,8 @@ public:
 
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }
+
+  TaskInfo popTask(const std::string & Name);
 
   const auto & getTask(const std::string & Name) const
   { return TaskTable_.at(Name); }
@@ -101,6 +106,7 @@ protected:
 
   // helpers
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;
+  llvm::Type* reduceArray(llvm::ArrayType *, const llvm::Module &) const;
   llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
   void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;
   llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;

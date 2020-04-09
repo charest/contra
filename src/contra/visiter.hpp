@@ -23,6 +23,7 @@ class ArrayDeclAST;
 class PrototypeAST;
 class FunctionAST;
 class TaskAST;
+class IndexTaskAST;
 
 class AstVisiter {
 public:
@@ -48,7 +49,8 @@ public:
   virtual void visit(PrototypeAST&) = 0;
   
   virtual void visit(FunctionAST&) = 0;
-  virtual void visit(TaskAST&e) = 0;
+  virtual void visit(TaskAST&) = 0;
+  virtual void visit(IndexTaskAST&) = 0;
 };
 
 }

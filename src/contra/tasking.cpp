@@ -16,6 +16,17 @@ Type* AbstractTasker::reduceStruct(StructType * StructT, const Module &TheModule
 }
 
 //==============================================================================
+Type* AbstractTasker::reduceArray(ArrayType * ArrayT, const Module &TheModule) const
+{
+  auto NumElem = ArrayT->getNumElements();
+  auto ElementT = ArrayT->getElementType();
+  if (NumElem == 1) return ElementT;
+  auto DL = std::make_unique<DataLayout>(&TheModule);
+  auto BitWidth = DL->getTypeAllocSizeInBits(ArrayT);
+  return IntegerType::get(TheContext_, BitWidth);
+}
+
+//==============================================================================
 Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
 {
   auto T = V->getType();
@@ -45,6 +56,13 @@ Value* AbstractTasker::load(Value * Alloca, const Module &TheModule,
   if (auto StructT = dyn_cast<StructType>(BaseT)) {
     auto TheBlock = Builder_.GetInsertBlock();
     auto ReducedT = reduceStruct(StructT, TheModule);
+    auto Cast = CastInst::Create(CastInst::BitCast, Alloca,
+      ReducedT->getPointerTo(), Str+"alloca.cast", TheBlock);
+    return Builder_.CreateLoad(ReducedT, Cast, Str);
+  }
+  else if (auto ArrayT = dyn_cast<ArrayType>(BaseT)) {
+    auto TheBlock = Builder_.GetInsertBlock();
+    auto ReducedT = reduceArray(ArrayT, TheModule);
     auto Cast = CastInst::Create(CastInst::BitCast, Alloca,
       ReducedT->getPointerTo(), Str+"alloca.cast", TheBlock);
     return Builder_.CreateLoad(ReducedT, Cast, Str);
@@ -157,6 +175,15 @@ TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
   auto Id = getNextId();
   auto it = TaskTable_.emplace(Name, TaskInfo(Id, TaskName, F));
   return it.first->second;
+}
+  
+//==============================================================================
+TaskInfo AbstractTasker::popTask(const std::string & Name)
+{
+  auto it = TaskTable_.find(Name);
+  auto res = it->second;
+  TaskTable_.erase(it);
+  return res;
 }
 
 //==============================================================================

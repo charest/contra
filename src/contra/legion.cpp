@@ -21,7 +21,7 @@ using namespace utils;
 //==============================================================================
 // Constructor
 //==============================================================================
-LegionTasker::LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & TheContext) :
+LegionTasker::LegionTasker(IRBuilder<> & TheBuilder, LLVMContext & TheContext) :
   AbstractTasker(TheBuilder, TheContext)
 {
   VoidPtrType_ = llvmType<void*>(TheContext_);
@@ -39,6 +39,7 @@ LegionTasker::LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & T
   MappingTagIdType_ = llvmType<legion_mapping_tag_id_t>(TheContext_);
   FutureIdType_ = llvmType<unsigned>(TheContext_);
   CoordType_ = llvmType<legion_coord_t>(TheContext_);
+  Point1dType_ = ArrayType::get(CoordType_, 1);
 
   TaskType_ = createOpaqueType("legion_task_t", TheContext_);
   RegionType_ = createOpaqueType("legion_physical_region_t", TheContext_);
@@ -52,6 +53,10 @@ LegionTasker::LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & T
   TaskConfigType_ = createTaskConfigOptionsType("task_config_options_t", TheContext_);
   TaskArgsType_ = createTaskArgumentsType("legion_task_argument_t", TheContext_);
   DomainPointType_ = createDomainPointType("legion_domain_point_t", TheContext_);
+  Rect1dType_ = createRect1dType("legion_rect_1d_t", TheContext_);
+  DomainRectType_ = createDomainRectType("legion_domain_t", TheContext_);
+  ArgMapType_ = createOpaqueType("legion_argument_map_t", TheContext_);
+  FutureMapType_ = createOpaqueType("legion_future_map_t", TheContext_);
 }
 
 //==============================================================================
@@ -103,6 +108,30 @@ StructType * LegionTasker::createDomainPointType(
 }
 
 //==============================================================================
+// Create the opaque type
+//==============================================================================
+StructType * LegionTasker::createRect1dType(
+    const std::string & Name, LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { Point1dType_, Point1dType_ };
+  auto NewType = StructType::create( TheContext, members, Name );
+  return NewType;
+}
+  
+
+//==============================================================================
+// Create the opaque type
+//==============================================================================
+StructType * LegionTasker::createDomainRectType(
+    const std::string & Name, LLVMContext & TheContext)
+{
+  auto ArrayT = ArrayType::get(CoordType_, 2*LEGION_MAX_DIM); 
+  std::vector<Type*> members = { RealmIdType_, Int32Type_, ArrayT };
+  auto NewType = StructType::create( TheContext, members, Name );
+  return NewType;
+}
+
+//==============================================================================
 // Create the function wrapper
 //==============================================================================
 LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
@@ -118,7 +147,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   auto WrapperT = FunctionType::get(VoidType_, WrapperArgTs, false);
   auto WrapperF = Function::Create(WrapperT, Function::ExternalLinkage,
       TaskName, &TheModule);
- 
+
   auto Arg = WrapperF->arg_begin();
   Arg->setName("data");
   Arg->addAttr(Attribute::ReadOnly);
@@ -138,6 +167,14 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", WrapperF);
   Builder_.SetInsertPoint(BB);
+
+  // create the context
+  auto & LegionE = startTask();
+  auto & ContextA = LegionE.ContextAlloca;
+  auto & RuntimeA = LegionE.RuntimeAlloca;
+  ContextA = createEntryBlockAlloca(WrapperF, ContextType_, "context.alloca");
+  RuntimeA = createEntryBlockAlloca(WrapperF, RuntimeType_, "runtime.alloca");
+
 
   // allocate arguments
   std::vector<Value*> WrapperArgVs;
@@ -178,13 +215,9 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   auto ZeroV = llvmValue(TheContext_, NumRegionsType_, 0);
   Builder_.CreateStore(ZeroV, NumRegionsA);
  
-  ContextAlloca_ = createEntryBlockAlloca(WrapperF, ContextType_, "context.alloca");
-
-  RuntimeAlloca_ = createEntryBlockAlloca(WrapperF, RuntimeType_, "runtime.alloca");
-
   // args
   std::vector<Value*> PreambleArgVs = { DataV, DataLenV, ProcIdV,
-    TaskA, RegionsA, NumRegionsA, ContextAlloca_, RuntimeAlloca_ };
+    TaskA, RegionsA, NumRegionsA, ContextA, RuntimeA };
   auto PreambleArgTs = llvmTypes(PreambleArgVs);
   
   auto PreambleT = FunctionType::get(VoidType_, PreambleArgTs, false);
@@ -258,7 +291,6 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     Builder_.SetInsertPoint(MergeBB);
   }
 
-
   //----------------------------------------------------------------------------
   // unpack future variables
   
@@ -308,15 +340,15 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     WrapperF->getBasicBlockList().push_back(MergeBB);
     Builder_.SetInsertPoint(MergeBB);
   }
-  
+
   //----------------------------------------------------------------------------
   // If this is an index task
   
-  AllocaInst* DomainPointA = nullptr;
+  AllocaInst* IndexA = nullptr;
   if (IsIndex) {
      
     auto TaskRV = load(TaskA, TheModule, "task");
-    DomainPointA = createEntryBlockAlloca(WrapperF, DomainPointType_, "domain_point.alloca");
+    auto DomainPointA = createEntryBlockAlloca(WrapperF, DomainPointType_, "domain_point.alloca");
 
     std::vector<Value*> GetIndexArgVs = {DomainPointA, TaskRV};
     auto GetIndexArgTs = llvmTypes(GetIndexArgVs);
@@ -325,17 +357,25 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     if (!GetIndexF) {
       GetIndexF = Function::Create(GetIndexT, Function::InternalLinkage,
           "legion_task_get_index_point", &TheModule);
+      auto Arg = GetIndexF->arg_begin();
+      Arg->addAttr(Attribute::StructRet);
     }
  
-    auto Arg = GetIndexF->arg_begin();
-    Arg->addAttr(Attribute::StructRet);
     Builder_.CreateCall(GetIndexF, GetIndexArgVs, "domain_point");
-  
+
+    auto PointDataGEP = accessStructMember(DomainPointA, 1, "point_data");
+    auto PointDataT = DomainPointType_->getElementType(1);
+    auto PointDataV = Builder_.CreateLoad(PointDataT, PointDataGEP);
+    auto IndexV = Builder_.CreateExtractValue(PointDataV, 0);
+
+    IndexA = createEntryBlockAlloca(WrapperF, llvmType<int_t>(TheContext_), "index");
+    Builder_.CreateStore( IndexV, IndexA );
   }
 
   //----------------------------------------------------------------------------
   // Function body
-  return {WrapperF, TaskArgAs, DomainPointA}; 
+  return {WrapperF, TaskArgAs, IndexA}; 
+
 }
 
 //==============================================================================
@@ -367,8 +407,11 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
 {
 
   // temporaries
-  auto RuntimeV = Builder_.CreateLoad(RuntimeType_, RuntimeAlloca_, "runtime");
-  auto ContextV = Builder_.CreateLoad(ContextType_, ContextAlloca_, "context");
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  auto RuntimeV = Builder_.CreateLoad(RuntimeType_, RuntimeA, "runtime");
+  auto ContextV = Builder_.CreateLoad(ContextType_, ContextA, "context");
   
   Value* RetvalV = Constant::getNullValue(VoidPtrType_);
   Value* RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
@@ -442,13 +485,13 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   }
 
   
-  reset();
+  finishTask();
 }
 
 //==============================================================================
 // Postregister tasks
 //==============================================================================
-void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string & Name,
+void LegionTasker::postregisterTask(Module &TheModule, const std::string & Name,
     const TaskInfo & Task )
 {
   // get current insertion point
@@ -537,7 +580,7 @@ void LegionTasker::postregisterTask(llvm::Module &TheModule, const std::string &
 //==============================================================================
 // Preregister tasks
 //==============================================================================
-void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & Name,
+void LegionTasker::preregisterTask(Module &TheModule, const std::string & Name,
     const TaskInfo & Task )
 {
   // get current insertion point
@@ -625,7 +668,7 @@ void LegionTasker::preregisterTask(llvm::Module &TheModule, const std::string & 
 //==============================================================================
 // Set top level task
 //==============================================================================
-void LegionTasker::setTopLevelTask(llvm::Module &TheModule, int TaskId )
+void LegionTasker::setTopLevelTask(Module &TheModule, int TaskId )
 {
 
   auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskId);
@@ -642,7 +685,7 @@ void LegionTasker::setTopLevelTask(llvm::Module &TheModule, int TaskId )
 //==============================================================================
 // start runtime
 //==============================================================================
-llvm::Value* LegionTasker::startRuntime(llvm::Module &TheModule, int Argc, char ** Argv)
+Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 {
   auto VoidPtrArrayT = VoidPtrType_->getPointerTo();
 
@@ -662,9 +705,9 @@ llvm::Value* LegionTasker::startRuntime(llvm::Module &TheModule, int Argc, char 
 //==============================================================================
 // Launch a task
 //==============================================================================
-llvm::Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
-    int TaskId, const std::vector<llvm::Value*> & ArgVs,
-    const std::vector<llvm::Value*> & ArgSizes )
+Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
+    int TaskId, const std::vector<Value*> & ArgVs,
+    const std::vector<Value*> & ArgSizes)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -805,9 +848,13 @@ llvm::Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   //----------------------------------------------------------------------------
   // Execute
   
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  
   LauncherRV = load(LauncherA, TheModule, "task_launcher");
-  auto ContextV = load(ContextAlloca_, TheModule, "context");
-  auto RuntimeV = load(RuntimeAlloca_, TheModule, "runtime");
+  auto ContextV = load(ContextA, TheModule, "context");
+  auto RuntimeV = load(RuntimeA, TheModule, "runtime");
 
   // args
   std::vector<Value*> ExecArgVs = { RuntimeV, ContextV, LauncherRV };
@@ -842,10 +889,269 @@ llvm::Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
 }
 
 //==============================================================================
+// Launch an index task
+//==============================================================================
+Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
+    int TaskId, const std::vector<Value*> & ArgVs,
+    const std::vector<Value*> & ArgSizes, Value* StartA, Value* EndA)
+{
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  
+  auto TaskArgsA = createEntryBlockAlloca(TheFunction, TaskArgsType_, "args.alloca");
+  
+  auto NumArgs = ArgVs.size();
+ 
+  //----------------------------------------------------------------------------
+  // Identify futures
+  
+  std::vector<char> ArgIsFuture(NumArgs);
+  std::vector<Constant*> ArgIsFutureC(NumArgs);
+  std::vector<unsigned> FutureArgId, ValueArgId;
+
+  unsigned NumFutureArgs = 0;
+  for (unsigned i=0; i<NumArgs; i++) {
+    ArgIsFuture[i] = (ArgVs[i]->getType() == FutureType_);
+    NumFutureArgs += ArgIsFuture[i];
+    if (ArgIsFuture[i]) FutureArgId.emplace_back(i);
+    else ValueArgId.emplace_back(i);
+    ArgIsFutureC[i] = llvmValue(TheContext_, BoolType_, ArgIsFuture[i]);
+  }
+
+  //----------------------------------------------------------------------------
+  // First count sizes
+
+  auto ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
+  auto ArgSizeT = TaskArgsType_->getElementType(1);
+  // add 1 byte for each argument first
+  Builder_.CreateStore( llvmValue(TheContext_, ArgSizeT, NumArgs), ArgSizeGEP );
+
+  for (auto i : ValueArgId) {
+    ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
+    increment(ArgSizeGEP, ArgSizes[i], "addoffset");
+  }
+   
+  //----------------------------------------------------------------------------
+  // Allocate storate
+ 
+  auto ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
+  auto TmpA = Builder_.CreateAlloca(ByteType_, nullptr); // not needed but InsertAtEnd doesnt work
+  auto MallocI = CallInst::CreateMalloc(TmpA, SizeType_, ByteType_, ArgSizeV,
+      nullptr, nullptr, "args" );
+  TmpA->eraseFromParent();
+  storeStructMember(MallocI, TaskArgsA, 0, "args");
+  
+  //----------------------------------------------------------------------------
+  // create an array with booleans identifying argyment type
+  
+  auto ArrayT = ArrayType::get(BoolType_, NumArgs);
+  auto ArrayC = ConstantArray::get(ArrayT, ArgIsFutureC);
+  auto GVStr = new GlobalVariable(TheModule, ArrayT, true, GlobalValue::InternalLinkage, ArrayC);
+  auto ZeroC = Constant::getNullValue(Int32Type_);
+  auto ArrayGEP = ConstantExpr::getGetElementPtr(BoolType_->getPointerTo(), GVStr, ZeroC, true);
+  auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
+  Builder_.CreateMemCpy(ArgDataPtrV, 1, ArrayGEP, 1, llvmValue<size_t>(TheContext_, NumArgs)); 
+ 
+  //----------------------------------------------------------------------------
+  // Copy args
+  
+  // add 1 byte for each argument first
+  Builder_.CreateStore( llvmValue(TheContext_, ArgSizeT, NumArgs), ArgSizeGEP );
+  
+  for (auto i : ValueArgId) {
+    auto ArgT = ArgVs[i]->getType();
+    // copy argument into an alloca
+    auto ArgA = createEntryBlockAlloca(TheFunction, ArgT, "tmpalloca");
+    Builder_.CreateStore( ArgVs[i], ArgA );
+    // load offset
+    ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
+    // copy
+    auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
+    auto OffsetArgDataPtrV = Builder_.CreateGEP(ArgDataPtrV, ArgSizeV, "args.offset");
+    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgA, 1, ArgSizes[i]); 
+    // increment
+    ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
+    increment(ArgSizeGEP, ArgSizes[i], "addoffset");
+  }
+
+  //----------------------------------------------------------------------------
+  // Predicate
+    
+  auto PredicateRT = reduceStruct(PredicateType_, TheModule);
+  
+  auto PredicateTrueT = FunctionType::get(PredicateRT, false);
+  auto PredicateTrueF = TheModule.getOrInsertFunction(
+      "legion_predicate_true", PredicateTrueT);
+  
+  Value* PredicateRV = Builder_.CreateCall(PredicateTrueF, None, "pred_true");
+  
+  auto PredicateA = createEntryBlockAlloca(TheFunction, PredicateType_, "predicate.alloca");
+  store(PredicateRV, PredicateA);
+  
+  //----------------------------------------------------------------------------
+  // Create domain  
+  
+  auto DomainLoA = createEntryBlockAlloca(TheFunction, Point1dType_, "lo");
+  auto DomainHiA = createEntryBlockAlloca(TheFunction, Point1dType_, "hi");
+
+  auto StartT = StartA->getType()->getPointerElementType();
+  Value* StartV = Builder_.CreateLoad(StartT, StartA);
+  auto DomainLoV = Builder_.CreateLoad(Point1dType_, DomainLoA); 
+  auto DomainLoGEP = Builder_.CreateGEP(DomainLoA, llvmValue<int>(TheContext_, 0), "lo");
+	Builder_.CreateStore(StartV, DomainLoGEP);
+  
+  auto EndT = EndA->getType()->getPointerElementType();
+  Value* EndV = Builder_.CreateLoad(EndT, EndA);
+  auto DomainHiV = Builder_.CreateLoad(Point1dType_, DomainHiA); 
+  auto DomainHiGEP = Builder_.CreateGEP(DomainHiA, llvmValue<int>(TheContext_, 0), "hi");
+	Builder_.CreateStore(EndV, DomainHiGEP);
+
+  auto LaunchBoundA = createEntryBlockAlloca(TheFunction, Rect1dType_, "launch_bound");
+  
+  DomainLoV = Builder_.CreateLoad(Point1dType_, DomainLoA);
+  storeStructMember(DomainLoV, LaunchBoundA, 0);
+  
+  DomainHiV = Builder_.CreateLoad(Point1dType_, DomainHiA);
+  storeStructMember(DomainHiV, LaunchBoundA, 1);
+
+  auto DomainLoRV = load(DomainLoA, TheModule, "lo");
+  auto DomainHiRV = load(DomainHiA, TheModule, "hi");
+  auto DomainRectA = createEntryBlockAlloca(TheFunction, DomainRectType_, "domain");
+  std::vector<Value*> DomainFromArgVs = { DomainRectA, DomainLoRV, DomainHiRV };
+  auto DomainFromArgTs = llvmTypes(DomainFromArgVs);
+
+  auto DomainFromT = FunctionType::get(VoidType_, DomainFromArgTs, false);
+  auto DomainFromF = TheModule.getFunction("legion_domain_from_rect_1d");
+  if (!DomainFromF) {
+    DomainFromF = Function::Create(DomainFromT, Function::InternalLinkage,
+        "legion_domain_from_rect_1d", &TheModule);
+    auto Arg = DomainFromF->arg_begin();
+    Arg->addAttr(Attribute::StructRet);
+  }
+  
+  Builder_.CreateCall(DomainFromF, DomainFromArgVs, "get_domain");
+  
+  //----------------------------------------------------------------------------
+  // argument map 
+  auto ArgMapRT = reduceStruct(ArgMapType_, TheModule);
+  
+  auto ArgMapCreateT = FunctionType::get(ArgMapRT, false);
+  auto ArgMapCreateF = TheModule.getOrInsertFunction("legion_argument_map_create", ArgMapCreateT);
+  
+  Value* ArgMapRV = Builder_.CreateCall(ArgMapCreateF, None, "arg_map");
+  
+  auto ArgMapA = createEntryBlockAlloca(TheFunction, ArgMapType_, "arg_map.alloca");
+  store(ArgMapRV, ArgMapA);
+  
+  //----------------------------------------------------------------------------
+  // Launch
+ 
+  auto MapperIdV = llvmValue(TheContext_, MapperIdType_, 0); 
+  auto MappingTagIdV = llvmValue(TheContext_, MappingTagIdType_, 0); 
+  auto PredicateV = load(PredicateA, TheModule, "predicate");
+  auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskId);
+  auto MustV = Constant::getNullValue(BoolType_);
+  auto ArgMapV = load(ArgMapA, TheModule, "arg_map");
+  
+  ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
+  ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
+
+  auto LauncherRT = reduceStruct(LauncherType_, TheModule);
+
+  std::vector<Value*> LaunchArgVs = {TaskIdV, DomainRectA, ArgDataPtrV, ArgSizeV, 
+    ArgMapV, PredicateV, MustV, MapperIdV, MappingTagIdV};
+  auto LaunchArgTs = llvmTypes(LaunchArgVs);
+
+  auto LaunchT = FunctionType::get(LauncherRT, LaunchArgTs, false);
+  auto LaunchF = TheModule.getFunction("legion_index_launcher_create");
+  if (!LaunchF) {
+    LaunchF = Function::Create(LaunchT, Function::InternalLinkage,
+        "legion_index_launcher_create", &TheModule);
+    auto Arg = LaunchF->arg_begin();
+    ++Arg;
+    Arg->addAttr(Attribute::ByVal);
+  }
+
+  Value* LauncherRV = Builder_.CreateCall(LaunchF, LaunchArgVs, "launcher_create");
+  auto LauncherA = createEntryBlockAlloca(TheFunction, LauncherType_, "task_launcher.alloca");
+  store(LauncherRV, LauncherA);
+  
+  //----------------------------------------------------------------------------
+  // Add futures
+ 
+  auto FutureRT = reduceStruct(FutureType_, TheModule);
+
+  std::vector<Type*> AddFutureArgTs = {LauncherRT, FutureRT};
+  auto AddFutureT = FunctionType::get(VoidType_, AddFutureArgTs, false);
+  auto AddFutureF = TheModule.getOrInsertFunction("legion_task_launcher_add_future", AddFutureT);
+
+  for (auto i : FutureArgId) {
+    auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "tmpalloca");
+    Builder_.CreateStore( ArgVs[i], FutureA );
+    auto FutureRV = load(FutureA, TheModule, "future");
+    auto LauncherRV = load(LauncherA, TheModule, "task_launcher");
+    std::vector<Value*> AddFutureArgVs = {LauncherRV, FutureRV};
+    Builder_.CreateCall(AddFutureF, AddFutureArgVs, "add_future");
+  }
+  
+  //----------------------------------------------------------------------------
+  // Execute
+  
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  
+  LauncherRV = load(LauncherA, TheModule, "task_launcher");
+  auto ContextV = load(ContextA, TheModule, "context");
+  auto RuntimeV = load(RuntimeA, TheModule, "runtime");
+
+  // args
+  std::vector<Value*> ExecArgVs = { RuntimeV, ContextV, LauncherRV };
+  auto ExecArgTs = llvmTypes(ExecArgVs);
+  auto FutureMapRT = reduceStruct(FutureMapType_, TheModule);
+
+  auto ExecT = FunctionType::get(FutureMapRT, ExecArgTs, false);
+  auto ExecF = TheModule.getOrInsertFunction("legion_index_launcher_execute", ExecT);
+  
+  auto FutureMapRV = Builder_.CreateCall(ExecF, ExecArgVs, "launcher_exec");
+  auto FutureMapA = createEntryBlockAlloca(TheFunction, FutureMapType_, "future_map.alloca");
+  store(FutureMapRV, FutureMapA);
+  
+	//----------------------------------------------------------------------------
+  // Destroy argument map
+  
+  ArgMapRV = load(ArgMapA, TheModule, "arg_map");
+
+  auto DestroyMapT = FunctionType::get(VoidType_, ArgMapRT, false);
+  auto DestroyMapF = TheModule.getOrInsertFunction("legion_argument_map_destroy", DestroyMapT);
+
+  Builder_.CreateCall(DestroyMapF, ArgMapRV, "arg_map_destroy");
+  
+  //----------------------------------------------------------------------------
+  // Destroy launcher
+  
+  LauncherRV = load(LauncherA, TheModule, "task_launcher");
+
+  auto DestroyT = FunctionType::get(VoidType_, LauncherRT, false);
+  auto DestroyF = TheModule.getOrInsertFunction("legion_index_launcher_destroy", DestroyT);
+
+  Builder_.CreateCall(DestroyF, LauncherRV, "launcher_destroy");
+  
+  //----------------------------------------------------------------------------
+  // Deallocate storate
+  ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
+  TmpA = Builder_.CreateAlloca(VoidType_, nullptr); // not needed but InsertAtEnd doesnt work
+  CallInst::CreateFree(ArgDataPtrV, TmpA);
+  TmpA->eraseFromParent();
+
+  return Builder_.CreateLoad(FutureMapType_, FutureMapA);
+}
+
+
+//==============================================================================
 // get a future value
 //==============================================================================
-llvm::Value* LegionTasker::loadFuture(Module &TheModule, llvm::Value* FutureA,
-    llvm::Type *DataT, llvm::Value* DataSizeV)
+Value* LegionTasker::loadFuture(Module &TheModule, Value* FutureA,
+    Type *DataT, Value* DataSizeV)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -870,7 +1176,7 @@ llvm::Value* LegionTasker::loadFuture(Module &TheModule, llvm::Value* FutureA,
 //==============================================================================
 // insert a future value
 //==============================================================================
-llvm::Value* LegionTasker::createFuture(Module &, llvm::Function* TheFunction,
+Value* LegionTasker::createFuture(Module &, Function* TheFunction,
     const std::string & Name)
 {
   auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "future.alloca");
@@ -881,7 +1187,7 @@ llvm::Value* LegionTasker::createFuture(Module &, llvm::Function* TheFunction,
 //==============================================================================
 // destroey a future value
 //==============================================================================
-void LegionTasker::destroyFuture(Module &TheModule, llvm::Value* FutureA)
+void LegionTasker::destroyFuture(Module &TheModule, Value* FutureA)
 {
   // args
   auto FutureRV = load(FutureA, TheModule, "future");

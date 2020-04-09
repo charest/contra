@@ -516,6 +516,21 @@ void Analyzer::visit(ForeachStmtAST& e)
   for ( const auto & ST : VarAccessTable_ )
     for ( const auto & VarN : ST )
       e.addAccessedVariable(VarN);
+
+	std::vector<VariableEntry> VarDs;
+	for (const auto & VarN : e.getAccessedVariables()) {
+		auto VarE = findVariable(VarN);
+		const auto & VarD = VarE.Result->second;
+		VarDs.emplace_back(VarD);
+	}
+
+  std::string Name = "__loop__";
+  e.setName(Name);
+  
+  // lift out the foreach
+  auto IndexTask = std::make_unique<IndexTaskAST>(Name, 
+      std::move(e.moveBodyExprs()), e.getVarName(), VarDs);
+  ExtraFunctions_.emplace_back( std::move(IndexTask) );
 }
 
 //==============================================================================
@@ -707,5 +722,9 @@ void Analyzer::visit(TaskAST& e)
   IsInsideTask_ = true;
   visit( static_cast<FunctionAST&>(e) );
 }
+
+//==============================================================================
+void Analyzer::visit(IndexTaskAST& e)
+{}
 
 }

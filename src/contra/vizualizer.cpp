@@ -268,4 +268,8 @@ void Vizualizer::visit(FunctionAST& e)
 void Vizualizer::visit(TaskAST& e)
 { visit(static_cast<FunctionAST&>(e)); }
 
+//==============================================================================
+void Vizualizer::visit(IndexTaskAST& e)
+{}
+
 }

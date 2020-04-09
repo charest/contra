@@ -70,6 +70,7 @@ private:
   void visit(PrototypeAST&) override;
   void visit(FunctionAST&) override;
   void visit(TaskAST&) override;
+  void visit(IndexTaskAST&) override;
   
   std::ostream & out() { return *out_; }
 

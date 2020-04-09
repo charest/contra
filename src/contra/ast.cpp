@@ -95,4 +95,8 @@ void FunctionAST::accept(AstVisiter& visiter)
 void TaskAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
+//==============================================================================
+void IndexTaskAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
 } // namespace

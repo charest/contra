@@ -30,6 +30,8 @@ class NodeAST {
   SourceLocation Loc_;
 
 public:
+
+	NodeAST() = default;
   
   NodeAST(const SourceLocation & Loc) : Loc_(Loc) {}
   
@@ -404,6 +406,7 @@ public:
 //==============================================================================
 class ForeachStmtAST : public ForStmtAST {
 
+  std::string Name_;
   std::set<std::string> AccessedVariables_;
 
 public:
@@ -426,6 +429,11 @@ public:
 
   const auto & getAccessedVariables()
   { return AccessedVariables_; }
+
+  auto moveBodyExprs() { return std::move(BodyExprs_); }
+
+  void setName(const std::string& Name) { Name_ = Name; }
+  const auto & getName() const { return Name_; }
   
 };
 
@@ -618,6 +626,10 @@ protected:
   std::string Name_;
 
 public:
+  
+FunctionAST(const std::string & Name, ASTBlock Body, bool IsTask = false)
+      : BodyExprs_(std::move(Body)), IsTask_(IsTask), Name_(Name)
+  {}
 
   FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
       std::unique_ptr<NodeAST> Return, bool IsTask = false)
@@ -666,6 +678,36 @@ public:
 
   virtual std::string getClassName() const override
   { return "TaskAST"; };
+
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/// TaskAST - This class represents a function definition itself.
+////////////////////////////////////////////////////////////////////////////////
+class IndexTaskAST : public FunctionAST {
+
+	using VariableEntry = std::shared_ptr<VariableDef>;
+  std::string LoopVarName_;
+  std::vector<VariableEntry> Vars_;
+
+public:
+
+  IndexTaskAST(const std::string & Name, ASTBlock Body,
+      const std::string & LoopVar, const std::vector<VariableEntry>& Vars)
+      : FunctionAST(Name, std::move(Body), true), LoopVarName_(LoopVar),
+ 				Vars_(Vars)
+  {}
+
+  virtual void accept(AstVisiter& visiter) override;
+
+  virtual std::string getClassName() const override
+  { return "IndexTaskAST"; };
+ 
+  const auto & getVariables()
+  { return Vars_; }
+ 
+  const auto & getLoopVariableName() const { return LoopVarName_; }
+  const auto & getName() const { return Name_; }
 
 };
 

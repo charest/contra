@@ -48,7 +48,7 @@ private:
   bool IsInsideTask_ = false;
 
   bool HaveTopLevelTask_ = false;
- 
+
   Scoper::value_type createScope() override {
     VariableTable_.push_front({});
     VarAccessTable_.push_front({});
@@ -64,6 +64,8 @@ private:
   }
 
 public:
+  
+  std::vector<std::unique_ptr<FunctionAST>> ExtraFunctions_;
 
   Analyzer(std::shared_ptr<BinopPrecedence> Prec) : BinopPrecedence_(std::move(Prec))
   {
@@ -129,6 +131,7 @@ private:
 
   void visit(FunctionAST&) override;
   void visit(TaskAST&) override;
+  void visit(IndexTaskAST&) override;
   
   // base type interface
   TypeEntry getBaseType(const std::string & Name, const SourceLocation & Loc);

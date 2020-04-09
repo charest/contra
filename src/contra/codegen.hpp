@@ -50,6 +50,7 @@ class CodeGen : public AstVisiter, public Scoper {
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
   bool IsInsideTask_ = false;
+  std::vector<std::unique_ptr<llvm::Module>> ExtraModules_;
 
   // symbol tables
   std::map<std::string, Type*> TypeTable_;
@@ -99,7 +100,6 @@ public:
   //============================================================================
 
   /// Top-Level parsing and JIT Driver
-  std::unique_ptr<llvm::Module> createModule(const std::string & = "");
   void initializeModuleAndPassManager();
   void initializeModule();
   void initializePassManager();
@@ -209,6 +209,7 @@ private:
   void visit(PrototypeAST&) override;
   void visit(FunctionAST&) override;
   void visit(TaskAST&) override;
+  void visit(IndexTaskAST&) override;
   
 
   // visitor helper

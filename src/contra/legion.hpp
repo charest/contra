@@ -27,6 +27,7 @@ protected:
   llvm::Type* MappingTagIdType_ = nullptr;
   llvm::Type* FutureIdType_ = nullptr;
   llvm::Type* CoordType_ = nullptr;
+  llvm::Type* Point1dType_ = nullptr;
   
   llvm::StructType* TaskType_ = nullptr;
   llvm::StructType* RegionType_ = nullptr;
@@ -40,9 +41,17 @@ protected:
   llvm::StructType* TaskConfigType_ = nullptr;
   llvm::StructType* TaskArgsType_ = nullptr;
   llvm::StructType* DomainPointType_ = nullptr;
-  
-  llvm::AllocaInst* ContextAlloca_ = nullptr;
-  llvm::AllocaInst* RuntimeAlloca_ = nullptr;
+  llvm::StructType* Rect1dType_ = nullptr;
+  llvm::StructType* DomainRectType_ = nullptr;    
+  llvm::StructType* ArgMapType_ = nullptr;
+  llvm::StructType* FutureMapType_ = nullptr;
+
+  struct TaskEntry {
+    llvm::AllocaInst* ContextAlloca = nullptr;
+    llvm::AllocaInst* RuntimeAlloca = nullptr;
+  };
+
+  std::forward_list<TaskEntry> TaskAllocas_;
 
 public:
  
@@ -66,6 +75,9 @@ public:
   
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) override;
+  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
+      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &,
+      llvm::Value*, llvm::Value*) override;
   
   virtual bool isFuture(llvm::Value*) const override;
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) override;
@@ -76,15 +88,21 @@ public:
 
 protected:
 
-  void reset() {
-    ContextAlloca_ = nullptr;
-    RuntimeAlloca_ = nullptr;
+  auto & getCurrentTask() { return TaskAllocas_.front(); }
+  const auto & getCurrentTask() const { return TaskAllocas_.front(); }
+
+  auto & startTask() { 
+    TaskAllocas_.push_front({});
+    return getCurrentTask();
   }
+  void finishTask() { TaskAllocas_.pop_front(); }
 
   llvm::StructType* createOpaqueType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskConfigOptionsType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskArgumentsType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createDomainPointType(const std::string &, llvm::LLVMContext &);
+  llvm::StructType* createRect1dType(const std::string &, llvm::LLVMContext &);
+  llvm::StructType* createDomainRectType(const std::string &, llvm::LLVMContext &);
 
 };
 
