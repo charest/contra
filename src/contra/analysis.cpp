@@ -99,11 +99,10 @@ Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
 {
   auto res = findVariable(Name);
 
-  auto it = VarAccessTable_.begin();
-  for (int i=0; i<res.Scope; ++i) ++it;
-  it->emplace(Name); 
-
-  if (res.IsFound) return res.Result->second;
+  if (res.IsFound) {
+ 	 	VarAccessTable_[res.Scope].emplace(Name);
+ 		return res.Result->second;
+	}
   THROW_NAME_ERROR("Variable '" << Name << "' has not been"
      << " previously defined", Loc);
   return {};
@@ -530,7 +529,7 @@ void Analyzer::visit(ForeachStmtAST& e)
   // lift out the foreach
   auto IndexTask = std::make_unique<IndexTaskAST>(Name, 
       std::move(e.moveBodyExprs()), e.getVarName(), VarDs);
-  ExtraFunctions_.emplace_back( std::move(IndexTask) );
+	addFunctionAST(std::move(IndexTask));
 }
 
 //==============================================================================

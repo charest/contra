@@ -144,18 +144,6 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 JIT::VModuleKey CodeGen::doJIT()
 {
-  for (auto && EM : ExtraModules_) {
-    std::cout << "jitting extra modules" << std::endl;
-    EM->print(outs(), nullptr);
-    outs() << "\n";
-    TheJIT_.addModule( std::move(EM) );
-    std::cout << "done extra modules" << std::endl;
-  }
-    ExtraModules_.clear();
-    
-	TheModule_->print(outs(), nullptr);
-  outs() << "\n";
-
   auto TmpModule = std::move(TheModule_);
   initializeModuleAndPassManager();
   auto H = TheJIT_.addModule(std::move(TmpModule));
@@ -1283,6 +1271,7 @@ void CodeGen::visit(ForeachStmtAST& e)
   }
 
   auto TaskN = e.getName();
+std::cout << "looking for task " << TaskN << std::endl;
   auto TaskI = Tasker_->getTask(TaskN);
   Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgVs, TaskArgSizes,
       StartA, EndA);

@@ -1112,7 +1112,7 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto ExecT = FunctionType::get(FutureMapRT, ExecArgTs, false);
   auto ExecF = TheModule.getOrInsertFunction("legion_index_launcher_execute", ExecT);
   
-  auto FutureMapRV = Builder_.CreateCall(ExecF, ExecArgVs, "launcher_exec");
+  Value* FutureMapRV = Builder_.CreateCall(ExecF, ExecArgVs, "launcher_exec");
   auto FutureMapA = createEntryBlockAlloca(TheFunction, FutureMapType_, "future_map.alloca");
   store(FutureMapRV, FutureMapA);
   
@@ -1126,6 +1126,17 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
 
   Builder_.CreateCall(DestroyMapF, ArgMapRV, "arg_map_destroy");
   
+	//----------------------------------------------------------------------------
+  // Destroy future map
+  
+  FutureMapRV = load(FutureMapA, TheModule, "future_map");
+
+  auto DestroyFutureMapT = FunctionType::get(VoidType_, FutureMapRT, false);
+  auto DestroyFutureMapF = TheModule.getOrInsertFunction("legion_future_map_destroy", DestroyFutureMapT);
+
+  Builder_.CreateCall(DestroyFutureMapF, FutureMapRV, "future_map_destroy");
+  
+
   //----------------------------------------------------------------------------
   // Destroy launcher
   
@@ -1143,7 +1154,8 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   CallInst::CreateFree(ArgDataPtrV, TmpA);
   TmpA->eraseFromParent();
 
-  return Builder_.CreateLoad(FutureMapType_, FutureMapA);
+  //return Builder_.CreateLoad(FutureMapType_, FutureMapA);
+	return nullptr;
 }
 
 
@@ -1170,7 +1182,7 @@ Value* LegionTasker::loadFuture(Module &TheModule, Value* FutureA,
   auto DataA = createEntryBlockAlloca(TheFunction, DataT);
   memCopy(DataPtrV, DataA, DataSizeV);
 
-  return Builder_.CreateLoad(FutureType_, DataA, "future");;
+  return Builder_.CreateLoad(FutureType_, DataA, "future");
 }
 
 //==============================================================================

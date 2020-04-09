@@ -50,7 +50,6 @@ class CodeGen : public AstVisiter, public Scoper {
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
   bool IsInsideTask_ = false;
-  std::vector<std::unique_ptr<llvm::Module>> ExtraModules_;
 
   // symbol tables
   std::map<std::string, Type*> TypeTable_;

@@ -9,6 +9,7 @@
 #include "scope.hpp"
 #include "symbols.hpp"
 
+#include <deque>
 #include <iostream>
 #include <forward_list>
 #include <fstream>
@@ -33,7 +34,7 @@ private:
   std::set<std::string> TaskTable_; 
   
   std::forward_list< std::map<std::string, VariableEntry> > VariableTable_;
-  std::forward_list< std::set<std::string> > VarAccessTable_;
+  std::deque< std::set<std::string> > VarAccessTable_;
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
@@ -48,6 +49,8 @@ private:
   bool IsInsideTask_ = false;
 
   bool HaveTopLevelTask_ = false;
+  
+  std::deque<std::unique_ptr<FunctionAST>> FunctionQueue_;
 
   Scoper::value_type createScope() override {
     VariableTable_.push_front({});
@@ -64,8 +67,6 @@ private:
   }
 
 public:
-  
-  std::vector<std::unique_ptr<FunctionAST>> ExtraFunctions_;
 
   Analyzer(std::shared_ptr<BinopPrecedence> Prec) : BinopPrecedence_(std::move(Prec))
   {
@@ -79,6 +80,21 @@ public:
   }
 
   virtual ~Analyzer() = default;
+
+	// function queue
+	std::unique_ptr<FunctionAST> getNextFunctionAST()
+  {
+		if (FunctionQueue_.empty())
+			 return nullptr;
+	  else {
+			auto F = std::move(FunctionQueue_.front());
+			FunctionQueue_.pop_front();
+			return F;
+		} 
+	}
+
+	void addFunctionAST( std::unique_ptr<FunctionAST> F )
+	{ FunctionQueue_.emplace_back( std::move(F) ); }
   
   // visitor interface
   template<
