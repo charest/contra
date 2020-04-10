@@ -21,8 +21,9 @@ Value* llvmString(LLVMContext & TheContext,
   auto GVStr = new GlobalVariable(TheModule, ConstantArray->getType(), true,
       GlobalValue::InternalLinkage, ConstantArray);
   auto ZeroC = Constant::getNullValue(IntegerType::getInt32Ty(TheContext));
+  std::vector<Value*> IndicesC = {ZeroC, ZeroC};
   auto StrV = ConstantExpr::getGetElementPtr(
-      IntegerType::getInt8Ty(TheContext), GVStr, ZeroC, true);
+      nullptr, GVStr, IndicesC, true);
   return StrV;
 }
 

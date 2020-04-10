@@ -1043,7 +1043,8 @@ void CodeGen::visit(CallExprAST &e) {
   }
   //----------------------------------------------------------------------------
   else {
-    ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, "calltmp");
+    std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
+    ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
   }
 
 }

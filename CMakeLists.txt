@@ -45,44 +45,34 @@ target_compile_definitions(contra PUBLIC ${LLVM_DEFINITIONS})
 
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
-llvm_map_components_to_libnames(llvm_libs core mcjit native orcjit objcarcopts)
-set( llvm_libs LLVM )
+llvm_map_components_to_libnames(llvm_libs core mcjit native orcjit objcarcopts target
+  webassemblycodegen aarch64codegen amdgpuinfo support)
+llvm_map_components_to_libnames(llvm_libs support all)
+#set( llvm_libs LLVM )
 target_link_libraries(contra PUBLIC ${llvm_libs})
 
 #------------------------------------------------------------------------------#
 # Legion
 #------------------------------------------------------------------------------#
 
-set(LEGION_DIR ${PROJECT_SOURCE_DIR}/legion)
-file(GLOB _legion_contents ${LEGION_DIR}/*)
-if (_legion_contents)
-  ExternalProject_Add(legion
-    SOURCE_DIR  ${LEGION_DIR}
-    INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
-    UPDATE_COMMAND  ""
-    CMAKE_ARGS
-      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-      -DBUILD_SHARED_LIBS=True
-  )
-  set( Legion_ROOT "${CMAKE_INSTALL_PREFIX}" CACHE FORCE "Legion root install directory.")
-endif()
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-find_package(Legion)
-if (Legion_FOUND)
-  
-  # need pthreads
-  set(THREADS_PREFER_PTHREAD_FLAG ON)
-  find_package(Threads REQUIRED)
-  # need zlib
-  find_package(ZLIB REQUIRED)
-  # add other necessary libaries for legion
-  list(APPEND Legion_LIBRARIES Threads::Threads ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-  if(UNIX AND NOT APPLE)
-    list(APPEND Legion_LIBRARIES rt)
-  endif()
-  target_include_directories(contra PUBLIC ${Legion_INCLUDE_DIRS})
-  target_link_libraries(contra PUBLIC ${Legion_LIBRARIES})
+find_package(Legion REQUIRED)
+MESSAGE(STATUS "Legion includes: ${Legion_INCLUDE_DIRS}")
+MESSAGE(STATUS "Legion libraries: ${Legion_LIBRARIES}")
+
+# need pthreads
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+# need zlib
+find_package(ZLIB REQUIRED)
+# add other necessary libaries for legion
+list(APPEND Legion_LIBRARIES Threads::Threads ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+if(UNIX AND NOT APPLE)
+  list(APPEND Legion_LIBRARIES rt)
 endif()
+target_include_directories(contra PUBLIC ${Legion_INCLUDE_DIRS})
+target_link_libraries(contra PUBLIC ${Legion_LIBRARIES})
 
 #------------------------------------------------------------------------------#
 # build library
