@@ -6,6 +6,9 @@ Contra
 Installation
 ----------------
 
+Contra currently depends on [Legion](https://legion.stanford.edu/) and 
+[LLVM](http://llvm.org/) version 9.  If you build Legion yourself, it *MUST* be
+build as a shared library (i.e. with -DBUILD_SHARED_LIBS=on).
 
     # Build third-party libraries (optional)
     cd external
@@ -23,6 +26,14 @@ Installation
 
 Getting Started
 ---------------
+
+To run one of the examples,
+
+    ./contra ../examples/contra/00_hello_world/hello.cta
+
+will produce
+
+    Hello World!
 
 Documentation
 ---------------
