@@ -34,6 +34,9 @@ Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
     auto TheBlock = Builder_.GetInsertBlock();
     auto NewT = reduceStruct(StrucT, TheModule);
     std::string Str = StrucT->hasName() ? StrucT->getName().str()+".cast" : "casttmp";
+    V->print(outs()); outs() << "\n";
+    NewT->print(outs()); outs() << "\n";
+
     auto Cast = CastInst::Create(CastInst::BitCast, V, NewT, Str, TheBlock);
     return Cast;
   }

@@ -640,7 +640,7 @@ void CodeGen::destroyArray(const std::string & Name, Value* Alloca)
 
   auto AllocaT = Alloca->getType()->getPointerElementType();
   auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
-  Builder_.CreateCall(F, Vec, Name+"dealloctmp");
+  Builder_.CreateCall(F, Vec);
 }
 
 //==============================================================================

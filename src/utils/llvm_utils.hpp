@@ -92,7 +92,7 @@ auto llvmValue( llvm::LLVMContext & TheContext, T Val )
 template<typename T>
 llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
 {
-  auto Size = sizeof(T) * 8;
+  auto Size = Ty->  getIntegerBitWidth();
   auto IsSigned = std::is_signed<T>::value;
   return llvm::Constant::getIntegerValue(Ty, llvm::APInt(Size, Val, IsSigned));
 
