@@ -26,3 +26,5 @@ Getting Started
 
 Documentation
 ---------------
+
+[Wiki](wiki/home)
