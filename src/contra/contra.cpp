@@ -61,8 +61,6 @@ void Contra::handleFunction()
 		TheAnalyser_->addFunctionAST( std::move(FnAST) );
     
 		while (FnAST = TheAnalyser_->getNextFunctionAST()) {
-			std::cout << "working on function part of " << Name  << " in " << 
-				FnAST->getClassName() << std::endl;
     	if (dumpDot()) TheViz_->runVisitor(*FnAST);
     	auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     	if (dumpIR()) FnIR->print(*IRFileStream_);
