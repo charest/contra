@@ -27,4 +27,5 @@ Getting Started
 Documentation
 ---------------
 
-[Wiki](https://gitlab.lanl.gov/charest/contra/-/wikis/home)
+See the [wiki](https://gitlab.lanl.gov/charest/contra/-/wikis/home) for more
+information on the Contra language and the compiler/interpreter. 
