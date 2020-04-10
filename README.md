@@ -27,4 +27,4 @@ Getting Started
 Documentation
 ---------------
 
-[Wiki](https://gitlab.lanl.gov/charest/contra/-/wiki/home)
+[Wiki](https://gitlab.lanl.gov/charest/contra/-/wikis/home)
