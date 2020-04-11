@@ -34,6 +34,9 @@ To run one of the examples,
 will produce
 
     Hello World!
+    
+There are a bunch of tests and examples that you can try.  They are located in
+the `examples` and `testing` folders.
 
 Documentation
 ---------------
