@@ -40,7 +40,7 @@ Ans = 3
 
 ## Functions
 
-Functions may be defined anywhere in the code, provided they are defined before they are used, and that their definition resides within the global scope.  The following program
+[Functions](reference.md#function) may be defined anywhere in the code, provided they are defined before they are used, and that their definition resides within the global scope.  The following program
 ```
 print("Hello World!\n")                                                                           
 
@@ -56,6 +56,8 @@ Hello World!
 Hello World Again!
 ```
 
+## Function Arguments and Return Specification
+
 Functions may also have arguments and return a value
 ```
 function addOne(x : i64) -> i64
@@ -68,6 +70,7 @@ outputs
 ```
 1+1 is 2
 ```
+The return type is specified to the right of the *->*.  Note that only one return specifier is allowed, and this must occur at the end of the function.  The argument is specified as `x : i64`, which idicates the function has one parameter whose variable name is *x* and type is *i64*.  Only two fundamental types are recognized right now, *i64* and *f64*, i.e. 64 bit integers and floating points.  Integers are signed.
 
 ## Control Flow
 
