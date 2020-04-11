@@ -2,13 +2,16 @@ Learn By Example
 ================
 
 There is no predefined *main* function in Contra.  A program may be comprised of a simple
-[*print*](reference.md#print) statement.
-
+[*print*](reference.md#print) statement.  For example,
 ```
 print("Hello World!\n")
 ```
+simply prints
+```
+Hello World!
+```
 
-
+A slightly more complicated example might look like,
 ```
 # This is a comment, and is ignored by the compiler
 print("Hello World!\n")
@@ -21,6 +24,16 @@ print("Printing the number one, %d\n", 1)
 print("1 + 2 = \n")
 1+2
 ```
+outputs
+~~~
+Hello World!
+Hello Again!
+Printing the number one, 1
+1 + 2 =
+Ans = 3
+~~~
+
+
 
 ```
 function fizzbuzz(number : i64)
