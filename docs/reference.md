@@ -2,6 +2,7 @@ Language Reference
 ==================
 
 [Comments](#comments)
+[Comments](#print)
 
 
 
@@ -20,3 +21,4 @@ entire block of code, you must prefix each line with a `#` character.  That is
      # comment.
      var i = 1 + 2
 
+### Print
