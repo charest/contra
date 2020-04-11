@@ -32,9 +32,6 @@ if (BUILD_LLVM)
       -DLLVM_ENABLE_RTTI=ON
       -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
   )
-else()
-  message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 endif()
 
 #------------------------------------------------------------------------------#
@@ -44,16 +41,12 @@ option(BUILD_LEGION "Build legion." ON)
 if (BUILD_LEGION)
   MESSAGE(STATUS "Building Legion.")
   ExternalProject_Add(legion
-    GIT_REPOSITORY http://github.com/StanfordLegion/legion.git
+    GIT_REPOSITORY https://github.com/StanfordLegion/legion.git
     INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
     UPDATE_COMMAND  ""
     CMAKE_ARGS
       -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
       -DBUILD_SHARED_LIBS=True
   )
-else()
-  MESSAGE(STATUS "Found Legion")
-  MESSAGE(STATUS "Legion includes: ${Legion_INCLUDE_DIRS}")
-  MESSAGE(STATUS "Legion libraries: ${Legion_LIBRARIES}")
 endif()
 

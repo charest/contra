@@ -25,6 +25,9 @@ include(BuildType)
 set( CONTRA_TEST_TOLERANCE 1e-14 CACHE INTERNAL "")
 set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 
+# options
+option(BUILD_SHARED_LIBS "Build shared libraries." ON)
+
 #------------------------------------------------------------------------------#
 # configure targets
 #------------------------------------------------------------------------------#
@@ -45,11 +48,11 @@ target_compile_definitions(contra PUBLIC ${LLVM_DEFINITIONS})
 
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
-llvm_map_components_to_libnames(llvm_libs core mcjit native orcjit objcarcopts target
-  webassemblycodegen aarch64codegen amdgpuinfo support)
-llvm_map_components_to_libnames(llvm_libs support all)
-#set( llvm_libs LLVM )
-target_link_libraries(contra PUBLIC ${llvm_libs})
+if (BUILD_SHARED_LIBS)
+  llvm_config(contra USE_SHARED all)
+else()
+  llvm_config(contra all)
+endif()
 
 #------------------------------------------------------------------------------#
 # Legion
