@@ -41,5 +41,5 @@ the `examples` and `testing` folders.
 Documentation
 ---------------
 
-See the [wiki](https://gitlab.lanl.gov/charest/contra/-/wikis/home) for more
+See the [wiki](docs/home.md) for more
 information on the Contra language and the compiler/interpreter. 
