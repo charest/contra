@@ -104,6 +104,26 @@ protected:
   llvm::StructType* createRect1dType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createDomainRectType(const std::string &, llvm::LLVMContext &);
 
+  llvm::AllocaInst* createPredicateTrue(llvm::Module &);
+  llvm::AllocaInst* createGlobalArguments(
+      llvm::Module &,
+      const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &,
+      std::vector<unsigned> &);
+  void createGlobalFutures(
+    llvm::Module &,
+    llvm::Value*,
+    const std::vector<llvm::Value*> &,
+    const std::vector<llvm::Value*> &,
+    const std::vector<unsigned> & );
+  llvm::AllocaInst* createOpaqueType(llvm::Module&, llvm::StructType*, const std::string &,
+      const std::string & = "");
+  void destroyOpaqueType(llvm::Module&, llvm::Value*, const std::string &,
+      const std::string & = "");
+  void destroyGlobalArguments(llvm::Module&, llvm::AllocaInst*);
+  void createRegistrationArguments(llvm::Module&, llvm::AllocaInst*&,
+      llvm::AllocaInst*&, llvm::AllocaInst*&);
+
 };
 
 } // namepsace

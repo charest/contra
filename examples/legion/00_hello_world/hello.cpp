@@ -52,12 +52,12 @@ int main(int argc, char **argv)
     execution_constraints, LOC_PROC);
 
   legion_task_config_options_t options{
-    .leaf=false,
-    .inner=false,
-    .idempotent=false,
-    .replicable=false};
+    /*.leaf=*/ false,
+    /*.inner=*/ false,
+    /*.idempotent=*/ false,
+    /*.replicable=*/ false};
 
-  auto variant_id = legion_runtime_preregister_task_variant_fnptr(
+  /*auto variant_id =*/ legion_runtime_preregister_task_variant_fnptr(
     HELLO_WORLD_ID,
     AUTO_GENERATE_ID,
     "hello_world task",

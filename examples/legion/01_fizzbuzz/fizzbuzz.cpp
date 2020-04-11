@@ -111,10 +111,10 @@ int main(int argc, char **argv)
       execution_constraints[0], LOC_PROC);
 
     legion_task_config_options_t options{
-      .leaf=false,
-      .inner=false,
-      .idempotent=false,
-      .replicable=false};
+      /*.leaf=*/ false,
+      /*.inner=*/ false,
+      /*.idempotent=*/ false,
+      /*.replicable=*/ false};
 
     //legion_task_id_t variant_id =
       legion_runtime_preregister_task_variant_fnptr(
@@ -138,10 +138,10 @@ int main(int argc, char **argv)
       execution_constraints[1], LOC_PROC);
 
     legion_task_config_options_t options{
-      .leaf=false,
-      .inner=false,
-      .idempotent=false,
-      .replicable=false};
+      /*.leaf=*/ false,
+      /*.inner=*/ false,
+      /*.idempotent=*/ false,
+      /*.replicable=*/ false};
 
     //legion_task_id_t variant_id =
       legion_runtime_preregister_task_variant_fnptr(

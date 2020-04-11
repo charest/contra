@@ -161,7 +161,7 @@ Value* AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 { 
   setStarted();
   return startRuntime(TheModule, Argc, Argv);
-};
+}
 
 //==============================================================================
 TaskInfo & AbstractTasker::insertTask(const std::string & Name)
