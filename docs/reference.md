@@ -30,7 +30,7 @@ Writes the C string pointed by *format* to the standard output (stdout). If *for
 
 Example:
 
-     print("Decimals: %ld\n", 650000)
+     print("Decimals: %lld\n", 650000)
      print("Preceding with blanks: %10lld \n", 1977)
      print("Preceding with zeros: %010lld \n", 1977)
      print("floats: %4.2f %+.0e %E \n", 3.1416, 3.1416, 3.1416)
