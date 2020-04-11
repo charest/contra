@@ -2,7 +2,8 @@ Language Reference
 ==================
 
 [Comments](#comments)
-[Comments](#print)
+
+[Print](#print)
 
 
 
