@@ -1,6 +1,13 @@
 Learn By Example
 ================
 
+There is no predefined *main* function in Contra.  A program may be comprised of a simple
+[*print*](reference.md#print) statement.
+
+```
+print("Hello World!\n")
+```
+
 
 ```
 # This is a comment, and is ignored by the compiler
