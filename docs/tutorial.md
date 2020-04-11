@@ -1,6 +1,8 @@
 Learn By Example
 ================
 
+## Hello World
+
 There is no predefined *main* function in Contra.  A program may be comprised of a simple
 [*print*](reference.md#print) statement.  For example,
 ```
@@ -11,6 +13,9 @@ simply prints
 Hello World!
 ```
 
+
+## Hello World Redefined
+
 A slightly more complicated example might look like,
 ```
 # This is a comment, and is ignored by the compiler
@@ -18,22 +23,53 @@ print("Hello World!\n")
 print("Hello Again!\n")
 
 # print a number
-print("Printing the number one, %d\n", 1)
+print("Printing the number one, %lld\n", 1)
 
 # do some math
 print("1 + 2 = \n")
 1+2
 ```
 outputs
-~~~
+```
 Hello World!
 Hello Again!
 Printing the number one, 1
 1 + 2 =
 Ans = 3
-~~~
+```
 
+## Functions
 
+Functions may be defined anywhere in the code, provided they are defined before they are used, and that their definition resides within the global scope.  The following program
+```
+print("Hello World!\n")                                                                           
+
+function print_again()
+  print("Hello World Again!\n")
+end
+
+print_again()
+```
+outputs
+```
+Hello World!
+Hello World Again!
+```
+
+Functions may also have arguments and return a value
+```
+function addOne(x : i64) -> i64
+  return x + 1
+end
+
+print("%lld+1 is %lld\n", 1, addOne(1))
+```
+outputs
+```
+1+1 is 2
+```
+
+## Control Flow
 
 ```
 function fizzbuzz(number : i64)
