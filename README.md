@@ -21,7 +21,7 @@ If prebuilt packages are not available, you can build them with CMake.
     cd external
     mkdir build
     cd build
-    cmake -DCMAKE_INSTALL_PREFIX=$PWD/install ..
+    cmake -DCMAKE_INSTALL_PREFIX=$PWD/install -DBUILD_LEGION=on -DBUILD_LLVM=on ..
     make -j
     cd ../../
 
