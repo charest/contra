@@ -1,6 +1,8 @@
 Learn By Example
 ================
 
+In this tutorial, many of the basic language features of Contra.  Once you finish this tutorial, see the more [advanced one](advanced.md) to learn about the powerful parallel programming features.
+
 ### Hello World
 
 There is no predefined *main* function in Contra.  A program may be comprised of a simple
@@ -208,4 +210,3 @@ x[1] is originaly 0, x=0
 x[0] should now be 1, x=1
 x[1] should now be 1, x=1
 ```
-
