@@ -7,10 +7,11 @@ Language Reference
 
 [Functions](#functions)
 
-[If...Then...Else](#if...then...else)
+[If...Then...Else](#ifthenelse)
 
 [Print](#print)
 
+[Variable Declarations](#variable-declarations)
 
 
 ### Comments
@@ -117,3 +118,5 @@ Outputs:
      floats: 3.14 +3e+00 3.141600E+00
      A string
 
+
+### Variable Declarations
