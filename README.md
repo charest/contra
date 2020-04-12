@@ -1,8 +1,5 @@
-Contra
-======
-
 What is Contra?
----------------
+===============
 
 Contra is a new programming language aimed at making parallel computing easy and portable.
 
