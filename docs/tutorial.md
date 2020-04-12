@@ -56,7 +56,7 @@ Hello World!
 Hello World Again!
 ```
 
-### Function Arguments and Return Specification
+###### Function Arguments and Return Specification
 
 Functions may also have arguments and return a value
 ```
