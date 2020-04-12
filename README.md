@@ -6,7 +6,7 @@ Contra is a new programming language aimed at making parallel computing easy and
 Why Should I Use Contra?
 ------------------------
 
-Because you are sick of writing and re-writing your code to take advantage of the ever-changing HPC architechtures.  Write your complicated scientific code once, and harness the power of different parallel paradyms with the flip of a switch!
+Because you are sick of writing and re-writing your code to take advantage of the ever-changing HPC landscape.  Write your complicated scientific code once, and harness the power of different parallel paradyms with the flip of a switch!
 
 Do I Really Have to Learn a New Language?
 -----------------------------------------
