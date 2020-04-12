@@ -56,7 +56,7 @@ Hello World!
 Hello World Again!
 ```
 
-##### Function Arguments and Return Specification
+### Function Arguments and Return Specification
 
 Functions may also have arguments and return a value
 ```
@@ -150,7 +150,7 @@ Fibonacci(6) = 8
 ```
 Here we see a new feature of the language, [variable declarations](reference.md#variable-declarations).  These are the statements that begin with *var*.  In  many cases, the type is not requierd as it can be inferred from the initializer to the right of the *=* sign.  In the Contra programming language, the initializer is always required.  This prevents on from accidentally accessing uninitialized variables.
 
-##### Arrays
+### Arrays
 
 Arrays are the workhorse of many scientific codes.  We try to make their use as simple as possible and eliminate many of the common mistakes made with arrays.  In the following example, you will see the many different ways to initialize and index arrays.
 ```
