@@ -1,7 +1,7 @@
 Learn By Example
 ================
 
-## Hello World
+### Hello World
 
 There is no predefined *main* function in Contra.  A program may be comprised of a simple
 [*print*](reference.md#print) statement.  For example,
@@ -14,7 +14,7 @@ Hello World!
 ```
 
 
-## Hello World Redefined
+### Hello World Redefined
 
 A slightly more complicated example might look like,
 ```
@@ -38,7 +38,7 @@ Printing the number one, 1
 Ans = 3
 ```
 
-## Functions
+### Functions
 
 [Functions](reference.md#function) may be defined anywhere in the code, provided they are defined before they are used, and that their definition resides within the global scope.  The following program
 ```
@@ -56,7 +56,7 @@ Hello World!
 Hello World Again!
 ```
 
-## Function Arguments and Return Specification
+### Function Arguments and Return Specification
 
 Functions may also have arguments and return a value
 ```
@@ -72,7 +72,7 @@ outputs
 ```
 The return type is specified to the right of the *->*.  Note that only one return specifier is allowed, and this must occur at the end of the function.  The argument is specified as `x : i64`, which idicates the function has one parameter whose variable name is *x* and type is *i64*.  Only two fundamental types are recognized right now, *i64* and *f64*, i.e. 64 bit integers and floating points.  Integers are signed.
 
-## Control Flow
+### Control Flow
 
 ```
 function fizzbuzz(number : i64)
@@ -95,6 +95,8 @@ end
 
 main()
 ```
+
+### Variable Declarations
 
 ```
 function sum( f1 : i64, f2 : i64) -> i64
@@ -137,3 +139,5 @@ end
 
 main()
 ```
+
+### Arrays
