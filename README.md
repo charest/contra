@@ -6,17 +6,17 @@ Contra is a new programming language aimed at making parallel computing easy and
 Why Should I Use Contra?
 ------------------------
 
-Because you are sick of writing and re-writing your code to take advantage of the ever-changing HPC landscape.  Write your complicated scientific code once, and harness the power of different parallel paradyms with the flip of a switch!
+Because you are sick of writing and re-writing your code to take advantage of the ever-changing HPC landscape.  Write your complicated scientific code once, and harness the power of different parallel paradigms with the flip of a switch!
 
 Do I Really Have to Learn a New Language?
 -----------------------------------------
 
-I'm sorry, but the Contra language is really, really simple.  I promise!  Although it is probably possible to modify an existing langauge like Fortran or C++, it's just to hard to ensure that you don't do something that breaks the programming model.  We get that its hard to keep track of all the different programming languages, so we strive to make learning Contra as simple as possible.
+I'm sorry, but the Contra language is really, really simple.  I promise!  Although it is probably possible to modify an existing language like Fortran or C++, it's just to hard to ensure that you don't do something that breaks the programming model.  We get that its hard to keep track of all the different programming languages, so we strive to make learning Contra as simple as possible.
 
 I Have All this Code Written in *My-Favorite-Language*, Can I Still Use It?
 ---------------------------------------------------------------------------
 
-Yes.  We provide all the features of parallel paradyms like CUDA, MPI, Legion, etc.., and they themselves are libraries written in other languages.  It is definately possible to provide access to your favorite library.
+Yes.  We provide all the features of parallel paradigms like CUDA, MPI, Legion, etc.., and they themselves are libraries written in other languages.  It is definitely possible to provide access to your favorite library.
 
 Installation
 ----------------
