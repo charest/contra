@@ -56,7 +56,7 @@ Hello World!
 Hello World Again!
 ```
 
-###### Function Arguments and Return Specification
+##### Function Arguments and Return Specification
 
 Functions may also have arguments and return a value
 ```
@@ -74,6 +74,7 @@ The return type is specified to the right of the *->*.  Note that only one retur
 
 ### Control Flow
 
+The next example demonstrates both [*if...then...else*](reference.md#if...then...else) statements and [*for*](#reference.md#for-loops) loops.
 ```
 function fizzbuzz(number : i64)
   if (number % 15 == 0) then
@@ -95,6 +96,8 @@ end
 
 main()
 ```
+The *elif* and *else* components are optional.  There are several different ways to specify the range of the *for* loop.  They are explained in more detail in the [language reference](#reference.md#for-loops).
+
 
 ### Variable Declarations
 

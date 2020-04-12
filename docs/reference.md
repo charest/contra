@@ -3,6 +3,12 @@ Language Reference
 
 [Comments](#comments)
 
+[For Loop](#for-loops)
+
+[Functions](#functions)
+
+[If...Then...Else](#if...then...else)
+
 [Print](#print)
 
 
@@ -19,6 +25,19 @@ There are no special multi-line comments.  If you want to comment out an entire 
      # This is a multi-line
      # comment.
      var i = 1 + 2
+
+### For Loops
+
+Repeats a group of statements for each index in a range.
+
+     for counter in start loop_type end [step step_val] do
+       [ statements ]
+     end
+
+- *counter* is required.  The control variable for the loop.
+- *start* is required.  The starting value for the control variable.
+- *loop_type* is required.  Determines how the *counter* steps through the range.  Permitted values are *to* and *until*.  *to* means the loop range is *[start, end]* while *until* means the loop range is *[start,end)*.
+- *step* is optional.   If it is specified, the *counter* is incremented by *step_val*.
 
 ### Functions
 
@@ -40,6 +59,39 @@ Only one *return* statement is allowed, and it must occur at the end of the func
      function name ( parameter1, parameter2, ...)
        statements
      end
+
+### if...then...else
+
+Conditionally executes a group of statements, depending on the value of an expression.
+
+     if (condition) then
+       [ statements ]
+     [ elif (elseifcondition) then
+       [ elseifstatements ] ]
+     [ else
+       [ elsestatements ] ]
+     end
+
+- *condition* is required.  It must evaluate to *true* or *false*.
+- *then is required.
+- *statements* are optional. One or more statements following *if...then* that are executed if condition evaluates to *true*.
+- *elseifcondition* is required if *elif* is present. Must evaluate to *true* or *false*.
+- *elseifstatements* are optionsal.  One or more statements following *elif...then* that are executed if *elseifcondition* evaluates to *true*.
+- *elsestatements* are optional. One or more statements that are executed if no previous *condition* or *elseifcondition* expression evaluates to *true*.
+- *end* is requred.
+
+Example:
+
+     if (number % 15 == 0) then
+       print("fizzbuzz %d\n", number) 
+     elif (number % 5 == 0) then
+       print("buzz %d\n", number) 
+     elif (number % 3 == 0) then
+       print("fizz %d\n", number) 
+     else
+       print("%d\n", number) 
+     end
+
 
 ### Print
 
