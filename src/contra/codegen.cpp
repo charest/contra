@@ -1272,7 +1272,6 @@ void CodeGen::visit(ForeachStmtAST& e)
   }
 
   auto TaskN = e.getName();
-std::cout << "looking for task " << TaskN << std::endl;
   auto TaskI = Tasker_->getTask(TaskN);
   Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgVs, TaskArgSizes,
       StartA, EndA);
