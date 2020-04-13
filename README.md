@@ -18,8 +18,8 @@ I Have All this Code Written in *My-Favorite-Language*, Can I Still Use It?
 
 Yes.  We provide all the features of parallel paradigms like CUDA, MPI, Legion, etc.., and they themselves are libraries written in other languages.  It is definitely possible to provide access to your favorite library.
 
-Installation
-----------------
+This is Amazing! How Do I Install It? 
+-------------------------------------
 
 Contra currently depends on [Legion](https://legion.stanford.edu/) and 
 [LLVM](http://llvm.org/) version 9.  If you build Legion yourself, it *MUST* be
@@ -62,6 +62,8 @@ will produce
     
 There are a bunch of tests and examples that you can try.  They are located in
 the `examples` and `testing` folders.
+
+***Contra may be used as both a compiler and an interpreter.  However, it is recommended to use it as an interpreter in the manner shown above since Contra is still in early stages of development.***
 
 Documentation
 ---------------
