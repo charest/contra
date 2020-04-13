@@ -194,7 +194,8 @@ private:
   void visit(ValueExprAST<int_t>&) override;
   void visit(ValueExprAST<real_t>&) override;
   void visit(ValueExprAST<std::string>&) override;
-  void visit(VariableExprAST&) override;
+  void visit(VarAccessExprAST&) override;
+  void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;
   void visit(CastExprAST&) override;
   void visit(UnaryExprAST&) override;
@@ -203,6 +204,8 @@ private:
   void visit(ForStmtAST&) override;
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;
+  //void visit(VarAssignAST&) override;
+  //void visit(ArrayAssignAST&) override;
   void visit(VarDeclAST&) override;
   void visit(ArrayDeclAST&) override;
   void visit(PrototypeAST&) override;

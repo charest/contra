@@ -724,9 +724,9 @@ void CodeGen::visit(ValueExprAST<std::string>& e)
 }
  
 //==============================================================================
-// VariableExprAST - Expression class for referencing a variable, like "a".
+// VarAccessExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
-void CodeGen::visit(VariableExprAST& e)
+void CodeGen::visit(VarAccessExprAST& e)
 {
 
   auto Name = e.getName();
@@ -756,14 +756,25 @@ void CodeGen::visit(VariableExprAST& e)
     }
   }
 
-  if ( e.isArray() ) {
-    auto IndexVal = runExprVisitor(*e.getIndexExpr());
-    ValueResult_ = loadArrayValue(VarA, IndexVal, VarE->getType(), Name);
-  }
-  else {
-    ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
-  }
+  ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
 }
+
+//==============================================================================
+// VarAccessExprAST - Expression class for referencing a variable, like "a".
+//==============================================================================
+void CodeGen::visit(ArrayAccessExprAST& e)
+{
+
+  auto Name = e.getName();
+
+  // Look this variable up in the function.
+  auto VarE = getVariable(e.getName());
+  
+  // Load the value.
+  auto IndexVal = runExprVisitor(*e.getIndexExpr());
+  ValueResult_ = loadArrayValue(VarE->getAlloca(), IndexVal, VarE->getType(), Name);
+}
+
 
 //==============================================================================
 // ArrayExprAST - Expression class for arrays.
@@ -866,7 +877,7 @@ void CodeGen::visit(BinaryExprAST& e) {
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a
     // dynamic_cast for automatic error checking.
-    auto LHSE = dynamic_cast<VariableExprAST*>(e.getLeftExpr());
+    auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
     // Codegen the RHS.
     auto VariableV = runExprVisitor(*e.getRightExpr());
 
@@ -877,7 +888,8 @@ void CodeGen::visit(BinaryExprAST& e) {
 
     // array element access
     if (isArray(VariableA)) {
-      auto IndexV = runExprVisitor(*LHSE->getIndexExpr());
+      auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr());
+      auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
       storeArrayValue(VariableV, VariableA, IndexV, VarName);
     }
     // future access

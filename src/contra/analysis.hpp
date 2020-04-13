@@ -131,7 +131,8 @@ private:
   void visit(ValueExprAST<int_t>&) override;
   void visit(ValueExprAST<real_t>&) override;
   void visit(ValueExprAST<std::string>&) override;
-  void visit(VariableExprAST&) override;
+  void visit(VarAccessExprAST&) override;
+  void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;
   void visit(CastExprAST&) override;
   void visit(UnaryExprAST&) override;

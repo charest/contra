@@ -214,26 +214,36 @@ void Analyzer::visit(ValueExprAST<std::string>& e)
 }
 
 //==============================================================================
-void Analyzer::visit(VariableExprAST& e)
+void Analyzer::visit(VarAccessExprAST& e)
+{
+  const auto & Name = e.getName();
+  auto Var = getVariable(Name, e.getLoc());
+  auto VarType = Var->getType();
+
+  // result
+  TypeResult_ = VarType;
+  e.setType(TypeResult_);
+}
+
+//==============================================================================
+void Analyzer::visit(ArrayAccessExprAST& e)
 {
   const auto & Name = e.getName();
   auto Var = getVariable(Name, e.getLoc());
   auto VarType = Var->getType();
 
   // array index
-  if (e.getIndexExpr()) {
-    auto Loc = e.getIndexExpr()->getLoc();
-    
-    if (!VarType.isArray())
-      THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
-    
-    auto IndexType = runExprVisitor(*e.getIndexExpr());
-    if (IndexType != I64Type_)
-      THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
-          << "evaluate to an integer.", Loc );
+  auto Loc = e.getIndexExpr()->getLoc();
+  
+  if (!VarType.isArray())
+    THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
+  
+  auto IndexType = runExprVisitor(*e.getIndexExpr());
+  if (IndexType != I64Type_)
+    THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
+        << "evaluate to an integer.", Loc );
 
-    VarType.setArray(false); // revert to scalar
-  }
+  VarType.setArray(false); // revert to scalar
 
   // result
   TypeResult_ = VarType;
@@ -339,7 +349,7 @@ void Analyzer::visit(BinaryExprAST& e)
     // This assume we're building without RTTI because LLVM builds that way by
     // default.  If you build LLVM with RTTI this can be changed to a
     // dynamic_cast for automatic error checking.
-    auto LHSE = dynamic_cast<VariableExprAST*>(e.getLeftExpr());
+    auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
     if (!LHSE)
       THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
 
@@ -446,7 +456,7 @@ void Analyzer::visit(CallExprAST& e)
     auto ArgExpr = e.getArgExpr(i);
     auto ArgType = runExprVisitor(*ArgExpr);
     bool IsFuture = false;
-    auto VarExpr = dynamic_cast<VariableExprAST*>(ArgExpr);
+    auto VarExpr = dynamic_cast<VarAccessExprAST*>(ArgExpr);
 
     bool ForceValue = false;
     if (i<NumFixedArgs) {

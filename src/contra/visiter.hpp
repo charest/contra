@@ -9,7 +9,8 @@ namespace contra {
 
 template<typename T> class ValueExprAST;
 
-class VariableExprAST;
+class VarAccessExprAST;
+class ArrayAccessExprAST;
 class ArrayExprAST;
 class CastExprAST;
 class UnaryExprAST;
@@ -33,7 +34,8 @@ public:
   virtual void visit(ValueExprAST<int_t>&) = 0;
   virtual void visit(ValueExprAST<real_t>&) = 0;
   virtual void visit(ValueExprAST<std::string>&) = 0;
-  virtual void visit(VariableExprAST&) = 0;
+  virtual void visit(VarAccessExprAST&) = 0;
+  virtual void visit(ArrayAccessExprAST&) = 0;
   virtual void visit(ArrayExprAST&) = 0;
   virtual void visit(CastExprAST&) = 0;
   virtual void visit(UnaryExprAST&) = 0;

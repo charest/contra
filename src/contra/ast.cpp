@@ -16,7 +16,11 @@ std::string StringExprAST::getClassName() const
 { return "StringExprAST"; }
 
 //==============================================================================
-void VariableExprAST::accept(AstVisiter& visiter)
+void VarAccessExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
+void ArrayAccessExprAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================

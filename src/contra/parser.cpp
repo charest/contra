@@ -77,11 +77,11 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
       if (CurTok_ != ']')
         THROW_SYNTAX_ERROR( "Expected ']' at the end of array expression", getCurLoc());
       getNextToken(); // eat ]
-      return std::make_unique<VariableExprAST>(LitLoc, IdName, std::move(Arg));
+      return std::make_unique<ArrayAccessExprAST>(LitLoc, IdName, std::move(Arg));
     }
     // scalar load
     else {
-      return std::make_unique<VariableExprAST>(LitLoc, IdName);
+      return std::make_unique<VarAccessExprAST>(LitLoc, IdName);
     }
 
   } // variable reference

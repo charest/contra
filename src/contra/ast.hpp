@@ -107,39 +107,53 @@ using RealExprAST = ValueExprAST<real_t>;
 using StringExprAST = ValueExprAST<std::string>;
 
 //==============================================================================
-/// VariableExprAST - Expression class for referencing a variable, like "a".
+/// VarAccessExprAST - Expression class for referencing a variable, like "a".
 //==============================================================================
-class VariableExprAST : public ExprAST {
+class VarAccessExprAST : public ExprAST {
 protected:
 
   std::string Name_;
-  std::unique_ptr<NodeAST> IndexExpr_;
   VariableType Type_;
   bool NeedValue_ = true;
 
 public:
 
-  VariableExprAST(const SourceLocation & Loc, const std::string &Name)
+  VarAccessExprAST(const SourceLocation & Loc, const std::string &Name)
     : ExprAST(Loc), Name_(Name)
   {}
 
-  VariableExprAST(const SourceLocation & Loc, const std::string &Name,
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "VarAccessExprAST"; };
+
+  const std::string &getName() const { return Name_; }
+  
+  void setNeedValue(bool NeedValue=true) { NeedValue_=NeedValue; }
+  bool needValue() const { return NeedValue_; }
+};
+
+//==============================================================================
+/// ArrayExprAST - Expression class for referencing an array.
+//==============================================================================
+class ArrayAccessExprAST : public VarAccessExprAST {
+protected:
+  
+  std::unique_ptr<NodeAST> IndexExpr_;
+
+public:
+  ArrayAccessExprAST(const SourceLocation & Loc, const std::string &Name,
       std::unique_ptr<NodeAST> IndexExpr)
-    : ExprAST(Loc), Name_(Name), IndexExpr_(std::move(IndexExpr))
+    : VarAccessExprAST(Loc, Name), IndexExpr_(std::move(IndexExpr))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
-  { return "VariableExprAST"; };
-
-  const std::string &getName() const { return Name_; }
-  auto getIndexExpr() const { return IndexExpr_.get(); }
+  { return "VarAccessExprAST"; };
   
-  bool isArray() const { return static_cast<bool>(IndexExpr_); }
+  auto getIndexExpr() const { return IndexExpr_.get(); }
 
-  void setNeedValue(bool NeedValue=true) { NeedValue_=NeedValue; }
-  bool needValue() const { return NeedValue_; }
 };
 
 //==============================================================================

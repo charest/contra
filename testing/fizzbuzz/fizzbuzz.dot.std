@@ -8,7 +8,7 @@ node2[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">==</FONT>>];
 node2 -> node3 [label=Left];
 node3[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">%</FONT>>];
 node3 -> node4 [label=Left];
-node4[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node4[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 node3 -> node5 [label=Right];
 node5[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">15</FONT>>];
 node2 -> node6 [label=Right];
@@ -18,7 +18,7 @@ node7[label=<CallExprAST<BR /><FONT POINT-SIZE="12">print : void</FONT>>];
 node7 -> node8 [label=Arg0];
 node8[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"fizzbuzz %d..."</FONT>>];
 node7 -> node9 [label=Arg1];
-node9[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node9[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 node1 -> node10 [label=Else];
 node10[label=IfStmtAST];
 node10 -> node11 [label=Cond];
@@ -26,7 +26,7 @@ node11[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">==</FONT>>];
 node11 -> node12 [label=Left];
 node12[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">%</FONT>>];
 node12 -> node13 [label=Left];
-node13[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node13[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 node12 -> node14 [label=Right];
 node14[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">5</FONT>>];
 node11 -> node15 [label=Right];
@@ -37,7 +37,7 @@ node16 -> node17 [label=Arg0];
 node17[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"buzz %d
 "</FONT>>];
 node16 -> node18 [label=Arg1];
-node18[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node18[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 node10 -> node19 [label=Else];
 node19[label=IfStmtAST];
 node19 -> node20 [label=Cond];
@@ -45,7 +45,7 @@ node20[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">==</FONT>>];
 node20 -> node21 [label=Left];
 node21[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">%</FONT>>];
 node21 -> node22 [label=Left];
-node22[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node22[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 node21 -> node23 [label=Right];
 node23[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">3</FONT>>];
 node20 -> node24 [label=Right];
@@ -56,14 +56,14 @@ node25 -> node26 [label=Arg0];
 node26[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"fizz %d
 "</FONT>>];
 node25 -> node27 [label=Arg1];
-node27[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node27[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 node19 -> node28 [label=Else];
 node28[label=<CallExprAST<BR /><FONT POINT-SIZE="12">print : void</FONT>>];
 node28 -> node29 [label=Arg0];
 node29[label=<StringExprAST<BR /><FONT POINT-SIZE="12">"%d
 "</FONT>>];
 node28 -> node30 [label=Arg1];
-node30[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
+node30[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">number : i64</FONT>>];
 }
 subgraph cluster31 {
 node31[label=<FunctionAST<BR /><FONT POINT-SIZE="12">main</FONT>>];
@@ -76,6 +76,6 @@ node34[label=<IntegerExprAST<BR /><FONT POINT-SIZE="12">100</FONT>>];
 node32 -> node35 [label=Body];
 node35[label=<CallExprAST<BR /><FONT POINT-SIZE="12">fizzbuzz : void</FONT>>];
 node35 -> node36 [label=Arg0];
-node36[label=<VariableExprAST<BR /><FONT POINT-SIZE="12">i : i64</FONT>>];
+node36[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">i : i64</FONT>>];
 }
 }

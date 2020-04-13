@@ -101,19 +101,26 @@ void Vizualizer::visit(ValueExprAST<std::string>& e)
 }
 
 //==============================================================================
-void Vizualizer::visit(VariableExprAST& e)
+void Vizualizer::visit(VarAccessExprAST& e)
 {
   Formatter fmt;
   fmt << e.getName();
-  if (e.isArray()) fmt << "[]";
+  if (e.getType()) fmt << " : " << e.getType();
+
+  labelNode(ind_, makeLabel(e.getClassName(), fmt));
+}
+
+//==============================================================================
+void Vizualizer::visit(ArrayAccessExprAST& e)
+{
+  Formatter fmt;
+  fmt << e.getName() << "[]";
   if (e.getType()) fmt << " : " << e.getType();
 
   labelNode(ind_, makeLabel(e.getClassName(), fmt));
 
-  if (e.isArray()) {
-    createLink(ind_);
-    runVisitor(*e.getIndexExpr());
-  }
+  createLink(ind_);
+  runVisitor(*e.getIndexExpr());
 }
 
 //==============================================================================
