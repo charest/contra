@@ -63,7 +63,7 @@ will produce
 There are a bunch of tests and examples that you can try.  They are located in
 the `examples` and `testing` folders.
 
-**Contra may be used as both a compiler and an interpreter.  However, it is recommended to use it as an interpreter in the manner shown above since Contra is still in early stages of development.**
+*Contra may be used as both a compiler and an interpreter.  However, it is recommended to use it as an interpreter in the manner shown above since Contra is still in early stages of development.*
 
 Documentation
 ---------------
