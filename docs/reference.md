@@ -31,14 +31,33 @@ There are no special multi-line comments.  If you want to comment out an entire 
 
 Repeats a group of statements for each index in a range.
 
-     for counter in start loop_type end [step step_val] do
+     for counter in start loop_type end [by step_val] do
        [ statements ]
      end
 
 - *counter* is required.  The control variable for the loop.
 - *start* is required.  The starting value for the control variable.
 - *loop_type* is required.  Determines how the *counter* steps through the range.  Permitted values are *to* and *until*.  *to* means the loop range is *[start, end]* while *until* means the loop range is *[start,end)*.
-- *step* is optional.   If it is specified, the *counter* is incremented by *step_val*.
+- *by* is optional.   If it is specified, the *counter* is incremented by *step_val*.
+
+Examples:
+
+     for i in 0 until 2 do
+       print("value of i: %d\n", i)
+     end
+
+     value of i: 0
+     value of i: 1
+
+
+     for i in 1 to 4 by 2 do
+       print("value of i: %d\n", i)
+     end
+     
+     value of i: 1
+     value of i: 3
+
+
 
 ### Functions
 
