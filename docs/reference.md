@@ -50,13 +50,13 @@ Examples:
      value of i: 1
 
 
-     for i in 1 to 4 by 2 do
+     for i in 1 to 5 by 2 do
        print("value of i: %d\n", i)
      end
      
      value of i: 1
      value of i: 3
-
+     value of i: 5
 
 
 ### Functions
