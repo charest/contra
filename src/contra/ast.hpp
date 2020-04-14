@@ -448,6 +448,36 @@ public:
   
 };
 
+//==============================================================================
+/// Assignment statement
+//==============================================================================
+class AssignStmtAST : public StmtAST {
+protected:
+
+  std::unique_ptr<NodeAST> LeftExpr_;
+  std::unique_ptr<NodeAST> RightExpr_;
+
+public:
+  AssignStmtAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> lhs,
+      std::unique_ptr<NodeAST> rhs)
+    : StmtAST(Loc), LeftExpr_(std::move(lhs)), RightExpr_(std::move(rhs))
+  {}
+
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "AssignStmtAST"; };
+
+  auto getLeftExpr() const { return LeftExpr_.get(); }
+  auto moveLeftExpr() { return std::move(LeftExpr_); }
+  auto setLeftExpr(std::unique_ptr<NodeAST> Expr) { LeftExpr_ = std::move(Expr); }
+
+  auto getRightExpr() const { return RightExpr_.get(); }
+  auto moveRightExpr() { return std::move(RightExpr_); }
+  auto setRightExpr(std::unique_ptr<NodeAST> Expr) { RightExpr_ = std::move(Expr); }
+};
+
+
 ////////////////////////////////////////////////////////////////////////////////
 /// ExprAST - Base class for all expression nodes.
 ////////////////////////////////////////////////////////////////////////////////

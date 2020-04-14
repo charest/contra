@@ -291,6 +291,8 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parseIntegerExpr();
   case '(':
     return parseParenExpr();
+  case '[':
+    return parseArrayExpr();
   case tok_if:
     return parseIfExpr();
   case tok_for:
@@ -340,8 +342,11 @@ Parser::parseBinOpRHS(int ExprPrec, std::unique_ptr<NodeAST> LHS)
     }
 
     // Merge LHS/RHS.
-    LHS = std::make_unique<BinaryExprAST>(BinLoc, BinOp, std::move(LHS),
-        std::move(RHS));
+    if (BinOp == tok_asgmt)
+      LHS = std::make_unique<AssignStmtAST>(BinLoc, std::move(LHS), std::move(RHS));
+    else
+      LHS = std::make_unique<BinaryExprAST>(BinLoc, BinOp, std::move(LHS),
+          std::move(RHS));
   }
 
   return nullptr;
@@ -478,12 +483,7 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
   auto EqLoc = getCurLoc();
   if (CurTok_ == tok_asgmt) {
     getNextToken(); // eat the '='.
-    
-    if (CurTok_ == '[')
-      Init = parseArrayExpr();
-    else {
-      Init = parseExpression();
-    }
+    Init = parseExpression();
   }
   else {
     std::vector<std::string> Names;

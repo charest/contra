@@ -269,7 +269,17 @@ void CodeGen::resetScope(Scoper::value_type Scope)
 ////////////////////////////////////////////////////////////////////////////////
 // Variable Interface
 ////////////////////////////////////////////////////////////////////////////////
-  
+
+//==============================================================================
+// Delete a variable
+//==============================================================================
+void CodeGen::eraseVariable(const std::string & VarN )
+{
+  auto & CurrTab = VariableTable_.front();
+  auto it = CurrTab.erase(VarN);
+}
+
+
 //==============================================================================
 // Move a variable
 //==============================================================================
@@ -871,57 +881,6 @@ void CodeGen::visit(UnaryExprAST & e) {
 void CodeGen::visit(BinaryExprAST& e) {
   emitLocation(&e);
   
-  // Special case '=' because we don't want to emit the LHS as an expression.
-  if (e.getOperand() == tok_asgmt) {
-    // Assignment requires the LHS to be an identifier.
-    // This assume we're building without RTTI because LLVM builds that way by
-    // default.  If you build LLVM with RTTI this can be changed to a
-    // dynamic_cast for automatic error checking.
-    auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
-    // Codegen the RHS.
-    auto VariableV = runExprVisitor(*e.getRightExpr());
-
-    // Look up the name.
-    const auto & VarName = LHSE->getName();
-    auto VarE = getVariable(VarName);
-    Value* VariableA = VarE->getAlloca();
-
-    // array element access
-    if (isArray(VariableA)) {
-      auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr());
-      auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
-      storeArrayValue(VariableV, VariableA, IndexV, VarName);
-    }
-    // future access
-    else if (Tasker_->isFuture(VariableV)) {
-      Value* FutureA;
-      if (isa<AllocaInst>(VariableV)) {
-        FutureA = VariableV;
-      }
-      else if (Tasker_->isFuture(VarName)) {
-        FutureA = Tasker_->popFuture(VarName);
-      }
-      else {
-        auto TheFunction = Builder_.GetInsertBlock()->getParent();
-        Tasker_->createFuture(*TheModule_, TheFunction, VarName);
-        FutureA = Tasker_->popFuture(VarName);
-        Builder_.CreateStore(VariableV, FutureA);
-      }
-      auto VariableT = VarE->getType();
-      auto DataSizeV = getTypeSize<int_t>(VariableT);
-      auto VariableV = Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
-      Builder_.CreateStore(VariableV, VariableA);
-      Tasker_->destroyFuture(*TheModule_, FutureA);
-    }
-    // scalar access
-    else {
-      Builder_.CreateStore(VariableV, VariableA);
-    }
-
-    ValueResult_ = VariableV;
-    return;
-  }
-
   Value *L = runExprVisitor(*e.getLeftExpr());
   Value *R = runExprVisitor(*e.getRightExpr());
 
@@ -1257,6 +1216,8 @@ void CodeGen::visit(ForStmtAST& e) {
 }
 
 //==============================================================================
+// Foreach parallel loop
+//==============================================================================
 void CodeGen::visit(ForeachStmtAST& e)
 {
   auto ParentFunction = Builder_.GetInsertBlock()->getParent();
@@ -1289,6 +1250,66 @@ void CodeGen::visit(ForeachStmtAST& e)
       StartA, EndA);
   
 	ValueResult_ = UndefValue::get(VoidType_);
+}
+
+//==============================================================================
+// Assignment
+//==============================================================================
+void CodeGen::visit(AssignStmtAST & e)
+{
+  // Assignment requires the LHS to be an identifier.
+  // This assume we're building without RTTI because LLVM builds that way by
+  // default.  If you build LLVM with RTTI this can be changed to a
+  // dynamic_cast for automatic error checking.
+  auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
+  // Codegen the RHS.
+  auto VariableV = runExprVisitor(*e.getRightExpr());
+
+  // Look up the name.
+  const auto & VarName = LHSE->getName();
+  auto VarE = getVariable(VarName);
+  Value* VariableA = VarE->getAlloca();
+
+  // array element assignment
+  if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr())) {
+    auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
+    storeArrayValue(VariableV, VariableA, IndexV, VarName);
+  }
+  // array assignment
+  else if (auto RHSEA = dynamic_cast<ArrayExprAST*>(e.getRightExpr())) {
+    destroyArray(VarName, VariableA);
+    Builder_.CreateStore(VariableV, VariableA);
+    eraseVariable("__tmp");
+  }
+  // future access
+  else if (Tasker_->isFuture(VariableV)) {
+    Value* FutureA;
+    if (isa<AllocaInst>(VariableV)) {
+      FutureA = VariableV;
+    }
+    else if (Tasker_->isFuture(VarName)) {
+      FutureA = Tasker_->popFuture(VarName);
+    }
+    else {
+      auto TheFunction = Builder_.GetInsertBlock()->getParent();
+      Tasker_->createFuture(*TheModule_, TheFunction, VarName);
+      FutureA = Tasker_->popFuture(VarName);
+      Builder_.CreateStore(VariableV, FutureA);
+    }
+    auto VariableT = VarE->getType();
+    auto DataSizeV = getTypeSize<int_t>(VariableT);
+    auto VariableV = Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
+    Builder_.CreateStore(VariableV, VariableA);
+    Tasker_->destroyFuture(*TheModule_, FutureA);
+  }
+  // scalar access
+  else {
+    Builder_.CreateStore(VariableV, VariableA);
+  }
+
+  ValueResult_ = VariableV;
+  return;
+
 }
   
 
@@ -1352,8 +1373,7 @@ void CodeGen::visit(ArrayDeclAST &e) {
 
   //---------------------------------------------------------------------------
   // Array already on right hand side
-  auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.getInitExpr());
-  if (ArrayAST) {
+  if (auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
 
     ValueResult_ = runExprVisitor(*ArrayAST);
 

@@ -19,6 +19,7 @@ class CallExprAST;
 class IfStmtAST;
 class ForStmtAST;
 class ForeachStmtAST;
+class AssignStmtAST;
 class VarDeclAST;
 class ArrayDeclAST;
 class PrototypeAST;
@@ -45,6 +46,7 @@ public:
   virtual void visit(IfStmtAST&) = 0;
   virtual void visit(ForStmtAST&) = 0;
   virtual void visit(ForeachStmtAST&) = 0;
+  virtual void visit(AssignStmtAST&) = 0;
 
   virtual void visit(VarDeclAST&) = 0;
   virtual void visit(ArrayDeclAST&) = 0;

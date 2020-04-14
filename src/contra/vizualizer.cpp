@@ -213,6 +213,19 @@ void Vizualizer::visit(IfStmtAST& e)
 }
 
 //==============================================================================
+void Vizualizer::visit(AssignStmtAST& e)
+{
+  auto my_ind = ind_;
+  std::string Op = "=";
+  labelNode(my_ind, makeLabel(e.getClassName(), Op));
+  createLink(my_ind, "Left" );
+  runVisitor(*e.getLeftExpr());
+  createLink(my_ind, "Right" );
+  runVisitor(*e.getRightExpr());
+}
+
+
+//==============================================================================
 void Vizualizer::visit(VarDeclAST& e)
 {
   Formatter fmt;

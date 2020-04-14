@@ -80,6 +80,10 @@ void ForeachStmtAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
+void AssignStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
 void VarDeclAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 

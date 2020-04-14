@@ -204,8 +204,7 @@ private:
   void visit(ForStmtAST&) override;
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;
-  //void visit(VarAssignAST&) override;
-  //void visit(ArrayAssignAST&) override;
+  void visit(AssignStmtAST&) override;
   void visit(VarDeclAST&) override;
   void visit(ArrayDeclAST&) override;
   void visit(PrototypeAST&) override;
@@ -251,6 +250,7 @@ private:
   
   VariableAlloca * getVariable(const std::string & VarName);
 
+  void eraseVariable(const std::string &);
   VariableAlloca * moveVariable(const std::string & From, const std::string & To);
 
   VariableAlloca * insertVariable(const std::string &VarName, VariableAlloca VarEntry);

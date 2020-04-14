@@ -344,31 +344,6 @@ void Analyzer::visit(BinaryExprAST& e)
   auto RightType = runExprVisitor(*e.getRightExpr());
   auto LeftType = runExprVisitor(*e.getLeftExpr());
 
-  if (OpCode == tok_asgmt) {
-    // Assignment requires the LHS to be an identifier.
-    // This assume we're building without RTTI because LLVM builds that way by
-    // default.  If you build LLVM with RTTI this can be changed to a
-    // dynamic_cast for automatic error checking.
-    auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
-    if (!LHSE)
-      THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
-
-    auto Name = LHSE->getName();
-    auto Var = getVariable(Name, LeftLoc);
-   
-    checkIsAssignable( LeftType, RightType, Loc );
-
-    if (RightType.getBaseType() != LeftType.getBaseType()) {
-      checkIsCastable(RightType, LeftType, Loc);
-      e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
-    }
-    
-    TypeResult_ = LeftType;
-    e.setType(TypeResult_);
-
-    return;
-  }
- 
   if ( !LeftType.isNumber() || !RightType.isNumber())
       THROW_NAME_ERROR( "Binary operators only allowed for scalar numeric "
           << "expressions.", Loc );
@@ -559,6 +534,38 @@ void Analyzer::visit(IfStmtAST& e)
   resetScope(OldScope);
 
   TypeResult_ = VoidType_;
+}
+
+//==============================================================================
+void Analyzer::visit(AssignStmtAST& e)
+{
+  auto Loc = e.getLoc();
+  auto LeftLoc = e.getLeftExpr()->getLoc();
+  
+  auto LeftType = runExprVisitor(*e.getLeftExpr());
+  DestinationType_ = LeftType;
+  
+  auto RightType = runExprVisitor(*e.getRightExpr());
+
+  // Assignment requires the LHS to be an identifier.
+  // This assume we're building without RTTI because LLVM builds that way by
+  // default.  If you build LLVM with RTTI this can be changed to a
+  // dynamic_cast for automatic error checking.
+  auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
+  if (!LHSE)
+    THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
+
+  auto Name = LHSE->getName();
+  auto Var = getVariable(Name, LeftLoc);
+  
+  checkIsAssignable( LeftType, RightType, Loc );
+
+  if (RightType.getBaseType() != LeftType.getBaseType()) {
+    checkIsCastable(RightType, LeftType, Loc);
+    e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
+  }
+  
+  TypeResult_ = LeftType;
 }
 
 //==============================================================================
