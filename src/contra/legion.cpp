@@ -48,7 +48,8 @@ LegionTasker::LegionTasker(IRBuilder<> & TheBuilder, LLVMContext & TheContext) :
   ExecSetType_ = createOpaqueType("legion_execution_constraint_set_t", TheContext_);
   LayoutSetType_ = createOpaqueType("legion_task_layout_constraint_set_t", TheContext_);
   PredicateType_ = createOpaqueType("legion_predicate_t", TheContext_);
-  LauncherType_ = createOpaqueType("legion_task_launcher_t", TheContext_);
+  TaskLauncherType_ = createOpaqueType("legion_task_launcher_t", TheContext_);
+  IndexLauncherType_ = createOpaqueType("legion_index_launcher_t", TheContext_);
   FutureType_ = createOpaqueType("legion_future_t", TheContext_);
   TaskConfigType_ = createTaskConfigOptionsType("task_config_options_t", TheContext_);
   TaskArgsType_ = createTaskArgumentsType("legion_task_argument_t", TheContext_);
@@ -250,16 +251,24 @@ void LegionTasker::createGlobalFutures(
     Value* LauncherA,
     const std::vector<Value*> & ArgVs,
     const std::vector<Value*> & ArgSizes,
-    const std::vector<unsigned> & FutureArgId )
+    const std::vector<unsigned> & FutureArgId,
+    bool IsIndex )
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
   auto FutureRT = reduceStruct(FutureType_, TheModule);
-  auto LauncherRT = reduceStruct(LauncherType_, TheModule);
+
+  StructType* LauncherT = IsIndex ? IndexLauncherType_ : TaskLauncherType_;
+  auto LauncherRT = reduceStruct(LauncherT, TheModule);
 
   std::vector<Type*> AddFutureArgTs = {LauncherRT, FutureRT};
   auto AddFutureT = FunctionType::get(VoidType_, AddFutureArgTs, false);
-  auto AddFutureF = TheModule.getOrInsertFunction("legion_task_launcher_add_future", AddFutureT);
+
+  FunctionCallee AddFutureF;
+  if (IsIndex)
+    AddFutureF = TheModule.getOrInsertFunction("legion_index_launcher_add_future", AddFutureT);
+  else
+    AddFutureF = TheModule.getOrInsertFunction("legion_task_launcher_add_future", AddFutureT);
 
   for (auto i : FutureArgId) {
     auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "tmpalloca");
@@ -884,7 +893,7 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
   auto ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
 
-  auto LauncherRT = reduceStruct(LauncherType_, TheModule);
+  auto LauncherRT = reduceStruct(TaskLauncherType_, TheModule);
 
   std::vector<Value*> LaunchArgVs = {TaskIdV, ArgDataPtrV, ArgSizeV, 
     PredicateV, MapperIdV, MappingTagIdV};
@@ -894,12 +903,12 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto LaunchF = TheModule.getOrInsertFunction("legion_task_launcher_create", LaunchT);
 
   Value* LauncherRV = Builder_.CreateCall(LaunchF, LaunchArgVs, "launcher_create");
-  auto LauncherA = createEntryBlockAlloca(TheFunction, LauncherType_, "task_launcher.alloca");
+  auto LauncherA = createEntryBlockAlloca(TheFunction, TaskLauncherType_, "task_launcher.alloca");
   store(LauncherRV, LauncherA);
   
   //----------------------------------------------------------------------------
   // Add futures
-  createGlobalFutures(TheModule, LauncherA, ArgVs, ArgSizes, FutureArgId );
+  createGlobalFutures(TheModule, LauncherA, ArgVs, ArgSizes, FutureArgId, false );
   
   //----------------------------------------------------------------------------
   // Execute
@@ -1018,7 +1027,7 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
   auto ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
 
-  auto LauncherRT = reduceStruct(LauncherType_, TheModule);
+  auto LauncherRT = reduceStruct(IndexLauncherType_, TheModule);
 
   std::vector<Value*> LaunchArgVs = {TaskIdV, DomainRectA, ArgDataPtrV, ArgSizeV, 
     ArgMapV, PredicateV, MustV, MapperIdV, MappingTagIdV};
@@ -1035,12 +1044,12 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   }
 
   Value* LauncherRV = Builder_.CreateCall(LaunchF, LaunchArgVs, "launcher_create");
-  auto LauncherA = createEntryBlockAlloca(TheFunction, LauncherType_, "task_launcher.alloca");
+  auto LauncherA = createEntryBlockAlloca(TheFunction, IndexLauncherType_, "task_launcher.alloca");
   store(LauncherRV, LauncherA);
   
   //----------------------------------------------------------------------------
   // Add futures
-  createGlobalFutures(TheModule, LauncherA, ArgVs, ArgSizes, FutureArgId );
+  createGlobalFutures(TheModule, LauncherA, ArgVs, ArgSizes, FutureArgId, true );
  
   
   //----------------------------------------------------------------------------

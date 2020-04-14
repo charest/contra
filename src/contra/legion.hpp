@@ -36,7 +36,8 @@ protected:
   llvm::StructType* ExecSetType_ = nullptr;
   llvm::StructType* LayoutSetType_ = nullptr;
   llvm::StructType* PredicateType_ = nullptr;
-  llvm::StructType* LauncherType_ = nullptr;
+  llvm::StructType* TaskLauncherType_ = nullptr;
+  llvm::StructType* IndexLauncherType_ = nullptr;
   llvm::StructType* FutureType_ = nullptr;
   llvm::StructType* TaskConfigType_ = nullptr;
   llvm::StructType* TaskArgsType_ = nullptr;
@@ -115,7 +116,8 @@ protected:
     llvm::Value*,
     const std::vector<llvm::Value*> &,
     const std::vector<llvm::Value*> &,
-    const std::vector<unsigned> & );
+    const std::vector<unsigned> &,
+    bool IsIndex);
   llvm::AllocaInst* createOpaqueType(llvm::Module&, llvm::StructType*, const std::string &,
       const std::string & = "");
   void destroyOpaqueType(llvm::Module&, llvm::Value*, const std::string &,
