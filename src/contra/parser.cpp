@@ -493,7 +493,7 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
   }
 
   if (IsArray)
-    return std::make_unique<ArrayDeclAST>(getCurLoc(), VarNames,
+    return std::make_unique<VarDeclAST>(getCurLoc(), VarNames,
         VarType, std::move(Init), std::move(Size));
   else
     return std::make_unique<VarDeclAST>(getCurLoc(), VarNames, VarType,

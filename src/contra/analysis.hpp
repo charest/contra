@@ -121,6 +121,7 @@ private:
   template<typename T>
   auto runStmtVisitor(T&e)
   {
+    DestinationType_ = VariableType{};
     auto OrigScope = getScope();
     auto V = runExprVisitor(e);
     resetScope(OrigScope);
@@ -144,7 +145,6 @@ private:
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
   void visit(VarDeclAST&) override;
-  void visit(ArrayDeclAST&) override;
   void visit(PrototypeAST&) override;
 
   void visit(FunctionAST&) override;

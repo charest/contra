@@ -232,18 +232,6 @@ void Vizualizer::visit(VarDeclAST& e)
   fmt << e.getNames();
   if (e.getType()) fmt << " : " << e.getType();
 
-  labelNode(ind_, makeLabel(e.getClassName(), fmt.str()));
-  createLink(ind_, "Init");
-  runVisitor(*e.getInitExpr());
-}
-
-//==============================================================================
-void Vizualizer::visit(ArrayDeclAST& e)
-{
-  Formatter fmt;
-  fmt << e.getNames();
-  if (e.getType()) fmt << " : " << e.getType();
-
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), fmt));
   
@@ -252,8 +240,8 @@ void Vizualizer::visit(ArrayDeclAST& e)
     runVisitor(*e.getSizeExpr());
   }
 
-  createLink(my_ind, "Init");
-  e.getInitExpr()->accept(*this);
+  createLink(ind_, "Init");
+  runVisitor(*e.getInitExpr());
 }
 
 //==============================================================================

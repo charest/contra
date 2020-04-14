@@ -21,7 +21,6 @@ class ForStmtAST;
 class ForeachStmtAST;
 class AssignStmtAST;
 class VarDeclAST;
-class ArrayDeclAST;
 class PrototypeAST;
 class FunctionAST;
 class TaskAST;
@@ -49,7 +48,6 @@ public:
   virtual void visit(AssignStmtAST&) = 0;
 
   virtual void visit(VarDeclAST&) = 0;
-  virtual void visit(ArrayDeclAST&) = 0;
   virtual void visit(PrototypeAST&) = 0;
   
   virtual void visit(FunctionAST&) = 0;

@@ -21,7 +21,7 @@ std::map<std::string, RunTimeLib::FunctionPointer>
 //==============================================================================
 void RunTimeLib::setup(llvm::LLVMContext & TheContext)
 {
-    _setup<Print, Allocate, DeAllocate, CAbs, CMax, CSqrt>();
+    _setup<Print, Allocate, DeAllocate, Copy, CAbs, CMax, CSqrt>();
     for (auto & entry : SetupMap) entry.second(TheContext);
 }
 

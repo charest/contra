@@ -25,6 +25,16 @@ function main()
 
   print("e={%d, %d, %d, %d, %d}\n", e[0], e[1], e[2], e[3], e[4])
   print("f={%f, %f, %f, %f, %f}\n", f[0], f[1], f[2], f[3], f[4])
+
+  var g = [0; 6]
+  var h = [0.; 6]
+  e = g
+  f = h
+
+  print("e={%d, %d, %d, %d, %d, %d}\n", e[0], e[1], e[2], e[3], e[4], e[5])
+  print("f={%f, %f, %f, %f, %f, %f}\n", f[0], f[1], f[2], f[3], f[4], f[5])
+
+
 end
 
 main()

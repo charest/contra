@@ -1,5 +1,6 @@
 #include "contra.hpp"
 #include "errors.hpp"
+#include "flow.hpp"
 
 #include <iostream>
 
@@ -60,7 +61,10 @@ void Contra::handleFunction()
 		
 		TheAnalyser_->addFunctionAST( std::move(FnAST) );
     
+    Flow TheFlow;
+
 		while (FnAST = TheAnalyser_->getNextFunctionAST()) {
+      TheFlow.runFuncVisitor(*FnAST);
     	if (dumpDot()) TheViz_->runVisitor(*FnAST);
     	auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     	if (dumpIR()) FnIR->print(*IRFileStream_);

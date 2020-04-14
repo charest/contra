@@ -478,45 +478,42 @@ public:
 };
 
 
-////////////////////////////////////////////////////////////////////////////////
-/// ExprAST - Base class for all expression nodes.
-////////////////////////////////////////////////////////////////////////////////
-class DeclAST : public NodeAST {
-
-  VariableType Type_;
-  
-public:
-  
-  DeclAST(const SourceLocation & Loc) : NodeAST(Loc) {}
-
-  virtual ~DeclAST() = default;
-  
-  void setType(const VariableType & Type) { Type_ = Type; }
-  const auto & getType() const { return Type_; }
-
-};
-
 
 //==============================================================================
 /// VarDefExprAST - Expression class for var/in
 //==============================================================================
-class VarDeclAST : public DeclAST {
+class VarDeclAST : public StmtAST {
 
 protected:
 
+  VariableType Type_;
   std::vector<Identifier> VarIds_;
   Identifier TypeId_;
   std::unique_ptr<NodeAST> InitExpr_;
+  std::unique_ptr<NodeAST> SizeExpr_;
+  bool IsArray_ = false;
 
 public:
 
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<NodeAST> Init)
-    : DeclAST(Loc), VarIds_(Vars), TypeId_(VarType),
-      InitExpr_(std::move(Init)) 
+    : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
+      InitExpr_(std::move(Init)), IsArray_(false)
+  {}
+  
+  VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
+      Identifier VarType, std::unique_ptr<NodeAST> Init,
+      std::unique_ptr<NodeAST> Size)
+    : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
+      InitExpr_(std::move(Init)),
+      SizeExpr_(std::move(Size)), IsArray_(true)
   {}
 
-  virtual bool isArray() const { return false; }
+  void setType(const VariableType & Type) { Type_ = Type; }
+  const auto & getType() const { return Type_; }
+
+  bool isArray() const { return IsArray_; }
+  void setArray(bool IsArray=true) { IsArray_ = IsArray; }
   
   virtual void accept(AstVisiter& visiter) override;
   
@@ -541,35 +538,9 @@ public:
   auto getInitExpr() const { return InitExpr_.get(); }
   auto moveInitExpr() { return std::move(InitExpr_); }
   auto setInitExpr(std::unique_ptr<NodeAST> Init) { InitExpr_ = std::move(Init); }
-};
-
-//==============================================================================
-/// ArrayDefExprAST - Expression class for var/in
-//==============================================================================
-class ArrayDeclAST : public VarDeclAST {
-protected:
-
-  std::unique_ptr<NodeAST> SizeExpr_;
-
-public:
-
-  ArrayDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & VarNames, 
-      Identifier VarType, std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size)
-    : VarDeclAST(Loc, VarNames, VarType, std::move(Init)),
-      SizeExpr_(std::move(Size))
-  {}
   
-  virtual bool isArray() const { return true; }
-  
-  virtual void accept(AstVisiter& visiter) override;
-  
-  virtual std::string getClassName() const override
-  { return "ArrayDeclAST"; };
-
   bool hasSize() const { return static_cast<bool>(SizeExpr_); }
   auto getSizeExpr() const { return SizeExpr_.get(); }
-  
 };
 
 //==============================================================================

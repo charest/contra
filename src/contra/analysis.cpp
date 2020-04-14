@@ -138,9 +138,11 @@ void Analyzer::checkIsCastable(
     const SourceLocation & Loc)
 {
   auto IsCastable = FromType.isCastableTo(ToType);
-  if (!IsCastable)
+  if (!IsCastable) {
+    abort();
     THROW_NAME_ERROR("Cannot cast from type '" << FromType << "' to type '"
         << ToType << "'.", Loc);
+  }
 }
   
 //==============================================================================
@@ -556,14 +558,17 @@ void Analyzer::visit(AssignStmtAST& e)
     THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
 
   auto Name = LHSE->getName();
-  auto Var = getVariable(Name, LeftLoc);
+  auto VarE = getVariable(Name, LeftLoc);
   
   checkIsAssignable( LeftType, RightType, Loc );
 
+  //std::cout << "Var " << VarE->getName() << ", " << VarE->getType() << std::endl;
+  //std::cout << "Left " << LeftType << ", " << RightType << std::endl;
   if (RightType.getBaseType() != LeftType.getBaseType()) {
     checkIsCastable(RightType, LeftType, Loc);
     e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
   }
+  if (RightType.isFuture()) VarE->getType().setFuture(true);
   
   TypeResult_ = LeftType;
 }
@@ -580,66 +585,52 @@ void Analyzer::visit(VarDeclAST& e)
   }
   
   auto InitType = runExprVisitor(*e.getInitExpr());
-  if (!VarType) VarType = InitType;
-
-  if (VarType != InitType) {
-    checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
-    e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
+  if (!VarType) {
+    VarType = InitType;
+    e.setArray(InitType.isArray());
   }
-  else {
-    VarType.setFuture(InitType.isFuture());
-  }
-  
-  if (isGlobalScope()) VarType.setGlobal();
-
-  int NumVars = e.getNumVars();
-  for (int i=0; i<NumVars; ++i) {
-    auto VarId = e.getVarId(i);
-    insertVariable(VarId, VarType);
-  }
-
-  TypeResult_ = VarType;
-  e.setType(TypeResult_);
-}
-
-//==============================================================================
-void Analyzer::visit(ArrayDeclAST& e)
-{
-
-  // check if there is a specified type, if there is, get it
-  auto TypeId = e.getTypeId();
-  VariableType VarType;
-  if (TypeId) {
-    VarType = VariableType(getBaseType(TypeId), e.isArray());
-    DestinationType_ = VarType;
-  }
-  
-  auto InitType = runExprVisitor(*e.getInitExpr());
-  if (!VarType) VarType = InitType;
   VarType.setFuture(InitType.isFuture());
 
   //----------------------------------------------------------------------------
-  // Array already on right hand side
-  if (InitType.isArray()) {
-  }
-  //----------------------------------------------------------------------------
-  //  scalar on right hand side
-  else {
-  
-    auto ElementType = VariableType(VarType, false);
-    if (ElementType != InitType) {
-      checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
-      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
+  // Scalar variable
+  if (!e.isArray()) {
+
+    if (VarType != InitType) {
+      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
+      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
     }
- 
-    if (e.hasSize()) {
-      auto SizeType = runExprVisitor(*e.getSizeExpr());
-      if (SizeType != I64Type_)
-        THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
-           e.getSizeExpr()->getLoc());
+    else {
+      VarType.setFuture(InitType.isFuture());
     }
 
   }
+  //----------------------------------------------------------------------------
+  // Array Variable
+  else {
+
+    // Array already on right hand side
+    if (InitType.isArray()) {
+    }
+    //  scalar on right hand side
+    else {
+    
+      auto ElementType = VariableType(VarType, false);
+      if (ElementType != InitType) {
+        checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
+        e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
+      }
+ 
+      if (e.hasSize()) {
+        auto SizeType = runExprVisitor(*e.getSizeExpr());
+        if (SizeType != I64Type_)
+          THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
+             e.getSizeExpr()->getLoc());
+      }
+
+    } // scalar init
+
+  }
+  // End
   //----------------------------------------------------------------------------
   
   if (isGlobalScope()) VarType.setGlobal();
@@ -652,8 +643,6 @@ void Analyzer::visit(ArrayDeclAST& e)
 
   TypeResult_ = VarType;
   e.setType(TypeResult_);
-
-
 }
 
 //==============================================================================

@@ -276,7 +276,7 @@ void CodeGen::resetScope(Scoper::value_type Scope)
 void CodeGen::eraseVariable(const std::string & VarN )
 {
   auto & CurrTab = VariableTable_.front();
-  auto it = CurrTab.erase(VarN);
+  CurrTab.erase(VarN);
 }
 
 
@@ -404,14 +404,12 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
 
 
   auto DataSize = getTypeSize<int_t>(ElementType);
+  auto ArrayA = createEntryBlockAlloca(TheFunction, ArrayType_, VarName+"vec");
 
-  std::vector<Value*> ArgVs = {SizeExpr, DataSize};
-  Value* CallInst = Builder_.CreateCall(F, ArgVs, VarName+"vectmp");
-  auto ResType = CallInst->getType();
-  auto AllocInst = createEntryBlockAlloca(TheFunction, ResType, VarName+"vec");
-  Builder_.CreateStore(CallInst, AllocInst);
+  std::vector<Value*> ArgVs = {SizeExpr, DataSize, ArrayA};
+  Builder_.CreateCall(F, ArgVs);
   
-  return insertVariable(VarName, {AllocInst, ElementType, SizeExpr});
+  return insertVariable(VarName, {ArrayA, ElementType, SizeExpr});
 }
  
 //==============================================================================
@@ -543,6 +541,23 @@ void CodeGen::copyArrays(
 }
 
 //==============================================================================
+// Copy Array
+//==============================================================================
+void CodeGen::copyArray(Value* SrcArrayV, Value* TgtArrayA)
+{
+  auto F = TheModule_->getFunction("copy");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "copy");
+
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto ArrayT = TgtArrayA->getType()->getPointerElementType();
+  auto SrcArrayA = createEntryBlockAlloca(TheFunction, ArrayT);
+  Builder_.CreateStore(SrcArrayV, SrcArrayA);
+
+  std::vector<Value*> Args = {SrcArrayA, TgtArrayA};
+  Builder_.CreateCall(F, Args);
+}
+
+//==============================================================================
 /// Load an array pointer from the dopevecter
 //==============================================================================
 Value* CodeGen::loadArrayPointer(
@@ -648,9 +663,7 @@ void CodeGen::destroyArray(const std::string & Name, Value* Alloca)
   auto F = TheModule_->getFunction("deallocate");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
 
-  auto AllocaT = Alloca->getType()->getPointerElementType();
-  auto Vec = Builder_.CreateLoad(AllocaT, Alloca, Name+"vec");
-  Builder_.CreateCall(F, Vec);
+  Builder_.CreateCall(F, Alloca);
 }
 
 //==============================================================================
@@ -1270,17 +1283,25 @@ void CodeGen::visit(AssignStmtAST & e)
   auto VarE = getVariable(VarName);
   Value* VariableA = VarE->getAlloca();
 
+  //---------------------------------------------------------------------------
   // array element assignment
   if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr())) {
     auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
     storeArrayValue(VariableV, VariableA, IndexV, VarName);
   }
+  //---------------------------------------------------------------------------
   // array assignment
-  else if (auto RHSEA = dynamic_cast<ArrayExprAST*>(e.getRightExpr())) {
+  else if (dynamic_cast<ArrayExprAST*>(e.getRightExpr())) {
     destroyArray(VarName, VariableA);
     Builder_.CreateStore(VariableV, VariableA);
     eraseVariable("__tmp");
   }
+  //---------------------------------------------------------------------------
+  // array copy
+  else if (isArray(VariableV) && isArray(VariableA)) {
+    copyArray(VariableV, VariableA);
+  }
+  //---------------------------------------------------------------------------
   // future access
   else if (Tasker_->isFuture(VariableV)) {
     Value* FutureA;
@@ -1302,6 +1323,7 @@ void CodeGen::visit(AssignStmtAST & e)
     Builder_.CreateStore(VariableV, VariableA);
     Tasker_->destroyFuture(*TheModule_, FutureA);
   }
+  //---------------------------------------------------------------------------
   // scalar access
   else {
     Builder_.CreateStore(VariableV, VariableA);
@@ -1327,55 +1349,36 @@ void CodeGen::visit(VarDeclAST & e) {
 
   // Emit initializer first
   auto InitVal = runExprVisitor(*e.getInitExpr());
-  //auto InitType = InitVal->getType();
 
   // the llvm variable type
   const auto & Ty = e.getType();
   auto VarType = getLLVMType(Ty);
 
-  // Register all variables and emit their initializer.
-  for (const auto & VarId : e.getVarIds()) {
-    const auto & VarName = VarId.getName();
-    auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());
-    auto Alloca = VarE->getAlloca();
-    if (Ty.isFuture()) {
-      auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
-      Builder_.CreateStore(InitVal, FutureA);
-    }
-    else if (Ty.isGlobal())
-      cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
-    else
-      Builder_.CreateStore(InitVal, Alloca);
-  }
-
-  emitLocation(&e);
-  ValueResult_ = InitVal;
-}
-
-//==============================================================================
-// ArrayExprAST - Expression class for arrays.
-//==============================================================================
-void CodeGen::visit(ArrayDeclAST &e) {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
-  // Emit the initializer before adding the variable to scope, this prevents
-  // the initializer from referencing the variable itself, and permits stuff
-  // like this:
-  //  var a = 1 in
-  //    var a = a in ...   # refers to outer 'a'.
-
-  
-  // the llvm variable type
-  const auto & Ty = e.getType();
-  auto VarType = getLLVMType(Ty);
-    
   int NumVars = e.getNumVars();
 
   //---------------------------------------------------------------------------
-  // Array already on right hand side
-  if (auto ArrayAST = dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
+  // Scalar variable
+  if (!e.isArray()) {
 
-    ValueResult_ = runExprVisitor(*ArrayAST);
+    // Register all variables and emit their initializer.
+    for (const auto & VarId : e.getVarIds()) {
+      const auto & VarName = VarId.getName();
+      auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());
+      auto Alloca = VarE->getAlloca();
+      if (Ty.isFuture()) {
+        auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
+        Builder_.CreateStore(InitVal, FutureA);
+      }
+      else if (Ty.isGlobal())
+        cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
+      else
+        Builder_.CreateStore(InitVal, Alloca);
+    }
+
+  }
+  //---------------------------------------------------------------------------
+  // Array already on right hand side
+  else if (dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
 
     // transfer to first
     const auto & VarName = e.getVarId(0).getName();
@@ -1394,15 +1397,11 @@ void CodeGen::visit(ArrayDeclAST &e) {
     }
 
     copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr, VarE->getType() );
-
   }
   
   //---------------------------------------------------------------------------
-  // Scalar Initializer
+  // Array with Scalar Initializer
   else {
-  
-    // Emit initializer first
-    auto InitVal = runExprVisitor(*e.getInitExpr());
 
     // create a size expr
     Value* SizeExpr = nullptr;
@@ -1421,13 +1420,12 @@ void CodeGen::visit(ArrayDeclAST &e) {
     }
 
     initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarType);
-
-    ValueResult_ = InitVal;
-
-  } // else
+  
+  } // end var type
   //---------------------------------------------------------------------------
 
   emitLocation(&e);
+  ValueResult_ = InitVal;
 }
 
 //==============================================================================

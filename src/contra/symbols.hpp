@@ -146,6 +146,7 @@ public:
   {}
 
   VariableType getType() const { return *this; }
+  VariableType& getType() { return *this; }
 
   //virtual ~Variable() = default;
 

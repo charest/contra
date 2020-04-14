@@ -68,7 +68,6 @@ private:
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
   void visit(VarDeclAST&) override;
-  void visit(ArrayDeclAST&) override;
   void visit(PrototypeAST&) override;
   void visit(FunctionAST&) override;
   void visit(TaskAST&) override;
