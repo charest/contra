@@ -39,38 +39,19 @@ private:
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
   std::forward_list<std::set<std::string>> FutureTable_;
-  void insertFuture(const std::string & Name)
-  { FutureTable_.front().emplace(Name); }
-
+ 
   VariableType I64Type_  = VariableType(Context::I64Type);
   VariableType F64Type_  = VariableType(Context::F64Type);
   VariableType StrType_  = VariableType(Context::StrType);
   VariableType BoolType_ = VariableType(Context::BoolType);
   VariableType VoidType_ = VariableType(Context::VoidType);
+  
+  bool HaveTopLevelTask_ = false;
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
-  bool IsInsideTask_ = false;
-
-  bool HaveTopLevelTask_ = false;
-  
-  std::deque<std::unique_ptr<FunctionAST>> FunctionQueue_;
-
-  Scoper::value_type createScope() override {
-    VariableTable_.push_front({});
-    VarAccessTable_.push_front({});
-    FutureTable_.push_front({});
-    return Scoper::createScope();
-  }
-  
-  void resetScope(Scoper::value_type Scope) override {
-    for (int i=Scope; i<getScope(); ++i) {
-      VariableTable_.pop_front();
-      VarAccessTable_.pop_front();
-      FutureTable_.pop_front();
-    }
-    Scoper::resetScope(Scope);
-  }
+ 
+  bool IsInsideTask_;
 
 public:
 
@@ -88,28 +69,8 @@ public:
 
   virtual ~Analyzer() = default;
 
-	// function queue
-	std::unique_ptr<FunctionAST> getNextFunctionAST()
-  {
-		if (FunctionQueue_.empty())
-			 return nullptr;
-	  else {
-			auto F = std::move(FunctionQueue_.front());
-			FunctionQueue_.pop_front();
-			return F;
-		} 
-	}
-
-	void addFunctionAST( std::unique_ptr<FunctionAST> F )
-	{ FunctionQueue_.emplace_back( std::move(F) ); }
-  
   // visitor interface
-  template<
-    typename T,
-    typename = typename std::enable_if_t<
-      std::is_same<T, FunctionAST>::value || std::is_same<T, PrototypeAST>::value >
-  >
-  void runFuncVisitor(T&e)
+  void runFuncVisitor(FunctionAST&e)
   {
     IsInsideTask_ = false;
     e.accept(*this);
@@ -117,22 +78,23 @@ public:
 
 private:
   
-  template<typename T>
-  auto runExprVisitor(T&e)
+  void runProtoVisitor(PrototypeAST&e)
+  { e.accept(*this); }
+
+  auto runExprVisitor(NodeAST &e)
   {
     TypeResult_ = VariableType{};
     e.accept(*this);
     return TypeResult_;
   }
 
-  template<typename T>
-  auto runStmtVisitor(T&e)
+  auto runStmtVisitor(NodeAST &e)
   {
     DestinationType_ = VariableType{};
     auto OrigScope = getScope();
-    auto V = runExprVisitor(e);
+    auto TypeResult = runExprVisitor(e);
     resetScope(OrigScope);
-    return V;
+    return TypeResult;
   }
 
 
@@ -210,6 +172,28 @@ private:
 
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }
+
+  // Future interface
+  void insertFuture(const std::string & Name)
+  { FutureTable_.front().emplace(Name); }
+  
+  // Scope interface
+  Scoper::value_type createScope() override {
+    VariableTable_.push_front({});
+    VarAccessTable_.push_front({});
+    FutureTable_.push_front({});
+    return Scoper::createScope();
+  }
+  
+  void resetScope(Scoper::value_type Scope) override {
+    for (int i=Scope; i<getScope(); ++i) {
+      VariableTable_.pop_front();
+      VarAccessTable_.pop_front();
+      FutureTable_.pop_front();
+    }
+    Scoper::resetScope(Scope);
+  }
+
 
 };
 

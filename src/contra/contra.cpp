@@ -1,6 +1,6 @@
 #include "contra.hpp"
 #include "errors.hpp"
-#include "flow.hpp"
+#include "loop.hpp"
 
 #include <iostream>
 
@@ -49,6 +49,23 @@ void Contra::setup(const std::string & FileName)
 //==============================================================================
 // Top-Level definition handler
 //==============================================================================
+std::vector<std::unique_ptr<FunctionAST>>
+  Contra::optimizeFunction(std::unique_ptr<FunctionAST> F)
+{
+  LoopLifter TheLifter;
+  TheLifter.runVisitor(*F);
+  
+  std::vector<std::unique_ptr<FunctionAST>> Fs;
+  while( auto FnAST = TheLifter.getNextFunctionAST() )
+    Fs.emplace_back( std::move(FnAST) );
+
+  Fs.emplace_back( std::move(F) );
+  return Fs;
+}
+
+//==============================================================================
+// Top-Level definition handler
+//==============================================================================
 void Contra::handleFunction()
 {
 
@@ -58,13 +75,10 @@ void Contra::handleFunction()
     auto FnAST = TheParser_->parseFunction();
     auto Name = FnAST->getName();
 		TheAnalyser_->runFuncVisitor(*FnAST);
-		
-		TheAnalyser_->addFunctionAST( std::move(FnAST) );
     
-    Flow TheFlow;
-
-		while (FnAST = TheAnalyser_->getNextFunctionAST()) {
-      TheFlow.runVisitor(*FnAST);
+    auto FnASTs = optimizeFunction(std::move(FnAST));
+    
+		for (auto & FnAST : FnASTs) {
     	if (dumpDot()) TheViz_->runVisitor(*FnAST);
     	auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     	if (dumpIR()) FnIR->print(*IRFileStream_);

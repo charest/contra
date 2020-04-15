@@ -45,11 +45,11 @@ public:
   void stop() { out() << "}" << std::endl; }
 
   // Codegen function
-  template<typename T>
-  void runVisitor(T&e)
-  {
-    e.accept(*this);
-  }
+  void runVisitor(FunctionAST & e)
+  { e.accept(*this); }
+  
+  void runVisitor(NodeAST & e)
+  { e.accept(*this); }
 
 private:
    

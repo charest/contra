@@ -12,6 +12,8 @@
 
 namespace contra {
 
+class FunctionAST;
+
 class Contra : public ErrorVisiter {
 
   bool IsInteractive_ = false;
@@ -82,6 +84,9 @@ private:
   void handleDefinition();
   void handleExtern();  
   void handleTopLevelExpression();
+
+  std::vector<std::unique_ptr<FunctionAST>>
+    optimizeFunction(std::unique_ptr<FunctionAST>);
 
   template<typename T>
   void reportError(const T&e) const

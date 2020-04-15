@@ -423,8 +423,10 @@ public:
 //==============================================================================
 class ForeachStmtAST : public ForStmtAST {
 
+	using VariableEntry = std::shared_ptr<VariableDef>;
+  std::map<std::string, VariableEntry> AccessedVariables_;
   std::string Name_;
-  std::set<std::string> AccessedVariables_;
+  bool IsLifted_ = false;
 
 public:
   
@@ -441,16 +443,19 @@ public:
   
   virtual void accept(AstVisiter& visiter) override;
 
-  void addAccessedVariable(const std::string & VarName)
-  { AccessedVariables_.emplace(VarName); }
+  void addAccessedVariable(const std::string & VarName, const VariableEntry & VarDef)
+  { AccessedVariables_.emplace(VarName, VarDef); }
 
   const auto & getAccessedVariables()
   { return AccessedVariables_; }
 
   auto moveBodyExprs() { return std::move(BodyExprs_); }
-
+  
+  const std::string &getName() const { return Name_; }
   void setName(const std::string& Name) { Name_ = Name; }
-  const auto & getName() const { return Name_; }
+  
+  bool isLifted() const { return IsLifted_; }
+  void setLifted(bool IsLifted=true) { IsLifted_ = IsLifted; }
   
 };
 
@@ -712,10 +717,12 @@ class IndexTaskAST : public FunctionAST {
 public:
 
   IndexTaskAST(const std::string & Name, ASTBlock Body,
-      const std::string & LoopVar, const std::vector<VariableEntry>& Vars)
-      : FunctionAST(Name, std::move(Body), true), LoopVarName_(LoopVar),
- 				Vars_(Vars)
-  {}
+      const std::string & LoopVar, const std::map<std::string, VariableEntry>& Vars)
+      : FunctionAST(Name, std::move(Body), true), LoopVarName_(LoopVar)
+  {
+    for (const auto & Var : Vars)
+      Vars_.emplace_back(Var.second);
+  }
 
   virtual void accept(AstVisiter& visiter) override;
 

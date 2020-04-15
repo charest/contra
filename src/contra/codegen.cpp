@@ -1226,36 +1226,43 @@ void CodeGen::visit(ForStmtAST& e) {
 //==============================================================================
 void CodeGen::visit(ForeachStmtAST& e)
 {
-  auto ParentFunction = Builder_.GetInsertBlock()->getParent();
-
-  auto StartV = runStmtVisitor(*e.getStartExpr());
-  auto StartA = createEntryBlockAlloca(ParentFunction, I64Type_, "start");
-  Builder_.CreateStore(StartV, StartA);
-  
-  auto EndV = runStmtVisitor(*e.getEndExpr());
-  if (e.getLoopType() == ForStmtAST::LoopType::Until) {
-    Value *OneV = llvmValue<int_t>(TheContext_, 1);
-    EndV = Builder_.CreateSub(EndV, OneV, "endsub");
+  //---------------------------------------------------------------------------
+  if (!e.isLifted()) {
+    visit( static_cast<ForStmtAST&>(e) );
   }
-  auto EndA = createEntryBlockAlloca(ParentFunction, I64Type_, "end");
-  Builder_.CreateStore(EndV, EndA);
-  
-  std::vector<Value*> TaskArgVs;
-  std::vector<Value*> TaskArgSizes;
-  for ( const auto & VarN : e.getAccessedVariables() ) {
-    auto VarE = getVariable(VarN);
-    auto VarT = VarE->getType();
-    TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
-    auto VarV = Builder_.CreateLoad(VarT, VarE->getAlloca());
-    TaskArgVs.emplace_back(VarV); 
-  }
+  //---------------------------------------------------------------------------
+  else {
+    auto ParentFunction = Builder_.GetInsertBlock()->getParent();
 
-  auto TaskN = e.getName();
-  auto TaskI = Tasker_->getTask(TaskN);
-  Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgVs, TaskArgSizes,
-      StartA, EndA);
-  
-	ValueResult_ = UndefValue::get(VoidType_);
+    auto StartV = runStmtVisitor(*e.getStartExpr());
+    auto StartA = createEntryBlockAlloca(ParentFunction, I64Type_, "start");
+    Builder_.CreateStore(StartV, StartA);
+    
+    auto EndV = runStmtVisitor(*e.getEndExpr());
+    if (e.getLoopType() == ForStmtAST::LoopType::Until) {
+      Value *OneV = llvmValue<int_t>(TheContext_, 1);
+      EndV = Builder_.CreateSub(EndV, OneV, "endsub");
+    }
+    auto EndA = createEntryBlockAlloca(ParentFunction, I64Type_, "end");
+    Builder_.CreateStore(EndV, EndA);
+    
+    std::vector<Value*> TaskArgVs;
+    std::vector<Value*> TaskArgSizes;
+    for ( const auto & VarN : e.getAccessedVariables() ) {
+      auto VarE = getVariable(VarN.first);
+      auto VarT = VarE->getType();
+      TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
+      auto VarV = Builder_.CreateLoad(VarT, VarE->getAlloca());
+      TaskArgVs.emplace_back(VarV); 
+    }
+
+    auto TaskN = e.getName();
+    auto TaskI = Tasker_->getTask(TaskN);
+    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgVs, TaskArgSizes,
+        StartA, EndA);
+    
+	  ValueResult_ = UndefValue::get(VoidType_);
+  }
 }
 
 //==============================================================================

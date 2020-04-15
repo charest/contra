@@ -496,24 +496,13 @@ void Analyzer::visit(ForStmtAST& e)
 void Analyzer::visit(ForeachStmtAST& e)
 {
   visit( static_cast<ForStmtAST&>(e) );
+
   for ( const auto & ST : VarAccessTable_ )
-    for ( const auto & VarN : ST )
-      e.addAccessedVariable(VarN);
-
-	std::vector<VariableEntry> VarDs;
-	for (const auto & VarN : e.getAccessedVariables()) {
-		auto VarE = findVariable(VarN);
-		const auto & VarD = VarE.Result->second;
-		VarDs.emplace_back(VarD);
-	}
-
-  std::string Name = "__loop__";
-  e.setName(Name);
-  
-  // lift out the foreach
-  auto IndexTask = std::make_unique<IndexTaskAST>(Name, 
-      std::move(e.moveBodyExprs()), e.getVarName(), VarDs);
-	addFunctionAST(std::move(IndexTask));
+    for ( const auto & VarN : ST ) {
+		  auto VarE = findVariable(VarN);
+		  const auto & VarD = VarE.Result->second;
+      e.addAccessedVariable(VarN, VarD);
+    }
 }
 
 //==============================================================================
@@ -683,7 +672,7 @@ void Analyzer::visit(FunctionAST& e)
   auto FnName = FnId.getName();
   auto Loc = FnId.getLoc();
 
-  runFuncVisitor(ProtoExpr);
+  runProtoVisitor(ProtoExpr);
   auto ProtoType = getFunction(FnId);
 
   auto NumArgIds = ProtoExpr.getNumArgs();
@@ -708,7 +697,7 @@ void Analyzer::visit(FunctionAST& e)
   for ( const auto & B : e.getBodyExprs() ) runStmtVisitor(*B);
   
   if (e.getReturnExpr()) {
-    auto RetType = runStmtVisitor(*e.getReturnExpr());
+    auto RetType = runExprVisitor(*e.getReturnExpr());
     if (ProtoExpr.isAnonExpr())
       ProtoExpr.setReturnType(RetType);
     else if (RetType != ProtoType->getReturnType())
