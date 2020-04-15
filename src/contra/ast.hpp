@@ -77,31 +77,36 @@ public:
 //==============================================================================
 /// ValueExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-template< typename T >
 class ValueExprAST : public ExprAST {
-protected:
-
-  T Val_;
 
 public:
-  ValueExprAST(const SourceLocation & Loc, T Val)
-    : ExprAST(Loc), Val_(Val) {}
 
-  const T & getVal() const { return Val_; }
+  enum class ValueType {
+    Int, Real, String
+  };
+
+protected:
+
+  std::string Val_;
+  ValueType ValueType_;
+
+public:
+  ValueExprAST(const SourceLocation & Loc, const std::string & Val, ValueType Ty)
+    : ExprAST(Loc), Val_(Val), ValueType_(Ty) {}
+
+  template<typename T>
+  T getVal() const;
   
   void accept(AstVisiter& visiter) override
   { visiter.visit(*this); }
   
-  virtual std::string getClassName() const override;
+  virtual std::string getClassName() const override
+  { return "ValueExprAST"; }
+
+  ValueType getValueType() const { return ValueType_; }
   
 };
 
-// alias for ints
-using IntegerExprAST = ValueExprAST<int_t>;
-// alias for reals
-using RealExprAST = ValueExprAST<real_t>;
-// alias for strings
-using StringExprAST = ValueExprAST<std::string>;
 
 //==============================================================================
 /// VarAccessExprAST - Expression class for referencing a variable, like "a".

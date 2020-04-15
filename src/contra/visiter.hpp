@@ -7,8 +7,7 @@
 
 namespace contra {
 
-template<typename T> class ValueExprAST;
-
+class ValueExprAST;
 class VarAccessExprAST;
 class ArrayAccessExprAST;
 class ArrayExprAST;
@@ -31,9 +30,7 @@ public:
 
   virtual ~AstVisiter() = default;
   
-  virtual void visit(ValueExprAST<int_t>&) = 0;
-  virtual void visit(ValueExprAST<real_t>&) = 0;
-  virtual void visit(ValueExprAST<std::string>&) = 0;
+  virtual void visit(ValueExprAST&) = 0;
   virtual void visit(VarAccessExprAST&) = 0;
   virtual void visit(ArrayAccessExprAST&) = 0;
   virtual void visit(ArrayExprAST&) = 0;

@@ -44,14 +44,6 @@ void Vizualizer::labelNode(int_t ind, const std::string & Label)
 
 }
 
-
-//==============================================================================
-template<typename T>
-void Vizualizer::dumpNumericVal(ValueExprAST<T>& e)
-{
-  labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getVal()));
-}
-
 //==============================================================================
 void Vizualizer::dumpBlock(const ASTBlock & Block, int_t link_to,
     const std::string & Label, bool ForceExpanded)
@@ -79,25 +71,28 @@ void Vizualizer::dumpBlock(const ASTBlock & Block, int_t link_to,
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-void Vizualizer::visit(ValueExprAST<int_t>& e)
-{ dumpNumericVal(e); }
-
-//==============================================================================
-void Vizualizer::visit(ValueExprAST<real_t>& e)
-{ dumpNumericVal(e); }
-
-//==============================================================================
-void Vizualizer::visit(ValueExprAST<std::string>& e)
+void Vizualizer::visit(ValueExprAST& e)
 {
-  constexpr int MaxLen = 10;
-  auto str = e.getVal();
-  str.insert(0, "\"");
-  if (str.length() > MaxLen+1) {
-    str.erase(MaxLen+2, str.length()+1);
-    str.append("...");
+  
+  switch (e.getValueType()) {
+  case ValueExprAST::ValueType::Int:
+    labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getVal<int_t>()));
+    break;
+  case ValueExprAST::ValueType::Real:
+    labelNode(ind_, makeLabel(e.getClassName(), Formatter() << e.getVal<real_t>()));
+    break;
+  case ValueExprAST::ValueType::String: {
+    constexpr int MaxLen = 10;
+    auto str = e.getVal<std::string>();
+    str.insert(0, "\"");
+    if (str.length() > MaxLen+1) {
+      str.erase(MaxLen+2, str.length()+1);
+      str.append("...");
+    }
+    str.append("\"");
+    labelNode(ind_, makeLabel(e.getClassName(), str));
+    break;}
   }
-  str.append("\"");
-  labelNode(ind_, makeLabel(e.getClassName(), str));
 }
 
 //==============================================================================

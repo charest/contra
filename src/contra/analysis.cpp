@@ -195,25 +195,22 @@ Analyzer::promote(
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-void Analyzer::visit(ValueExprAST<int_t>& e)
+void Analyzer::visit(ValueExprAST& e)
 {
-  TypeResult_ = I64Type_;
+  switch (e.getValueType()) {
+  case ValueExprAST::ValueType::Int:
+    TypeResult_ = I64Type_;
+    break;
+  case ValueExprAST::ValueType::Real:
+    TypeResult_ = F64Type_;
+    break;
+  case ValueExprAST::ValueType::String:
+    TypeResult_ = StrType_;
+    break;
+  }
   e.setType(TypeResult_);
 }
 
-//==============================================================================
-void Analyzer::visit(ValueExprAST<real_t>& e)
-{
-  TypeResult_ = F64Type_;
-  e.setType(TypeResult_);
-}
-
-//==============================================================================
-void Analyzer::visit(ValueExprAST<std::string>& e)
-{
-  TypeResult_ = StrType_;
-  e.setType(TypeResult_);
-}
 
 //==============================================================================
 void Analyzer::visit(VarAccessExprAST& e)
@@ -568,7 +565,7 @@ void Analyzer::visit(AssignStmtAST& e)
     checkIsCastable(RightType, LeftType, Loc);
     e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
   }
-  if (RightType.isFuture()) VarE->getType().setFuture(true);
+  if (RightType.isFuture()) insertFuture(Name);
   
   TypeResult_ = LeftType;
 }
@@ -589,7 +586,11 @@ void Analyzer::visit(VarDeclAST& e)
     VarType = InitType;
     e.setArray(InitType.isArray());
   }
-  VarType.setFuture(InitType.isFuture());
+
+  if (InitType.isFuture()) {
+    for (const auto & VarN : e.getNames())
+      insertFuture(VarN);
+  }
 
   //----------------------------------------------------------------------------
   // Scalar variable

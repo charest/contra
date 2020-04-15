@@ -53,9 +53,7 @@ public:
 
 private:
    
-  void visit(ValueExprAST<int_t>&) override;
-  void visit(ValueExprAST<real_t>&) override;
-  void visit(ValueExprAST<std::string>&) override;
+  void visit(ValueExprAST&) override;
   void visit(VarAccessExprAST&) override;
   void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;
@@ -81,11 +79,7 @@ private:
 
   void labelNode(int_t, const std::string & = "");
 
-  template<typename T>
-  void dumpNumericVal(ValueExprAST<T>&);
-
   void dumpBlock(const ASTBlock &, int_t, const std::string &, bool = false);
-
 
 };
 

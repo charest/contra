@@ -37,9 +37,7 @@ private:
     e.accept(*this);
   }
 
-  void visit(ValueExprAST<int_t>&) override;
-  void visit(ValueExprAST<real_t>&) override;
-  void visit(ValueExprAST<std::string>&) override;
+  void visit(ValueExprAST&) override;
   void visit(VarAccessExprAST&) override;
   void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;

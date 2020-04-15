@@ -4,16 +4,16 @@ namespace contra {
 
 //==============================================================================
 template<>
-std::string IntegerExprAST::getClassName() const
-{ return "IntegerExprAST"; }
+std::string ValueExprAST::getVal() const
+{ return Val_; }
 
 template<>
-std::string RealExprAST::getClassName() const
-{ return "RealExprAST"; }
+int_t ValueExprAST::getVal() const
+{ return std::atoi(Val_.c_str()); }
 
 template<>
-std::string StringExprAST::getClassName() const
-{ return "StringExprAST"; }
+real_t ValueExprAST::getVal() const
+{ return std::atof(Val_.c_str()); }
 
 //==============================================================================
 void VarAccessExprAST::accept(AstVisiter& visiter)

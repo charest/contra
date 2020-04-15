@@ -15,8 +15,8 @@ namespace contra {
 // numberexpr ::= number
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseIntegerExpr() {
-  auto NumVal = std::atoi( TheLex_.getIdentifierStr().c_str() );
-  auto Result = std::make_unique<IntegerExprAST>(getCurLoc(), NumVal);
+  auto Result = std::make_unique<ValueExprAST>(getCurLoc(),
+      TheLex_.getIdentifierStr(), ValueExprAST::ValueType::Int);
   getNextToken(); // consume the number
   return std::move(Result);
 }
@@ -25,8 +25,8 @@ std::unique_ptr<NodeAST> Parser::parseIntegerExpr() {
 // numberexpr ::= number
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseRealExpr() {
-  auto NumVal = std::atof( TheLex_.getIdentifierStr().c_str() );
-  auto Result = std::make_unique<RealExprAST>(getCurLoc(), NumVal);
+  auto Result = std::make_unique<ValueExprAST>(getCurLoc(),
+      TheLex_.getIdentifierStr(), ValueExprAST::ValueType::Real);
   getNextToken(); // consume the number
   return std::move(Result);
 }
@@ -35,7 +35,8 @@ std::unique_ptr<NodeAST> Parser::parseRealExpr() {
 // stringexpr ::= string
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseStringExpr() {
-  auto Result = std::make_unique<StringExprAST>(getCurLoc(), TheLex_.getIdentifierStr());
+  auto Result = std::make_unique<ValueExprAST>(getCurLoc(),
+      TheLex_.getIdentifierStr(), ValueExprAST::ValueType::String);
   getNextToken(); // consume the number
   return std::move(Result);
 }

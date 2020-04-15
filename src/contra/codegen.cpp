@@ -722,28 +722,21 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
 //==============================================================================
 // IntegerExprAST - Expression class for numeric literals like "1.0".
 //==============================================================================
-void CodeGen::visit(ValueExprAST<int_t> & e)
+void CodeGen::visit(ValueExprAST & e)
 {
   emitLocation(&e);
-  ValueResult_ = llvmValue<int_t>(TheContext_, e.getVal());
-}
 
-//==============================================================================
-// RealExprAST - Expression class for numeric literals like "1.0".
-//==============================================================================
-void CodeGen::visit(ValueExprAST<real_t> & e)
-{
-  emitLocation(&e);
-  ValueResult_ = llvmValue(TheContext_, e.getVal());
-}
-
-//==============================================================================
-// StringExprAST - Expression class for string literals like "hello".
-//==============================================================================
-void CodeGen::visit(ValueExprAST<std::string>& e)
-{
-  emitLocation(&e);
-  ValueResult_ = llvmString(TheContext_, getModule(), e.getVal());
+  switch (e.getValueType()) {
+  case ValueExprAST::ValueType::Int:
+    ValueResult_ = llvmValue<int_t>(TheContext_, e.getVal<int_t>());
+    break;
+  case ValueExprAST::ValueType::Real:
+    ValueResult_ = llvmValue(TheContext_, e.getVal<real_t>());
+    break;
+  case ValueExprAST::ValueType::String:
+    ValueResult_ = llvmString(TheContext_, getModule(), e.getVal<std::string>());
+    break;
+  }
 }
  
 //==============================================================================
