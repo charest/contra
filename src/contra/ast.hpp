@@ -310,6 +310,7 @@ public:
   { return "CallExprAST"; };
 
   auto getNumArgs() const { return ArgExprs_.size(); }
+  const auto & getArgExprs() const { return ArgExprs_; }
   auto getArgExpr(int i) const { return ArgExprs_[i].get(); }
   
   auto moveArgExpr(int i) { return std::move(ArgExprs_[i]); }
@@ -670,6 +671,7 @@ FunctionAST(const std::string & Name, ASTBlock Body, bool IsTask = false)
   virtual std::string getClassName() const override
   { return "FunctionAST"; };
 
+  bool hasReturn() const { return static_cast<bool>(ReturnExpr_); }
   auto getReturnExpr() const { return ReturnExpr_.get(); }
   
   auto getProtoExpr() const { return ProtoExpr_.get(); }

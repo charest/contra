@@ -4,7 +4,7 @@
 #include "ast.hpp"
 #include "config.hpp"
 #include "context.hpp"
-#include "visiter.hpp"
+#include "recursive.hpp"
 #include "precedence.hpp"
 #include "scope.hpp"
 #include "symbols.hpp"
@@ -20,7 +20,7 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 /// Semantec analyzer class
 ////////////////////////////////////////////////////////////////////////////////
-class Analyzer : public AstVisiter, public Scoper {
+class Analyzer : public RecursiveAstVisiter, public Scoper {
 public:
 
   using TypeEntry = std::shared_ptr<TypeDef>;

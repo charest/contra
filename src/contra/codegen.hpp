@@ -2,7 +2,7 @@
 #define CONTRA_CODEGEN_HPP
 
 #include "debug.hpp"
-#include "visiter.hpp"
+#include "recursive.hpp"
 #include "tasking.hpp"
 #include "jit.hpp"
 #include "scope.hpp"
@@ -29,7 +29,7 @@ class PrototypeAST;
 class JIT;
 class DebugInfo;
  
-class CodeGen : public AstVisiter, public Scoper {
+class CodeGen : public RecursiveAstVisiter, public Scoper {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;

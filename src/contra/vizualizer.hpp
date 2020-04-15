@@ -2,7 +2,7 @@
 #define CONTRA_VIZUALIZER_HPP
 
 #include "config.hpp"
-#include "visiter.hpp"
+#include "recursive.hpp"
 #include "file_utils.hpp"
 #include "string_utils.hpp"
 
@@ -15,7 +15,7 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 /// AST plotting class
 ////////////////////////////////////////////////////////////////////////////////
-class Vizualizer : public AstVisiter {
+class Vizualizer : public RecursiveAstVisiter {
 
   std::ofstream OutputStream_;
   std::ostream * out_ = nullptr;

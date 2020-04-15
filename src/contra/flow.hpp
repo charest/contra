@@ -2,59 +2,36 @@
 #define CONTRA_FLOW_HPP
 
 #include "config.hpp"
-#include "visiter.hpp"
+#include "recursive.hpp"
 
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// AST plotting class
 ////////////////////////////////////////////////////////////////////////////////
-class Flow : public AstVisiter {
+class Flow : public RecursiveAstVisiter {
 
   bool IsFuture_ = false;
 
 public:
 
-  void visitBlock(const ASTBlock &);
-  
   // Codegen function
-  template<typename T>
-  void runFuncVisitor(T&e)
+  void runVisitor(FunctionAST&e)
   { e.accept(*this); }
 
 private:
    
   // Codegen function
-  template<typename T>
-  void runExprVisitor(T&e)
+  void runVisitor(ExprAST&e)
   { e.accept(*this); }
 
   // Codegen function
-  template<typename T>
-  void runStmtVisitor(T&e)
+  void runVisitor(StmtAST&e)
   {
     IsFuture_ = false;
     e.accept(*this);
   }
 
-  void visit(ValueExprAST&) override;
-  void visit(VarAccessExprAST&) override;
-  void visit(ArrayAccessExprAST&) override;
-  void visit(ArrayExprAST&) override;
-  void visit(CastExprAST&) override;
-  void visit(UnaryExprAST&) override;
-  void visit(BinaryExprAST&) override;
-  void visit(CallExprAST&) override;
-  void visit(ForStmtAST&) override;
-  void visit(ForeachStmtAST&) override;
-  void visit(IfStmtAST&) override;
-  void visit(AssignStmtAST&) override;
-  void visit(VarDeclAST&) override;
-  void visit(PrototypeAST&) override;
-  void visit(FunctionAST&) override;
-  void visit(TaskAST&) override;
-  void visit(IndexTaskAST&) override;
-  
 };
 
 

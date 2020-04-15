@@ -64,7 +64,7 @@ void Contra::handleFunction()
     Flow TheFlow;
 
 		while (FnAST = TheAnalyser_->getNextFunctionAST()) {
-      TheFlow.runFuncVisitor(*FnAST);
+      TheFlow.runVisitor(*FnAST);
     	if (dumpDot()) TheViz_->runVisitor(*FnAST);
     	auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     	if (dumpIR()) FnIR->print(*IRFileStream_);
