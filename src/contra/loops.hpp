@@ -29,7 +29,6 @@ class LoopLifter : public RecursiveAstVisiter {
   void addFunctionAST( std::unique_ptr<FunctionAST> F )
   { FunctionQueue_.emplace_back( std::move(F) ); }
 
-
 public:
 
   std::unique_ptr<FunctionAST> getNextFunctionAST()

@@ -245,7 +245,7 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 void CodeGen::resetScope(Scoper::value_type Scope)
 {
   std::map<std::string, Value*> Arrays;
-  std::set<std::string> Futures;
+  std::map<std::string, Value*> Futures;
 
   for (int i=Scope; i<getScope(); ++i) {
     for ( const auto & entry_pair : VariableTable_.front() ) {
@@ -255,14 +255,14 @@ void CodeGen::resetScope(Scoper::value_type Scope)
       auto IsOwner = VarE.isOwner();
       if (isArray(Alloca) && IsOwner) 
         Arrays.emplace(Name, Alloca);
-      if (Tasker_->isFuture(Name))
-        Futures.emplace(Name);
+      if (Tasker_->isFuture(Alloca))
+        Futures.emplace(Name, Alloca);
     }
     VariableTable_.pop_front();
   }
 
   destroyArrays(Arrays); 
-  Tasker_->destroyFutures(*TheModule_, Futures);
+  //Tasker_->destroyFutures(*TheModule_, Futures);
   Scoper::resetScope(Scope);
 }
 
@@ -713,6 +713,22 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
   P = std::move(Proto);
   return *P;
 }
+    
+////////////////////////////////////////////////////////////////////////////////
+// Future Interface
+////////////////////////////////////////////////////////////////////////////////
+
+//==============================================================================
+// load the future
+//==============================================================================
+Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
+{
+  auto DataSizeV = getTypeSize<int_t>(VariableT);
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto FutureA = createEntryBlockAlloca(TheFunction, VariableT, "__tmp");
+  Builder_.CreateStore(FutureV, FutureA);
+  return Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Visitor Interface
@@ -758,18 +774,8 @@ void CodeGen::visit(VarAccessExprAST& e)
   if (isa<GlobalVariable>(VarA))
     VarA = TheModule_->getOrInsertGlobal(e.getName(), VarT);
 
-  if (e.getType().isFuture() && Tasker_->isFuture(Name)) {
-    if (e.needValue()) {
-      auto FutureA = Tasker_->popFuture(Name);
-      auto DataSizeV = getTypeSize<int_t>(VarT);
-      auto VarV = Tasker_->loadFuture(*TheModule_, FutureA, VarT, DataSizeV);
-      Builder_.CreateStore(VarV, VarA);
-      Tasker_->destroyFuture(*TheModule_, FutureA);
-    }
-    else {
-      VarA = Tasker_->getFuture(Name);
-      VarT = VarA->getType()->getPointerElementType();
-    }
+  if (Tasker_->isFuture(VarA)) {
+    VarT = VarA->getType()->getPointerElementType();
   }
 
   ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
@@ -991,8 +997,12 @@ void CodeGen::visit(CallExprAST &e) {
     
   std::vector<Value *> ArgVs;
   for (unsigned i = 0; i<e.getNumArgs(); ++i) {
-    auto A = runExprVisitor(*e.getArgExpr(i));
-    ArgVs.push_back(A);
+    auto ArgV = runExprVisitor(*e.getArgExpr(i));
+    if (!IsTask && Tasker_->isFuture(ArgV)) {
+      auto ArgT = getLLVMType( e.getArgType(i) );
+      ArgV = loadFuture(ArgT, ArgV);
+    }
+    ArgVs.push_back(ArgV);
   }
 
   //----------------------------------------------------------------------------
@@ -1284,47 +1294,47 @@ void CodeGen::visit(AssignStmtAST & e)
   Value* VariableA = VarE->getAlloca();
 
   //---------------------------------------------------------------------------
-  // array element assignment
+  // array[i] = scalar
   if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr())) {
     auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
     storeArrayValue(VariableV, VariableA, IndexV, VarName);
   }
   //---------------------------------------------------------------------------
-  // array assignment
-  else if (dynamic_cast<ArrayExprAST*>(e.getRightExpr())) {
-    destroyArray(VarName, VariableA);
-    Builder_.CreateStore(VariableV, VariableA);
-    eraseVariable("__tmp");
+  // array = ?
+  else if (isArray(VariableA)) {
+    // array = [val0, val1, ..., valn ]
+    if (dynamic_cast<ArrayExprAST*>(e.getRightExpr())) {
+      destroyArray(VarName, VariableA);
+      Builder_.CreateStore(VariableV, VariableA);
+      eraseVariable("__tmp");
+    }
+    // array = array
+    else if (isArray(VariableV)) {
+      copyArray(VariableV, VariableA);
+    }
   }
   //---------------------------------------------------------------------------
-  // array copy
-  else if (isArray(VariableV) && isArray(VariableA)) {
-    copyArray(VariableV, VariableA);
-  }
-  //---------------------------------------------------------------------------
-  // future access
-  else if (Tasker_->isFuture(VariableV)) {
-    Value* FutureA;
-    if (isa<AllocaInst>(VariableV)) {
-      FutureA = VariableV;
+  // future = ?
+  else if (Tasker_->isFuture(VariableA)) {
+    //Tasker_->destroyFuture(*TheModule_, VariableA);
+    // future = future
+    if (Tasker_->isFuture(VariableV)) {
+      Tasker_->copyFuture(*TheModule_, VariableV, VariableA);
     }
-    else if (Tasker_->isFuture(VarName)) {
-      FutureA = Tasker_->popFuture(VarName);
-    }
+    // future = value
     else {
-      auto TheFunction = Builder_.GetInsertBlock()->getParent();
-      Tasker_->createFuture(*TheModule_, TheFunction, VarName);
-      FutureA = Tasker_->popFuture(VarName);
-      Builder_.CreateStore(VariableV, FutureA);
+      Tasker_->toFuture(*TheModule_, VariableV, VariableA);
     }
-    auto VariableT = VarE->getType();
-    auto DataSizeV = getTypeSize<int_t>(VariableT);
-    auto VariableV = Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
-    Builder_.CreateStore(VariableV, VariableA);
-    Tasker_->destroyFuture(*TheModule_, FutureA);
   }
   //---------------------------------------------------------------------------
-  // scalar access
+  // value = future
+  else if (Tasker_->isFuture(VariableV)) {
+    auto VariableT = VarE->getType();
+    VariableV = loadFuture(VariableT, VariableV);
+    Builder_.CreateStore(VariableV, VariableA);
+  }
+  //---------------------------------------------------------------------------
+  // scalar = scalar
   else {
     Builder_.CreateStore(VariableV, VariableA);
   }
@@ -1349,30 +1359,37 @@ void CodeGen::visit(VarDeclAST & e) {
 
   // Emit initializer first
   auto InitVal = runExprVisitor(*e.getInitExpr());
+  bool InitIsFuture = Tasker_->isFuture(InitVal);
 
   // the llvm variable type
   const auto & Ty = e.getType();
   auto VarType = getLLVMType(Ty);
 
-  int NumVars = e.getNumVars();
+  auto NumVars = e.getNumVars();
 
   //---------------------------------------------------------------------------
   // Scalar variable
   if (!e.isArray()) {
 
     // Register all variables and emit their initializer.
-    for (const auto & VarId : e.getVarIds()) {
-      const auto & VarName = VarId.getName();
-      auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());
-      auto Alloca = VarE->getAlloca();
-      if (Ty.isFuture()) {
+    for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
+      const auto & VarName = e.getName(VarIdx);
+      if (Ty.isFuture() || InitIsFuture || e.isFuture(VarIdx)) {
         auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
-        Builder_.CreateStore(InitVal, FutureA);
+        if (InitIsFuture)
+          Tasker_->copyFuture(*TheModule_, InitVal, FutureA);
+        else
+          Tasker_->toFuture(*TheModule_, InitVal, FutureA);
+        insertVariable(VarName, FutureA, VarType);
       }
-      else if (Ty.isGlobal())
-        cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
-      else
-        Builder_.CreateStore(InitVal, Alloca);
+      else {
+        auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());
+        auto Alloca = VarE->getAlloca();
+        if (Ty.isGlobal())
+          cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
+        else
+          Builder_.CreateStore(InitVal, Alloca);
+      }
     }
 
   }
@@ -1390,7 +1407,7 @@ void CodeGen::visit(VarDeclAST & e) {
   
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;
-    for (int i=1; i<NumVars; ++i) {
+    for (unsigned i=1; i<NumVars; ++i) {
       const auto & VarName = e.getVarId(i).getName();
       auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
       ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
@@ -1595,6 +1612,10 @@ void CodeGen::visit(TaskAST& e)
   auto RetVal = codegenFunctionBody(e);
   
   // Finish wrapped task
+  if (RetVal && Tasker_->isFuture(RetVal)) {
+    auto RetT = getLLVMType( P.getReturnType() );
+    RetVal = loadFuture(RetT, RetVal);
+  }
   Tasker_->taskPostamble(*TheModule_, RetVal);
 
   // garbage collection

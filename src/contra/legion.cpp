@@ -661,7 +661,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   if (ResultV) {
     
     auto TheFunction = Builder_.GetInsertBlock()->getParent();
-    
+
     // store result
     auto ResultT = ResultV->getType();
     auto ResultA = createEntryBlockAlloca(TheFunction, ResultT, "result");
@@ -1134,7 +1134,6 @@ Value* LegionTasker::createFuture(Module &, Function* TheFunction,
     const std::string & Name)
 {
   auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "future.alloca");
-  AbstractTasker::createFuture(Name, FutureA);
   return FutureA;
 }
 
@@ -1144,6 +1143,58 @@ Value* LegionTasker::createFuture(Module &, Function* TheFunction,
 void LegionTasker::destroyFuture(Module &TheModule, Value* FutureA)
 {
   destroyOpaqueType(TheModule, FutureA, "legion_future_destroy", "future");
+}
+  
+//==============================================================================
+// copy a value into a future
+//==============================================================================
+void LegionTasker::toFuture(Module & TheModule, Value* ValueV, Value* FutureA)
+{
+  // load runtime
+  const auto & LegionE = getCurrentTask();
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  auto RuntimeV = load(RuntimeA, TheModule, "runtime");
+
+  auto ValueT = ValueV->getType();
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto ValueA = createEntryBlockAlloca(TheFunction, ValueT);
+  Builder_.CreateStore( ValueV, ValueA );
+
+  auto TheBlock = Builder_.GetInsertBlock();
+  auto ValuePtrV = CastInst::Create(Instruction::BitCast, ValueA, VoidPtrType_,
+      "cast", TheBlock);
+
+  auto ValueSizeV = getTypeSize<size_t>(Builder_, ValueT);
+
+  std::vector<Value*> FunArgVs = {RuntimeV, ValuePtrV, ValueSizeV};
+  auto FunArgTs = llvmTypes(FunArgVs);
+    
+  auto FutureRT = reduceStruct(FutureType_, TheModule);
+
+  auto FunT = FunctionType::get(FutureRT, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("legion_future_from_untyped_pointer", FunT);
+    
+  auto FutureRV = Builder_.CreateCall(FunF, FunArgVs, "future");
+  store(FutureRV, FutureA);
+
+}
+
+//==============================================================================
+// copy a future
+//==============================================================================
+void LegionTasker::copyFuture(Module & TheModule, Value* ValueV, Value* FutureA)
+{
+  // load runtime
+  const auto & LegionE = getCurrentTask();
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+
+  auto FutureRT = reduceStruct(FutureType_, TheModule);
+
+  auto FunT = FunctionType::get(FutureRT, FutureRT, false);
+  auto FunF = TheModule.getOrInsertFunction("legion_future_copy", FunT);
+    
+  auto FutureRV = Builder_.CreateCall(FunF, ValueV, "future");
+  store(FutureRV, FutureA);
 }
 
 //==============================================================================

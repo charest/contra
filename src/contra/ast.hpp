@@ -25,6 +25,7 @@ namespace contra {
 class NodeAST {
   
   SourceLocation Loc_;
+  bool IsFuture_ = false;
 
 public:
 
@@ -42,6 +43,8 @@ public:
   int getLine() const { return Loc_.getLine(); }
   int getCol() const { return Loc_.getCol(); }
 
+  virtual bool isFuture() const { return IsFuture_; }
+  virtual void setFuture(bool IsFuture=true) { IsFuture_ = IsFuture; }
 };
 
 // some useful types
@@ -315,10 +318,11 @@ public:
   
   auto moveArgExpr(int i) { return std::move(ArgExprs_[i]); }
   auto setArgExpr(int i, std::unique_ptr<NodeAST> Expr) { ArgExprs_[i] = std::move(Expr); }
-  
+
   const auto & getArgType(int i) { return ArgTypes_[i]; }
   void setArgTypes(const std::vector<VariableType> & ArgTypes)
   { ArgTypes_ = ArgTypes; }
+
 
 };
 
@@ -503,13 +507,14 @@ protected:
   std::unique_ptr<NodeAST> InitExpr_;
   std::unique_ptr<NodeAST> SizeExpr_;
   bool IsArray_ = false;
+  std::vector<bool> AreFutures_;
 
 public:
 
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<NodeAST> Init)
     : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
-      InitExpr_(std::move(Init)), IsArray_(false)
+      InitExpr_(std::move(Init)), IsArray_(false), AreFutures_(Vars.size(), false)
   {}
   
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
@@ -517,7 +522,8 @@ public:
       std::unique_ptr<NodeAST> Size)
     : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
       InitExpr_(std::move(Init)),
-      SizeExpr_(std::move(Size)), IsArray_(true)
+      SizeExpr_(std::move(Size)), IsArray_(true),
+      AreFutures_(Vars.size(), false)
   {}
 
   void setType(const VariableType & Type) { Type_ = Type; }
@@ -531,6 +537,7 @@ public:
   virtual std::string getClassName() const override
   { return "VarDeclAST"; };
 
+  const auto & getName(int i) const { return VarIds_[i].getName(); }
   std::vector<std::string> getNames() const
   {
     std::vector<std::string> strs;
@@ -552,6 +559,10 @@ public:
   
   bool hasSize() const { return static_cast<bool>(SizeExpr_); }
   auto getSizeExpr() const { return SizeExpr_.get(); }
+  
+  bool isFuture(int i) const { return AreFutures_[i]; }
+  void setFuture(bool IsFuture=true) { AreFutures_.assign(AreFutures_.size(), IsFuture); }
+  void setFuture(int i, bool IsFuture) { AreFutures_[i] = IsFuture; }
 };
 
 //==============================================================================

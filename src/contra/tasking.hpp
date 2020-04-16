@@ -19,7 +19,6 @@ class AbstractTasker {
   bool IsStarted_ = false;
   
   std::map<std::string, TaskInfo> TaskTable_;
-  std::map<std::string, llvm::Value*> FutureTable_;
 
 protected:
 
@@ -62,6 +61,8 @@ public:
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) = 0;
   virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
   virtual void destroyFuture(llvm::Module &, llvm::Value*) = 0;
+  virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
+  virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -85,20 +86,8 @@ public:
   const auto & getTask(const std::string & Name) const
   { return TaskTable_.at(Name); }
 
-  // future table interface
-  void createFuture(const std::string & Name, llvm::Value* Alloca)
-  { FutureTable_[Name] = Alloca; }
-
-  llvm::Value* getFuture(const std::string & Name)
-  { return FutureTable_.at(Name); }
-
-  llvm::Value* popFuture(const std::string & Name);
-
-  bool isFuture(const std::string & Name)
-  { return FutureTable_.count(Name); }
-
-  void destroyFutures(llvm::Module &, const std::set<std::string> &);
-  
+  // future interface
+  void destroyFutures(llvm::Module &, const std::map<std::string, llvm::Value*> &);
 
 protected:
   
@@ -110,7 +99,7 @@ protected:
   llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
   void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;
   llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;
-  void store(llvm::Value*, llvm::AllocaInst *) const;
+  void store(llvm::Value*, llvm::Value *) const;
 
   llvm::Value* offsetPointer(llvm::AllocaInst* PointerA, llvm::AllocaInst* OffsetA,
       const std::string & Name = "");

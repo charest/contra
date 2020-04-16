@@ -38,8 +38,6 @@ private:
   
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
-  std::forward_list<std::set<std::string>> FutureTable_;
- 
   VariableType I64Type_  = VariableType(Context::I64Type);
   VariableType F64Type_  = VariableType(Context::F64Type);
   VariableType StrType_  = VariableType(Context::StrType);
@@ -64,7 +62,6 @@ public:
     TypeTable_.emplace( Context::VoidType->getName(), Context::VoidType);
     VariableTable_.push_front({}); // global table
     VarAccessTable_.push_front({});
-    FutureTable_.push_front({});
   }
 
   virtual ~Analyzer() = default;
@@ -173,15 +170,10 @@ private:
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }
 
-  // Future interface
-  void insertFuture(const std::string & Name)
-  { FutureTable_.front().emplace(Name); }
-  
   // Scope interface
   Scoper::value_type createScope() override {
     VariableTable_.push_front({});
     VarAccessTable_.push_front({});
-    FutureTable_.push_front({});
     return Scoper::createScope();
   }
   
@@ -189,7 +181,6 @@ private:
     for (int i=Scope; i<getScope(); ++i) {
       VariableTable_.pop_front();
       VarAccessTable_.pop_front();
-      FutureTable_.pop_front();
     }
     Scoper::resetScope(Scope);
   }

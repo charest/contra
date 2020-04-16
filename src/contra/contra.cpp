@@ -1,6 +1,7 @@
 #include "contra.hpp"
 #include "errors.hpp"
-#include "loop.hpp"
+#include "futures.hpp"
+#include "loops.hpp"
 
 #include <iostream>
 
@@ -52,14 +53,20 @@ void Contra::setup(const std::string & FileName)
 std::vector<std::unique_ptr<FunctionAST>>
   Contra::optimizeFunction(std::unique_ptr<FunctionAST> F)
 {
+  // lift index tasks
   LoopLifter TheLifter;
   TheLifter.runVisitor(*F);
-  
+
   std::vector<std::unique_ptr<FunctionAST>> Fs;
   while( auto FnAST = TheLifter.getNextFunctionAST() )
     Fs.emplace_back( std::move(FnAST) );
 
   Fs.emplace_back( std::move(F) );
+  
+  // identify futures
+  FutureIdentifier TheFut;
+  for ( const auto & FnAST : Fs )  TheFut.runVisitor(*FnAST);
+  
   return Fs;
 }
 

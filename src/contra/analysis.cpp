@@ -423,31 +423,18 @@ void Analyzer::visit(CallExprAST& e)
   std::vector<VariableType> ArgTypes;
   ArgTypes.reserve(NumArgs);
 
-  std::vector<bool> ArgIsFuture;
-  ArgIsFuture.reserve(NumArgs);
-
   for (int i=0; i<NumArgs; ++i) {
     auto ArgExpr = e.getArgExpr(i);
     auto ArgType = runExprVisitor(*ArgExpr);
-    bool IsFuture = false;
-    auto VarExpr = dynamic_cast<VarAccessExprAST*>(ArgExpr);
 
-    bool ForceValue = false;
     if (i<NumFixedArgs) {
       auto ParamType = FunRes->getArgType(i);
       if (ArgType != ParamType) {
         checkIsCastable(ArgType, ParamType, ArgExpr->getLoc());
         e.setArgExpr(i, insertCastOp( std::move(e.moveArgExpr(i)), ParamType) );
-        ForceValue = true;
       }
     }
 
-    if (VarExpr && ArgType.isFuture() && !ForceValue) {
-      VarExpr->setNeedValue(false);
-      IsFuture = true;
-    }
-
-    ArgIsFuture.emplace_back(IsFuture);
     ArgTypes.emplace_back(ArgType);
   } // args
 
@@ -548,13 +535,10 @@ void Analyzer::visit(AssignStmtAST& e)
   
   checkIsAssignable( LeftType, RightType, Loc );
 
-  //std::cout << "Var " << VarE->getName() << ", " << VarE->getType() << std::endl;
-  //std::cout << "Left " << LeftType << ", " << RightType << std::endl;
   if (RightType.getBaseType() != LeftType.getBaseType()) {
     checkIsCastable(RightType, LeftType, Loc);
     e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
   }
-  if (RightType.isFuture()) insertFuture(Name);
   
   TypeResult_ = LeftType;
 }
@@ -574,11 +558,6 @@ void Analyzer::visit(VarDeclAST& e)
   if (!VarType) {
     VarType = InitType;
     e.setArray(InitType.isArray());
-  }
-
-  if (InitType.isFuture()) {
-    for (const auto & VarN : e.getNames())
-      insertFuture(VarN);
   }
 
   //----------------------------------------------------------------------------

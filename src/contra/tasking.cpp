@@ -76,7 +76,7 @@ Value* AbstractTasker::load(Value * Alloca, const Module &TheModule,
 }
 
 //==============================================================================
-void AbstractTasker::store(Value* Val, AllocaInst * Alloca) const
+void AbstractTasker::store(Value* Val, Value * Alloca) const
 {
   auto BaseT = Alloca->getType()->getPointerElementType();
   if (isa<StructType>(BaseT)) {
@@ -190,22 +190,11 @@ TaskInfo AbstractTasker::popTask(const std::string & Name)
 }
 
 //==============================================================================
-Value* AbstractTasker::popFuture(const std::string & Name)
-{
-  auto it = FutureTable_.find(Name);
-  auto res = it->second;
-  FutureTable_.erase(it);
-  return res;
-}
-  
-//==============================================================================
 void AbstractTasker::destroyFutures(Module & TheModule,
-    const std::set<std::string> & Futures)
+    const std::map<std::string, Value*> & Futures)
 {
-  for (const auto & FutureN : Futures ) {
-    auto FutureA = popFuture(FutureN);
-    destroyFuture(TheModule, FutureA); 
-  }
+  for (const auto & Future : Futures )
+    destroyFuture(TheModule, Future.second);
 }
 
 //==============================================================================

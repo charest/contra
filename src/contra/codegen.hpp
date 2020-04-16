@@ -319,6 +319,11 @@ public:
 private:
   Function *getFunction(std::string Name); 
   
+  //============================================================================
+  // Future interface
+  //============================================================================
+  llvm::Value* loadFuture(llvm::Type*, llvm::Value*);
+  
 };
 
 } // namespace

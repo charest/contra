@@ -84,6 +84,8 @@ public:
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) override;
   virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*) override;
   virtual void destroyFuture(llvm::Module &, llvm::Value*) override;
+  virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) override;
+  virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) override;
 
   virtual ~LegionTasker() = default;
 
