@@ -4,6 +4,7 @@
 
 #include "librt/librt.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -500,8 +501,13 @@ void Analyzer::visit(ForeachStmtAST& e)
   for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
 
       
+  const auto & VarName = VarId.getName();
   auto AccessedVars = Context::instance().getAccessedVariables();
-  e.addAccessedVariables(AccessedVars);
+  auto it = std::find_if( AccessedVars.begin(), AccessedVars.end(),
+      [&](const auto & Var) { return (Var->getName()==VarName); } );
+  AccessedVars.erase(it);
+  e.setAccessedVariables(AccessedVars);
+
 
 
   popScope();

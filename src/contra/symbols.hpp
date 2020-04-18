@@ -23,6 +23,12 @@ struct Attributes {
   using value_type = std::size_t;
 
   constexpr Attributes(value_type Val) : Val_(Val) {}
+  
+  bool operator==(const Attributes & other)
+  { return Val_ == other.Val_; }
+
+  bool operator!=(const Attributes & other)
+  { return Val_ != other.Val_; }
 
   auto operator | (Attributes rhs) const
   { return ( Val_ | rhs.Val_); }
@@ -169,11 +175,12 @@ public:
   }
 
   bool operator==(const VariableType & other)
-  { return Type_ == other.Type_ && isArray() == other.isArray(); }
+  { return !(*this == other); }
+
   bool operator!=(const VariableType & other)
-  { return Type_ != other.Type_ || isArray() != other.isArray(); }
+  { return Type_ != other.Type_ || Attrs_ != other.Attrs_; }
   
-  operator bool() const { return static_cast<bool>(Type_); }
+  operator bool() const { return Type_; }
 
   friend std::ostream &operator<<( std::ostream &out, const VariableType &obj )
   {

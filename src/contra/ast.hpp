@@ -450,7 +450,7 @@ public:
   
   virtual void accept(AstVisiter& visiter) override;
 
-  void addAccessedVariables(const std::vector<VariableDef*> VarDefs)
+  void setAccessedVariables(const std::vector<VariableDef*> & VarDefs)
   { AccessedVariables_ = VarDefs; }
 
   const auto & getAccessedVariables()

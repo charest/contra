@@ -1254,7 +1254,8 @@ void CodeGen::visit(ForeachStmtAST& e)
     std::vector<Value*> TaskArgVs;
     std::vector<Value*> TaskArgSizes;
     for ( const auto & VarD : e.getAccessedVariables() ) {
-      auto VarE = getVariable(VarD->getName());
+      const auto & Name = VarD->getName();
+      auto VarE = getVariable(Name);
       auto VarT = VarE->getType();
       TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
       auto VarV = Builder_.CreateLoad(VarT, VarE->getAlloca());

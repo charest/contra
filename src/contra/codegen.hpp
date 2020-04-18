@@ -210,7 +210,9 @@ private:
   //============================================================================
 
   void createScope() 
-  { VariableTable_.push_front({}); }
+  {
+    VariableTable_.push_front({});
+  }
   
   void popScope();
  
