@@ -6,7 +6,6 @@
 #include "context.hpp"
 #include "recursive.hpp"
 #include "precedence.hpp"
-#include "scope.hpp"
 #include "symbols.hpp"
 
 #include <deque>
@@ -14,62 +13,43 @@
 #include <forward_list>
 #include <fstream>
 #include <set>
+#include <memory>
 
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Semantec analyzer class
 ////////////////////////////////////////////////////////////////////////////////
-class Analyzer : public RecursiveAstVisiter, public Scoper {
+class Analyzer : public RecursiveAstVisiter {
 public:
-
-  using TypeEntry = std::shared_ptr<TypeDef>;
-  using FunctionEntry = std::shared_ptr<FunctionDef>;
-  using VariableEntry = std::shared_ptr<VariableDef>;
 
 private:
 
-  std::map<std::string, TypeEntry> TypeTable_;
-  std::map<std::string, FunctionEntry> FunctionTable_;
-  std::set<std::string> TaskTable_; 
-  
-  std::forward_list< std::map<std::string, VariableEntry> > VariableTable_;
-  std::deque< std::set<std::string> > VarAccessTable_;
-  
   std::shared_ptr<BinopPrecedence> BinopPrecedence_;
 
-  VariableType I64Type_  = VariableType(Context::I64Type);
-  VariableType F64Type_  = VariableType(Context::F64Type);
-  VariableType StrType_  = VariableType(Context::StrType);
-  VariableType BoolType_ = VariableType(Context::BoolType);
-  VariableType VoidType_ = VariableType(Context::VoidType);
+  VariableType I64Type_  = VariableType(Context::instance().getInt64Type());
+  VariableType F64Type_  = VariableType(Context::instance().getFloat64Type());
+  VariableType StrType_  = VariableType(Context::instance().getStringType());
+  VariableType BoolType_ = VariableType(Context::instance().getBoolType());
+  VariableType VoidType_ = VariableType(Context::instance().getVoidType());
   
   bool HaveTopLevelTask_ = false;
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
- 
-  bool IsInsideTask_;
+  FunctionDef*  ParentFunction_;
 
 public:
 
   Analyzer(std::shared_ptr<BinopPrecedence> Prec) : BinopPrecedence_(std::move(Prec))
-  {
-    TypeTable_.emplace( Context::I64Type->getName(),  Context::I64Type);
-    TypeTable_.emplace( Context::F64Type->getName(),  Context::F64Type);
-    TypeTable_.emplace( Context::StrType->getName(),  Context::StrType);
-    TypeTable_.emplace( Context::BoolType->getName(), Context::BoolType);
-    TypeTable_.emplace( Context::VoidType->getName(), Context::VoidType);
-    VariableTable_.push_front({}); // global table
-    VarAccessTable_.push_front({});
-  }
+  {}
 
   virtual ~Analyzer() = default;
 
   // visitor interface
   void runFuncVisitor(FunctionAST&e)
   {
-    IsInsideTask_ = false;
+    ParentFunction_ = nullptr;
     e.accept(*this);
   }
 
@@ -88,9 +68,7 @@ private:
   auto runStmtVisitor(NodeAST &e)
   {
     DestinationType_ = VariableType{};
-    auto OrigScope = getScope();
     auto TypeResult = runExprVisitor(e);
-    resetScope(OrigScope);
     return TypeResult;
   }
 
@@ -116,34 +94,20 @@ private:
   void visit(IndexTaskAST&) override;
   
   // base type interface
-  TypeEntry getBaseType(const std::string & Name, const SourceLocation & Loc);
-  TypeEntry getBaseType(Identifier Id);
+  TypeDef* getType(const std::string & Name, const SourceLocation & Loc);
+  TypeDef* getType(const Identifier & Id);
 
   // variable interface
-  VariableEntry
-    getVariable(const std::string & Name, const SourceLocation & Loc);
-
-  VariableEntry getVariable(Identifier Id);
-
-  VariableEntry
-    insertVariable(const Identifier & Id, const VariableType & VarType);
-  
-  struct VariableTableResult {
-    decltype(VariableTable_)::value_type::iterator Result;
-    bool IsFound = false;
-    int Scope = 0;
-  };
-
-  VariableTableResult findVariable(const std::string & Name);
+  VariableDef* getVariable(const std::string & Name, const SourceLocation & Loc);
+  VariableDef* getVariable(const Identifier & Id);
+  VariableDef* insertVariable(const Identifier & Id, const VariableType & VarType);
 
   // function interface
-  FunctionEntry
-    insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
+  FunctionDef* insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
       const VariableType & RetType);
   
-  FunctionEntry getFunction(const std::string &, const SourceLocation &);
-
-  FunctionEntry getFunction(const Identifier & Id);
+  FunctionDef* getFunction(const std::string &, const SourceLocation &);
+  FunctionDef* getFunction(const Identifier & Id);
  
 public:
   void removeFunction(const std::string & Name);
@@ -163,28 +127,16 @@ private:
   VariableType promote(const VariableType & LeftType, const VariableType & RightType,
       const SourceLocation & Loc);
   
-  // Task interface
-  void insertTask(const std::string & Name)
-  { TaskTable_.emplace(Name); }
-
-  bool isTask(const std::string & Name) const
-  { return TaskTable_.count(Name); }
 
   // Scope interface
-  Scoper::value_type createScope() override {
-    VariableTable_.push_front({});
-    VarAccessTable_.push_front({});
-    return Scoper::createScope();
-  }
-  
-  void resetScope(Scoper::value_type Scope) override {
-    for (int i=Scope; i<getScope(); ++i) {
-      VariableTable_.pop_front();
-      VarAccessTable_.pop_front();
-    }
-    Scoper::resetScope(Scope);
-  }
+  void createScope() const
+  { Context::instance().createScope(); }
 
+  void popScope() const
+  { Context::instance().popScope(); }
+
+  bool isGlobalScope() const
+  { return Context::instance().isGlobalScope(); }
 
 };
 

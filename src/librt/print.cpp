@@ -51,12 +51,13 @@ Function * Print::install(LLVMContext & TheContext, Module & TheModule)
 }
 
 
-std::shared_ptr<contra::FunctionDef> Print::check()
+std::unique_ptr<contra::FunctionDef> Print::check()
 {
+  auto & C = Context::instance();
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::StrType );
-  return std::make_shared<BuiltInFunction>(Print::Name, 
-      VariableType(Context::VoidType), Args, true);
+  Args.emplace_back( C.getStringType() );
+  return std::make_unique<BuiltInFunction>(Print::Name, 
+      VariableType(C.getVoidType()), Args, true);
 }
 
 }

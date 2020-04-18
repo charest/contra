@@ -25,7 +25,8 @@ namespace contra {
 class NodeAST {
   
   SourceLocation Loc_;
-  bool IsFuture_ = false;
+
+  FunctionDef* ParentFunction_ = nullptr;
 
 public:
 
@@ -43,8 +44,10 @@ public:
   int getLine() const { return Loc_.getLine(); }
   int getCol() const { return Loc_.getCol(); }
 
-  virtual bool isFuture() const { return IsFuture_; }
-  virtual void setFuture(bool IsFuture=true) { IsFuture_ = IsFuture; }
+  void setParentFunctionDef(FunctionDef* FunDef)
+  { ParentFunction_ = FunDef; }
+
+  FunctionDef* getParentFunction() { return ParentFunction_; }
 };
 
 // some useful types
@@ -118,8 +121,8 @@ class VarAccessExprAST : public ExprAST {
 protected:
 
   std::string Name_;
-  VariableType Type_;
-  bool NeedValue_ = true;
+  VariableDef* VarDef_ = nullptr;
+  
 
 public:
 
@@ -134,8 +137,9 @@ public:
 
   const std::string &getName() const { return Name_; }
   
-  void setNeedValue(bool NeedValue=true) { NeedValue_=NeedValue; }
-  bool needValue() const { return NeedValue_; }
+  void setVariableDef(VariableDef* VarDef) { VarDef_=VarDef; }
+  VariableDef* getVariableDef() const { return VarDef_; }
+  
 };
 
 //==============================================================================
@@ -211,7 +215,7 @@ public:
   {}
 
   CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
-      VariableType Type) : ExprAST(Loc, Type), FromExpr_(std::move(FromExpr))
+      const VariableType & Type) : ExprAST(Loc, Type), FromExpr_(std::move(FromExpr))
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -427,8 +431,7 @@ public:
 //==============================================================================
 class ForeachStmtAST : public ForStmtAST {
 
-	using VariableEntry = std::shared_ptr<VariableDef>;
-  std::map<std::string, VariableEntry> AccessedVariables_;
+  std::vector<VariableDef*> AccessedVariables_;
   std::string Name_;
   bool IsLifted_ = false;
 
@@ -447,8 +450,8 @@ public:
   
   virtual void accept(AstVisiter& visiter) override;
 
-  void addAccessedVariable(const std::string & VarName, const VariableEntry & VarDef)
-  { AccessedVariables_.emplace(VarName, VarDef); }
+  void addAccessedVariables(const std::vector<VariableDef*> VarDefs)
+  { AccessedVariables_ = VarDefs; }
 
   const auto & getAccessedVariables()
   { return AccessedVariables_; }
@@ -507,14 +510,15 @@ protected:
   std::unique_ptr<NodeAST> InitExpr_;
   std::unique_ptr<NodeAST> SizeExpr_;
   bool IsArray_ = false;
-  std::vector<bool> AreFutures_;
+
+  std::vector<VariableDef*> VarDefs_;
 
 public:
 
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<NodeAST> Init)
     : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
-      InitExpr_(std::move(Init)), IsArray_(false), AreFutures_(Vars.size(), false)
+      InitExpr_(std::move(Init)), IsArray_(false), VarDefs_(Vars.size(),nullptr)
   {}
   
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
@@ -522,8 +526,7 @@ public:
       std::unique_ptr<NodeAST> Size)
     : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
       InitExpr_(std::move(Init)),
-      SizeExpr_(std::move(Size)), IsArray_(true),
-      AreFutures_(Vars.size(), false)
+      SizeExpr_(std::move(Size)), IsArray_(true), VarDefs_(Vars.size(),nullptr)
   {}
 
   void setType(const VariableType & Type) { Type_ = Type; }
@@ -559,10 +562,12 @@ public:
   
   bool hasSize() const { return static_cast<bool>(SizeExpr_); }
   auto getSizeExpr() const { return SizeExpr_.get(); }
+
+  void setVariableDef(unsigned i, VariableDef* VarDef) { VarDefs_[i]=VarDef; }
+  VariableDef* getVariableDef(unsigned i) const { return VarDefs_[i]; }
   
-  bool isFuture(int i) const { return AreFutures_[i]; }
-  void setFuture(bool IsFuture=true) { AreFutures_.assign(AreFutures_.size(), IsFuture); }
-  void setFuture(int i, bool IsFuture) { AreFutures_[i] = IsFuture; }
+  bool isFuture(unsigned i) const { return VarDefs_[i]->getType().isFuture(); }
+  void setFuture(unsigned i, bool IsFuture) { VarDefs_[i]->getType().setFuture(IsFuture); }
 };
 
 //==============================================================================
@@ -659,9 +664,11 @@ protected:
   bool IsTask_ = false;
   std::string Name_;
 
+  FunctionDef* FunctionDef_ = nullptr;
+
 public:
   
-FunctionAST(const std::string & Name, ASTBlock Body, bool IsTask = false)
+  FunctionAST(const std::string & Name, ASTBlock Body, bool IsTask = false)
       : BodyExprs_(std::move(Body)), IsTask_(IsTask), Name_(Name)
   {}
 
@@ -695,6 +702,9 @@ FunctionAST(const std::string & Name, ASTBlock Body, bool IsTask = false)
   
   auto getNumBodyExprs() const { return BodyExprs_.size(); }
   const auto & getBodyExprs() const { return BodyExprs_; }
+
+  auto getFunctionDef() const { return FunctionDef_; }
+  void setFunctionDef(FunctionDef* F) { FunctionDef_ = F; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -721,19 +731,16 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 class IndexTaskAST : public FunctionAST {
 
-	using VariableEntry = std::shared_ptr<VariableDef>;
   std::string LoopVarName_;
-  std::vector<VariableEntry> Vars_;
+  std::vector<VariableDef*> Vars_;
 
 public:
 
   IndexTaskAST(const std::string & Name, ASTBlock Body,
-      const std::string & LoopVar, const std::map<std::string, VariableEntry>& Vars)
-      : FunctionAST(Name, std::move(Body), true), LoopVarName_(LoopVar)
-  {
-    for (const auto & Var : Vars)
-      Vars_.emplace_back(Var.second);
-  }
+      const std::string & LoopVar, const std::vector<VariableDef*>& Vars)
+      : FunctionAST(Name, std::move(Body), true), LoopVarName_(LoopVar),
+        Vars_(Vars)
+  {}
 
   virtual void accept(AstVisiter& visiter) override;
 

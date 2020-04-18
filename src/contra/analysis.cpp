@@ -4,6 +4,7 @@
 
 #include "librt/librt.hpp"
 
+#include <memory>
 #include <string>
 
 namespace contra {
@@ -13,18 +14,17 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-Analyzer::TypeEntry
-  Analyzer::getBaseType(const std::string & Name, const SourceLocation & Loc)
+TypeDef* Analyzer::getType(const std::string & Name, const SourceLocation & Loc)
 {
-  auto it = TypeTable_.find(Name);
-  if ( it == TypeTable_.end() )
+  auto res = Context::instance().getType(Name);
+  if (!res)
     THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Loc);
-  return it->second;
+  return res.get();
 }
 
 //==============================================================================
-Analyzer::TypeEntry Analyzer::getBaseType(Identifier Id)
-{ return getBaseType(Id.getName(), Id.getLoc()); }
+TypeDef* Analyzer::getType(const Identifier & Id)
+{ return getType(Id.getName(), Id.getLoc()); }
 
   
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,21 +33,24 @@ Analyzer::TypeEntry Analyzer::getBaseType(Identifier Id)
 
 //==============================================================================
 void Analyzer::removeFunction(const std::string & Name)
-{ FunctionTable_.erase(Name); }
+{ Context::instance().eraseFunction(Name); }
 
 //==============================================================================
-Analyzer::FunctionEntry Analyzer::getFunction(const std::string & Name,
-    const SourceLocation & Loc) {
+FunctionDef* Analyzer::getFunction(
+    const std::string & Name,
+    const SourceLocation & Loc)
+{
   
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
-  auto FP = FunctionTable_.find(Name);
-  if (FP != FunctionTable_.end()) 
-    return FP->second;
+  auto FP = Context::instance().getFunction(Name);
+  if (FP) return FP.get();
   
   // see if this is an available intrinsic, try installing it first
-  if (auto F = librt::RunTimeLib::tryInstall(Name))
-    return F;
+  if (auto F = librt::RunTimeLib::tryInstall(Name)) {
+    auto res = Context::instance().insertFunction(std::move(F));
+    return res.get();
+  }
   
   THROW_NAME_ERROR("No valid prototype for '" << Name << "'.", Loc);
 
@@ -56,75 +59,55 @@ Analyzer::FunctionEntry Analyzer::getFunction(const std::string & Name,
 }
 
 //==============================================================================
-Analyzer::FunctionEntry Analyzer::getFunction(const Identifier & Id)
+FunctionDef* Analyzer::getFunction(const Identifier & Id)
 { return getFunction(Id.getName(), Id.getLoc()); }
   
 //==============================================================================
-Analyzer::FunctionEntry
-Analyzer::insertFunction(
+FunctionDef* Analyzer::insertFunction(
     const Identifier & Id,
     const VariableTypeList & ArgTypes,
     const VariableType & RetType)
 { 
   const auto & Name = Id.getName();
-  auto Sy = std::make_shared<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
-  auto fit = FunctionTable_.emplace( Name, std::move(Sy) );
-  if (!fit.second)
+  auto Sy = std::make_unique<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
+  auto res = Context::instance().insertFunction( std::move(Sy) );
+  if (!res.isInserted())
     THROW_NAME_ERROR("Prototype already exists for '" << Name << "'.",
       Id.getLoc());
-  return fit.first->second;
+  return res.get();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Variable interface
 ////////////////////////////////////////////////////////////////////////////////
 
-//==============================================================================
-Analyzer::VariableTableResult
-Analyzer::findVariable(const std::string & Name)
-{
-  int depth = 0;
-  for ( auto & ST : VariableTable_ ) {
-    auto it = ST.find(Name);
-    if (it != ST.end()) return VariableTableResult{it, true, depth};
-    depth++;
-  }
-  return VariableTableResult{{}, false, depth};
-}
-
 
 //==============================================================================
-Analyzer::VariableEntry
-Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
+VariableDef* Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
 {
-  auto res = findVariable(Name);
-
-  if (res.IsFound) {
- 	 	VarAccessTable_[res.Scope].emplace(Name);
- 		return res.Result->second;
-	}
-  THROW_NAME_ERROR("Variable '" << Name << "' has not been"
-     << " previously defined", Loc);
-  return {};
+  auto res = Context::instance().getVariable(Name);
+  if (!res)
+    THROW_NAME_ERROR("Variable '" << Name << "' has not been"
+       << " previously defined", Loc);
+  return res.get();
 }
 
 //==============================================================================
-Analyzer::VariableEntry Analyzer::getVariable(Identifier Id)
+VariableDef* Analyzer::getVariable(const Identifier & Id)
 { return getVariable(Id.getName(), Id.getLoc()); }
 
 //==============================================================================
-Analyzer::VariableEntry
+VariableDef*
 Analyzer::insertVariable(const Identifier & Id, const VariableType & VarType)
 {
   const auto & Name = Id.getName();
   const auto & Loc = Id.getLoc();
-  auto S = std::make_shared<VariableDef>(Name, Loc, VarType);
-  auto res = findVariable(Name);
-  if (res.IsFound)
+  auto S = std::make_unique<VariableDef>(Name, Loc, VarType);
+  auto res = Context::instance().insertVariable( std::move(S) );
+  if (!res.isInserted())
     THROW_NAME_ERROR("Variable '" << Name << "' has been"
         << " previously defined", Loc);
-  auto it = VariableTable_.front().emplace(Name, std::move(S));
-  return it.first->second;
+  return res.get();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -209,6 +192,7 @@ void Analyzer::visit(ValueExprAST& e)
     break;
   }
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 
@@ -216,20 +200,22 @@ void Analyzer::visit(ValueExprAST& e)
 void Analyzer::visit(VarAccessExprAST& e)
 {
   const auto & Name = e.getName();
-  auto Var = getVariable(Name, e.getLoc());
-  auto VarType = Var->getType();
+  auto VarDef = getVariable(Name, e.getLoc());
+  auto VarType = VarDef->getType();
 
   // result
   TypeResult_ = VarType;
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
+  e.setVariableDef(VarDef);
 }
 
 //==============================================================================
 void Analyzer::visit(ArrayAccessExprAST& e)
 {
   const auto & Name = e.getName();
-  auto Var = getVariable(Name, e.getLoc());
-  auto VarType = Var->getType();
+  auto VarDef = getVariable(Name, e.getLoc());
+  auto VarType = VarDef->getType();
 
   // array index
   auto Loc = e.getIndexExpr()->getLoc();
@@ -247,6 +233,8 @@ void Analyzer::visit(ArrayAccessExprAST& e)
   // result
   TypeResult_ = VarType;
   e.setType(TypeResult_);
+  e.setVariableDef(VarDef);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -291,6 +279,7 @@ void Analyzer::visit(ArrayExprAST& e)
   CommonType.setArray();
   TypeResult_ = CommonType;
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -298,10 +287,11 @@ void Analyzer::visit(CastExprAST& e)
 {
   auto FromType = runExprVisitor(*e.getFromExpr());
   auto TypeId = e.getTypeId();
-  auto ToType = VariableType(getBaseType(TypeId));
+  auto ToType = VariableType(getType(TypeId));
   checkIsCastable(FromType, ToType, e.getLoc());
   TypeResult_ = VariableType(ToType);
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -329,6 +319,7 @@ void Analyzer::visit(UnaryExprAST& e)
   };
   
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -383,6 +374,7 @@ void Analyzer::visit(BinaryExprAST& e)
   auto F = getFunction(std::string("binary") + OpCode, Loc);
   TypeResult_ = F->getReturnType();
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -394,7 +386,7 @@ void Analyzer::visit(CallExprAST& e)
   int NumArgs = e.getNumArgs();
   int NumFixedArgs = FunRes->getNumArgs();
 
-  auto IsTask = isTask(FunName);
+  auto IsTask = FunRes->isTask();
 
   if (IsTask && isGlobalScope()) {
     if (HaveTopLevelTask_)  
@@ -443,6 +435,7 @@ void Analyzer::visit(CallExprAST& e)
 
   e.setArgTypes( ArgTypes );
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -450,10 +443,9 @@ void Analyzer::visit(ForStmtAST& e)
 {
   auto VarId = e.getVarId();
   
-  auto OldScope = getScope();
   createScope();
 
-  auto LoopVar = insertVariable(VarId, I64Type_);
+  insertVariable(VarId, I64Type_);
 
   auto StartType = runStmtVisitor(*e.getStartExpr());
   if (StartType != I64Type_ )
@@ -472,24 +464,49 @@ void Analyzer::visit(ForStmtAST& e)
           e.getStepExpr()->getLoc() );
   }
 
-  createScope();
   for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
 
-  resetScope(OldScope);
+  popScope();
   TypeResult_ = VoidType_;
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
 void Analyzer::visit(ForeachStmtAST& e)
 {
-  visit( static_cast<ForStmtAST&>(e) );
+  auto VarId = e.getVarId();
+  
+  createScope();
 
-  for ( const auto & ST : VarAccessTable_ )
-    for ( const auto & VarN : ST ) {
-		  auto VarE = findVariable(VarN);
-		  const auto & VarD = VarE.Result->second;
-      e.addAccessedVariable(VarN, VarD);
-    }
+  insertVariable(VarId, I64Type_);
+
+  auto StartType = runStmtVisitor(*e.getStartExpr());
+  if (StartType != I64Type_ )
+    THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
+        e.getStartExpr()->getLoc() );
+
+  auto EndType = runStmtVisitor(*e.getEndExpr());
+  if (EndType != I64Type_ )
+    THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
+        e.getEndExpr()->getLoc() );
+
+  if (e.hasStep()) {
+    auto StepType = runStmtVisitor(*e.getStepExpr());
+    if (StepType != I64Type_ )
+      THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
+          e.getStepExpr()->getLoc() );
+  }
+
+  for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+
+      
+  auto AccessedVars = Context::instance().getAccessedVariables();
+  e.addAccessedVariables(AccessedVars);
+
+
+  popScope();
+  TypeResult_ = VoidType_;
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -499,16 +516,13 @@ void Analyzer::visit(IfStmtAST& e)
   if (CondType != BoolType_ )
     THROW_NAME_ERROR( "If condition must result in boolean type.", e.getCondExpr()->getLoc() );
 
-  auto OldScope = getScope();
   createScope();
   for ( const auto & stmt : e.getThenExprs() ) runStmtVisitor(*stmt);
-  resetScope(OldScope);
-
-  createScope();
   for ( const auto & stmt : e.getElseExprs() ) runStmtVisitor(*stmt);
-  resetScope(OldScope);
+  popScope();
 
   TypeResult_ = VoidType_;
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -531,7 +545,6 @@ void Analyzer::visit(AssignStmtAST& e)
     THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
 
   auto Name = LHSE->getName();
-  auto VarE = getVariable(Name, LeftLoc);
   
   checkIsAssignable( LeftType, RightType, Loc );
 
@@ -541,6 +554,7 @@ void Analyzer::visit(AssignStmtAST& e)
   }
   
   TypeResult_ = LeftType;
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -550,7 +564,7 @@ void Analyzer::visit(VarDeclAST& e)
   auto TypeId = e.getTypeId();
   VariableType VarType;
   if (TypeId) {
-    VarType = VariableType(getBaseType(TypeId), e.isArray());
+    VarType = VariableType(getType(TypeId), e.isArray());
     DestinationType_ = VarType;
   }
   
@@ -604,14 +618,16 @@ void Analyzer::visit(VarDeclAST& e)
   
   if (isGlobalScope()) VarType.setGlobal();
 
-  int NumVars = e.getNumVars();
-  for (int i=0; i<NumVars; ++i) {
+  auto NumVars = e.getNumVars();
+  for (unsigned i=0; i<NumVars; ++i) {
     auto VarId = e.getVarId(i);
-    insertVariable(VarId, VarType);
+    auto VarDef = insertVariable(VarId, VarType);
+    e.setVariableDef(i, VarDef);
   }
 
   TypeResult_ = VarType;
   e.setType(TypeResult_);
+  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -625,7 +641,7 @@ void Analyzer::visit(PrototypeAST& e)
   for (int i=0; i<NumArgs; ++i) {
     // check type specifier
     const auto & TypeId = e.getArgTypeId(i);
-    auto ArgType = VariableType( getBaseType(TypeId), e.isArgArray(i) );
+    auto ArgType = VariableType( getType(TypeId), e.isArgArray(i) );
     ArgTypes.emplace_back(std::move(ArgType));
   }
 
@@ -633,7 +649,7 @@ void Analyzer::visit(PrototypeAST& e)
 
   auto RetType = VoidType_;
   if (e.hasReturn())
-    RetType = VariableType( getBaseType(e.getReturnTypeId()) );
+    RetType = VariableType( getType(e.getReturnTypeId()) );
   e.setReturnType(RetType);
 
   insertFunction(e.getId(), ArgTypes, RetType);
@@ -643,8 +659,11 @@ void Analyzer::visit(PrototypeAST& e)
 //==============================================================================
 void Analyzer::visit(FunctionAST& e)
 {
-  auto OldScope = getScope();
-  if (!e.isTopLevelExpression()) createScope();
+  bool CreatedScope = false;
+  if (!e.isTopLevelExpression()) {
+    CreatedScope = true;
+    createScope();
+  }
 
   auto & ProtoExpr = *e.getProtoExpr();
   const auto & FnId = ProtoExpr.getId();
@@ -652,18 +671,23 @@ void Analyzer::visit(FunctionAST& e)
   auto Loc = FnId.getLoc();
 
   runProtoVisitor(ProtoExpr);
-  auto ProtoType = getFunction(FnId);
+  auto FunDef = getFunction(FnId);
+  if (!FunDef)  
+    THROW_NAME_ERROR("No valid prototype for function '" << FnName << "'", Loc);
+
+  ParentFunction_ = FunDef;
+  e.setFunctionDef(FunDef);
 
   auto NumArgIds = ProtoExpr.getNumArgs();
-  const auto & ArgTypes = ProtoType->getArgTypes();
+  const auto & ArgTypes = FunDef->getArgTypes();
   auto NumArgs = ArgTypes.size();
   
   if (NumArgs != NumArgIds)
     THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
         << "', does not match definition.  Expected " << NumArgIds
         << " but got " << NumArgs, Loc);
-  
-  if (e.isTask()) insertTask(FnName);
+ 
+  if (e.isTask()) FunDef->setTask();
 
   // If this is an operator, install it.
   if (ProtoExpr.isBinaryOp())
@@ -679,21 +703,20 @@ void Analyzer::visit(FunctionAST& e)
     auto RetType = runExprVisitor(*e.getReturnExpr());
     if (ProtoExpr.isAnonExpr())
       ProtoExpr.setReturnType(RetType);
-    else if (RetType != ProtoType->getReturnType())
+    else if (RetType != FunDef->getReturnType())
       THROW_NAME_ERROR("Function return type does not match prototype for '"
           << FnName << "'.  The type '" << RetType << "' cannot be "
-          << "converted to the type '" << ProtoType->getReturnType() << "'.",
+          << "converted to the type '" << FunDef->getReturnType() << "'.",
           e.getReturnExpr()->getLoc());
   }
   
-  resetScope(OldScope);
+  if (CreatedScope) popScope();
   
 }
 
 //==============================================================================
 void Analyzer::visit(TaskAST& e)
 {
-  IsInsideTask_ = true;
   visit( static_cast<FunctionAST&>(e) );
 }
 

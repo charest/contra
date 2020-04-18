@@ -36,12 +36,13 @@ const std::string CSqrt::Name = "sqrt";
 Function *CSqrt::install(LLVMContext & TheContext, Module & TheModule)
 { return installDoubleFun(TheContext, TheModule, CSqrt::Name); }
 
-std::shared_ptr<contra::FunctionDef> CSqrt::check()
+std::unique_ptr<contra::FunctionDef> CSqrt::check()
 {
+  auto & C = Context::instance();
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::F64Type );
-  return std::make_shared<BuiltInFunction>(CSqrt::Name,
-      VariableType(Context::F64Type), Args);
+  Args.emplace_back( C.getFloat64Type() );
+  return std::make_unique<BuiltInFunction>(CSqrt::Name,
+      VariableType(C.getFloat64Type()), Args);
 }
 
 //==============================================================================
@@ -52,12 +53,13 @@ const std::string CAbs::Name = "fabs";
 Function *CAbs::install(LLVMContext & TheContext, Module & TheModule)
 { return installDoubleFun(TheContext, TheModule, CAbs::Name); }
 
-std::shared_ptr<contra::FunctionDef> CAbs::check()
+std::unique_ptr<contra::FunctionDef> CAbs::check()
 {
+  auto & C = Context::instance();
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::F64Type );
-  return std::make_shared<BuiltInFunction>(CSqrt::Name,
-      VariableType(Context::F64Type), Args);
+  Args.emplace_back( C.getFloat64Type() );
+  return std::make_unique<BuiltInFunction>(CSqrt::Name,
+      VariableType(C.getFloat64Type()), Args);
 }
 
 //==============================================================================
@@ -68,12 +70,13 @@ const std::string CMax::Name = "fmax";
 Function *CMax::install(LLVMContext & TheContext, Module & TheModule)
 { return installDoubleFun(TheContext, TheModule, CMax::Name); }
 
-std::shared_ptr<contra::FunctionDef> CMax::check()
+std::unique_ptr<contra::FunctionDef> CMax::check()
 {
+  auto & C = Context::instance();
   std::vector<VariableType> Args;
-  Args.emplace_back( Context::F64Type );
-  return std::make_shared<BuiltInFunction>(CMax::Name,
-      VariableType(Context::F64Type), Args);
+  Args.emplace_back( C.getFloat64Type() );
+  return std::make_unique<BuiltInFunction>(CMax::Name,
+      VariableType(C.getFloat64Type()), Args);
 }
 
 }

@@ -1,6 +1,7 @@
 #include "dopevector.hpp"
 #include "llvm_includes.hpp"
 
+#include "contra/symbols.hpp"
 #include "utils/llvm_utils.hpp"
 
 #include <cstdlib>
@@ -58,6 +59,7 @@ void copy(dopevector_t * src, dopevector_t * tgt)
 
 namespace librt {
 
+using namespace contra;
 using namespace llvm;
 using namespace utils;
 
@@ -106,6 +108,9 @@ Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
   return AllocateFun;
 }
 
+std::unique_ptr<FunctionDef> Allocate::check()
+{ return std::unique_ptr<BuiltInFunction>(nullptr); }
+
 //==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
@@ -122,6 +127,9 @@ Function *DeAllocate::install(LLVMContext & TheContext, Module & TheModule)
   return DeAllocateFun;
 }
 
+std::unique_ptr<FunctionDef> DeAllocate::check()
+{ return std::unique_ptr<BuiltInFunction>(nullptr); }
+
 //==============================================================================
 // Installs the copy function
 //==============================================================================
@@ -137,5 +145,8 @@ Function *Copy::install(LLVMContext & TheContext, Module & TheModule)
   
   return FunF;
 }
+
+std::unique_ptr<FunctionDef> Copy::check()
+{ return std::unique_ptr<BuiltInFunction>(nullptr); }
 
 }

@@ -5,7 +5,6 @@
 #include "recursive.hpp"
 #include "tasking.hpp"
 #include "jit.hpp"
-#include "scope.hpp"
 #include "symbols.hpp" 
 #include "variable.hpp"
 
@@ -29,7 +28,7 @@ class PrototypeAST;
 class JIT;
 class DebugInfo;
  
-class CodeGen : public RecursiveAstVisiter, public Scoper {
+class CodeGen : public RecursiveAstVisiter {
 
   using AllocaInst = llvm::AllocaInst;
   using Function = llvm::Function;
@@ -49,7 +48,6 @@ class CodeGen : public RecursiveAstVisiter, public Scoper {
   // visitor results
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
-  bool IsInsideTask_ = false;
 
   // symbol tables
   std::map<std::string, Type*> TypeTable_;
@@ -164,7 +162,6 @@ public:
   Function* runFuncVisitor(T&e)
   {
     FunctionResult_ = nullptr;
-    IsInsideTask_ = false;
     e.accept(*this);
     return FunctionResult_;
   }
@@ -183,12 +180,7 @@ private:
   // Codegen function
   template<typename T>
   Value* runStmtVisitor(T&e)
-  {
-    auto OrigScope = getScope();
-    auto V = runExprVisitor(e);
-    resetScope(OrigScope);
-    return V;
-  }
+  { return runExprVisitor(e); }
 
   // Visitees 
   void visit(ValueExprAST&) override;
@@ -217,13 +209,11 @@ private:
   // Scope interface
   //============================================================================
 
-  Scoper::value_type createScope() override {
-    VariableTable_.push_front({});
-    return Scoper::createScope();
-  }
+  void createScope() 
+  { VariableTable_.push_front({}); }
   
-  void resetScope(Scoper::value_type Scope) override;
-  
+  void popScope();
+ 
   //============================================================================
   // Type interface
   //============================================================================

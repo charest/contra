@@ -1,32 +1,80 @@
 #ifndef CONTRA_SYMBOLS_HPP
 #define CONTRA_SYMBOLS_HPP
 
-#include "context.hpp"
 #include "identifier.hpp"
 #include "sourceloc.hpp"
 
 #include <iostream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
+namespace llvm {
+class Type;
+}
+
 namespace contra {
+
+//==============================================================================
+// The attributes class
+//==============================================================================
+struct Attributes {
+  using value_type = std::size_t;
+
+  constexpr Attributes(value_type Val) : Val_(Val) {}
+
+  auto operator | (Attributes rhs) const
+  { return ( Val_ | rhs.Val_); }
   
+  auto operator & (Attributes rhs) const
+  { return ( Val_ & rhs.Val_); }
+
+  auto& operator |= (Attributes rhs) 
+  { 
+    Val_ |= rhs.Val_;
+    return *this;
+  }
+  
+  auto& operator &= (Attributes rhs) 
+  { 
+    Val_ &= rhs.Val_;
+    return *this;
+  }
+
+  auto operator~() const
+  { return Attributes(~Val_); }
+  
+private:
+  value_type Val_ = 0;
+};
+
 //==============================================================================
 // The base symbol type
 //==============================================================================
 class TypeDef {
 
-  std::string Name_;
+public:
+
+  struct Attr : public Attributes {
+    static constexpr Attributes None = 0x00;
+    static constexpr Attributes Number = 0x01;
+  };
 
 public:
 
-  TypeDef(const std::string & Name) : Name_(Name) {}
+  TypeDef(const std::string & Name, Attributes Attrs=Attr::None)
+    : Name_(Name), Attrs_(Attrs) {}
 
   virtual ~TypeDef() = default;
 
   virtual const std::string & getName() const { return Name_; }
-  virtual bool isNumber() const { return false; }
+  virtual bool isNumber() const
+  { return Attrs_ & Attr::Number; }
+
+private:
+  std::string Name_;
+  Attributes Attrs_ = Attr::None;
 };
 
 
@@ -34,14 +82,12 @@ public:
 // The builtin symbol type
 //==============================================================================
 class BuiltInTypeDef : public TypeDef {
-  bool IsNumber_ = false;
 public:
 
-  BuiltInTypeDef(const std::string & Name, bool IsNumber=false)
-    : TypeDef(Name), IsNumber_(IsNumber) {}
+  BuiltInTypeDef(const std::string & Name, Attributes Attrs = Attr::None)
+    : TypeDef(Name, Attrs) {}
 
   virtual ~BuiltInTypeDef() = default;
-  virtual bool isNumber() const override { return IsNumber_; }
 
 };
 
@@ -66,38 +112,51 @@ public:
 //==============================================================================
 class VariableType {
 
-  std::shared_ptr<TypeDef> Type_;
-  bool IsArray_ = false;
-  bool IsFuture_ = false;
-  bool IsGlobal_ = false;
+  TypeDef* Type_ = nullptr;
+  Attributes Attrs_ = Attr::None;
 
 public:
 
+  struct Attr : public Attributes {
+    static constexpr Attributes None = 0x00;
+    static constexpr Attributes Array  = 0x01;
+    static constexpr Attributes Future = 0x02;
+    static constexpr Attributes Global = 0x04;
+  };
+
   VariableType() = default;
   
-  explicit VariableType(const VariableType & Type, bool IsArray)
-    : Type_(Type.Type_), IsArray_(IsArray)
+  VariableType(const VariableType & Type, Attributes Attrs)
+    : Type_(Type.Type_), Attrs_(Attrs)
   {}
 
-  explicit VariableType(std::shared_ptr<TypeDef> Type, bool IsArray = false)
-    : Type_(Type), IsArray_(IsArray)
+  explicit VariableType(TypeDef* Type, Attributes Attrs = Attr::None)
+    : Type_(Type), Attrs_(Attrs)
   {}
 
   //virtual ~VariableType() = default;
 
-  const std::shared_ptr<TypeDef> getBaseType() const { return Type_; }
+  const TypeDef* getBaseType() const { return Type_; }
 
-  bool isArray() const { return IsArray_; }
-  void setArray(bool IsArray=true) { IsArray_ = IsArray; }
+  bool isArray() const { return Attrs_ & Attr::Array; }
+  void setArray(bool IsArray=true) {
+    if (IsArray) Attrs_ |= Attr::Array;
+    else Attrs_ &= ~Attr::Array;
+  }
 
-  bool isGlobal() const { return IsGlobal_; }
-  void setGlobal(bool IsGlobal=true) { IsGlobal_ = IsGlobal; }
+  bool isGlobal() const { return Attrs_ & Attr::Global; }
+  void setGlobal(bool IsGlobal=true) {
+    if (IsGlobal) Attrs_ |= Attr::Global;
+    else Attrs_ &= ~Attr::Global;
+  }
   
-  bool isFuture() const { return IsFuture_; }
-  void setFuture(bool IsFuture=true) { IsFuture_ = IsFuture; }
+  bool isFuture() const { return Attrs_ & Attr::Future; }
+  void setFuture(bool IsFuture=true) {
+    if (IsFuture) Attrs_ |= Attr::Future;
+    else Attrs_ &= ~Attr::Future;
+  }
 
-
-  bool isNumber() const { return (!IsArray_ && Type_->isNumber()); }
+  bool isNumber() const { return (!isArray() && Type_->isNumber()); }
 
   bool isCastableTo(const VariableType &To) const
   { return (isNumber() && To.isNumber()); }
@@ -110,18 +169,18 @@ public:
   }
 
   bool operator==(const VariableType & other)
-  { return Type_ == other.Type_ && IsArray_ == other.IsArray_; }
+  { return Type_ == other.Type_ && isArray() == other.isArray(); }
   bool operator!=(const VariableType & other)
-  { return Type_ != other.Type_ || IsArray_ != other.IsArray_; }
+  { return Type_ != other.Type_ || isArray() != other.isArray(); }
   
   operator bool() const { return static_cast<bool>(Type_); }
 
   friend std::ostream &operator<<( std::ostream &out, const VariableType &obj )
   {
-    if (obj.IsFuture_) out << "(F)";
-    if (obj.IsArray_) out << "[";
+    if (obj.isFuture()) out << "(F)";
+    if (obj.isArray()) out << "[";
      out << obj.Type_->getName();
-    if (obj.IsArray_) out << "]";
+    if (obj.isArray()) out << "]";
      return out;
   }
 };
@@ -136,8 +195,8 @@ class VariableDef : public Identifier, public VariableType {
 public:
 
   VariableDef(const std::string & Name, const SourceLocation & Loc, 
-      std::shared_ptr<TypeDef> Type, bool IsArray = false)
-    : Identifier(Name, Loc), VariableType(Type, IsArray)
+      TypeDef* Type, Attributes Attrs = Attr::None)
+    : Identifier(Name, Loc), VariableType(Type, Attrs)
   {}
 
   VariableDef(const std::string & Name, const SourceLocation & Loc, 
@@ -145,7 +204,7 @@ public:
     : Identifier(Name, Loc), VariableType(VarType)
   {}
 
-  VariableType getType() const { return *this; }
+  const VariableType & getType() const { return *this; }
   VariableType& getType() { return *this; }
 
   //virtual ~Variable() = default;
@@ -163,13 +222,19 @@ protected:
   VariableTypeList ArgTypes_;
   VariableType ReturnType_;
   bool IsVarArg_;
+  Attributes Attrs_;
 
 public:
+  
+  struct Attr : public Attributes {
+    static constexpr Attributes None = 0x00;
+    static constexpr Attributes Task  = 0x01;
+  };
 
   FunctionDef(const std::string & Name, const VariableType & ReturnType,
       const VariableTypeList & ArgTypes, bool IsVarArg = false)
     : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(ReturnType),
-      IsVarArg_(IsVarArg)
+      IsVarArg_(IsVarArg), Attrs_(Attr::None)
   {}
 
   //virtual ~FunctionTypeDef() = default;
@@ -180,6 +245,12 @@ public:
   const auto & getArgType(int i) const { return ArgTypes_[i]; }
   auto getNumArgs() const { return ArgTypes_.size(); }
   auto isVarArg() const { return IsVarArg_; }
+  
+  bool isTask() const { return Attrs_ & Attr::Task; }
+  void setTask(bool IsTask=true) {
+    if (IsTask) Attrs_ |= Attr::Task;
+    else Attrs_ &= ~Attr::Task;
+  }
 };
 
 
@@ -212,6 +283,81 @@ public:
       bool IsVarArg = false)
     : FunctionDef(Name, ReturnType, ArgTypes, IsVarArg), Loc_(Loc)
   {}
+};
+
+//==============================================================================
+// The symbol table
+//==============================================================================
+template<typename T>
+class SymbolTable {
+
+  std::map<std::string, std::unique_ptr<T>> LookupTable_;
+  SymbolTable<T>* Parent_ = nullptr;
+  unsigned Level_ = 0;
+  std::string Name_;
+
+public:
+
+  class InsertResult {
+    T* Pointer_;
+    bool IsInserted_;
+  public:
+    InsertResult(T* Pointer, bool IsInerted)
+      : Pointer_(Pointer), IsInserted_(IsInerted) {}
+    auto get() const { return Pointer_; }
+    auto isInserted() const { return IsInserted_; }
+  };
+  
+  class FindResult {
+    T* Pointer_;
+    bool IsFound_;
+  public:
+    FindResult(T* Pointer, bool IsFound)
+      : Pointer_(Pointer), IsFound_(IsFound) {}
+    auto get() const { return Pointer_; }
+    auto isFound() const { return IsFound_; }
+    operator bool() { return IsFound_; }
+  };
+
+
+  SymbolTable(
+      unsigned Level,
+      const std::string & Name = "",
+      SymbolTable* Parent=nullptr) :
+    Parent_(Parent), Level_(Level), Name_(Name)
+  {}
+
+  InsertResult insert(std::unique_ptr<T> Symbol) {
+    // search first
+    const auto & Name = Symbol->getName();
+    auto it = find(Name);
+    if (it) return {it.get(), false};
+    // otherwise insert
+    auto res = LookupTable_.emplace(Symbol->getName(), std::move(Symbol));
+    return {res.first->second.get(), res.second};
+  }
+
+  FindResult find(const std::string & Name) {
+    auto it = LookupTable_.find(Name);
+    if (it == LookupTable_.end())  {
+      if (Parent_) return Parent_->find(Name);
+      else return {nullptr, false};
+    }
+    return {it->second.get(), true};
+  }
+
+  void erase(const std::string & Name) {
+    auto it = LookupTable_.find(Name);
+    if (it == LookupTable_.end())  {
+      if (Parent_) return Parent_->erase(Name);
+    }
+    else {
+      LookupTable_.erase(it);
+    }
+  }
+    
+
+
 };
 
 } // namespace

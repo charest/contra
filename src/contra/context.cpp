@@ -1,13 +1,26 @@
 
 #include "context.hpp"
-#include "symbols.hpp"
 
 namespace contra {
 
-std::shared_ptr<TypeDef> Context::I64Type = std::make_shared<BuiltInTypeDef>("i64", true);
-std::shared_ptr<TypeDef> Context::F64Type = std::make_shared<BuiltInTypeDef>("f64", true);
-std::shared_ptr<TypeDef> Context::StrType = std::make_shared<BuiltInTypeDef>("string");
-std::shared_ptr<TypeDef> Context::BoolType = std::make_shared<BuiltInTypeDef>("bool");
-std::shared_ptr<TypeDef> Context::VoidType = std::make_shared<BuiltInTypeDef>("void");
+Context::Context() : TypeTable_(0,"Global"), FunctionTable_(0, "Global")
+{
+  // add builtins
+  I64Type_ =
+    TypeTable_.insert(std::make_unique<BuiltInTypeDef>("i64", TypeDef::Attr::Number)).get();
+  F64Type_ =
+    TypeTable_.insert(std::make_unique<BuiltInTypeDef>("f64", TypeDef::Attr::Number)).get();
+  StrType_ =
+    TypeTable_.insert(std::make_unique<BuiltInTypeDef>("string")).get();
+  BoolType_ =
+    TypeTable_.insert(std::make_unique<BuiltInTypeDef>("bool")).get();
+  VoidType_ =
+    TypeTable_.insert(std::make_unique<BuiltInTypeDef>("void")).get();
+
+  // scoped data
+  NestedData_.emplace_back("Global");
+  CurrentScope_ = &NestedData_.back();
+}
+
 
 }

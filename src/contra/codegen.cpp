@@ -1,6 +1,7 @@
 #include "config.hpp"
 
 #include "ast.hpp"
+#include "context.hpp"
 #include "codegen.hpp"
 #include "errors.hpp"
 #include "legion.hpp"
@@ -51,9 +52,10 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
   VoidType_ = Type::getVoidTy(TheContext_);
   ArrayType_ = librt::DopeVector::DopeVectorType;
 
-  TypeTable_.emplace( Context::I64Type->getName(),  I64Type_);
-  TypeTable_.emplace( Context::F64Type->getName(),  F64Type_);
-  TypeTable_.emplace( Context::VoidType->getName(), VoidType_);
+  auto & C = Context::instance();
+  TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
+  TypeTable_.emplace( C.getFloat64Type()->getName(),  F64Type_);
+  TypeTable_.emplace( C.getVoidType()->getName(), VoidType_);
 
   VariableTable_.push_front({});
 
@@ -242,28 +244,25 @@ DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
 ////////////////////////////////////////////////////////////////////////////////
 // Scope Interface
 ////////////////////////////////////////////////////////////////////////////////  
-void CodeGen::resetScope(Scoper::value_type Scope)
+void CodeGen::popScope()
 {
   std::map<std::string, Value*> Arrays;
   std::map<std::string, Value*> Futures;
 
-  for (int i=Scope; i<getScope(); ++i) {
-    for ( const auto & entry_pair : VariableTable_.front() ) {
-      const auto & Name = entry_pair.first;
-      auto VarE = entry_pair.second;
-      auto Alloca = VarE.getAlloca();
-      auto IsOwner = VarE.isOwner();
-      if (isArray(Alloca) && IsOwner) 
-        Arrays.emplace(Name, Alloca);
-      if (Tasker_->isFuture(Alloca))
-        Futures.emplace(Name, Alloca);
-    }
-    VariableTable_.pop_front();
+  for ( const auto & entry_pair : VariableTable_.front() ) {
+    const auto & Name = entry_pair.first;
+    auto VarE = entry_pair.second;
+    auto Alloca = VarE.getAlloca();
+    auto IsOwner = VarE.isOwner();
+    if (isArray(Alloca) && IsOwner) 
+      Arrays.emplace(Name, Alloca);
+    if (Tasker_->isFuture(Alloca))
+      Futures.emplace(Name, Alloca);
   }
+  VariableTable_.pop_front();
 
   destroyArrays(Arrays); 
   //Tasker_->destroyFutures(*TheModule_, Futures);
-  Scoper::resetScope(Scope);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1065,10 +1064,9 @@ void CodeGen::visit(IfStmtAST & e) {
   // Emit then value.
   Builder_.SetInsertPoint(ThenBB);
 
-  auto OldScope = getScope();
   createScope();
   for ( const auto & stmt : e.getThenExprs() ) runStmtVisitor(*stmt);
-  resetScope(OldScope);
+  popScope();
 
   // get first non phi instruction
   ThenBB->getFirstNonPHI();
@@ -1086,7 +1084,7 @@ void CodeGen::visit(IfStmtAST & e) {
 
     createScope();
     for ( const auto & stmt : e.getElseExprs() ) runStmtVisitor(*stmt); 
-    resetScope(OldScope);
+    popScope();
 
     // get first non phi
     ElseBB->getFirstNonPHI();
@@ -1133,8 +1131,7 @@ void CodeGen::visit(ForStmtAST& e) {
   
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
-  auto OldScope = getScope();
-  auto InnerScope = createScope();
+  createScope();
 
   // Create an alloca for the variable in the entry block.
   auto LLType = llvmType<int_t>(TheContext_);
@@ -1188,9 +1185,7 @@ void CodeGen::visit(ForStmtAST& e) {
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
-  createScope();
   for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
-  resetScope(InnerScope);
 
 
   // Insert unconditional branch to increment.
@@ -1227,7 +1222,7 @@ void CodeGen::visit(ForStmtAST& e) {
   Builder_.SetInsertPoint(AfterBB);
 
   // for expr always returns 0.
-  resetScope(OldScope);
+  popScope();
   ValueResult_ = UndefValue::get(VoidType_);
 }
 
@@ -1258,8 +1253,8 @@ void CodeGen::visit(ForeachStmtAST& e)
     
     std::vector<Value*> TaskArgVs;
     std::vector<Value*> TaskArgSizes;
-    for ( const auto & VarN : e.getAccessedVariables() ) {
-      auto VarE = getVariable(VarN.first);
+    for ( const auto & VarD : e.getAccessedVariables() ) {
+      auto VarE = getVariable(VarD->getName());
       auto VarT = VarE->getType();
       TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
       auto VarV = Builder_.CreateLoad(VarT, VarE->getAlloca());
@@ -1499,10 +1494,11 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 //==============================================================================
 void CodeGen::visit(FunctionAST& e)
 {
-  auto OldScope = getScope();
-  if (!e.isTopLevelExpression()) createScope();
-
-  IsInsideTask_ = false;
+  bool CreatedScope = false;
+  if (!e.isTopLevelExpression()) {
+    CreatedScope = true;
+    createScope();
+  }
 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
@@ -1561,7 +1557,7 @@ void CodeGen::visit(FunctionAST& e)
   auto RetVal = codegenFunctionBody(e);
 
   // garbage collection
-  resetScope(OldScope);
+  if (CreatedScope) popScope();
   
   // Finish off the function.
   if (RetVal && !RetVal->getType()->isVoidTy() )
@@ -1581,8 +1577,11 @@ void CodeGen::visit(FunctionAST& e)
 //==============================================================================
 void CodeGen::visit(TaskAST& e)
 {
-  auto OldScope = getScope();
-  if (!e.isTopLevelExpression()) createScope();
+  bool CreatedScope = false;
+  if (!e.isTopLevelExpression()) {
+    CreatedScope = true;
+    createScope();
+  }
   
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
@@ -1590,8 +1589,6 @@ void CodeGen::visit(TaskAST& e)
   auto Name = P.getName();
   auto TheFunction = getFunction(Name);
   
-  IsInsideTask_ = true;
-
   // insert the task 
   auto & TaskI = Tasker_->insertTask(Name);
   
@@ -1619,7 +1616,7 @@ void CodeGen::visit(TaskAST& e)
   Tasker_->taskPostamble(*TheModule_, RetVal);
 
   // garbage collection
-  resetScope(OldScope);
+  if (CreatedScope) popScope();
   
   // Finish off the function.  Tasks always return void
   Builder_.CreateRetVoid();
@@ -1639,11 +1636,12 @@ void CodeGen::visit(TaskAST& e)
 void CodeGen::visit(IndexTaskAST& e)
 {
 
-  auto OldScope = getScope();
-  if (!e.isTopLevelExpression()) createScope();
+  bool CreatedScope = false;
+  if (!e.isTopLevelExpression()) {
+    CreatedScope = true;
+    createScope();
+  }
   
-  IsInsideTask_ = true;
-
   auto TaskN = e.getName();
 
   // get global args
@@ -1677,7 +1675,7 @@ void CodeGen::visit(IndexTaskAST& e)
   Tasker_->taskPostamble(*TheModule_);
   
   // garbage collection
-  resetScope(OldScope);
+  if (CreatedScope) popScope();
   
 	Builder_.CreateRetVoid();
   

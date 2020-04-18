@@ -4,6 +4,8 @@
 #include "math.hpp"
 #include "print.hpp"
 
+#include "contra/symbols.hpp"
+
 namespace librt {
 
 // static initialization
@@ -23,6 +25,18 @@ void RunTimeLib::setup(llvm::LLVMContext & TheContext)
 {
     _setup<Print, Allocate, DeAllocate, Copy, CAbs, CMax, CSqrt>();
     for (auto & entry : SetupMap) entry.second(TheContext);
+}
+
+//==============================================================================
+// install the library functions available by default
+//==============================================================================
+std::unique_ptr<contra::FunctionDef>
+RunTimeLib::tryInstall(const std::string & Name)
+{
+  auto it = SemantecMap.find(Name);
+  if (it != SemantecMap.end())
+    return it->second();
+  return std::unique_ptr<contra::BuiltInFunction>(nullptr);
 }
 
 }

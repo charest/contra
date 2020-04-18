@@ -42,7 +42,7 @@ class RunTimeLib {
   typedef llvm::Function* (*LlvmFunctionPointer) (llvm::LLVMContext &, llvm::Module &);
   static std::map<std::string, LlvmFunctionPointer> InstallMap;
 
-  typedef std::shared_ptr<contra::FunctionDef> (*FunctionPointer) (void);
+  typedef std::unique_ptr<contra::FunctionDef> (*FunctionPointer) (void);
   static std::map<std::string, FunctionPointer> SemantecMap;
 
 public:
@@ -58,14 +58,8 @@ public:
     return nullptr;
   }
   
-  static std::shared_ptr<contra::FunctionDef> 
-  tryInstall(const std::string & Name)
-  {
-    auto it = SemantecMap.find(Name);
-    if (it != SemantecMap.end())
-      return it->second();
-    return nullptr;
-  }
+  static std::unique_ptr<contra::FunctionDef> 
+  tryInstall(const std::string & Name);
 
 
 };
