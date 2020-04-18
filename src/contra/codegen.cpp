@@ -262,7 +262,7 @@ void CodeGen::popScope()
   VariableTable_.pop_front();
 
   destroyArrays(Arrays); 
-  //Tasker_->destroyFutures(*TheModule_, Futures);
+  Tasker_->destroyFutures(*TheModule_, Futures);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -329,7 +329,7 @@ VariableAlloca * CodeGen::createVariable(Function *TheFunction,
 
   return insertVariable(VarName, VariableAlloca{NewVar, VarType});
 }
-
+        
 //==============================================================================
 /// Insert an already allocated variable
 //==============================================================================
@@ -724,9 +724,22 @@ Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
 {
   auto DataSizeV = getTypeSize<int_t>(VariableT);
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto FutureA = createEntryBlockAlloca(TheFunction, VariableT, "__tmp");
-  Builder_.CreateStore(FutureV, FutureA);
+  Value* FutureA = FutureV;
+  if (!isa<AllocaInst>(FutureV)) {
+    FutureA = createEntryBlockAlloca(TheFunction, VariableT, "__tmp");
+    Builder_.CreateStore(FutureV, FutureA);
+  }
   return Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
+}
+
+//==============================================================================
+// Create a future alloca
+//==============================================================================
+VariableAlloca * CodeGen::createFuture(Function *TheFunction,
+  const std::string &VarName, Type* VarType)
+{
+  auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
+  return insertVariable(VarName, FutureA, VarType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1024,8 +1037,17 @@ void CodeGen::visit(CallExprAST &e) {
     }
   
     ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+
     auto CalleeT = CalleeF->getFunctionType()->getReturnType();
-    if (!CalleeT->isVoidTy() && FutureV) ValueResult_ = FutureV;
+    if (!CalleeT->isVoidTy()) ValueResult_ = FutureV;
+    if (!CalleeT->isVoidTy() && FutureV) {
+      auto Ty = e.getType();
+      if (!Ty.isFuture()) {
+        auto ResultT = getLLVMType(Ty);
+        FutureV = loadFuture(ResultT, FutureV);
+      }
+      ValueResult_ = FutureV;
+    }
   }
   //----------------------------------------------------------------------------
   else {
@@ -1371,12 +1393,12 @@ void CodeGen::visit(VarDeclAST & e) {
     for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
       const auto & VarName = e.getName(VarIdx);
       if (Ty.isFuture() || InitIsFuture || e.isFuture(VarIdx)) {
-        auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
+        auto VarE = createFuture(TheFunction, VarName, VarType);
+        auto FutureA = VarE->getAlloca();
         if (InitIsFuture)
           Tasker_->copyFuture(*TheModule_, InitVal, FutureA);
         else
           Tasker_->toFuture(*TheModule_, InitVal, FutureA);
-        insertVariable(VarName, FutureA, VarType);
       }
       else {
         auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());

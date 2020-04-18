@@ -210,9 +210,7 @@ private:
   //============================================================================
 
   void createScope() 
-  {
-    VariableTable_.push_front({});
-  }
+  { VariableTable_.push_front({}); }
   
   void popScope();
  
@@ -316,6 +314,8 @@ private:
   //============================================================================
   llvm::Value* loadFuture(llvm::Type*, llvm::Value*);
   
+  VariableAlloca * createFuture(Function *TheFunction,
+    const std::string &VarName, Type* VarType);
 };
 
 } // namespace

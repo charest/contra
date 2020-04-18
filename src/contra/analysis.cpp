@@ -432,7 +432,6 @@ void Analyzer::visit(CallExprAST& e)
   } // args
 
   TypeResult_ = FunRes->getReturnType(); 
-  TypeResult_.setFuture(IsTask && TypeResult_!=VoidType_);
 
   e.setArgTypes( ArgTypes );
   e.setType(TypeResult_);
@@ -587,9 +586,6 @@ void Analyzer::visit(VarDeclAST& e)
     if (VarType != InitType) {
       checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
       e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
-    }
-    else {
-      VarType.setFuture(InitType.isFuture());
     }
 
   }
