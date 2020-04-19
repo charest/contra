@@ -706,6 +706,9 @@ public:
   bool hasReturn() const { return static_cast<bool>(ReturnExpr_); }
   auto getReturnExpr() const { return ReturnExpr_.get(); }
   
+  auto moveReturnExpr() { return std::move(ReturnExpr_); }
+  auto setReturnExpr(std::unique_ptr<NodeAST> Expr) { ReturnExpr_ = std::move(Expr); }
+  
   auto getProtoExpr() const { return ProtoExpr_.get(); }
   auto moveProtoExpr() { return std::move(ProtoExpr_); }
   

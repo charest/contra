@@ -22,7 +22,7 @@ class Context {
     std::deque<NestedData*> Children;
     unsigned Level = 0;
     VariableTable Variables;
-    std::set<VariableDef*> AccessedVariables;
+    std::map<VariableDef*, VariableTable*> AccessedVariables;
 
     NestedData(const std::string & Name) : Variables(Level, Name) {}
 
@@ -96,25 +96,15 @@ public:
   auto getVariable(const std::string & Name)
   {
     auto it = CurrentScope_->Variables.find(Name);
-    if (it) CurrentScope_->AccessedVariables.emplace(it.get());
+    if (it)
+      CurrentScope_->AccessedVariables.emplace(it.get(), it.getTable());
     return it;
   }
 
   auto insertVariable(std::unique_ptr<VariableDef> V)
   { return CurrentScope_->Variables.insert(std::move(V)); }
 
-  auto getAccessedVariables() const
-  {
-    std::vector<VariableDef*> Vars;
-    NestedData::decend(
-      CurrentScope_,
-      [&](auto Scope) { 
-        for (auto V : Scope->AccessedVariables)
-          Vars.emplace_back(V);
-      }
-    );
-    return Vars;
-  }
+  std::vector<VariableDef*> getVariablesAccessedFromAbove() const;
 
   // function interface
   void eraseFunction(const std::string & Name) { return FunctionTable_.erase(Name); }

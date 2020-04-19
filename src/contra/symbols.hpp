@@ -318,14 +318,16 @@ public:
   class FindResult {
     T* Pointer_;
     bool IsFound_;
+    unsigned Level_;
+    SymbolTable* Table_;
   public:
-    FindResult(T* Pointer, bool IsFound)
-      : Pointer_(Pointer), IsFound_(IsFound) {}
+    FindResult(T* Pointer, bool IsFound, SymbolTable* Table)
+      : Pointer_(Pointer), IsFound_(IsFound), Table_(Table) {}
     auto get() const { return Pointer_; }
     auto isFound() const { return IsFound_; }
+    auto getTable() const { return Table_; }
     operator bool() { return IsFound_; }
   };
-
 
   SymbolTable(
       unsigned Level,
@@ -348,9 +350,9 @@ public:
     auto it = LookupTable_.find(Name);
     if (it == LookupTable_.end())  {
       if (Parent_) return Parent_->find(Name);
-      else return {nullptr, false};
+      else return {nullptr, false, nullptr};
     }
-    return {it->second.get(), true};
+    return {it->second.get(), true, this};
   }
 
   void erase(const std::string & Name) {
@@ -363,7 +365,7 @@ public:
     }
   }
     
-
+  auto getLevel() const { return Level_; }
 
 };
 

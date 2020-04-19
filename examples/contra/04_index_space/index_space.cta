@@ -1,0 +1,22 @@
+function make_index_space(istart : i64, iend : i64)
+  
+  print("Hello world from task with domain (%d, %d)\n", istart, iend)
+
+end
+
+
+task top_level()
+  
+  var num_parts = 4
+  var num_points = 100
+  var chunk_size = num_points / num_parts
+
+  foreach i in 0 until num_parts do
+    var istart = i*chunk_size
+    var iend = i*chunk_size + chunk_size - 1
+    make_index_space(istart, iend)
+  end
+
+end
+
+top_level()

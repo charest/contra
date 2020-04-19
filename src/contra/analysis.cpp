@@ -123,7 +123,6 @@ void Analyzer::checkIsCastable(
 {
   auto IsCastable = FromType.isCastableTo(ToType);
   if (!IsCastable) {
-    abort();
     THROW_NAME_ERROR("Cannot cast from type '" << FromType << "' to type '"
         << ToType << "'.", Loc);
   }
@@ -432,77 +431,54 @@ void Analyzer::visit(CallExprAST& e)
 }
 
 //==============================================================================
-void Analyzer::visit(ForStmtAST& e)
+void Analyzer::visitFor(ForStmtAST&e)
 {
   auto VarId = e.getVarId();
-  
-  createScope();
-
   insertVariable(VarId, I64Type_);
 
-  auto StartType = runStmtVisitor(*e.getStartExpr());
+  DestinationType_ = I64Type_;
+  auto StartType = runExprVisitor(*e.getStartExpr());
   if (StartType != I64Type_ )
     THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
         e.getStartExpr()->getLoc() );
 
-  auto EndType = runStmtVisitor(*e.getEndExpr());
+  DestinationType_ = I64Type_;
+  auto EndType = runExprVisitor(*e.getEndExpr());
   if (EndType != I64Type_ )
     THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
         e.getEndExpr()->getLoc() );
 
   if (e.hasStep()) {
-    auto StepType = runStmtVisitor(*e.getStepExpr());
+    DestinationType_ = I64Type_;
+    auto StepType = runExprVisitor(*e.getStepExpr());
     if (StepType != I64Type_ )
       THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
           e.getStepExpr()->getLoc() );
   }
 
   for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
-
-  popScope();
+  
   TypeResult_ = VoidType_;
+}
+
+//==============================================================================
+void Analyzer::visit(ForStmtAST& e)
+{
+  createScope();
+  visitFor(e);
+  popScope();
 }
 
 //==============================================================================
 void Analyzer::visit(ForeachStmtAST& e)
 {
-  auto VarId = e.getVarId();
-  
   createScope();
-
-  insertVariable(VarId, I64Type_);
-
-  auto StartType = runStmtVisitor(*e.getStartExpr());
-  if (StartType != I64Type_ )
-    THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
-        e.getStartExpr()->getLoc() );
-
-  auto EndType = runStmtVisitor(*e.getEndExpr());
-  if (EndType != I64Type_ )
-    THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
-        e.getEndExpr()->getLoc() );
-
-  if (e.hasStep()) {
-    auto StepType = runStmtVisitor(*e.getStepExpr());
-    if (StepType != I64Type_ )
-      THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
-          e.getStepExpr()->getLoc() );
-  }
-
-  for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
-
+  visitFor(e);
       
-  const auto & VarName = VarId.getName();
-  auto AccessedVars = Context::instance().getAccessedVariables();
-  auto it = std::find_if( AccessedVars.begin(), AccessedVars.end(),
-      [&](const auto & Var) { return (Var->getName()==VarName); } );
-  AccessedVars.erase(it);
+  auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
   e.setAccessedVariables(AccessedVars);
 
-
-
   popScope();
-  TypeResult_ = VoidType_;
 }
 
 //==============================================================================
@@ -689,14 +665,19 @@ void Analyzer::visit(FunctionAST& e)
   for ( const auto & B : e.getBodyExprs() ) runStmtVisitor(*B);
   
   if (e.getReturnExpr()) {
+    DestinationType_ = ProtoExpr.hasReturn() ? FunDef->getReturnType() : VariableType{};
     auto RetType = runExprVisitor(*e.getReturnExpr());
-    if (ProtoExpr.isAnonExpr())
+    auto DeclRetType = FunDef->getReturnType();
+    if (!ProtoExpr.hasReturn() || ProtoExpr.isAnonExpr())
       ProtoExpr.setReturnType(RetType);
-    else if (RetType != FunDef->getReturnType())
-      THROW_NAME_ERROR("Function return type does not match prototype for '"
-          << FnName << "'.  The type '" << RetType << "' cannot be "
-          << "converted to the type '" << FunDef->getReturnType() << "'.",
-          e.getReturnExpr()->getLoc());
+    else if (RetType != DeclRetType) {
+      if (!RetType.isCastableTo(DeclRetType))
+        THROW_NAME_ERROR("Function return type does not match prototype for '"
+            << FnName << "'.  The type '" << RetType << "' cannot be "
+            << "converted to the type '" << DeclRetType << "'.",
+            e.getReturnExpr()->getLoc());
+      e.setReturnExpr(insertCastOp(std::move(e.moveReturnExpr()), DeclRetType) );
+    }
   }
   
   if (CreatedScope) popScope();

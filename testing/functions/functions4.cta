@@ -1,0 +1,17 @@
+# This is a comment, and is ignored by the compiler
+
+function return_one()
+  return 1
+end
+
+function return_two() -> f64
+  return 2
+end
+
+# This is the main function
+function main() 
+  print("should now be 1, x=%d\n", return_one())
+  print("should now be 2, x=%f\n", return_two())
+end
+
+main()

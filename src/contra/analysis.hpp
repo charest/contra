@@ -73,6 +73,8 @@ private:
     return TypeResult;
   }
 
+  void visitFor(ForStmtAST&);
+
 
   void visit(ValueExprAST&) override;
   void visit(VarAccessExprAST&) override;

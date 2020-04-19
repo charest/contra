@@ -3,6 +3,7 @@
 
 namespace contra {
 
+//==============================================================================
 Context::Context() : TypeTable_(0,"Global"), FunctionTable_(0, "Global")
 {
   // add builtins
@@ -20,6 +21,22 @@ Context::Context() : TypeTable_(0,"Global"), FunctionTable_(0, "Global")
   // scoped data
   NestedData_.emplace_back("Global");
   CurrentScope_ = &NestedData_.back();
+}
+
+//==============================================================================
+std::vector<VariableDef*> Context::getVariablesAccessedFromAbove() const
+{
+  std::vector<VariableDef*> Vars;
+  NestedData::decend(
+    CurrentScope_,
+    [&](auto Scope) { 
+      for (const auto & Vpair : Scope->AccessedVariables) {
+        if (Vpair.second->getLevel() < CurrentScope_->Level)
+          Vars.emplace_back(Vpair.first);
+      }
+    }
+  );
+  return Vars;
 }
 
 
