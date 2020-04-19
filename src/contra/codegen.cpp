@@ -786,11 +786,14 @@ void CodeGen::visit(VarAccessExprAST& e)
   if (isa<GlobalVariable>(VarA))
     VarA = TheModule_->getOrInsertGlobal(e.getName(), VarT);
 
-  if (Tasker_->isFuture(VarA)) {
-    VarT = VarA->getType()->getPointerElementType();
+  auto Ty = e.getType();
+  if (Tasker_->isFuture(VarA) && !Ty.isFuture()) {
+    VarT = getLLVMType(Ty);
+    ValueResult_ = loadFuture(VarT, VarA);
   }
-
-  ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
+  else {
+    ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
+  }
 }
 
 //==============================================================================
@@ -1379,10 +1382,6 @@ void CodeGen::visit(VarDeclAST & e) {
   auto InitVal = runExprVisitor(*e.getInitExpr());
   bool InitIsFuture = Tasker_->isFuture(InitVal);
 
-  // the llvm variable type
-  const auto & Ty = e.getType();
-  auto VarType = getLLVMType(Ty);
-
   auto NumVars = e.getNumVars();
 
   //---------------------------------------------------------------------------
@@ -1391,9 +1390,11 @@ void CodeGen::visit(VarDeclAST & e) {
 
     // Register all variables and emit their initializer.
     for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
-      const auto & VarName = e.getName(VarIdx);
+      const auto & VarN = e.getVarName(VarIdx);
+      const auto & Ty = e.getVarType(VarIdx);
+      auto VarT = getLLVMType(Ty);
       if (Ty.isFuture() || InitIsFuture || e.isFuture(VarIdx)) {
-        auto VarE = createFuture(TheFunction, VarName, VarType);
+        auto VarE = createFuture(TheFunction, VarN, VarT);
         auto FutureA = VarE->getAlloca();
         if (InitIsFuture)
           Tasker_->copyFuture(*TheModule_, InitVal, FutureA);
@@ -1401,7 +1402,7 @@ void CodeGen::visit(VarDeclAST & e) {
           Tasker_->toFuture(*TheModule_, InitVal, FutureA);
       }
       else {
-        auto VarE = createVariable(TheFunction, VarName, VarType, Ty.isGlobal());
+        auto VarE = createVariable(TheFunction, VarN, VarT, Ty.isGlobal());
         auto Alloca = VarE->getAlloca();
         if (Ty.isGlobal())
           cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
@@ -1416,8 +1417,8 @@ void CodeGen::visit(VarDeclAST & e) {
   else if (dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
 
     // transfer to first
-    const auto & VarName = e.getVarId(0).getName();
-    auto VarE = moveVariable("__tmp", VarName);
+    const auto & VarN = e.getVarName(0);
+    auto VarE = moveVariable("__tmp", VarN);
     auto Alloca = VarE->getAlloca();
 
     //auto SizeExpr = getArraySize(Alloca, VarName);
@@ -1426,8 +1427,9 @@ void CodeGen::visit(VarDeclAST & e) {
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;
     for (unsigned i=1; i<NumVars; ++i) {
-      const auto & VarName = e.getVarId(i).getName();
-      auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
+      const auto & VarN = e.getVarName(i);
+      auto VarT = getLLVMType( e.getVarType(i) );
+      auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
       ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
     }
 
@@ -1448,13 +1450,15 @@ void CodeGen::visit(VarDeclAST & e) {
  
     // Register all variables and emit their initializer.
     std::vector<Value*> ArrayAllocas;
-    for (const auto & VarId : e.getVarIds()) {
-      const auto & VarName = VarId.getName();
-      auto ArrayE = createArray(TheFunction, VarName, VarType, SizeExpr);
+    for (unsigned i=0; i<NumVars; ++i) {
+      const auto & VarN = e.getVarName(i);
+      auto VarT = getLLVMType( e.getVarType(i) );
+      auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
       ArrayAllocas.emplace_back(ArrayE->getAlloca());
     }
 
-    initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarType);
+    auto VarT = getLLVMType( e.getVarType(0) );
+    initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarT);
   
   } // end var type
   //---------------------------------------------------------------------------

@@ -12,15 +12,22 @@ namespace contra {
 /// AST plotting class
 ////////////////////////////////////////////////////////////////////////////////
 class FutureIdentifier : public RecursiveAstVisiter {
+
+  std::map<VariableDef*, std::set<VariableDef*>> VariableTable_;
+
+  void addFlow(VariableDef* Left, VariableDef* Right)
+  { VariableTable_[Left].emplace(Right); }
+  
 public:
 
-  void runVisitor(FunctionAST&e)
-  { e.accept(*this); }
+  void runVisitor(FunctionAST&e);
+  
+  void postVisit(CallExprAST& e) override;
+  void visit(AssignStmtAST& e) override;
+  void visit(VarDeclAST& e) override;
 
 };
 
-
-
-}
+} // namespace
 
 #endif // CONTRA_FUTURES_HPP

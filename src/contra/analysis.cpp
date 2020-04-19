@@ -193,7 +193,6 @@ void Analyzer::visit(ValueExprAST& e)
     break;
   }
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 
@@ -207,7 +206,6 @@ void Analyzer::visit(VarAccessExprAST& e)
   // result
   TypeResult_ = VarType;
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
   e.setVariableDef(VarDef);
 }
 
@@ -235,7 +233,6 @@ void Analyzer::visit(ArrayAccessExprAST& e)
   TypeResult_ = VarType;
   e.setType(TypeResult_);
   e.setVariableDef(VarDef);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -280,7 +277,6 @@ void Analyzer::visit(ArrayExprAST& e)
   CommonType.setArray();
   TypeResult_ = CommonType;
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -292,7 +288,6 @@ void Analyzer::visit(CastExprAST& e)
   checkIsCastable(FromType, ToType, e.getLoc());
   TypeResult_ = VariableType(ToType);
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -320,7 +315,6 @@ void Analyzer::visit(UnaryExprAST& e)
   };
   
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -375,7 +369,6 @@ void Analyzer::visit(BinaryExprAST& e)
   auto F = getFunction(std::string("binary") + OpCode, Loc);
   TypeResult_ = F->getReturnType();
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -383,6 +376,7 @@ void Analyzer::visit(CallExprAST& e)
 {
   const auto & FunName = e.getName();
   auto FunRes = getFunction(FunName, e.getLoc());
+  e.setFunctionDef(FunRes);
   
   int NumArgs = e.getNumArgs();
   int NumFixedArgs = FunRes->getNumArgs();
@@ -435,7 +429,6 @@ void Analyzer::visit(CallExprAST& e)
 
   e.setArgTypes( ArgTypes );
   e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -468,7 +461,6 @@ void Analyzer::visit(ForStmtAST& e)
 
   popScope();
   TypeResult_ = VoidType_;
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -511,7 +503,6 @@ void Analyzer::visit(ForeachStmtAST& e)
 
   popScope();
   TypeResult_ = VoidType_;
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -527,7 +518,6 @@ void Analyzer::visit(IfStmtAST& e)
   popScope();
 
   TypeResult_ = VoidType_;
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -559,7 +549,6 @@ void Analyzer::visit(AssignStmtAST& e)
   }
   
   TypeResult_ = LeftType;
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================
@@ -628,8 +617,6 @@ void Analyzer::visit(VarDeclAST& e)
   }
 
   TypeResult_ = VarType;
-  e.setType(TypeResult_);
-  e.setParentFunctionDef(ParentFunction_);
 }
 
 //==============================================================================

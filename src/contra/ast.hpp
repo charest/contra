@@ -48,6 +48,9 @@ public:
   { ParentFunction_ = FunDef; }
 
   FunctionDef* getParentFunction() { return ParentFunction_; }
+
+  virtual void setFuture(bool=true) {}
+  virtual bool isFuture() const { return false; }
 };
 
 // some useful types
@@ -77,6 +80,10 @@ public:
   void setType(const VariableType & Type) { Type_ = Type; }
   const auto & getType() const { return Type_; }
   auto & getType() { return Type_; }
+
+
+  virtual void setFuture(bool IsFuture=true) { Type_.setFuture(IsFuture); }
+  virtual bool isFuture() const { return Type_.isFuture(); }
 
 };
 
@@ -122,7 +129,10 @@ protected:
 
   std::string Name_;
   VariableDef* VarDef_ = nullptr;
-  
+
+  // Note: Derived member VarType_ might differ from VarDef->getType().
+  // This is because the accessed type might be different from the original
+  // declaration.  An example is accessing a future variable as a non-future.
 
 public:
 
@@ -139,7 +149,6 @@ public:
   
   void setVariableDef(VariableDef* VarDef) { VarDef_=VarDef; }
   VariableDef* getVariableDef() const { return VarDef_; }
-  
 };
 
 //==============================================================================
@@ -297,6 +306,8 @@ protected:
   ASTBlock ArgExprs_;
   bool IsTopTask_ = false;
   std::vector<VariableType> ArgTypes_;
+  
+  FunctionDef* FunctionDef_ = nullptr;
 
 public:
 
@@ -327,7 +338,8 @@ public:
   void setArgTypes(const std::vector<VariableType> & ArgTypes)
   { ArgTypes_ = ArgTypes; }
 
-
+  auto getFunctionDef() const { return FunctionDef_; }
+  void setFunctionDef(FunctionDef* F) { FunctionDef_ = F; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -504,7 +516,6 @@ class VarDeclAST : public StmtAST {
 
 protected:
 
-  VariableType Type_;
   std::vector<Identifier> VarIds_;
   Identifier TypeId_;
   std::unique_ptr<NodeAST> InitExpr_;
@@ -529,9 +540,6 @@ public:
       SizeExpr_(std::move(Size)), IsArray_(true), VarDefs_(Vars.size(),nullptr)
   {}
 
-  void setType(const VariableType & Type) { Type_ = Type; }
-  const auto & getType() const { return Type_; }
-
   bool isArray() const { return IsArray_; }
   void setArray(bool IsArray=true) { IsArray_ = IsArray; }
   
@@ -540,8 +548,7 @@ public:
   virtual std::string getClassName() const override
   { return "VarDeclAST"; };
 
-  const auto & getName(int i) const { return VarIds_[i].getName(); }
-  std::vector<std::string> getNames() const
+  std::vector<std::string> getVarNames() const
   {
     std::vector<std::string> strs;
     for (const auto & Id : VarIds_)
@@ -553,8 +560,11 @@ public:
 
   auto getNumVars() const { return VarIds_.size(); }
   const auto & getVarIds() const { return VarIds_; }
-  const auto & getVarId(int i) const { return VarIds_[i]; }
-  const auto & getVarName(int i) const { return VarIds_[i].getName(); }
+  const auto & getVarId(unsigned i) const { return VarIds_[i]; }
+  const auto & getVarName(unsigned i) const { return VarIds_[i].getName(); }
+
+  const auto & getVarType(unsigned i) const { return VarDefs_[i]->getType(); }
+  auto & getVarType(unsigned i) { return VarDefs_[i]->getType(); }
 
   auto getInitExpr() const { return InitExpr_.get(); }
   auto moveInitExpr() { return std::move(InitExpr_); }
@@ -567,7 +577,6 @@ public:
   VariableDef* getVariableDef(unsigned i) const { return VarDefs_[i]; }
   
   bool isFuture(unsigned i) const { return VarDefs_[i]->getType().isFuture(); }
-  void setFuture(unsigned i, bool IsFuture) { VarDefs_[i]->getType().setFuture(IsFuture); }
 };
 
 //==============================================================================

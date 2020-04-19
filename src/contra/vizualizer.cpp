@@ -224,8 +224,13 @@ void Vizualizer::visit(AssignStmtAST& e)
 void Vizualizer::visit(VarDeclAST& e)
 {
   Formatter fmt;
-  fmt << e.getNames();
-  if (e.getType()) fmt << " : " << e.getType();
+  
+  auto NumVars = e.getNumVars();
+  for (unsigned i=0; i<NumVars; ++i) {
+    fmt << e.getVarName(i);
+    if (e.getVarType(i)) fmt << " {" << e.getVarType(i) << "}";
+    if (i != NumVars-1) fmt << ", ";
+  }
 
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), fmt));

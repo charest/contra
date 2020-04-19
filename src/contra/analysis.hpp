@@ -60,6 +60,7 @@ private:
 
   auto runExprVisitor(NodeAST &e)
   {
+    e.setParentFunctionDef(ParentFunction_);
     TypeResult_ = VariableType{};
     e.accept(*this);
     return TypeResult_;
