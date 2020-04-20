@@ -456,7 +456,9 @@ void Analyzer::visitFor(ForStmtAST&e)
           e.getStepExpr()->getLoc() );
   }
 
+  createScope();
   for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  popScope();
   
   TypeResult_ = VoidType_;
 }

@@ -1210,7 +1210,9 @@ void CodeGen::visit(ForStmtAST& e) {
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
+  createScope();
   for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  popScope();
 
 
   // Insert unconditional branch to increment.
