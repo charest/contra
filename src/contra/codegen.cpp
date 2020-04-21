@@ -1470,6 +1470,13 @@ void CodeGen::visit(VarDeclAST & e) {
 }
 
 //==============================================================================
+// FieldDeclAST - This represents a field declaration
+//==============================================================================
+void CodeGen::visit(FieldDeclAST& e)
+{ visit( static_cast<VarDeclAST&>(e) ); }
+
+
+//==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
 //==============================================================================
 void CodeGen::visit(PrototypeAST &e) {

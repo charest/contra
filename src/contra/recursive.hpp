@@ -130,6 +130,15 @@ public:
     postVisit(e);
   }
   
+  virtual bool preVisit(FieldDeclAST&) { return false; }
+  virtual void postVisit(FieldDeclAST&) {}
+  virtual void visit(FieldDeclAST&e) {
+    if (preVisit(e)) { return; }
+    if (e.isArray() && e.hasSize()) e.getSizeExpr()->accept(*this);
+    e.getInitExpr()->accept(*this);
+    postVisit(e);
+  }
+  
   virtual bool preVisit(PrototypeAST&) { return false; }
   virtual void postVisit(PrototypeAST&) {}
   virtual void visit(PrototypeAST&e) {

@@ -9,6 +9,7 @@
 #include "symbols.hpp"
 
 #include <cassert>
+#include <deque>
 #include <iostream>
 #include <list>
 #include <memory>
@@ -54,7 +55,7 @@ public:
 };
 
 // some useful types
-using ASTBlock = std::vector< std::unique_ptr<NodeAST> >;
+using ASTBlock = std::deque< std::unique_ptr<NodeAST> >;
 using ASTBlockList = std::list<ASTBlock>;
 
 inline auto createBlock( ASTBlockList & list)
@@ -527,17 +528,11 @@ protected:
 public:
 
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
-      Identifier VarType, std::unique_ptr<NodeAST> Init)
-    : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
-      InitExpr_(std::move(Init)), IsArray_(false), VarDefs_(Vars.size(),nullptr)
-  {}
-  
-  VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size)
+      std::unique_ptr<NodeAST> Size, bool IsArray = false)
     : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
       InitExpr_(std::move(Init)),
-      SizeExpr_(std::move(Size)), IsArray_(true), VarDefs_(Vars.size(),nullptr)
+      SizeExpr_(std::move(Size)), IsArray_(IsArray), VarDefs_(Vars.size(),nullptr)
   {}
 
   bool isArray() const { return IsArray_; }
@@ -578,6 +573,32 @@ public:
   
   bool isFuture(unsigned i) const { return VarDefs_[i]->getType().isFuture(); }
 };
+
+//==============================================================================
+/// VarDefExprAST - Expression class for var/in
+//==============================================================================
+class FieldDeclAST : public VarDeclAST {
+
+  std::unique_ptr<NodeAST> PartitionExpr_;
+
+public:
+
+  FieldDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
+      Identifier VarType, std::unique_ptr<NodeAST> Init,
+      std::unique_ptr<NodeAST> Size, std::unique_ptr<NodeAST> Part)
+    : VarDeclAST(Loc, Vars, VarType, std::move(Init), std::move(Size),
+        static_cast<bool>(Size)), PartitionExpr_(std::move(Part))
+  {}
+  
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "FieldDeclAST"; };
+
+  auto getPartExpr() const { return PartitionExpr_.get(); }
+
+};
+
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function,

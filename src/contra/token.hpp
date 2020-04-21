@@ -39,6 +39,8 @@ enum Token {
   tok_unary,
 
   // variables
+  tok_dimension,
+  tok_field,
   tok_var,
 
   // numbers / strings

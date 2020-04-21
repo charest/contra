@@ -70,4 +70,9 @@ void FutureIdentifier::visit(VarDeclAST& e)
   }
 }
 
+//==============================================================================
+void FutureIdentifier::visit(FieldDeclAST& e)
+{ visit( static_cast<VarDeclAST&>(e) ); }
+
+
 }

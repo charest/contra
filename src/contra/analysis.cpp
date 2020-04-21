@@ -475,6 +475,16 @@ void Analyzer::visit(ForStmtAST& e)
 void Analyzer::visit(ForeachStmtAST& e)
 {
   createScope();
+
+  bool IsDoneFields = false;
+  for ( const auto & stmt : e.getBodyExprs() ) {
+    auto FieldDecl = dynamic_cast<const FieldDeclAST*>(stmt.get());
+    if (!FieldDecl) IsDoneFields = true;
+    if (FieldDecl && IsDoneFields)
+      THROW_NAME_ERROR( "Field declarations must come first in a 'foreach'"
+          << " statement block.", stmt->getLoc());
+  };
+
   visitFor(e);
       
   auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
@@ -584,6 +594,73 @@ void Analyzer::visit(VarDeclAST& e)
   }
   // End
   //----------------------------------------------------------------------------
+  
+  if (isGlobalScope()) VarType.setGlobal();
+
+  auto NumVars = e.getNumVars();
+  for (unsigned i=0; i<NumVars; ++i) {
+    auto VarId = e.getVarId(i);
+    auto VarDef = insertVariable(VarId, VarType);
+    e.setVariableDef(i, VarDef);
+  }
+
+  TypeResult_ = VarType;
+}
+
+//==============================================================================
+void Analyzer::visit(FieldDeclAST& e)
+{
+  // check if there is a specified type, if there is, get it
+  auto TypeId = e.getTypeId();
+  VariableType VarType;
+  if (!TypeId) 
+    THROW_NAME_ERROR( "Fields require a type specifier.", e.getLoc());
+
+  VarType = VariableType(getType(TypeId), e.isArray());
+  DestinationType_ = VarType;
+  
+  auto InitType = runExprVisitor(*e.getInitExpr());
+  if (InitType.isArray())
+    THROW_NAME_ERROR( "Only scalar initializers allowed for fields.",
+        e.getInitExpr()->getLoc());
+
+  //----------------------------------------------------------------------------
+  // Scalar variable
+  if (!e.isArray()) {
+
+    if (VarType != InitType) {
+      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
+      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
+    }
+
+  }
+  //----------------------------------------------------------------------------
+  // Array Variable
+  else {
+
+    auto ElementType = VariableType(VarType, false);
+    if (ElementType != InitType) {
+      checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
+      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
+    }
+ 
+    if (!e.hasSize()) 
+      THROW_NAME_ERROR( "Array size is explicitly required for fields.", e.getLoc() );
+
+    auto SizeType = runExprVisitor(*e.getSizeExpr());
+    if (SizeType != I64Type_)
+      THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
+         e.getSizeExpr()->getLoc());
+  }
+  // End
+  //----------------------------------------------------------------------------
+ 
+  // Field specific
+  auto PartType = runExprVisitor(*e.getPartExpr());
+  if (PartType != I64Type_)
+    THROW_NAME_ERROR( "Partition expression for fields must be an integer.",
+       e.getPartExpr()->getLoc());
+
   
   if (isGlobalScope()) VarType.setGlobal();
 

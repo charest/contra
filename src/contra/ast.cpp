@@ -88,6 +88,10 @@ void VarDeclAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
+void FieldDeclAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
 void PrototypeAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
