@@ -69,9 +69,15 @@ public:
       llvm::Type*, llvm::Value*, llvm::Value*) = 0;
   virtual void destroyField(llvm::Module &, llvm::Value*) = 0;
   
-  virtual llvm::Value* createRange(llvm::Module &, llvm::Function*, const std::string &,
+  virtual llvm::Value* createIndexSpace(llvm::Module &, llvm::Function*, const std::string &,
       llvm::Value*, llvm::Value*) = 0;
-  virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
+  virtual void destroyIndexSpace(llvm::Module &, llvm::Value*) = 0;
+
+  virtual bool isAccessor(llvm::Type*) const = 0;
+  virtual bool isAccessor(llvm::Value*) const = 0;
+  virtual llvm::Type* getAccessorType() const = 0;
+  virtual void storeAccessor(llvm::Module &, llvm::Value*, llvm::Value*) const = 0;
+  virtual llvm::Value* loadAccessor(llvm::Module &, llvm::Type*, llvm::Value*) const = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -102,7 +108,7 @@ public:
   void destroyFields(llvm::Module &, const std::vector<llvm::Value*> &);
 
   // range interface
-  void destroyRanges(llvm::Module &, const std::vector<llvm::Value*> &);
+  void destroyIndexSpaces(llvm::Module &, const std::vector<llvm::Value*> &);
 
 protected:
   

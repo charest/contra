@@ -829,8 +829,10 @@ public:
   virtual std::string getClassName() const override
   { return "IndexTaskAST"; };
  
-  const auto & getVariables()
+  const auto & getVariableDefs()
   { return Vars_; }
+
+  auto getVariableDef(unsigned i) const { return Vars_[i]; }
  
   const auto & getLoopVariableName() const { return LoopVarName_; }
   const auto & getName() const { return Name_; }

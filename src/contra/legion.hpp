@@ -12,7 +12,7 @@ extern "C" {
 struct contra_legion_field_t;
 struct contra_legion_index_space_t;
 
-/// field 
+/// index space 
 DLLEXPORT void contra_legion_index_space_create(
     legion_runtime_t *,
     legion_context_t *,
@@ -26,12 +26,13 @@ DLLEXPORT void contra_legion_index_space_destroy(
     legion_context_t *,
     contra_legion_index_space_t *);
   
-/// index space
+/// field
 DLLEXPORT void contra_legion_field_create(
     legion_runtime_t *,
     legion_context_t *,
     const char *,
     size_t,
+    void *,
     contra_legion_index_space_t *,
     contra_legion_field_t *);
 
@@ -39,7 +40,13 @@ DLLEXPORT void contra_legion_field_destroy(
     legion_runtime_t *,
     legion_context_t *,
     contra_legion_field_t *);
+ 
+DLLEXPORT void contra_legion_pack_field_data_ptr(contra_legion_field_t *, void *);
+DLLEXPORT void contra_legion_pack_field_data_val(contra_legion_field_t, void *);
 
+DLLEXPORT void contra_legion_unpack_field_data(const void *, uint64_t*, uint64_t*);
+
+// domain
 DLLEXPORT void contra_legion_domain_create(
     legion_runtime_t *,
     contra_legion_index_space_t *,
@@ -113,6 +120,7 @@ protected:
   llvm::StructType* LogicalRegionType_ = nullptr;
   llvm::StructType* IndexPartitionType_ = nullptr;
   llvm::StructType* LogicalPartitionType_ = nullptr;
+  llvm::StructType* AccessorArrayType_ = nullptr;
 
   llvm::StructType* IndexSpaceDataType_ = nullptr;
   llvm::StructType* FieldDataType_ = nullptr;
@@ -169,9 +177,17 @@ public:
   virtual void destroyField(llvm::Module &, llvm::Value*) override;
   
 
-  virtual llvm::Value* createRange(llvm::Module &, llvm::Function*, const std::string &,
+  virtual llvm::Value* createIndexSpace(llvm::Module &, llvm::Function*, const std::string &,
       llvm::Value*, llvm::Value*) override;
-  virtual void destroyRange(llvm::Module &, llvm::Value*) override;
+  virtual void destroyIndexSpace(llvm::Module &, llvm::Value*) override;
+
+  virtual bool isAccessor(llvm::Type*) const override;
+  virtual bool isAccessor(llvm::Value*) const override;
+  virtual void storeAccessor(llvm::Module &, llvm::Value*, llvm::Value*) const override;
+  virtual llvm::Value* loadAccessor(llvm::Module &, llvm::Type*, llvm::Value*) const override;
+
+  virtual llvm::Type* getAccessorType() const
+  { return AccessorArrayType_; }
 
   virtual ~LegionTasker() = default;
 
@@ -185,6 +201,8 @@ protected:
     return getCurrentTask();
   }
   void finishTask() { TaskAllocas_.pop_front(); }
+
+  auto isInsideTask() { return !TaskAllocas_.empty(); }
 
   llvm::StructType* createOpaqueType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskConfigOptionsType(llvm::LLVMContext &);

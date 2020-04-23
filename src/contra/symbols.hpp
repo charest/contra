@@ -132,6 +132,7 @@ public:
     static constexpr Attributes Future = 0x02;
     static constexpr Attributes Global = 0x04;
     static constexpr Attributes Range = 0x08;
+    static constexpr Attributes Field = 0x16;
   };
 
   VariableType() = default;
@@ -174,6 +175,12 @@ public:
   void setRange(bool IsRange=true) {
     if (IsRange) Attrs_ |= Attr::Range;
     else Attrs_ &= ~Attr::Range;
+  }
+  
+  bool isField() const { return Attrs_ & Attr::Field; }
+  void setField(bool IsField=true) {
+    if (IsField) Attrs_ |= Attr::Field;
+    else Attrs_ &= ~Attr::Field;
   }
 
   bool isNumber() const { return (!isArray() && !isRange() && Type_->isNumber()); }

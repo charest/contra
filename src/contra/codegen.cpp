@@ -265,26 +265,17 @@ void CodeGen::popScope()
       Arrays.emplace_back(Alloca);
     else if (Tasker_->isFuture(Alloca))
       Futures.emplace_back(Alloca);
-    else if (Tasker_->isField(Alloca)) {
+    else if (Tasker_->isField(Alloca))
       Fields.emplace_back(Alloca);
-    }
-    else if (isRange(Alloca) && VarE.hasTaskData()) {
-      std::vector<Value*> MemberIndices = {
-        ConstantInt::get(TheContext_, APInt(32, 0, true)),
-        ConstantInt::get(TheContext_, APInt(32, 2, true))
-      };
-      auto RangeGEP = Builder_.CreateGEP(RangeType_, Alloca, MemberIndices);
-      auto RangeT = RangeType_->getStructElementType(2);
-      auto RangeV = Builder_.CreateLoad(RangeT, RangeGEP);
-      Ranges.emplace_back(RangeV);
-    }
+    else if (isRange(Alloca) && VarE.hasTaskData())
+      Ranges.emplace_back(Alloca);
   }
   VariableTable_.pop_front();
 
   destroyArrays(Arrays); 
   Tasker_->destroyFutures(*TheModule_, Futures);
   Tasker_->destroyFields(*TheModule_, Fields);
-  Tasker_->destroyRanges(*TheModule_, Ranges);
+  Tasker_->destroyIndexSpaces(*TheModule_, Ranges);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -734,7 +725,7 @@ Value * CodeGen::makeRange(Function *TheFunction, Value* StartV, Value* EndV,
   RangeGEP = Builder_.CreateGEP(RangeA, IndicesC, "data");
   Value * DataV = nullptr;
   if (IsTask)
-    DataV = Tasker_->createRange(*TheModule_, TheFunction, VarN, StartV, EndV);
+    DataV = Tasker_->createIndexSpace(*TheModule_, TheFunction, VarN, StartV, EndV);
   else {
     auto TmpT = RangeType_->getStructElementType(2);
     DataV = Constant::getNullValue(TmpT);
@@ -910,6 +901,9 @@ void CodeGen::visit(VarAccessExprAST& e)
   auto Ty = e.getType();
   if (Tasker_->isFuture(VarA) && !Ty.isFuture()) {
     ValueResult_ = loadFuture(VarE->getType(), VarA);
+  }
+  else if (Tasker_->isAccessor(VarA)) {
+    ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA);
   }
   else {
     ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
@@ -1507,6 +1501,11 @@ void CodeGen::visit(AssignStmtAST & e)
     }
   }
   //---------------------------------------------------------------------------
+  // Field = value
+  else if (Tasker_->isAccessor(VariableA)) {
+    Tasker_->storeAccessor(*TheModule_, VariableV, VariableA);
+  }
+  //---------------------------------------------------------------------------
   // value = future
   else if (Tasker_->isFuture(VariableV)) {
     auto VariableT = VarE->getType();
@@ -1893,9 +1892,12 @@ void CodeGen::visit(IndexTaskAST& e)
   // get global args
   std::vector<Type*> TaskArgTs;
   std::vector<std::string> TaskArgNs;
-  for ( const auto & VarE : e.getVariables() ) {
+  for ( const auto & VarE : e.getVariableDefs() ) {
     TaskArgNs.emplace_back( VarE->getName() );
-    TaskArgTs.emplace_back( getLLVMType(VarE->getType()) ); 
+    if (VarE->getType().isField()) 
+      TaskArgTs.emplace_back( Tasker_->getAccessorType() ); 
+    else
+      TaskArgTs.emplace_back( getLLVMType(VarE->getType()) ); 
   }
   
 	// generate wrapped task
@@ -1904,9 +1906,14 @@ void CodeGen::visit(IndexTaskAST& e)
 
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
-    auto Alloca = Wrapper.ArgAllocas[ArgIdx];
-    auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
-    auto VarE = insertVariable(TaskArgNs[ArgIdx], Alloca, AllocaT);
+    auto VarA = Wrapper.ArgAllocas[ArgIdx];
+    auto AllocaT = VarA->getType()->getPointerElementType(); // FIX FOR ARRAYS
+    Type* VarT = nullptr; 
+    if (Tasker_->isAccessor(AllocaT))
+      VarT = getLLVMType( e.getVariableDef(ArgIdx)->getType() );
+    else
+      VarT = AllocaT;
+    auto VarE = insertVariable(TaskArgNs[ArgIdx], VarA, VarT);
     VarE->setOwner(false);
   }
 

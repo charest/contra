@@ -459,9 +459,6 @@ void Analyzer::visit(CallExprAST& e)
 //==============================================================================
 void Analyzer::visitFor(ForStmtAST&e)
 {
-  auto VarId = e.getVarId();
-  insertVariable(VarId, I64Type_);
-
   //----------------------------------------------------------------------------
   // Range for
   if (e.getLoopType() == ForStmtAST::LoopType::Range) {
@@ -497,7 +494,16 @@ void Analyzer::visitFor(ForStmtAST&e)
   }
   //----------------------------------------------------------------------------
 
+}
+
+//==============================================================================
+void Analyzer::visit(ForStmtAST& e)
+{
+  visitFor(e);
+  
   createScope();
+  auto VarId = e.getVarId();
+  insertVariable(VarId, I64Type_);
   for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
   popScope();
   
@@ -505,33 +511,23 @@ void Analyzer::visitFor(ForStmtAST&e)
 }
 
 //==============================================================================
-void Analyzer::visit(ForStmtAST& e)
-{
-  createScope();
-  visitFor(e);
-  popScope();
-}
-
-//==============================================================================
 void Analyzer::visit(ForeachStmtAST& e)
 {
-  createScope();
-
-  bool IsDoneFields = false;
-  for ( const auto & stmt : e.getBodyExprs() ) {
-    auto FieldDecl = dynamic_cast<const FieldDeclAST*>(stmt.get());
-    if (!FieldDecl) IsDoneFields = true;
-    if (FieldDecl && IsDoneFields)
-      THROW_NAME_ERROR( "Field declarations must come first in a 'foreach'"
-          << " statement block.", stmt->getLoc());
-  };
-
   visitFor(e);
       
+  createScope();
+  
+  auto VarId = e.getVarId();
+  insertVariable(VarId, I64Type_);
+  
+  for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  
   auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
   e.setAccessedVariables(AccessedVars);
-
+  
   popScope();
+
+  TypeResult_ = VoidType_;
 }
 
 //==============================================================================
@@ -719,6 +715,8 @@ void Analyzer::visit(FieldDeclAST& e)
 
   
   if (isGlobalScope()) VarType.setGlobal();
+
+  VarType.setField();
 
   auto NumVars = e.getNumVars();
   for (unsigned i=0; i<NumVars; ++i) {
