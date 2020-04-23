@@ -191,10 +191,26 @@ TaskInfo AbstractTasker::popTask(const std::string & Name)
 
 //==============================================================================
 void AbstractTasker::destroyFutures(Module & TheModule,
-    const std::map<std::string, Value*> & Futures)
+    const std::vector<Value*> & Futures)
 {
-  for (const auto & Future : Futures )
-    destroyFuture(TheModule, Future.second);
+  for (auto Future : Futures )
+    destroyFuture(TheModule, Future);
+}
+
+//==============================================================================
+void AbstractTasker::destroyFields(Module & TheModule,
+    const std::vector<Value*> & Fields)
+{
+  for (auto Field : Fields )
+    destroyField(TheModule, Field);
+}
+
+//==============================================================================
+void AbstractTasker::destroyRanges(Module & TheModule,
+    const std::vector<Value*> & Ranges)
+{
+  for (auto Range : Ranges )
+    destroyRange(TheModule, Range);
 }
 
 //==============================================================================

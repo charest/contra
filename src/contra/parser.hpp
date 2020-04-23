@@ -94,6 +94,7 @@ public:
   std::unique_ptr<NodeAST> parseForExpr();
 
   std::unique_ptr<NodeAST> parseArrayExpr();
+  std::unique_ptr<NodeAST> parseRangeExpr();
   
   /// primary
   ///   ::= identifierexpr

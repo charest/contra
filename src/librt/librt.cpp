@@ -3,6 +3,7 @@
 #include "librt.hpp"
 #include "math.hpp"
 #include "print.hpp"
+#include "range.hpp"
 
 #include "contra/symbols.hpp"
 
@@ -23,7 +24,8 @@ std::map<std::string, RunTimeLib::FunctionPointer>
 //==============================================================================
 void RunTimeLib::setup(llvm::LLVMContext & TheContext)
 {
-    _setup<Print, Allocate, DeAllocate, Copy, CAbs, CMax, CSqrt>();
+    _setup<Print, DopeVectorAllocate, DopeVectorDeAllocate, DopeVectorCopy,
+      CAbs, CMax, CSqrt, Range>();
     for (auto & entry : SetupMap) entry.second(TheContext);
 }
 

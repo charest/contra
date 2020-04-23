@@ -48,7 +48,7 @@ public:
   void setParentFunctionDef(FunctionDef* FunDef)
   { ParentFunction_ = FunDef; }
 
-  FunctionDef* getParentFunction() { return ParentFunction_; }
+  FunctionDef* getParentFunctionDef() { return ParentFunction_; }
 
   virtual void setFuture(bool=true) {}
   virtual bool isFuture() const { return false; }
@@ -205,6 +205,36 @@ public:
 
   auto moveValExpr(int i) { return std::move(ValExprs_[i]); }
   auto setValExpr(int i, std::unique_ptr<NodeAST> Expr) { ValExprs_[i] = std::move(Expr); }
+
+};
+
+//==============================================================================
+/// RangeExprAST - Expression class for referencing  range.
+//==============================================================================
+class RangeExprAST : public ExprAST {
+protected:
+
+  std::unique_ptr<NodeAST> StartExpr_, EndExpr_;
+
+public:
+
+  RangeExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> Start,
+      std::unique_ptr<NodeAST> End)
+    : ExprAST(Loc), StartExpr_(std::move(Start)), EndExpr_(std::move(End))
+  {}
+  
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "RangeExprAST"; };
+
+  auto getStartExpr() const { return StartExpr_.get(); }
+  auto moveStartExpr() { return std::move(StartExpr_); }
+  auto setStartExpr(std::unique_ptr<NodeAST> Expr) { EndExpr_ = std::move(Expr); }
+
+  auto getEndExpr() const { return EndExpr_.get(); }
+  auto moveEndExpr() { return std::move(EndExpr_); }
+  auto setEndExpr(std::unique_ptr<NodeAST> Expr) { EndExpr_ = std::move(Expr); }
 
 };
 
@@ -395,7 +425,7 @@ class ForStmtAST : public StmtAST {
 public:
 
   enum class LoopType {
-    To, Until
+    To, Until, Range
   };
 
 protected:
@@ -433,6 +463,8 @@ public:
   const auto & getBodyExprs() const { return BodyExprs_; }
 
   auto getStartExpr() const { return StartExpr_.get(); }
+
+  auto hasEnd() const { return static_cast<bool>(EndExpr_); }
   auto getEndExpr() const { return EndExpr_.get(); }
 
   auto hasStep() const { return static_cast<bool>(StepExpr_); }
@@ -514,6 +546,11 @@ public:
 /// VarDefExprAST - Expression class for var/in
 //==============================================================================
 class VarDeclAST : public StmtAST {
+public:
+
+  enum class AttrType {
+    None, Array, Range
+  };
 
 protected:
 
@@ -521,7 +558,9 @@ protected:
   Identifier TypeId_;
   std::unique_ptr<NodeAST> InitExpr_;
   std::unique_ptr<NodeAST> SizeExpr_;
-  bool IsArray_ = false;
+  std::unique_ptr<NodeAST> IndexExpr_;
+  AttrType Attr_ = AttrType::None;
+
 
   std::vector<VariableDef*> VarDefs_;
 
@@ -529,14 +568,23 @@ public:
 
   VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
       Identifier VarType, std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size, bool IsArray = false)
+      std::unique_ptr<NodeAST> Size, AttrType Attr = AttrType::None)
     : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
-      InitExpr_(std::move(Init)),
-      SizeExpr_(std::move(Size)), IsArray_(IsArray), VarDefs_(Vars.size(),nullptr)
+      InitExpr_(std::move(Init)), SizeExpr_(std::move(Size)),
+      Attr_(Attr), VarDefs_(Vars.size(),nullptr)
   {}
 
-  bool isArray() const { return IsArray_; }
-  void setArray(bool IsArray=true) { IsArray_ = IsArray; }
+  bool isArray() const { return Attr_ == AttrType::Array; }
+  void setArray(bool IsArray=true) {
+    if (Attr_ != AttrType::Array && IsArray) Attr_ = AttrType::Array;
+    if (Attr_ == AttrType::Array && !IsArray) Attr_ = AttrType::None;
+  }
+  
+  bool isRange() const { return Attr_ == AttrType::Range; }
+  void setRange(bool IsRange=true) {
+    if (Attr_ != AttrType::Range && IsRange) Attr_ = AttrType::Range;
+    if (Attr_ == AttrType::Range && !IsRange) Attr_ = AttrType::None;
+  }
   
   virtual void accept(AstVisiter& visiter) override;
   
@@ -587,7 +635,8 @@ public:
       Identifier VarType, std::unique_ptr<NodeAST> Init,
       std::unique_ptr<NodeAST> Size, std::unique_ptr<NodeAST> Part)
     : VarDeclAST(Loc, Vars, VarType, std::move(Init), std::move(Size),
-        static_cast<bool>(Size)), PartitionExpr_(std::move(Part))
+        (static_cast<bool>(Size)) ? AttrType::Array : AttrType::None),
+      PartitionExpr_(std::move(Part))
   {}
   
   virtual void accept(AstVisiter& visiter) override;

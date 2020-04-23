@@ -36,19 +36,19 @@ struct DopeVector {
   static void setup(llvm::LLVMContext &);
 };
 
-struct Allocate : public DopeVector {
+struct DopeVectorAllocate : public DopeVector {
   static const std::string Name;
   static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
   static std::unique_ptr<contra::FunctionDef> check();
 };
 
-struct DeAllocate : public DopeVector {
+struct DopeVectorDeAllocate : public DopeVector {
   static const std::string Name;
   static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
   static std::unique_ptr<contra::FunctionDef> check();
 };
 
-struct Copy : public DopeVector {
+struct DopeVectorCopy : public DopeVector {
   static const std::string Name;
   static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
   static std::unique_ptr<contra::FunctionDef> check();

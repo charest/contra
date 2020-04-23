@@ -63,6 +63,7 @@ class CodeGen : public RecursiveAstVisiter {
   Type* F64Type_ = nullptr;
   Type* VoidType_ = nullptr;
   Type* ArrayType_ = nullptr;
+  Type* RangeType_ = nullptr;
 
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
@@ -187,6 +188,7 @@ private:
   void visit(VarAccessExprAST&) override;
   void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;
+  void visit(RangeExprAST&) override;
   void visit(CastExprAST&) override;
   void visit(UnaryExprAST&) override;
   void visit(BinaryExprAST&) override;
@@ -283,8 +285,8 @@ private:
   void copyArray(Value* Src, Value* Tgt);
 
   // destroy all arrays
-  void destroyArray(const std::string &, Value*);
-  void destroyArrays(const std::map<std::string, Value*> &);
+  void destroyArray(Value*);
+  void destroyArrays(const std::vector<Value*> &);
 
   // load an array value
   Value* loadArrayValue(Value*, Value*, Type*, const std::string &);
@@ -299,6 +301,18 @@ private:
 
   // get an arrays size
   Value* getArraySize(Value*, const std::string &);
+  
+  //============================================================================
+  // Range interface
+  //============================================================================
+
+  VariableAlloca * createRange(Function *TheFunction, const std::string &VarName,
+      Value* StartV, Value* EndV, bool IsTask, bool IsGlobal=false);
+  Value* makeRange(Function *TheFunction, Value* StartV, Value* EndV,
+      bool IsTask, const std::string &);
+  
+  bool isRange(Type* Ty);
+  bool isRange(Value* Val);
 
   //============================================================================
   // Function interface
@@ -317,6 +331,8 @@ private:
   
   VariableAlloca * createFuture(Function *TheFunction,
     const std::string &VarName, Type* VarType);
+
+  VariableAlloca * createField(const std::string &, Type*, Value*, Value*);
 };
 
 } // namespace

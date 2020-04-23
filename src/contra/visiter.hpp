@@ -11,6 +11,7 @@ class ValueExprAST;
 class VarAccessExprAST;
 class ArrayAccessExprAST;
 class ArrayExprAST;
+class RangeExprAST;
 class CastExprAST;
 class UnaryExprAST;
 class BinaryExprAST;
@@ -35,6 +36,7 @@ public:
   virtual void visit(VarAccessExprAST&) = 0;
   virtual void visit(ArrayAccessExprAST&) = 0;
   virtual void visit(ArrayExprAST&) = 0;
+  virtual void visit(RangeExprAST&) = 0;
   virtual void visit(CastExprAST&) = 0;
   virtual void visit(UnaryExprAST&) = 0;
   virtual void visit(BinaryExprAST&) = 0;

@@ -32,6 +32,9 @@ private:
   VariableType StrType_  = VariableType(Context::instance().getStringType());
   VariableType BoolType_ = VariableType(Context::instance().getBoolType());
   VariableType VoidType_ = VariableType(Context::instance().getVoidType());
+
+  VariableType RangeType_ = VariableType(Context::instance().getInt64Type(),
+      VariableType::Attr::Range);
   
   bool HaveTopLevelTask_ = false;
 
@@ -80,6 +83,7 @@ private:
   void visit(VarAccessExprAST&) override;
   void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;
+  void visit(RangeExprAST&) override;
   void visit(CastExprAST&) override;
   void visit(UnaryExprAST&) override;
   void visit(BinaryExprAST&) override;

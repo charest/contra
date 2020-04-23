@@ -47,6 +47,15 @@ public:
     postVisit(e);
   }
   
+  virtual bool preVisit(RangeExprAST&) { return false; }
+  virtual void postVisit(RangeExprAST&) {}
+  virtual void visit(RangeExprAST&e) {
+    if (preVisit(e)) { return; }
+    e.getStartExpr()->accept(*this);
+    e.getEndExpr()->accept(*this);
+    postVisit(e);
+  }
+  
   virtual bool preVisit(CastExprAST&) { return false; }
   virtual void postVisit(CastExprAST&) {}
   virtual void visit(CastExprAST&e) {
@@ -95,7 +104,7 @@ public:
   virtual void visit(ForStmtAST&e) {
     if (preVisit(e)) { return; }
     e.getStartExpr()->accept(*this);
-    e.getEndExpr()->accept(*this);
+    if (e.hasEnd()) e.getEndExpr()->accept(*this);
     if (e.hasStep()) e.getStepExpr()->accept(*this);
     visitBlock(e.getBodyExprs());
     postVisit(e);
@@ -106,7 +115,7 @@ public:
   virtual void visit(ForeachStmtAST&e) {
     if (preVisit(e)) { return; }
     e.getStartExpr()->accept(*this);
-    e.getEndExpr()->accept(*this);
+    if (e.hasEnd()) e.getEndExpr()->accept(*this);
     if (e.hasStep()) e.getStepExpr()->accept(*this);
     visitBlock(e.getBodyExprs());
     postVisit(e);

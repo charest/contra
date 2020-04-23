@@ -57,6 +57,15 @@ int Lexer::gettok() {
     
     return tok_identifier;
   }
+  
+  //----------------------------------------------------------------------------
+  // Range: ..
+  
+  if (LastChar_ == '.' && NextChar == '.') {
+    advance(); // eat next .
+    LastChar_ = advance();
+    return tok_range;
+  }
 
   //----------------------------------------------------------------------------
   // Number: [0-9.]+

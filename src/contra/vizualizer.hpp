@@ -57,6 +57,7 @@ private:
   void visit(VarAccessExprAST&) override;
   void visit(ArrayAccessExprAST&) override;
   void visit(ArrayExprAST&) override;
+  void visit(RangeExprAST&) override;
   void visit(CastExprAST&) override;
   void visit(UnaryExprAST&) override;
   void visit(BinaryExprAST&) override;

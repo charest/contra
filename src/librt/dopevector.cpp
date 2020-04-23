@@ -64,9 +64,9 @@ using namespace llvm;
 using namespace utils;
 
 Type* DopeVector::DopeVectorType = nullptr;
-const std::string Allocate::Name = "allocate";
-const std::string DeAllocate::Name = "deallocate";
-const std::string Copy::Name = "copy";
+const std::string DopeVectorAllocate::Name = "allocate";
+const std::string DopeVectorDeAllocate::Name = "deallocate";
+const std::string DopeVectorCopy::Name = "copy";
 
 //==============================================================================
 // Create the dopevector type 
@@ -95,7 +95,7 @@ void DopeVector::setup(LLVMContext & TheContext)
 //==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
-Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
+Function *DopeVectorAllocate::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto IntType = llvmType<int_t>(TheContext);
   auto VoidType = Type::getVoidTy(TheContext);
@@ -104,17 +104,17 @@ Function *Allocate::install(LLVMContext & TheContext, Module & TheModule)
   auto AllocateType = FunctionType::get( VoidType, Args, false );
 
   auto AllocateFun = Function::Create(AllocateType, Function::InternalLinkage,
-      Allocate::Name, TheModule);
+      DopeVectorAllocate::Name, TheModule);
   return AllocateFun;
 }
 
-std::unique_ptr<FunctionDef> Allocate::check()
+std::unique_ptr<FunctionDef> DopeVectorAllocate::check()
 { return std::unique_ptr<BuiltInFunction>(nullptr); }
 
 //==============================================================================
 // Installs the Allocate deallocate function
 //==============================================================================
-Function *DeAllocate::install(LLVMContext & TheContext, Module & TheModule)
+Function *DopeVectorDeAllocate::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto VoidType = Type::getVoidTy(TheContext);
 
@@ -122,18 +122,18 @@ Function *DeAllocate::install(LLVMContext & TheContext, Module & TheModule)
   auto DeAllocateType = FunctionType::get( VoidType, Args, false );
 
   auto DeAllocateFun = Function::Create(DeAllocateType, Function::InternalLinkage,
-      DeAllocate::Name, TheModule);
+      DopeVectorDeAllocate::Name, TheModule);
   
   return DeAllocateFun;
 }
 
-std::unique_ptr<FunctionDef> DeAllocate::check()
+std::unique_ptr<FunctionDef> DopeVectorDeAllocate::check()
 { return std::unique_ptr<BuiltInFunction>(nullptr); }
 
 //==============================================================================
 // Installs the copy function
 //==============================================================================
-Function *Copy::install(LLVMContext & TheContext, Module & TheModule)
+Function *DopeVectorCopy::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto VoidType = Type::getVoidTy(TheContext);
 
@@ -141,12 +141,12 @@ Function *Copy::install(LLVMContext & TheContext, Module & TheModule)
   std::vector<Type*> Args = {DopeVectorPtrType, DopeVectorPtrType};
   auto FunT = FunctionType::get( VoidType, Args, false );
 
-  auto FunF = Function::Create(FunT, Function::InternalLinkage, Copy::Name, TheModule);
+  auto FunF = Function::Create(FunT, Function::InternalLinkage, DopeVectorCopy::Name, TheModule);
   
   return FunF;
 }
 
-std::unique_ptr<FunctionDef> Copy::check()
+std::unique_ptr<FunctionDef> DopeVectorCopy::check()
 { return std::unique_ptr<BuiltInFunction>(nullptr); }
 
 }

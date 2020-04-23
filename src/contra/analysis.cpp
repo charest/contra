@@ -279,6 +279,32 @@ void Analyzer::visit(ArrayExprAST& e)
 }
 
 //==============================================================================
+void Analyzer::visit(RangeExprAST& e)
+{
+  // start
+  auto StartType = runExprVisitor(*e.getStartExpr());
+  auto EndType = runExprVisitor(*e.getEndExpr());
+
+  const auto & Loc = e.getLoc();
+  if (DestinationType_ && DestinationType_ != I64Type_)
+    THROW_NAME_ERROR( "Only integer types supported for range expressions.", Loc );
+
+  if (StartType != I64Type_) {
+    checkIsCastable(StartType, I64Type_, Loc);
+    e.setStartExpr( insertCastOp(std::move(e.moveStartExpr()), I64Type_) );
+  }
+
+  if (EndType != I64Type_) {
+    checkIsCastable(EndType, I64Type_, Loc);
+    e.setEndExpr( insertCastOp(std::move(e.moveEndExpr()), I64Type_) );
+  }
+
+  TypeResult_ = VariableType(I64Type_, VariableType::Attr::Range);
+  e.setType(TypeResult_);
+}
+
+
+//==============================================================================
 void Analyzer::visit(CastExprAST& e)
 {
   auto FromType = runExprVisitor(*e.getFromExpr());
@@ -436,25 +462,40 @@ void Analyzer::visitFor(ForStmtAST&e)
   auto VarId = e.getVarId();
   insertVariable(VarId, I64Type_);
 
-  DestinationType_ = I64Type_;
-  auto StartType = runExprVisitor(*e.getStartExpr());
-  if (StartType != I64Type_ )
-    THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
-        e.getStartExpr()->getLoc() );
-
-  DestinationType_ = I64Type_;
-  auto EndType = runExprVisitor(*e.getEndExpr());
-  if (EndType != I64Type_ )
-    THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
-        e.getEndExpr()->getLoc() );
-
-  if (e.hasStep()) {
-    DestinationType_ = I64Type_;
-    auto StepType = runExprVisitor(*e.getStepExpr());
-    if (StepType != I64Type_ )
-      THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
-          e.getStepExpr()->getLoc() );
+  //----------------------------------------------------------------------------
+  // Range for
+  if (e.getLoopType() == ForStmtAST::LoopType::Range) {
+    DestinationType_ = RangeType_;
+    auto RangeType = runExprVisitor(*e.getStartExpr());
+    if (RangeType != RangeType_)
+      THROW_NAME_ERROR( "Range-based for loops must iterate over a range expression.",
+          e.getStartExpr()->getLoc() );
   }
+  //----------------------------------------------------------------------------
+  // Regular for
+  else {
+
+    DestinationType_ = I64Type_;
+    auto StartType = runExprVisitor(*e.getStartExpr());
+    if (StartType != I64Type_ )
+      THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
+          e.getStartExpr()->getLoc() );
+
+    DestinationType_ = I64Type_;
+    auto EndType = runExprVisitor(*e.getEndExpr());
+    if (EndType != I64Type_ )
+      THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
+          e.getEndExpr()->getLoc() );
+
+    if (e.hasStep()) {
+      DestinationType_ = I64Type_;
+      auto StepType = runExprVisitor(*e.getStepExpr());
+      if (StepType != I64Type_ )
+        THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
+            e.getStepExpr()->getLoc() );
+    }
+  }
+  //----------------------------------------------------------------------------
 
   createScope();
   for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
@@ -546,7 +587,9 @@ void Analyzer::visit(VarDeclAST& e)
   auto TypeId = e.getTypeId();
   VariableType VarType;
   if (TypeId) {
-    VarType = VariableType(getType(TypeId), e.isArray());
+    VarType = VariableType(getType(TypeId));
+    VarType.setArray( e.isArray() );
+    VarType.setRange( e.isRange() );
     DestinationType_ = VarType;
   }
   
@@ -554,29 +597,20 @@ void Analyzer::visit(VarDeclAST& e)
   if (!VarType) {
     VarType = InitType;
     e.setArray(InitType.isArray());
+    e.setRange(InitType.isRange());
   }
 
-  //----------------------------------------------------------------------------
-  // Scalar variable
-  if (!e.isArray()) {
-
-    if (VarType != InitType) {
-      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
-      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
-    }
-
-  }
   //----------------------------------------------------------------------------
   // Array Variable
-  else {
+  if (e.isArray()) {
 
-    // Array already on right hand side
-    if (InitType.isArray()) {
-    }
-    //  scalar on right hand side
-    else {
+    // If Array already on right hand side, nothing to do
     
-      auto ElementType = VariableType(VarType, false);
+    //  scalar on right hand side
+    if (!InitType.isArray()) {
+    
+      auto ElementType = VariableType(VarType);
+      ElementType.setArray(false);
       if (ElementType != InitType) {
         checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
         e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
@@ -590,6 +624,23 @@ void Analyzer::visit(VarDeclAST& e)
       }
 
     } // scalar init
+
+  }
+  //----------------------------------------------------------------------------
+  // Range Variable
+  else if (e.isRange()) {
+    if (! dynamic_cast<RangeExprAST*>(e.getInitExpr()) )
+      THROW_NAME_ERROR( "Range expressions can only be inialized with ranges.",
+          e.getInitExpr()->getLoc());
+  }
+  //----------------------------------------------------------------------------
+  // Scalar variable
+  else {
+
+    if (VarType != InitType) {
+      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
+      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
+    }
 
   }
   // End
@@ -613,32 +664,27 @@ void Analyzer::visit(FieldDeclAST& e)
   // check if there is a specified type, if there is, get it
   auto TypeId = e.getTypeId();
   VariableType VarType;
-  if (!TypeId) 
-    THROW_NAME_ERROR( "Fields require a type specifier.", e.getLoc());
-
-  VarType = VariableType(getType(TypeId), e.isArray());
-  DestinationType_ = VarType;
+  if (TypeId) {
+    VarType = VariableType(getType(TypeId));
+    VarType.setArray( e.isArray() );
+    DestinationType_ = VarType;
+  }
   
   auto InitType = runExprVisitor(*e.getInitExpr());
   if (InitType.isArray())
     THROW_NAME_ERROR( "Only scalar initializers allowed for fields.",
         e.getInitExpr()->getLoc());
-
-  //----------------------------------------------------------------------------
-  // Scalar variable
-  if (!e.isArray()) {
-
-    if (VarType != InitType) {
-      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
-      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
-    }
-
+  
+  if (!VarType) {
+    VarType = InitType;
   }
+
   //----------------------------------------------------------------------------
   // Array Variable
-  else {
+  if (e.isArray()) {
 
-    auto ElementType = VariableType(VarType, false);
+    auto ElementType = VariableType(VarType);
+    ElementType.setArray(false);
     if (ElementType != InitType) {
       checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
       e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
@@ -652,13 +698,23 @@ void Analyzer::visit(FieldDeclAST& e)
       THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
          e.getSizeExpr()->getLoc());
   }
+  //----------------------------------------------------------------------------
+  // Scalar variable
+  else {
+
+    if (VarType != InitType) {
+      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
+      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
+    }
+
+  }
   // End
   //----------------------------------------------------------------------------
  
   // Field specific
   auto PartType = runExprVisitor(*e.getPartExpr());
-  if (PartType != I64Type_)
-    THROW_NAME_ERROR( "Partition expression for fields must be an integer.",
+  if (PartType != RangeType_)
+    THROW_NAME_ERROR( "Partition expression for fields must be a range.",
        e.getPartExpr()->getLoc());
 
   
@@ -685,7 +741,8 @@ void Analyzer::visit(PrototypeAST& e)
   for (int i=0; i<NumArgs; ++i) {
     // check type specifier
     const auto & TypeId = e.getArgTypeId(i);
-    auto ArgType = VariableType( getType(TypeId), e.isArgArray(i) );
+    auto ArgType = VariableType( getType(TypeId) );
+    ArgType.setArray( e.isArgArray(i) );
     ArgTypes.emplace_back(std::move(ArgType));
   }
 

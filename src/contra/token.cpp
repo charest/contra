@@ -41,6 +41,8 @@ void Tokens::setup() {
     { tok_function, "function" },
     { tok_if, "if" },
     { tok_in, "in" },
+    { tok_over, "over" },
+    { tok_range, ".." },
     { tok_return, "return" },
     { tok_task, "task" },
     { tok_then, "then" },

@@ -230,22 +230,28 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
   else if (CurTok_ == tok_until) {
     Loop = ForStmtAST::LoopType::Until;
   }
+  else if (CurTok_ == tok_do ) {
+    Loop = ForStmtAST::LoopType::Range;
+  }
   else
     THROW_SYNTAX_ERROR("Expected 'to' after for start value in 'for' loop", StartLoc);
-  getNextToken(); // eat to
 
-  auto End = parseExpression();
+  getNextToken(); // eat to/do
 
-  // The step value is optional.
-  std::unique_ptr<NodeAST> Step;
-  if (CurTok_ == tok_by) {
-    getNextToken();
-    Step = parseExpression();
+  std::unique_ptr<NodeAST> End, Step;
+  if ( Loop != ForStmtAST::LoopType::Range ) {
+    End = parseExpression();
+
+    // The step value is optional.
+    if (CurTok_ == tok_by) {
+      getNextToken();
+      Step = parseExpression();
+    }
+
+    if (CurTok_ != tok_do)
+      THROW_SYNTAX_ERROR("Expected 'do' after 'for'", getCurLoc());
+    getNextToken(); // eat 'do'.
   }
-
-  if (CurTok_ != tok_do)
-    THROW_SYNTAX_ERROR("Expected 'do' after 'for'", getCurLoc());
-  getNextToken(); // eat 'do'.
   
   // add statements
   ASTBlock Body;
@@ -294,6 +300,8 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parseParenExpr();
   case '[':
     return parseArrayExpr();
+  case '{':
+    return parseRangeExpr();
   case tok_if:
     return parseIfExpr();
   case tok_for:
@@ -425,6 +433,8 @@ std::unique_ptr<NodeAST> Parser::parseUnary() {
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
 
+  auto VarLoc = getCurLoc();
+
   getNextToken();  // eat the var.
   // At least one variable name is required.
   if (CurTok_ != tok_identifier)
@@ -435,9 +445,9 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
   getNextToken();  // eat identifier.
 
   Identifier VarType;
-  bool IsArray = false;
-
-  std::unique_ptr<NodeAST> Size;
+  VarDeclAST::AttrType VarAttr = VarDeclAST::AttrType::None;
+  
+  std::unique_ptr<NodeAST> Size, IndexSpace;
 
   // get additional variables
   while (CurTok_ == ',') {
@@ -453,8 +463,12 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
     getNextToken(); // eat the ':'.
     
     if (CurTok_ == '[') {
-      IsArray = true;
+      VarAttr = VarDeclAST::AttrType::Array;
       getNextToken(); // eat the '['.
+    }
+    else if (CurTok_ == '{') {
+      VarAttr = VarDeclAST::AttrType::Range;
+      getNextToken(); // eat the {
     }
 
     if (CurTok_ == tok_identifier) {
@@ -462,7 +476,9 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
       getNextToken(); // eat the identifier
     }
 
-    if (IsArray) {
+    //--------------------------------------------------------------------------
+    // array
+    if (VarAttr == VarDeclAST::AttrType::Array) {
 
       if (CurTok_ != ']' && CurTok_ != ';')
         THROW_SYNTAX_ERROR("Array definition expected ']' or ';' instead of '"
@@ -477,6 +493,27 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
             << Tokens::getName(CurTok_) << "'", getCurLoc());
 
       getNextToken(); // eat [
+    }
+    //--------------------------------------------------------------------------
+    // range
+    else if (VarAttr == VarDeclAST::AttrType::Range) {
+
+      if (CurTok_ != '}')
+        THROW_SYNTAX_ERROR("Range definition expected '}' instead of '"
+            << Tokens::getName(CurTok_) << "'", getCurLoc());
+      getNextToken(); // eat }
+
+    }
+
+    if (CurTok_ == tok_over) {
+      getNextToken(); // eat over
+      if (CurTok_ != '(')
+        THROW_SYNTAX_ERROR("Expected '(' after 'over' specifier.", getCurLoc());
+      getNextToken(); // eat )
+      IndexSpace = parseExpression();
+      if (CurTok_ != ')')
+        THROW_SYNTAX_ERROR("Expected ')' after 'over' specifier.", getCurLoc());
+      getNextToken(); // eat )
     }
 
   }
@@ -495,8 +532,12 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
         << " has no initializer", EqLoc);
   }
 
-  return std::make_unique<VarDeclAST>(getCurLoc(), VarNames,
-      VarType, std::move(Init), std::move(Size), IsArray);
+  if (IndexSpace)
+    return std::make_unique<FieldDeclAST>(VarLoc, VarNames,
+        VarType, std::move(Init), std::move(Size), std::move(IndexSpace));
+  else
+    return std::make_unique<VarDeclAST>(VarLoc, VarNames,
+        VarType, std::move(Init), std::move(Size), VarAttr);
 }
 
 //==============================================================================
@@ -615,6 +656,30 @@ std::unique_ptr<NodeAST> Parser::parseArrayExpr()
 
   return std::make_unique<ArrayExprAST>(Loc, std::move(ValExprs),
       std::move(SizeExpr));
+}
+
+//==============================================================================
+// Array expression parser
+//==============================================================================
+std::unique_ptr<NodeAST> Parser::parseRangeExpr()
+{
+
+  auto Loc = getCurLoc();
+  getNextToken(); // eat {.
+
+  auto StartExpr = parseExpression();
+
+  if (CurTok_ != tok_range && CurTok_ != ',')
+      THROW_SYNTAX_ERROR("Expected '..' or ',' in range expression.", getCurLoc());
+  getNextToken(); // eat ..
+  
+  auto EndExpr = parseExpression();
+  
+  if (CurTok_ != '}')
+    THROW_SYNTAX_ERROR("Expected '}' at the end of a range expression.", getCurLoc());
+  getNextToken(); // eat }
+
+  return std::make_unique<RangeExprAST>(Loc, std::move(StartExpr), std::move(EndExpr));
 }
 
 

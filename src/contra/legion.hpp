@@ -2,6 +2,59 @@
 #define CONTRA_LEGION_HPP
 
 #include "tasking.hpp"
+#include "librt/dllexport.h"
+
+#include "legion/legion_c.h"
+
+extern "C" {
+
+/// forward declaration
+struct contra_legion_field_t;
+struct contra_legion_index_space_t;
+
+/// field 
+DLLEXPORT void contra_legion_index_space_create(
+    legion_runtime_t *,
+    legion_context_t *,
+    const char *,
+    int_t,
+    int_t,
+    contra_legion_index_space_t *);
+
+DLLEXPORT void contra_legion_index_space_destroy(
+    legion_runtime_t *,
+    legion_context_t *,
+    contra_legion_index_space_t *);
+  
+/// index space
+DLLEXPORT void contra_legion_field_create(
+    legion_runtime_t *,
+    legion_context_t *,
+    const char *,
+    size_t,
+    contra_legion_index_space_t *,
+    contra_legion_field_t *);
+
+DLLEXPORT void contra_legion_field_destroy(
+    legion_runtime_t *,
+    legion_context_t *,
+    contra_legion_field_t *);
+
+DLLEXPORT void contra_legion_domain_create(
+    legion_runtime_t *,
+    contra_legion_index_space_t *,
+    legion_domain_t *);
+
+/// field arguments
+DLLEXPORT void contra_task_add_region_requirement(
+    legion_task_launcher_t *, 
+    contra_legion_field_t *);
+
+DLLEXPORT void contra_index_add_region_requirement(
+    legion_index_launcher_t *, 
+    contra_legion_field_t *);
+
+} // extern
 
 namespace llvm {
 class AllocaInst;
@@ -16,6 +69,7 @@ protected:
   llvm::Type* VoidType_ = nullptr;
   llvm::Type* ByteType_ = nullptr;
   llvm::Type* BoolType_ = nullptr;
+  llvm::Type* CharType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* SizeType_ = nullptr;
   llvm::Type* ProcIdType_ = nullptr;
@@ -28,6 +82,13 @@ protected:
   llvm::Type* FutureIdType_ = nullptr;
   llvm::Type* CoordType_ = nullptr;
   llvm::Type* Point1dType_ = nullptr;
+  llvm::Type* IndexSpaceIdType_ = nullptr;
+  llvm::Type* IndexTreeIdType_ = nullptr;
+  llvm::Type* TypeTagType_ = nullptr;
+  llvm::Type* FieldSpaceIdType_ = nullptr;
+  llvm::Type* FieldIdType_ = nullptr;
+  llvm::Type* RegionTreeIdType_ = nullptr;
+  llvm::Type* IndexPartitionIdType_ = nullptr;
   
   llvm::StructType* TaskType_ = nullptr;
   llvm::StructType* RegionType_ = nullptr;
@@ -46,6 +107,15 @@ protected:
   llvm::StructType* DomainRectType_ = nullptr;    
   llvm::StructType* ArgMapType_ = nullptr;
   llvm::StructType* FutureMapType_ = nullptr;
+  llvm::StructType* IndexSpaceType_ = nullptr;
+  llvm::StructType* FieldSpaceType_ = nullptr;
+  llvm::StructType* FieldAllocatorType_ = nullptr;
+  llvm::StructType* LogicalRegionType_ = nullptr;
+  llvm::StructType* IndexPartitionType_ = nullptr;
+  llvm::StructType* LogicalPartitionType_ = nullptr;
+
+  llvm::StructType* IndexSpaceDataType_ = nullptr;
+  llvm::StructType* FieldDataType_ = nullptr;
 
   struct TaskEntry {
     llvm::AllocaInst* ContextAlloca = nullptr;
@@ -53,6 +123,12 @@ protected:
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;
+
+  enum class ArgType : char {
+    None = 0,
+    Future,
+    Field
+  };
 
 public:
  
@@ -78,7 +154,7 @@ public:
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) override;
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &,
-      llvm::Value*, llvm::Value*) override;
+      llvm::Value*) override;
   
   virtual bool isFuture(llvm::Value*) const override;
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) override;
@@ -86,6 +162,16 @@ public:
   virtual void destroyFuture(llvm::Module &, llvm::Value*) override;
   virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) override;
   virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) override;
+  
+  virtual bool isField(llvm::Value*) const override;
+  virtual llvm::Value* createField(llvm::Module &, llvm::Function*, const std::string &,
+      llvm::Type*, llvm::Value*, llvm::Value*) override;
+  virtual void destroyField(llvm::Module &, llvm::Value*) override;
+  
+
+  virtual llvm::Value* createRange(llvm::Module &, llvm::Function*, const std::string &,
+      llvm::Value*, llvm::Value*) override;
+  virtual void destroyRange(llvm::Module &, llvm::Value*) override;
 
   virtual ~LegionTasker() = default;
 
@@ -101,24 +187,34 @@ protected:
   void finishTask() { TaskAllocas_.pop_front(); }
 
   llvm::StructType* createOpaqueType(const std::string &, llvm::LLVMContext &);
-  llvm::StructType* createTaskConfigOptionsType(const std::string &, llvm::LLVMContext &);
-  llvm::StructType* createTaskArgumentsType(const std::string &, llvm::LLVMContext &);
-  llvm::StructType* createDomainPointType(const std::string &, llvm::LLVMContext &);
-  llvm::StructType* createRect1dType(const std::string &, llvm::LLVMContext &);
-  llvm::StructType* createDomainRectType(const std::string &, llvm::LLVMContext &);
+  llvm::StructType* createTaskConfigOptionsType(llvm::LLVMContext &);
+  llvm::StructType* createTaskArgumentsType(llvm::LLVMContext &);
+  llvm::StructType* createDomainPointType(llvm::LLVMContext &);
+  llvm::StructType* createRect1dType(llvm::LLVMContext &);
+  llvm::StructType* createDomainRectType(llvm::LLVMContext &);
+  llvm::StructType* createIndexSpaceType(llvm::LLVMContext &);
+  llvm::StructType* createFieldSpaceType(llvm::LLVMContext &);
+  llvm::StructType* createLogicalRegionType(llvm::LLVMContext &);
+  llvm::StructType* createIndexPartitionType(llvm::LLVMContext &);
+  llvm::StructType* createLogicalPartitionType(llvm::LLVMContext &);
+
+  llvm::StructType* createIndexSpaceDataType(llvm::LLVMContext &);
+  llvm::StructType* createFieldDataType(llvm::LLVMContext &);
 
   llvm::AllocaInst* createPredicateTrue(llvm::Module &);
   llvm::AllocaInst* createGlobalArguments(
       llvm::Module &,
       const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &,
-      std::vector<unsigned> &);
+      const std::vector<llvm::Value*> &);
   void createGlobalFutures(
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
+    bool IsIndex);
+  void createFieldArguments(
+    llvm::Module &,
+    llvm::Value*,
     const std::vector<llvm::Value*> &,
-    const std::vector<unsigned> &,
     bool IsIndex);
   llvm::AllocaInst* createOpaqueType(llvm::Module&, llvm::StructType*, const std::string &,
       const std::string & = "");

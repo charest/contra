@@ -5,18 +5,168 @@
 #include "legion.hpp"
 #include "utils/llvm_utils.hpp"
 
-#include "legion/legion_c.h"
-
 #include <vector>
+
+////////////////////////////////////////////////////////////////////////////////
+// Legion runtime
+////////////////////////////////////////////////////////////////////////////////
+
+extern "C" {
+
+struct contra_legion_index_space_t {
+  legion_index_space_t index_space;
+  legion_index_space_t color_space;
+  legion_index_partition_t index_part;
+};
+
+struct contra_legion_field_t {
+  legion_field_space_t field_space;
+  legion_field_allocator_t field_allocator;
+  legion_field_id_t field_id;
+  legion_logical_region_t logical_region;
+  legion_logical_partition_t logical_part;
+
+  contra_legion_index_space_t *index_space;
+};
+
+//==============================================================================
+/// index space creation
+//==============================================================================
+void contra_legion_index_space_create(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    const char *name,
+    int_t start,
+    int_t end,
+    contra_legion_index_space_t * is)
+{
+  int_t size = end - start + 1;
+
+  is->index_space = legion_index_space_create(*runtime, *ctx, size);
+  legion_index_space_attach_name(*runtime, is->index_space, name, false);  
+  
+  is->color_space = legion_index_space_create(*runtime, *ctx, size);
+
+  is->index_part = legion_index_partition_create_equal(*runtime, *ctx,
+      is->index_space, is->color_space, /* granularity */ 1,
+      /*color*/ AUTO_GENERATE_ID );
+}
+
+//==============================================================================
+/// index domain creation
+//==============================================================================
+void contra_legion_domain_create(
+    legion_runtime_t * runtime,
+    contra_legion_index_space_t * is,
+    legion_domain_t * domain)
+{
+  *domain = legion_domain_from_index_space(*runtime, is->index_space);
+}
+
+//==============================================================================
+/// index spce destruction
+//==============================================================================
+void contra_legion_index_space_destroy(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    contra_legion_index_space_t * is)
+{
+  legion_index_partition_destroy(*runtime, *ctx, is->index_part);
+  legion_index_space_destroy(*runtime, *ctx, is->color_space);
+  legion_index_space_destroy(*runtime, *ctx, is->index_space);
+}
+
+
+//==============================================================================
+/// field creation
+//==============================================================================
+void contra_legion_field_create(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    const char *name,
+    size_t data_size,
+    contra_legion_index_space_t * is,
+    contra_legion_field_t * fld)
+{
+  fld->index_space = is;
+
+  fld->field_space = legion_field_space_create(*runtime, *ctx);
+  legion_field_space_attach_name(*runtime, fld->field_space, name, false);  
+
+  fld->field_allocator = legion_field_allocator_create(*runtime, *ctx, fld->field_space);
+  fld->field_id = legion_field_allocator_allocate_field(
+    fld->field_allocator, data_size, AUTO_GENERATE_ID );
+  legion_field_id_attach_name(*runtime, fld->field_space, fld->field_id, name, false);  
+
+  fld->logical_region =
+    legion_logical_region_create(*runtime, *ctx, is->index_space,
+        fld->field_space, false);
+  
+  fld->logical_part = 
+    legion_logical_partition_create(*runtime, *ctx, fld->logical_region,
+        is->index_part);
+}
+
+//==============================================================================
+/// field destruction
+//==============================================================================
+void contra_legion_field_destroy(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    contra_legion_field_t * field)
+{
+  legion_logical_partition_destroy(*runtime, *ctx, field->logical_part);
+  legion_logical_region_destroy(*runtime, *ctx, field->logical_region);
+  //legion_field_allocator_free_field(field->field_allocator, field->field_id);
+  legion_field_allocator_destroy(field->field_allocator);
+  legion_field_space_destroy(*runtime, *ctx, field->field_space);
+}
+
+
+//==============================================================================
+/// field addition
+//==============================================================================
+void contra_index_add_region_requirement(legion_index_launcher_t * launcher,
+    contra_legion_field_t * field)
+{
+  unsigned idx = legion_index_launcher_add_region_requirement_logical_partition(
+    *launcher, field->logical_part,
+    /* legion_projection_id_t */ 0,
+    WRITE_DISCARD, EXCLUSIVE,
+    field->logical_region,
+    /* legion_mapping_tag_id_t */ 0,
+    /* bool verified */ false);
+
+  legion_index_launcher_add_field(*launcher, idx, field->field_id, /* bool inst */ true);
+}
+
+//==============================================================================
+/// field addition
+//==============================================================================
+void contra_task_add_region_requirement(
+    legion_task_launcher_t * launcher,
+    contra_legion_field_t * field)
+{
+  unsigned idx = legion_task_launcher_add_region_requirement_logical_region(
+    *launcher, field->logical_region,
+    READ_WRITE, EXCLUSIVE,
+    field->logical_region,
+    /* legion_mapping_tag_id_t */ 0,
+    /* bool verified */ false);
+
+    legion_task_launcher_add_field(*launcher, idx, field->field_id, /* bool inst */ true);
+}
+
+} // extern
+
+////////////////////////////////////////////////////////////////////////////////
+// Legion tasker
+////////////////////////////////////////////////////////////////////////////////
 
 namespace contra {
 
 using namespace llvm;
 using namespace utils;
-
-////////////////////////////////////////////////////////////////////////////////
-// Legion tasker
-////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
 // Constructor
@@ -30,6 +180,7 @@ LegionTasker::LegionTasker(IRBuilder<> & TheBuilder, LLVMContext & TheContext) :
   SizeType_ = llvmType<std::size_t>(TheContext_);
   Int32Type_ = llvmType<int>(TheContext_);
   BoolType_ = llvmType<bool>(TheContext_);
+  CharType_ = llvmType<char>(TheContext_);
   RealmIdType_ = llvmType<realm_id_t>(TheContext_);
   NumRegionsType_ = llvmType<std::uint32_t>(TheContext_); 
   TaskVariantIdType_ = llvmType<legion_variant_id_t>(TheContext_);
@@ -40,6 +191,13 @@ LegionTasker::LegionTasker(IRBuilder<> & TheBuilder, LLVMContext & TheContext) :
   FutureIdType_ = llvmType<unsigned>(TheContext_);
   CoordType_ = llvmType<legion_coord_t>(TheContext_);
   Point1dType_ = ArrayType::get(CoordType_, 1);
+  IndexSpaceIdType_ = llvmType<legion_index_space_id_t>(TheContext_);
+  IndexTreeIdType_ = llvmType<legion_index_tree_id_t>(TheContext_);
+  TypeTagType_ = llvmType<legion_type_tag_t>(TheContext_);
+  FieldSpaceIdType_ = llvmType<legion_field_space_id_t>(TheContext_);
+  FieldIdType_ = llvmType<legion_field_id_t>(TheContext_);
+  RegionTreeIdType_ = llvmType<legion_region_tree_id_t>(TheContext_);
+  IndexPartitionIdType_ = llvmType<legion_index_partition_id_t>(TheContext_);
 
   TaskType_ = createOpaqueType("legion_task_t", TheContext_);
   RegionType_ = createOpaqueType("legion_physical_region_t", TheContext_);
@@ -51,13 +209,22 @@ LegionTasker::LegionTasker(IRBuilder<> & TheBuilder, LLVMContext & TheContext) :
   TaskLauncherType_ = createOpaqueType("legion_task_launcher_t", TheContext_);
   IndexLauncherType_ = createOpaqueType("legion_index_launcher_t", TheContext_);
   FutureType_ = createOpaqueType("legion_future_t", TheContext_);
-  TaskConfigType_ = createTaskConfigOptionsType("task_config_options_t", TheContext_);
-  TaskArgsType_ = createTaskArgumentsType("legion_task_argument_t", TheContext_);
-  DomainPointType_ = createDomainPointType("legion_domain_point_t", TheContext_);
-  Rect1dType_ = createRect1dType("legion_rect_1d_t", TheContext_);
-  DomainRectType_ = createDomainRectType("legion_domain_t", TheContext_);
+  TaskConfigType_ = createTaskConfigOptionsType(TheContext_);
+  TaskArgsType_ = createTaskArgumentsType(TheContext_);
+  DomainPointType_ = createDomainPointType(TheContext_);
+  Rect1dType_ = createRect1dType(TheContext_);
+  DomainRectType_ = createDomainRectType(TheContext_);
   ArgMapType_ = createOpaqueType("legion_argument_map_t", TheContext_);
   FutureMapType_ = createOpaqueType("legion_future_map_t", TheContext_);
+  IndexSpaceType_ = createIndexSpaceType(TheContext_);
+  FieldSpaceType_ = createFieldSpaceType(TheContext_);
+  FieldAllocatorType_ = createOpaqueType("legion_field_allocator_t", TheContext_);
+  LogicalRegionType_ = createLogicalRegionType(TheContext_);
+  IndexPartitionType_ = createIndexPartitionType(TheContext_);
+  LogicalPartitionType_ = createLogicalPartitionType(TheContext_);
+
+  IndexSpaceDataType_ = createIndexSpaceDataType(TheContext_);
+  FieldDataType_ = createFieldDataType(TheContext_);
 }
 
 //==============================================================================
@@ -77,45 +244,41 @@ StructType * LegionTasker::createOpaqueType(
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * LegionTasker::createTaskConfigOptionsType(
-    const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createTaskConfigOptionsType(LLVMContext & TheContext)
 {
   std::vector<Type*> members(4, BoolType_);
-  auto OptionsType = StructType::create( TheContext, members, Name );
+  auto OptionsType = StructType::create( TheContext, members, "task_config_options_t" );
   return OptionsType;
 }
 
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * LegionTasker::createTaskArgumentsType(
-    const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createTaskArgumentsType(LLVMContext & TheContext)
 {
   std::vector<Type*> members = { VoidPtrType_, SizeType_ };
-  auto NewType = StructType::create( TheContext, members, Name );
+  auto NewType = StructType::create( TheContext, members, "legion_task_argument_t" );
   return NewType;
 }
 
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * LegionTasker::createDomainPointType(
-    const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createDomainPointType(LLVMContext & TheContext)
 {
   auto ArrayT = ArrayType::get(CoordType_, MAX_POINT_DIM); 
   std::vector<Type*> members = { Int32Type_, ArrayT };
-  auto NewType = StructType::create( TheContext, members, Name );
+  auto NewType = StructType::create( TheContext, members, "legion_domain_point_t" );
   return NewType;
 }
 
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * LegionTasker::createRect1dType(
-    const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createRect1dType(LLVMContext & TheContext)
 {
   std::vector<Type*> members = { Point1dType_, Point1dType_ };
-  auto NewType = StructType::create( TheContext, members, Name );
+  auto NewType = StructType::create( TheContext, members, "legion_rect_1d_t" );
   return NewType;
 }
   
@@ -123,14 +286,86 @@ StructType * LegionTasker::createRect1dType(
 //==============================================================================
 // Create the opaque type
 //==============================================================================
-StructType * LegionTasker::createDomainRectType(
-    const std::string & Name, LLVMContext & TheContext)
+StructType * LegionTasker::createDomainRectType(LLVMContext & TheContext)
 {
   auto ArrayT = ArrayType::get(CoordType_, 2*LEGION_MAX_DIM); 
   std::vector<Type*> members = { RealmIdType_, Int32Type_, ArrayT };
-  auto NewType = StructType::create( TheContext, members, Name );
+  auto NewType = StructType::create( TheContext, members, "legion_domain_t" );
   return NewType;
 }
+
+//==============================================================================
+// Create the index space type
+//==============================================================================
+StructType * LegionTasker::createIndexSpaceType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { IndexSpaceIdType_, IndexTreeIdType_, TypeTagType_ };
+  auto NewType = StructType::create( TheContext, members, "legion_index_space_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create the field space type
+//==============================================================================
+StructType * LegionTasker::createFieldSpaceType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { FieldSpaceIdType_ };
+  auto NewType = StructType::create( TheContext, members, "legion_field_space_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create the logical region type
+//==============================================================================
+StructType * LegionTasker::createLogicalRegionType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { RegionTreeIdType_, IndexSpaceType_, FieldSpaceType_ };
+  auto NewType = StructType::create( TheContext, members, "legion_logical_region_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create the logical region type
+//==============================================================================
+StructType * LegionTasker::createIndexPartitionType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { IndexPartitionIdType_, IndexTreeIdType_, TypeTagType_ };
+  auto NewType = StructType::create( TheContext, members, "legion_index_partition_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create the logical region type
+//==============================================================================
+StructType * LegionTasker::createLogicalPartitionType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { RegionTreeIdType_, IndexPartitionType_, FieldSpaceType_ };
+  auto NewType = StructType::create( TheContext, members, "legion_index_partition_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * LegionTasker::createFieldDataType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { IndexSpaceType_, FieldSpaceType_,
+    FieldAllocatorType_, FieldIdType_, LogicalRegionType_, LogicalPartitionType_,
+    IndexSpaceDataType_ };
+  auto NewType = StructType::create( TheContext, members, "contra_legion_field_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * LegionTasker::createIndexSpaceDataType(LLVMContext & TheContext)
+{
+  std::vector<Type*> members = { IndexSpaceType_, IndexSpaceType_, IndexPartitionType_ };
+  auto NewType = StructType::create( TheContext, members, "contra_legion_index_space_t" );
+  return NewType;
+}
+
   
 //==============================================================================
 // Create a true predicate
@@ -157,10 +392,8 @@ AllocaInst* LegionTasker::createPredicateTrue(Module &TheModule)
 //==============================================================================
 AllocaInst* LegionTasker::createGlobalArguments(
     Module &TheModule,
-    const std::vector<Value*> & ArgVs,
-    const std::vector<Value*> & ArgSizes,
-    std::vector<unsigned> & FutureArgId
-    )
+    const std::vector<Value*> & ArgVorAs,
+    const std::vector<Value*> & ArgSizes)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -169,19 +402,24 @@ AllocaInst* LegionTasker::createGlobalArguments(
   //----------------------------------------------------------------------------
   // Identify futures
   
-  auto NumArgs = ArgVs.size();
+  auto NumArgs = ArgVorAs.size();
   
-  std::vector<char> ArgIsFuture(NumArgs);
-  std::vector<Constant*> ArgIsFutureC(NumArgs);
+  std::vector<Constant*> ArgEnumC(NumArgs);
   std::vector<unsigned> ValueArgId;
 
-  unsigned NumFutureArgs = 0;
   for (unsigned i=0; i<NumArgs; i++) {
-    ArgIsFuture[i] = (ArgVs[i]->getType() == FutureType_);
-    NumFutureArgs += ArgIsFuture[i];
-    if (ArgIsFuture[i]) FutureArgId.emplace_back(i);
-    else ValueArgId.emplace_back(i);
-    ArgIsFutureC[i] = llvmValue(TheContext_, BoolType_, ArgIsFuture[i]);
+    ArgType ArgEnum;
+    if (isFuture(ArgVorAs[i])) {
+      ArgEnum = ArgType::Future;
+    }
+    else if (isField(ArgVorAs[i])) {
+      ArgEnum = ArgType::Field;
+    }
+    else {
+      ValueArgId.emplace_back(i);
+      ArgEnum = ArgType::None;
+    }
+    ArgEnumC[i] = llvmValue(TheContext_, CharType_, static_cast<char>(ArgEnum));
   }
 
   //----------------------------------------------------------------------------
@@ -210,8 +448,8 @@ AllocaInst* LegionTasker::createGlobalArguments(
   //----------------------------------------------------------------------------
   // create an array with booleans identifying argyment type
   
-  auto ArrayT = ArrayType::get(BoolType_, NumArgs);
-  auto ArrayC = ConstantArray::get(ArrayT, ArgIsFutureC);
+  auto ArrayT = ArrayType::get(CharType_, NumArgs);
+  auto ArrayC = ConstantArray::get(ArrayT, ArgEnumC);
   auto GVStr = new GlobalVariable(TheModule, ArrayT, true, GlobalValue::InternalLinkage, ArrayC);
   auto ZeroC = Constant::getNullValue(Int32Type_);
   auto ArrayGEP = ConstantExpr::getGetElementPtr(nullptr, GVStr, ZeroC, true);
@@ -225,16 +463,20 @@ AllocaInst* LegionTasker::createGlobalArguments(
   Builder_.CreateStore( llvmValue(TheContext_, ArgSizeT, NumArgs), ArgSizeGEP );
   
   for (auto i : ValueArgId) {
-    auto ArgT = ArgVs[i]->getType();
-    // copy argument into an alloca
-    auto ArgA = createEntryBlockAlloca(TheFunction, ArgT, "tmpalloca");
-    Builder_.CreateStore( ArgVs[i], ArgA );
+    Value* ArgV = ArgVorAs[i];
+    if (!isa<AllocaInst>(ArgV)) {
+      auto ArgT = ArgV->getType();
+      // copy argument into an alloca
+      auto ArgA = createEntryBlockAlloca(TheFunction, ArgT, "tmpalloca");
+      Builder_.CreateStore( ArgV, ArgA );
+      ArgV = ArgA;
+    }
     // load offset
     ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
     // copy
     auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
     auto OffsetArgDataPtrV = Builder_.CreateGEP(ArgDataPtrV, ArgSizeV, "args.offset");
-    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgA, 1, ArgSizes[i]); 
+    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgV, 1, ArgSizes[i]); 
     // increment
     ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
     increment(ArgSizeGEP, ArgSizes[i], "addoffset");
@@ -249,9 +491,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
 void LegionTasker::createGlobalFutures(
     llvm::Module & TheModule,
     Value* LauncherA,
-    const std::vector<Value*> & ArgVs,
-    const std::vector<Value*> & ArgSizes,
-    const std::vector<unsigned> & FutureArgId,
+    const std::vector<Value*> & ArgVorAs,
     bool IsIndex )
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
@@ -270,15 +510,60 @@ void LegionTasker::createGlobalFutures(
   else
     AddFutureF = TheModule.getOrInsertFunction("legion_task_launcher_add_future", AddFutureT);
 
-  for (auto i : FutureArgId) {
-    auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "tmpalloca");
-    Builder_.CreateStore( ArgVs[i], FutureA );
-    auto FutureRV = load(FutureA, TheModule, "future");
+  auto NumArgs = ArgVorAs.size();
+  for (unsigned i=0; i<NumArgs; i++) {
+    auto FutureV = ArgVorAs[i];
+    if (!isFuture(FutureV)) continue;
+    if (!isa<AllocaInst>(FutureV)) {
+      auto FutureA = createEntryBlockAlloca(TheFunction, FutureType_, "tmpalloca");
+      Builder_.CreateStore( FutureV, FutureA );
+      FutureV = FutureA;
+    }
+    auto FutureRV = load(FutureV, TheModule, "future");
     auto LauncherRV = load(LauncherA, TheModule, "task_launcher");
     std::vector<Value*> AddFutureArgVs = {LauncherRV, FutureRV};
     Builder_.CreateCall(AddFutureF, AddFutureArgVs);
   }
 }
+
+//==============================================================================
+// Codegen the field arguments
+//==============================================================================
+void LegionTasker::createFieldArguments(
+    llvm::Module & TheModule,
+    Value* LauncherA,
+    const std::vector<Value*> & ArgVorAs,
+    bool IsIndex )
+{
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+
+  StructType* LauncherT = IsIndex ? IndexLauncherType_ : TaskLauncherType_;
+  auto LauncherRT = reduceStruct(LauncherT, TheModule);
+
+  std::vector<Type*> FunArgTs = {LauncherRT, FieldDataType_->getPointerTo()};
+  
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+
+  FunctionCallee FunF;
+  if (IsIndex)
+    FunF = TheModule.getOrInsertFunction("contra_index_add_region_requirement", FunT);
+  else
+    FunF = TheModule.getOrInsertFunction("contra_task_add_region_requirement", FunT);
+
+  auto NumArgs = ArgVorAs.size();
+  for (unsigned i=0; i<NumArgs; i++) {
+    auto FieldV = ArgVorAs[i];
+    if (!isField(FieldV)) continue;
+    if (!isa<AllocaInst>(FieldV)) {
+      auto FieldA = createEntryBlockAlloca(TheFunction, FieldDataType_, "tmpalloca");
+      Builder_.CreateStore( FieldV, FieldA );
+      FieldV = FieldA;
+    }
+    std::vector<Value*> FunArgVs = {LauncherA, FieldV};
+    Builder_.CreateCall(FunF, FunArgVs);
+  }
+}
+
 
 //==============================================================================
 // Destroy an opaque type
@@ -493,7 +778,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
   //----------------------------------------------------------------------------
   // get user types
 
-  auto ArrayT = ArrayType::get(BoolType_, NumArgs);
+  auto ArrayT = ArrayType::get(CharType_, NumArgs);
   auto ArrayA = createEntryBlockAlloca(WrapperF, ArrayT, "isfuture");
   auto ArgDataPtrV = Builder_.CreateLoad(VoidPtrType_, TaskArgsA, "args");
   Builder_.CreateMemCpy(ArrayA, 1, ArgDataPtrV, 1, llvmValue<size_t>(TheContext_, NumArgs)); 
@@ -512,8 +797,8 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     // evaluate the condition
     auto ArrayV = Builder_.CreateLoad(ArrayT, ArrayA, "isfuture");
     auto ArgTypeV = Builder_.CreateExtractValue(ArrayV, i);
-    auto OneV = llvmValue(TheContext_, ArgTypeV->getType(), 1);
-    auto CondV = Builder_.CreateICmpNE(ArgTypeV, OneV, "argtype");
+    auto EnumV = llvmValue(TheContext_, ArgTypeV->getType(), static_cast<char>(ArgType::None));
+    auto CondV = Builder_.CreateICmpEQ(ArgTypeV, EnumV, "argtype");
     Builder_.CreateCondBr(CondV, ThenBB, MergeBB);
     // Emit then block
     Builder_.SetInsertPoint(ThenBB);
@@ -553,8 +838,8 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(Module &TheModule,
     // evaluate the condition
     auto ArrayV = Builder_.CreateLoad(ArrayT, ArrayA, "isfuture");
     auto ArgTypeV = Builder_.CreateExtractValue(ArrayV, i);
-    auto OneV = llvmValue(TheContext_, ArgTypeV->getType(), 1);
-    auto CondV = Builder_.CreateICmpEQ(ArgTypeV, OneV, "argtype");
+    auto EnumV = llvmValue(TheContext_, ArgTypeV->getType(), static_cast<char>(ArgType::Future));
+    auto CondV = Builder_.CreateICmpEQ(ArgTypeV, EnumV, "argtype");
     Builder_.CreateCondBr(CondV, ThenBB, MergeBB);
     // Emit then block
     Builder_.SetInsertPoint(ThenBB);
@@ -875,7 +1160,8 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   //----------------------------------------------------------------------------
   // Global arguments
   std::vector<unsigned> FutureArgId;
-  auto TaskArgsA = createGlobalArguments(TheModule, ArgVs, ArgSizes, FutureArgId);
+  std::vector<unsigned> FieldArgId;
+  auto TaskArgsA = createGlobalArguments(TheModule, ArgVs, ArgSizes);
   
  
   //----------------------------------------------------------------------------
@@ -908,7 +1194,7 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   
   //----------------------------------------------------------------------------
   // Add futures
-  createGlobalFutures(TheModule, LauncherA, ArgVs, ArgSizes, FutureArgId, false );
+  createGlobalFutures(TheModule, LauncherA, ArgVs, false );
   
   //----------------------------------------------------------------------------
   // Execute
@@ -949,15 +1235,21 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
 // Launch an index task
 //==============================================================================
 Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
-    int TaskId, const std::vector<Value*> & ArgVs,
-    const std::vector<Value*> & ArgSizes, Value* StartA, Value* EndA)
+    int TaskId, const std::vector<Value*> & ArgAs,
+    const std::vector<Value*> & ArgSizes, Value* RangeV)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  
+  // temporaries
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
   
   //----------------------------------------------------------------------------
   // Global arguments
   std::vector<unsigned> FutureArgId;
-  auto TaskArgsA = createGlobalArguments(TheModule, ArgVs, ArgSizes, FutureArgId);
+  std::vector<unsigned> FieldArgId;
+  auto TaskArgsA = createGlobalArguments(TheModule, ArgAs, ArgSizes);
 
   //----------------------------------------------------------------------------
   // Predicate
@@ -965,20 +1257,18 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   
   //----------------------------------------------------------------------------
   // Create domain  
-  
+#if 0 
   auto DomainLoA = createEntryBlockAlloca(TheFunction, Point1dType_, "lo");
   auto DomainHiA = createEntryBlockAlloca(TheFunction, Point1dType_, "hi");
 
-  auto StartT = StartA->getType()->getPointerElementType();
-  Value* StartV = Builder_.CreateLoad(StartT, StartA);
+  auto StartV = Builder_.CreateExtractValue(RangeV, 0, "start");
   auto DomainLoV = Builder_.CreateLoad(Point1dType_, DomainLoA); 
   auto ZeroC = Constant::getNullValue(Int32Type_);
   std::vector<Value*> IndicesC = {ZeroC,  ZeroC};
   auto DomainLoGEP = Builder_.CreateGEP(DomainLoA, IndicesC, "lo");
 	Builder_.CreateStore(StartV, DomainLoGEP);
   
-  auto EndT = EndA->getType()->getPointerElementType();
-  Value* EndV = Builder_.CreateLoad(EndT, EndA);
+  auto EndV = Builder_.CreateExtractValue(RangeV, 1, "end");
   auto DomainHiV = Builder_.CreateLoad(Point1dType_, DomainHiA); 
   auto DomainHiGEP = Builder_.CreateGEP(DomainHiA, IndicesC, "hi");
 	Builder_.CreateStore(EndV, DomainHiGEP);
@@ -1007,6 +1297,21 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   }
   
   Builder_.CreateCall(DomainFromF, DomainFromArgVs);
+
+#else
+  
+  auto DomainRectA = createEntryBlockAlloca(TheFunction, DomainRectType_, "domain");
+  auto IndexSpaceV = Builder_.CreateExtractValue(RangeV, 2, "is");
+
+  std::vector<Value*> DomainFromArgVs = { RuntimeA, IndexSpaceV, DomainRectA };
+  auto DomainFromArgTs = llvmTypes(DomainFromArgVs);
+
+  auto DomainFromT = FunctionType::get(VoidType_, DomainFromArgTs, false);
+  auto DomainFromF = TheModule.getOrInsertFunction("contra_legion_domain_create", DomainFromT);
+  
+  Builder_.CreateCall(DomainFromF, DomainFromArgVs);
+
+#endif
   
   //----------------------------------------------------------------------------
   // argument map 
@@ -1049,15 +1354,15 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   
   //----------------------------------------------------------------------------
   // Add futures
-  createGlobalFutures(TheModule, LauncherA, ArgVs, ArgSizes, FutureArgId, true );
+  createGlobalFutures(TheModule, LauncherA, ArgAs, true );
  
+  //----------------------------------------------------------------------------
+  // Add fields
+  createFieldArguments(TheModule, LauncherA, ArgAs, true );
+
   
   //----------------------------------------------------------------------------
   // Execute
-  
-  const auto & LegionE = getCurrentTask();
-  const auto & ContextA = LegionE.ContextAlloca;
-  const auto & RuntimeA = LegionE.RuntimeAlloca;
   
   LauncherRV = load(LauncherA, TheModule, "task_launcher");
   auto ContextV = load(ContextA, TheModule, "context");
@@ -1079,9 +1384,13 @@ Value* LegionTasker::launch(Module &TheModule, const std::string & Name,
   // Destroy argument map
   
   destroyOpaqueType(TheModule, ArgMapA, "legion_argument_map_destroy", "arg_map");
-  
+
 	//----------------------------------------------------------------------------
   // Destroy future map
+
+  auto WaitT = FunctionType::get(VoidType_, FutureMapRT, false);
+  auto WaitF = TheModule.getOrInsertFunction("legion_future_map_wait_all_results", WaitT);
+  Builder_.CreateCall(WaitF, FutureMapRV);
   
   destroyOpaqueType(TheModule, FutureMapA, "legion_future_map_destroy", "future_map");
   
@@ -1185,9 +1494,6 @@ void LegionTasker::toFuture(Module & TheModule, Value* ValueV, Value* FutureA)
 void LegionTasker::copyFuture(Module & TheModule, Value* ValueV, Value* FutureA)
 {
   // load runtime
-  const auto & LegionE = getCurrentTask();
-  const auto & RuntimeA = LegionE.RuntimeAlloca;
-
   auto FutureRT = reduceStruct(FutureType_, TheModule);
 
   auto FunT = FunctionType::get(FutureRT, FutureRT, false);
@@ -1207,4 +1513,105 @@ bool LegionTasker::isFuture(Value* FutureA) const
   return (FutureT == FutureType_);
 }
 
+//==============================================================================
+// Is this a field type
+//==============================================================================
+bool LegionTasker::isField(Value* FieldA) const
+{
+  auto FieldT = FieldA->getType();
+  if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
+  return (FieldT == FieldDataType_);
+}
+
+
+//==============================================================================
+// Create a legion field
+//==============================================================================
+Value* LegionTasker::createField(Module & TheModule, Function* TheFunction,
+    const std::string & VarN, Type* VarT, Value* RangeV, Value* VarV)
+{
+  auto FieldA = createEntryBlockAlloca(TheFunction, FieldDataType_, "field");
+  
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  
+  auto NameV = llvmString(TheContext_, TheModule, VarN);
+  auto DataSizeV = getTypeSize<size_t>(Builder_, VarT);
+  auto IndexSpaceV = Builder_.CreateExtractValue(RangeV, 2, "is");
+
+  std::vector<Value*> FunArgVs = {RuntimeA, ContextA, NameV, DataSizeV, 
+    IndexSpaceV, FieldA};
+  auto FunArgTs = llvmTypes(FunArgVs);
+    
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("contra_legion_field_create", FunT);
+    
+  Builder_.CreateCall(FunF, FunArgVs);
+  
+  return FieldA;
+}
+
+//==============================================================================
+// destroey a field
+//==============================================================================
+void LegionTasker::destroyField(Module &TheModule, Value* FieldA)
+{
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+
+  std::vector<Value*> FunArgVs = {RuntimeA, ContextA, FieldA};
+  auto FunArgTs = llvmTypes(FunArgVs);
+    
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("contra_legion_field_destroy", FunT);
+    
+  Builder_.CreateCall(FunF, FunArgVs);
+}
+
+//==============================================================================
+// destroey a field
+//==============================================================================
+Value* LegionTasker::createRange(Module & TheModule, Function* TheFunction,
+    const std::string & Name, Value* StartV, Value* EndV)
+{
+  auto RangeA = createEntryBlockAlloca(TheFunction, IndexSpaceDataType_, "index");
+  
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  
+  auto NameV = llvmString(TheContext_, TheModule, Name);
+
+  std::vector<Value*> FunArgVs = {RuntimeA, ContextA, NameV, StartV, EndV, RangeA};
+  auto FunArgTs = llvmTypes(FunArgVs);
+    
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("contra_legion_index_space_create", FunT);
+    
+  Builder_.CreateCall(FunF, FunArgVs);
+  
+  return RangeA;
+
+}
+
+//==============================================================================
+// destroey a field
+//==============================================================================
+void LegionTasker::destroyRange(Module &TheModule, Value* RangeV)
+{
+
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  
+  std::vector<Value*> FunArgVs = {RuntimeA, ContextA, RangeV};
+  auto FunArgTs = llvmTypes(FunArgVs);
+    
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("contra_legion_index_space_destroy", FunT);
+    
+  Builder_.CreateCall(FunF, FunArgVs);
+}
 }

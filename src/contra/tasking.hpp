@@ -55,7 +55,7 @@ public:
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
   virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
       const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &,
-      llvm::Value*, llvm::Value*) = 0;
+      llvm::Value*) = 0;
 
   virtual bool isFuture(llvm::Value*) const = 0;
   virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) = 0;
@@ -63,6 +63,15 @@ public:
   virtual void destroyFuture(llvm::Module &, llvm::Value*) = 0;
   virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
   virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
+
+  virtual bool isField(llvm::Value*) const = 0;
+  virtual llvm::Value* createField(llvm::Module &,llvm::Function*, const std::string &,
+      llvm::Type*, llvm::Value*, llvm::Value*) = 0;
+  virtual void destroyField(llvm::Module &, llvm::Value*) = 0;
+  
+  virtual llvm::Value* createRange(llvm::Module &, llvm::Function*, const std::string &,
+      llvm::Value*, llvm::Value*) = 0;
+  virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -87,7 +96,13 @@ public:
   { return TaskTable_.at(Name); }
 
   // future interface
-  void destroyFutures(llvm::Module &, const std::map<std::string, llvm::Value*> &);
+  void destroyFutures(llvm::Module &, const std::vector<llvm::Value*> &);
+
+  // field interface
+  void destroyFields(llvm::Module &, const std::vector<llvm::Value*> &);
+
+  // range interface
+  void destroyRanges(llvm::Module &, const std::vector<llvm::Value*> &);
 
 protected:
   

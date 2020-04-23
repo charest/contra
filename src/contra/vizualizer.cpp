@@ -125,6 +125,17 @@ void Vizualizer::visit(ArrayExprAST& e)
 }
 
 //==============================================================================
+void Vizualizer::visit(RangeExprAST& e)
+{
+  auto my_ind = ind_;
+  labelNode(my_ind, e.getClassName());
+  createLink(my_ind, "Start" );
+  runVisitor(*e.getStartExpr());
+  createLink(my_ind, "End" );
+  runVisitor(*e.getEndExpr());
+}
+
+//==============================================================================
 void Vizualizer::visit(CastExprAST& e)
 {
   labelNode(ind_, e.getClassName());
@@ -170,14 +181,20 @@ void Vizualizer::visit(ForStmtAST& e)
 {
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
-  createLink(my_ind, "Start");
-  runVisitor(*e.getStartExpr());
-  createLink(my_ind, "End");
-  runVisitor(*e.getEndExpr());
-  if (e.hasStep()) {
-    createLink(my_ind, "Step");
-    runVisitor(*e.getStepExpr());
+  if (e.getLoopType() == ForStmtAST::LoopType::Range) {
+    createLink(my_ind, "Range");
+    runVisitor(*e.getStartExpr());
   }
+  else {
+    createLink(my_ind, "Start");
+    runVisitor(*e.getStartExpr());
+    createLink(my_ind, "End");
+    runVisitor(*e.getEndExpr());
+    if (e.hasStep()) {
+      createLink(my_ind, "Step");
+      runVisitor(*e.getStepExpr());
+    }
+  } // loop type
   dumpBlock(e.getBodyExprs(), my_ind, "Body");
 }
 

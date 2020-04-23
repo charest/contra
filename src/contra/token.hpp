@@ -33,12 +33,14 @@ enum Token {
   tok_to,
   tok_by,
   tok_until,
+  tok_range,
 
   // operators
   tok_binary,
   tok_unary,
 
   // variables
+  tok_over,
   tok_dimension,
   tok_field,
   tok_var,

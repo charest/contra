@@ -79,6 +79,9 @@ public:
   { return Attrs_ & Attr::Number; }
 
 private:
+
+  TypeDef(const std::string &, bool) {}
+
   std::string Name_;
   Attributes Attrs_ = Attr::None;
 };
@@ -128,11 +131,16 @@ public:
     static constexpr Attributes Array  = 0x01;
     static constexpr Attributes Future = 0x02;
     static constexpr Attributes Global = 0x04;
+    static constexpr Attributes Range = 0x08;
   };
 
   VariableType() = default;
   
-  VariableType(const VariableType & Type, Attributes Attrs)
+  VariableType(const VariableType & Type)
+    : Type_(Type.Type_), Attrs_(Type.Attrs_)
+  {}
+  
+  explicit VariableType(const VariableType & Type, Attributes Attrs)
     : Type_(Type.Type_), Attrs_(Attrs)
   {}
 
@@ -161,8 +169,14 @@ public:
     if (IsFuture) Attrs_ |= Attr::Future;
     else Attrs_ &= ~Attr::Future;
   }
+  
+  bool isRange() const { return Attrs_ & Attr::Range; }
+  void setRange(bool IsRange=true) {
+    if (IsRange) Attrs_ |= Attr::Range;
+    else Attrs_ &= ~Attr::Range;
+  }
 
-  bool isNumber() const { return (!isArray() && Type_->isNumber()); }
+  bool isNumber() const { return (!isArray() && !isRange() && Type_->isNumber()); }
 
   bool isCastableTo(const VariableType &To) const
   { return (isNumber() && To.isNumber()); }
@@ -184,12 +198,23 @@ public:
 
   friend std::ostream &operator<<( std::ostream &out, const VariableType &obj )
   {
-    if (obj.isFuture()) out << "(F)";
-    if (obj.isArray()) out << "[";
-     out << obj.Type_->getName();
-    if (obj.isArray()) out << "]";
-     return out;
+    if (obj.Type_) {
+      if (obj.isFuture()) out << "(F)";
+      if (obj.isArray()) out << "[";
+      out << obj.Type_->getName();
+      if (obj.isArray()) out << "]";
+    }
+    else {
+      out << "undef";
+    }
+    return out;
   }
+
+private:
+
+  VariableType(const VariableType &, bool) {}
+  VariableType(TypeDef*, bool) {}
+
 };
 
 using VariableTypeList = std::vector<VariableType>;
@@ -215,6 +240,10 @@ public:
   VariableType& getType() { return *this; }
 
   //virtual ~Variable() = default;
+  
+private:
+
+  VariableDef(const std::string &, const SourceLocation &, TypeDef*, bool) {}
 
 };
 
