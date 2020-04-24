@@ -43,7 +43,8 @@ void FutureIdentifier::visit(AssignStmtAST& e)
   e.getRightExpr()->accept(*this);
 
   auto IsFuture = e.getRightExpr()->isFuture();
-  if (IsFuture) e.getLeftExpr()->setFuture();
+  if (IsFuture)
+    e.getLeftExpr()->setFuture();
 
   auto RightVarAST = dynamic_cast<VarAccessExprAST*>(e.getRightExpr());
   auto LeftVarAST = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());

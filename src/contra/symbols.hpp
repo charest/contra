@@ -24,17 +24,17 @@ struct Attributes {
 
   constexpr Attributes(value_type Val) : Val_(Val) {}
   
-  bool operator==(const Attributes & other)
+  bool operator==(const Attributes & other) const
   { return Val_ == other.Val_; }
 
-  bool operator!=(const Attributes & other)
+  bool operator!=(const Attributes & other) const
   { return Val_ != other.Val_; }
 
   auto operator | (Attributes rhs) const
-  { return ( Val_ | rhs.Val_); }
+  { return Attributes( Val_ | rhs.Val_); }
   
   auto operator & (Attributes rhs) const
-  { return ( Val_ & rhs.Val_); }
+  { return Attributes( Val_ & rhs.Val_); }
 
   auto& operator |= (Attributes rhs) 
   { 
@@ -50,6 +50,12 @@ struct Attributes {
 
   auto operator~() const
   { return Attributes(~Val_); }
+  
+  friend std::ostream &operator<<( std::ostream &out, const Attributes &obj )
+  {
+    out << obj.Val_;
+    return out;
+  }
   
 private:
   value_type Val_ = 0;
@@ -76,7 +82,7 @@ public:
 
   virtual const std::string & getName() const { return Name_; }
   virtual bool isNumber() const
-  { return Attrs_ & Attr::Number; }
+  { return ((Attrs_ & Attr::Number) == Attr::Number); }
 
 private:
 
@@ -127,12 +133,12 @@ class VariableType {
 public:
 
   struct Attr : public Attributes {
-    static constexpr Attributes None = 0x00;
-    static constexpr Attributes Array  = 0x01;
-    static constexpr Attributes Future = 0x02;
-    static constexpr Attributes Global = 0x04;
-    static constexpr Attributes Range = 0x08;
-    static constexpr Attributes Field = 0x16;
+    static constexpr Attributes None   = 0;
+    static constexpr Attributes Array  = 1;
+    static constexpr Attributes Future = 2;
+    static constexpr Attributes Global = 4;
+    static constexpr Attributes Range  = 8;
+    static constexpr Attributes Field  = 16;
   };
 
   VariableType() = default;
@@ -153,31 +159,31 @@ public:
 
   const TypeDef* getBaseType() const { return Type_; }
 
-  bool isArray() const { return Attrs_ & Attr::Array; }
+  bool isArray() const { return ((Attrs_ & Attr::Array) == Attr::Array); }
   void setArray(bool IsArray=true) {
     if (IsArray) Attrs_ |= Attr::Array;
     else Attrs_ &= ~Attr::Array;
   }
 
-  bool isGlobal() const { return Attrs_ & Attr::Global; }
+  bool isGlobal() const { return ((Attrs_ & Attr::Global) == Attr::Global); }
   void setGlobal(bool IsGlobal=true) {
     if (IsGlobal) Attrs_ |= Attr::Global;
     else Attrs_ &= ~Attr::Global;
   }
   
-  bool isFuture() const { return Attrs_ & Attr::Future; }
+  bool isFuture() const { return ((Attrs_ & Attr::Future) == Attr::Future); }
   void setFuture(bool IsFuture=true) {
     if (IsFuture) Attrs_ |= Attr::Future;
     else Attrs_ &= ~Attr::Future;
   }
   
-  bool isRange() const { return Attrs_ & Attr::Range; }
+  bool isRange() const { return ((Attrs_ & Attr::Range) == Attr::Range); }
   void setRange(bool IsRange=true) {
     if (IsRange) Attrs_ |= Attr::Range;
     else Attrs_ &= ~Attr::Range;
   }
   
-  bool isField() const { return Attrs_ & Attr::Field; }
+  bool isField() const { return ((Attrs_ & Attr::Field) == Attr::Field); }
   void setField(bool IsField=true) {
     if (IsField) Attrs_ |= Attr::Field;
     else Attrs_ &= ~Attr::Field;
@@ -207,6 +213,7 @@ public:
   {
     if (obj.Type_) {
       if (obj.isFuture()) out << "(F)";
+      if (obj.isField()) out << "(Fld)";
       if (obj.isArray()) out << "[";
       out << obj.Type_->getName();
       if (obj.isArray()) out << "]";
@@ -225,6 +232,25 @@ private:
 };
 
 using VariableTypeList = std::vector<VariableType>;
+
+inline VariableType strip(const VariableType& Ty)
+{ return VariableType(Ty, VariableType::Attr::None); }
+
+inline VariableType setArray(const VariableType& Ty, bool IsArray)
+{
+  VariableType NewTy(Ty);
+  NewTy.setArray(IsArray);
+  return NewTy;
+}
+
+inline VariableType setField(const VariableType& Ty, bool IsField)
+{
+  VariableType NewTy(Ty);
+  NewTy.setField(IsField);
+  return NewTy;
+}
+
+
 
 //==============================================================================
 // The variable symbol
@@ -289,7 +315,7 @@ public:
   auto getNumArgs() const { return ArgTypes_.size(); }
   auto isVarArg() const { return IsVarArg_; }
   
-  bool isTask() const { return Attrs_ & Attr::Task; }
+  bool isTask() const { return ((Attrs_ & Attr::Task) == Attr::Task); }
   void setTask(bool IsTask=true) {
     if (IsTask) Attrs_ |= Attr::Task;
     else Attrs_ &= ~Attr::Task;

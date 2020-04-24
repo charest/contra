@@ -939,7 +939,8 @@ void CodeGen::visit(ArrayExprAST &e)
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
   // the llvm variable type
-  auto VarType = getLLVMType(e.getType());
+  auto VarType = setArray(e.getType(), false);
+  auto VarT = getLLVMType(VarType);
 
   std::vector<Value*> InitVals;
   InitVals.reserve(e.getNumVals());
@@ -954,13 +955,13 @@ void CodeGen::visit(ArrayExprAST &e)
     SizeExpr = llvmValue<int_t>(TheContext_, e.getNumVals());
   }
 
-  auto ArrayE = createArray(TheFunction, "__tmp", VarType, SizeExpr );
+  auto ArrayE = createArray(TheFunction, "__tmp", VarT, SizeExpr );
   auto ArrayA = ArrayE->getAlloca();
 
   if (e.hasSize()) 
-    initArrays(TheFunction, {ArrayA}, InitVals[0], SizeExpr, VarType);
+    initArrays(TheFunction, {ArrayA}, InitVals[0], SizeExpr, VarT);
   else
-    initArray(TheFunction, ArrayA, InitVals, VarType);
+    initArray(TheFunction, ArrayA, InitVals, VarT);
 
   auto Ty = ArrayA->getType()->getPointerElementType();
   ValueResult_ =  Builder_.CreateLoad(Ty, ArrayA, "__tmp");
@@ -1582,7 +1583,8 @@ void CodeGen::visit(VarDeclAST & e) {
     std::vector<Value*> ArrayAllocas;
     for (unsigned i=1; i<NumVars; ++i) {
       const auto & VarN = e.getVarName(i);
-      auto VarT = getLLVMType( e.getVarType(i) );
+      auto VarType = setArray(e.getVarType(i), false);
+      auto VarT = getLLVMType( VarType );
       auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
       ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
     }
@@ -1606,12 +1608,14 @@ void CodeGen::visit(VarDeclAST & e) {
     std::vector<Value*> ArrayAllocas;
     for (unsigned i=0; i<NumVars; ++i) {
       const auto & VarN = e.getVarName(i);
-      auto VarT = getLLVMType( e.getVarType(i) );
+      auto VarType = setArray(e.getVarType(i), false);
+      auto VarT = getLLVMType( VarType );
       auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
       ArrayAllocas.emplace_back(ArrayE->getAlloca());
     }
 
-    auto VarT = getLLVMType( e.getVarType(0) );
+    auto VarType = setArray(e.getVarType(0), false);
+    auto VarT = getLLVMType( VarType );
     initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarT);
 
   }
@@ -1622,7 +1626,7 @@ void CodeGen::visit(VarDeclAST & e) {
     // Register all variables and emit their initializer.
     for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
       const auto & VarN = e.getVarName(VarIdx);
-      const auto & Ty = e.getVarType(VarIdx);
+      auto Ty = strip(e.getVarType(VarIdx));
       auto VarT = getLLVMType(Ty);
       if (Ty.isFuture() || InitIsFuture || e.isFuture(VarIdx)) {
         auto VarE = createFuture(TheFunction, VarN, VarT);
@@ -1677,7 +1681,7 @@ void CodeGen::visit(FieldDeclAST& e)
 
   for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
     const auto & VarN = e.getVarName(VarIdx);
-    const auto & Ty = e.getVarType(VarIdx);
+    auto Ty = strip(e.getVarType(VarIdx));
     auto VarT = getLLVMType(Ty);
     createField(VarN, VarT, PartsV, InitV);
   }
@@ -1780,13 +1784,14 @@ void CodeGen::visit(FunctionAST& e)
 
     // get arg type
     auto ArgType = P.getArgType(ArgIdx);
-    // the llvm variable type
-    auto LLType = getLLVMType(ArgType);
+    auto BaseType = strip(ArgType);
+    auto LLType = getLLVMType(BaseType);
 
     // Create an alloca for this variable.
     VariableAlloca* VarE;
-    if (ArgType.isArray())
+    if (ArgType.isArray()) {
       VarE = createArray(TheFunction, Arg.getName(), LLType);
+    }
     else
       VarE = createVariable(TheFunction, Arg.getName(), LLType);
     VarE->setOwner(false);
@@ -1897,11 +1902,16 @@ void CodeGen::visit(IndexTaskAST& e)
   std::vector<Type*> TaskArgTs;
   std::vector<std::string> TaskArgNs;
   for ( const auto & VarE : e.getVariableDefs() ) {
-    TaskArgNs.emplace_back( VarE->getName() );
-    if (VarE->getType().isField()) 
+    const auto & VarN = VarE->getName();
+    const auto & VarT = VarE->getType();
+    TaskArgNs.emplace_back( VarN );
+    if (VarT.isField()) 
       TaskArgTs.emplace_back( Tasker_->getAccessorType() ); 
+    else if (VarT.isRange()) {
+      getLLVMType(VarT)->print(outs()); outs()<<"\n";
+    }
     else
-      TaskArgTs.emplace_back( getLLVMType(VarE->getType()) ); 
+      TaskArgTs.emplace_back( getLLVMType(VarT) ); 
   }
   
 	// generate wrapped task
@@ -1913,10 +1923,15 @@ void CodeGen::visit(IndexTaskAST& e)
     auto VarA = Wrapper.ArgAllocas[ArgIdx];
     auto AllocaT = VarA->getType()->getPointerElementType(); // FIX FOR ARRAYS
     Type* VarT = nullptr; 
+    auto VarD = e.getVariableDef(ArgIdx);
     bool IsOwner = false;
     if (Tasker_->isAccessor(AllocaT)) {
-      VarT = getLLVMType( e.getVariableDef(ArgIdx)->getType() );
+      VarT = getLLVMType( strip(VarD->getType()) );
       IsOwner = true;
+    }
+    else if (isRange(AllocaT)) {
+      std::cout << "caught a range! " << TaskArgNs[ArgIdx] << std::endl;
+      abort();
     }
     else {
       VarT = AllocaT;

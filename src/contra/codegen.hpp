@@ -222,7 +222,13 @@ private:
   //============================================================================
 
   Type* getLLVMType(const VariableType & Ty)
-  { return TypeTable_.at(Ty.getBaseType()->getName()); }
+  {
+    if (Ty.isArray()) { std::cout << "array" << std::endl; abort(); }
+    if (Ty.isRange()) { std::cout << "ranage" << std::endl; abort(); }
+    if (Ty.isField()) { std::cout << "field" << std::endl; abort(); }
+    if (Ty.isFuture()) { std::cout << "future" << std::endl; abort(); }
+    return TypeTable_.at(Ty.getBaseType()->getName());
+  }
   
   Type* getLLVMType(const Identifier & Id)
   { return TypeTable_.at(Id.getName()); }
