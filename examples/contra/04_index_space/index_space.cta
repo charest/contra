@@ -16,16 +16,22 @@ task top_level()
   #var chunk_size = num_points / num_parts
 
   #var sizes = [chunk_size; num_parts]
+  var is = {0 .. num_parts-1}
 
-  field myid : i64, dimension(num_parts) = 0
+  var myid : over(is) = 0
   #field ids1 : i64, dimension(num_parts,chunk_size) = 0
   #field ids2 : i64, dimension(num_parts,sizes) = 0
 
-  foreach i in 0 until num_parts do
+  foreach i in is do 
+    print("Loop with counter %d and myid %d\n", i, myid)
+    myid = i
   #  var istart = i*chunk_size
   #  var iend = i*chunk_size + chunk_size - 1
-    myid = i
   #  make_index_space(istart, iend, ids1)
+  end
+  
+  foreach i in is do 
+    print("Loop with counter %d and myid is now %d\n", i, myid)
   end
 
 end
