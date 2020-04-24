@@ -142,51 +142,112 @@ protected:
 
 public:
  
-  LegionTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & TheContext);
+  LegionTasker(
+      llvm::IRBuilder<> & TheBuilder,
+      llvm::LLVMContext & TheContext);
 
-  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
+  virtual PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
       llvm::Function*) override;
 
-  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
-      const std::vector<std::string> &, const std::vector<llvm::Type*> &,
+  virtual PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<std::string> &,
+      const std::vector<llvm::Type*> &,
       bool IsIndex=false) override;
 
-  virtual void taskPostamble(llvm::Module &, llvm::Value*) override;
+  virtual void taskPostamble(
+      llvm::Module &,
+      llvm::Value*) override;
   
-  virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) override;
-  virtual void postregisterTask(llvm::Module &, const std::string &, const TaskInfo &) override;
+  virtual void preregisterTask(
+      llvm::Module &,
+      const std::string &,
+      const TaskInfo &) override;
+  virtual void postregisterTask(
+      llvm::Module &,
+      const std::string &,
+      const TaskInfo &) override;
   
   virtual void setTopLevelTask(llvm::Module &, int) override;
   
-  virtual llvm::Value* startRuntime(llvm::Module &, int, char **) override;
+  virtual llvm::Value* startRuntime(
+      llvm::Module &,
+      int,
+      char **) override;
   
-  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
-      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) override;
-  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
-      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &,
+  virtual llvm::Value* launch(
+      llvm::Module &,
+      const std::string &,
+      int,
+      const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &) override;
+  virtual llvm::Value* launch(
+      llvm::Module &,
+      const std::string &,
+      int,
+      const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &,
       llvm::Value*) override;
   
   virtual bool isFuture(llvm::Value*) const override;
-  virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) override;
-  virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*) override;
-  virtual void destroyFuture(llvm::Module &, llvm::Value*) override;
-  virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) override;
-  virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) override;
+  virtual llvm::AllocaInst* createFuture(
+      llvm::Module &,
+      llvm::Function*,
+      const std::string &) override;
+  virtual llvm::Value* loadFuture(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Type*,
+      llvm::Value*) override;
+  virtual void destroyFuture(
+    llvm::Module &,
+    llvm::Value*) override;
+  virtual void toFuture(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual void copyFuture(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*) override;
   
   virtual bool isField(llvm::Value*) const override;
-  virtual llvm::Value* createField(llvm::Module &, llvm::Function*, const std::string &,
-      llvm::Type*, llvm::Value*, llvm::Value*) override;
+  virtual llvm::AllocaInst* createField(
+      llvm::Module &,
+      llvm::Function*,
+      const std::string &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) override;
   virtual void destroyField(llvm::Module &, llvm::Value*) override;
   
 
-  virtual llvm::Value* createIndexSpace(llvm::Module &, llvm::Function*, const std::string &,
-      llvm::Value*, llvm::Value*) override;
-  virtual void destroyIndexSpace(llvm::Module &, llvm::Value*) override;
+  virtual bool isRange(llvm::Type*) const override;
+  virtual bool isRange(llvm::Value*) const override;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      llvm::Function*,
+      const std::string &,
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual void destroyRange(llvm::Module &, llvm::Value*) override;
+  
+  virtual llvm::Type* getRangeType() const
+  { return IndexSpaceDataType_; }
 
   virtual bool isAccessor(llvm::Type*) const override;
   virtual bool isAccessor(llvm::Value*) const override;
-  virtual void storeAccessor(llvm::Module &, llvm::Value*, llvm::Value*) const override;
-  virtual llvm::Value* loadAccessor(llvm::Module &, llvm::Type*, llvm::Value*) const override;
+  virtual void storeAccessor(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*) const override;
+  virtual llvm::Value* loadAccessor(
+      llvm::Module &,
+      llvm::Type*,
+      llvm::Value*) const override;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
   virtual llvm::Type* getAccessorType() const
@@ -225,27 +286,43 @@ protected:
   llvm::StructType* createAccessorDataType(llvm::LLVMContext &);
 
   llvm::AllocaInst* createPredicateTrue(llvm::Module &);
+  
   llvm::AllocaInst* createGlobalArguments(
       llvm::Module &,
       const std::vector<llvm::Value*> &,
       const std::vector<llvm::Value*> &);
+  
   void createGlobalFutures(
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
     bool IsIndex);
+  
   void createFieldArguments(
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
     bool IsIndex);
-  llvm::AllocaInst* createOpaqueType(llvm::Module&, llvm::StructType*, const std::string &,
+  
+  llvm::AllocaInst* createOpaqueType(
+      llvm::Module&,
+      llvm::StructType*,
+      const std::string &,
       const std::string & = "");
-  void destroyOpaqueType(llvm::Module&, llvm::Value*, const std::string &,
+
+  void destroyOpaqueType(
+      llvm::Module&,
+      llvm::Value*,
+      const std::string &,
       const std::string & = "");
+
   void destroyGlobalArguments(llvm::Module&, llvm::AllocaInst*);
-  void createRegistrationArguments(llvm::Module&, llvm::AllocaInst*&,
-      llvm::AllocaInst*&, llvm::AllocaInst*&);
+
+  void createRegistrationArguments(
+      llvm::Module&,
+      llvm::AllocaInst*&,
+      llvm::AllocaInst*&,
+      llvm::AllocaInst*&);
 
 };
 

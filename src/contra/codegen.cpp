@@ -11,7 +11,6 @@
 
 #include "librt/librt.hpp"
 #include "librt/dopevector.hpp"
-#include "librt/range.hpp"
 
 #include "utils/llvm_utils.hpp"
 
@@ -56,7 +55,6 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
   F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
   ArrayType_ = librt::DopeVector::DopeVectorType;
-  RangeType_ = librt::Range::RangeType;
 
   auto & C = Context::instance();
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
@@ -268,7 +266,7 @@ void CodeGen::popScope()
       Futures.emplace_back(Alloca);
     else if (Tasker_->isField(Alloca))
       Fields.emplace_back(Alloca);
-    else if (isRange(Alloca) && VarE.hasTaskData())
+    else if (Tasker_->isRange(Alloca))
       Ranges.emplace_back(Alloca);
     else if (Tasker_->isAccessor(Alloca))
       Accessors.emplace_back(Alloca);
@@ -279,7 +277,7 @@ void CodeGen::popScope()
   Tasker_->destroyFutures(*TheModule_, Futures);
   Tasker_->destroyFields(*TheModule_, Fields);
   Tasker_->destroyAccessors(*TheModule_, Accessors); 
-  Tasker_->destroyIndexSpaces(*TheModule_, Ranges);
+  Tasker_->destroyRanges(*TheModule_, Ranges);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -702,44 +700,6 @@ void CodeGen::destroyArrays(const std::vector<Value*> & Arrays)
 // Range Interface
 ////////////////////////////////////////////////////////////////////////////////
 
-//==============================================================================
-/// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
-/// the function.  This is used for mutable variables etc.
-//==============================================================================
-Value * CodeGen::makeRange(Function *TheFunction, Value* StartV, Value* EndV,
-    bool IsTask, const std::string & VarN = "")
-{
-  Value* RangeA = createEntryBlockAlloca(TheFunction, RangeType_, VarN);
-  
-  // start
-  auto ZeroC = ConstantInt::get(TheContext_, APInt(32, 0, true));
-  std::vector<Value*> IndicesC = {ZeroC,  ZeroC};
-  auto RangeGEP = Builder_.CreateGEP(RangeA, IndicesC, "start");
-  Builder_.CreateStore(StartV, RangeGEP);
-  
-  // end
-  auto OneC = ConstantInt::get(TheContext_, APInt(32, 1, true));
-  IndicesC = {ZeroC,  OneC};
-  RangeGEP = Builder_.CreateGEP(RangeA, IndicesC, "end");
-  Builder_.CreateStore(EndV, RangeGEP);
-  
-  // tasker data
-  auto TwoC = ConstantInt::get(TheContext_, APInt(32, 2, true));
-  IndicesC = {ZeroC,  TwoC};
-  RangeGEP = Builder_.CreateGEP(RangeA, IndicesC, "data");
-  Value * DataV = nullptr;
-  if (IsTask)
-    DataV = Tasker_->createIndexSpace(*TheModule_, TheFunction, VarN, StartV, EndV);
-  else {
-    auto TmpT = RangeType_->getStructElementType(2);
-    DataV = Constant::getNullValue(TmpT);
-  }
-  Builder_.CreateStore(DataV, RangeGEP);
-
-  
-  return RangeA;
-}
-
 
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
@@ -749,35 +709,18 @@ VariableAlloca * CodeGen::createRange(Function *TheFunction,
   const std::string &VarName, Value* StartV, Value* EndV,
   bool IsTask, bool IsGlobal)
 {
-  Value* RangeA;
+  AllocaInst* RangeA;
 
   if (IsGlobal) {
     THROW_CONTRA_ERROR("Global ranges are not implemented yet.");
   }
   else {
-    RangeA = makeRange(TheFunction, StartV, EndV, IsTask, VarName);
+    RangeA = Tasker_->createRange(*TheModule_, TheFunction, VarName, StartV, EndV);
   }
 
-  auto it = VariableTable_.front().emplace(VarName, VariableAlloca{RangeA, RangeType_});
-  auto & VarDef = it.first->second;
-  VarDef.setHasTaskData(IsTask);
-  return &VarDef;
-}
-
-
-//==============================================================================
-///  Is the variable a range
-//==============================================================================
-bool CodeGen::isRange(Type* Ty)
-{
-  return (Ty == RangeType_);
-}
-
-bool CodeGen::isRange(Value* V)
-{
-  auto Ty = V->getType();
-  if (isa<AllocaInst>(V)) Ty = Ty->getPointerElementType();
-  return isRange(Ty);
+  auto RangeT = RangeA->getAllocatedType();
+  auto it = VariableTable_.front().emplace(VarName, VariableAlloca{RangeA, RangeT});
+  return &it.first->second;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1308,7 +1251,7 @@ void CodeGen::visit(ForStmtAST& e) {
   // Emit the start code first, without 'variable' in scope.
   Value* StartV = runStmtVisitor(*e.getStartExpr());
   Value* EndA = nullptr;
-  if (isRange(StartV)) {
+  if (Tasker_->isRange(StartV)) {
     auto EndV = Builder_.CreateExtractValue(StartV, 1);
     EndA = createEntryBlockAlloca(TheFunction, VarT, VarN+"end");
     Builder_.CreateStore(EndV, EndA);
@@ -1421,16 +1364,14 @@ void CodeGen::visit(ForeachStmtAST& e)
     Value* StartV = runStmtVisitor(*e.getStartExpr());
     
     // range
-    if (isRange(StartV)) {
+    if (Tasker_->isRange(StartV)) {
       RangeV = StartV;
     }
     // regular
     else {
       auto EndV = runStmtVisitor(*e.getEndExpr());
       const auto & VarN = e.getVarName();
-      auto IsTask = e.getParentFunctionDef()->isTask();
-      auto RangeA = makeRange(ParentFunction, StartV, EndV, IsTask, VarN );
-      RangeV = Builder_.CreateLoad(RangeType_, RangeA);
+      RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
     }
     
     std::vector<Value*> TaskArgAs;
@@ -1446,8 +1387,7 @@ void CodeGen::visit(ForeachStmtAST& e)
 
     auto TaskN = e.getName();
     auto TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, TaskArgSizes,
-        RangeV);
+    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, TaskArgSizes, RangeV);
     
     popScope();
 	  ValueResult_ = UndefValue::get(VoidType_);
@@ -1907,9 +1847,6 @@ void CodeGen::visit(IndexTaskAST& e)
     TaskArgNs.emplace_back( VarN );
     if (VarT.isField()) 
       TaskArgTs.emplace_back( Tasker_->getAccessorType() ); 
-    else if (VarT.isRange()) {
-      getLLVMType(VarT)->print(outs()); outs()<<"\n";
-    }
     else
       TaskArgTs.emplace_back( getLLVMType(VarT) ); 
   }
@@ -1922,21 +1859,10 @@ void CodeGen::visit(IndexTaskAST& e)
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
     auto VarA = Wrapper.ArgAllocas[ArgIdx];
     auto AllocaT = VarA->getType()->getPointerElementType(); // FIX FOR ARRAYS
-    Type* VarT = nullptr; 
     auto VarD = e.getVariableDef(ArgIdx);
     bool IsOwner = false;
-    if (Tasker_->isAccessor(AllocaT)) {
-      VarT = getLLVMType( strip(VarD->getType()) );
-      IsOwner = true;
-    }
-    else if (isRange(AllocaT)) {
-      std::cout << "caught a range! " << TaskArgNs[ArgIdx] << std::endl;
-      abort();
-    }
-    else {
-      VarT = AllocaT;
-      IsOwner = false;
-    }
+    if (Tasker_->isAccessor(AllocaT)) IsOwner = true;
+    auto VarT = getLLVMType( strip(VarD->getType()) );
     auto VarE = insertVariable(TaskArgNs[ArgIdx], VarA, VarT);
     VarE->setOwner(IsOwner);
   }

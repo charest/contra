@@ -17,65 +17,20 @@ class Type;
 namespace contra {
 
 //==============================================================================
-// The attributes class
-//==============================================================================
-struct Attributes {
-  using value_type = std::size_t;
-
-  constexpr Attributes(value_type Val) : Val_(Val) {}
-  
-  bool operator==(const Attributes & other) const
-  { return Val_ == other.Val_; }
-
-  bool operator!=(const Attributes & other) const
-  { return Val_ != other.Val_; }
-
-  auto operator | (Attributes rhs) const
-  { return Attributes( Val_ | rhs.Val_); }
-  
-  auto operator & (Attributes rhs) const
-  { return Attributes( Val_ & rhs.Val_); }
-
-  auto& operator |= (Attributes rhs) 
-  { 
-    Val_ |= rhs.Val_;
-    return *this;
-  }
-  
-  auto& operator &= (Attributes rhs) 
-  { 
-    Val_ &= rhs.Val_;
-    return *this;
-  }
-
-  auto operator~() const
-  { return Attributes(~Val_); }
-  
-  friend std::ostream &operator<<( std::ostream &out, const Attributes &obj )
-  {
-    out << obj.Val_;
-    return out;
-  }
-  
-private:
-  value_type Val_ = 0;
-};
-
-//==============================================================================
 // The base symbol type
 //==============================================================================
 class TypeDef {
 
 public:
 
-  struct Attr : public Attributes {
-    static constexpr Attributes None = 0x00;
-    static constexpr Attributes Number = 0x01;
+  enum Attr : unsigned {
+    None   = (1u << 0),
+    Number = (1u << 1)
   };
 
 public:
 
-  TypeDef(const std::string & Name, Attributes Attrs=Attr::None)
+  TypeDef(const std::string & Name, Attr Attrs=Attr::None)
     : Name_(Name), Attrs_(Attrs) {}
 
   virtual ~TypeDef() = default;
@@ -89,7 +44,7 @@ private:
   TypeDef(const std::string &, bool) {}
 
   std::string Name_;
-  Attributes Attrs_ = Attr::None;
+  unsigned Attrs_ = Attr::None;
 };
 
 
@@ -99,7 +54,7 @@ private:
 class BuiltInTypeDef : public TypeDef {
 public:
 
-  BuiltInTypeDef(const std::string & Name, Attributes Attrs = Attr::None)
+  BuiltInTypeDef(const std::string & Name, Attr Attrs = Attr::None)
     : TypeDef(Name, Attrs) {}
 
   virtual ~BuiltInTypeDef() = default;
@@ -126,20 +81,24 @@ public:
 // The variable type
 //==============================================================================
 class VariableType {
-
-  TypeDef* Type_ = nullptr;
-  Attributes Attrs_ = Attr::None;
-
+  
 public:
 
-  struct Attr : public Attributes {
-    static constexpr Attributes None   = 0;
-    static constexpr Attributes Array  = 1;
-    static constexpr Attributes Future = 2;
-    static constexpr Attributes Global = 4;
-    static constexpr Attributes Range  = 8;
-    static constexpr Attributes Field  = 16;
+  enum Attr : unsigned {
+    None   = (1u << 0),
+    Array  = (1u << 1),
+    Future = (1u << 2),
+    Global = (1u << 3),
+    Range  = (1u << 4),
+    Field  = (1u << 5)
   };
+
+protected:
+
+  TypeDef* Type_ = nullptr;
+  unsigned Attrs_ = Attr::None;
+
+public:
 
   VariableType() = default;
   
@@ -147,11 +106,11 @@ public:
     : Type_(Type.Type_), Attrs_(Type.Attrs_)
   {}
   
-  explicit VariableType(const VariableType & Type, Attributes Attrs)
+  explicit VariableType(const VariableType & Type, Attr Attrs)
     : Type_(Type.Type_), Attrs_(Attrs)
   {}
 
-  explicit VariableType(TypeDef* Type, Attributes Attrs = Attr::None)
+  explicit VariableType(TypeDef* Type, Attr Attrs = Attr::None)
     : Type_(Type), Attrs_(Attrs)
   {}
 
@@ -260,7 +219,7 @@ class VariableDef : public Identifier, public VariableType {
 public:
 
   VariableDef(const std::string & Name, const SourceLocation & Loc, 
-      TypeDef* Type, Attributes Attrs = Attr::None)
+      TypeDef* Type, Attr Attrs = Attr::None)
     : Identifier(Name, Loc), VariableType(Type, Attrs)
   {}
 
@@ -284,22 +243,23 @@ private:
 // The function symbol type
 //==============================================================================
 class FunctionDef {
+public:
+  
+  enum Attr : unsigned {
+    None  = (1u << 0),
+    Task  = (1u << 1)
+  };
 
 protected:
 
   std::string Name_;
   VariableTypeList ArgTypes_;
   VariableType ReturnType_;
-  bool IsVarArg_;
-  Attributes Attrs_;
+  bool IsVarArg_ = false;
+  unsigned Attrs_ = Attr::None;
 
 public:
   
-  struct Attr : public Attributes {
-    static constexpr Attributes None = 0x00;
-    static constexpr Attributes Task  = 0x01;
-  };
-
   FunctionDef(const std::string & Name, const VariableType & ReturnType,
       const VariableTypeList & ArgTypes, bool IsVarArg = false)
     : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(ReturnType),

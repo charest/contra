@@ -13,7 +13,6 @@ class VariableAlloca {
   llvm::Type* Type_ = nullptr;
   llvm::Value* Size_ = nullptr;
   bool IsOwner_ = true;
-  bool HasTaskData_ = false;
 public:
   VariableAlloca() = default;
   VariableAlloca(llvm::Value* Alloca, llvm::Type* Type, llvm::Value* Size = nullptr)
@@ -23,8 +22,6 @@ public:
   auto getSize() const { return Size_; }
   void setOwner(bool IsOwner=true) { IsOwner_=IsOwner; }
   auto isOwner() const { return IsOwner_; }
-  void setHasTaskData(bool HasTaskData = true) { HasTaskData_=HasTaskData; }
-  auto hasTaskData() const { return HasTaskData_; }
 };
 
 } // namespace

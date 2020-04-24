@@ -40,44 +40,97 @@ public:
   };
 
   // abstraact interface
-  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &, llvm::Function*) = 0;
-  virtual PreambleResult taskPreamble(llvm::Module &, const std::string &,
-      const std::vector<std::string> &, const std::vector<llvm::Type*> &, bool = false) = 0;
-  virtual void taskPostamble(llvm::Module &, llvm::Value* = nullptr) = 0;
+  virtual PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
+      llvm::Function*) = 0;
 
-  virtual void preregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
-  virtual void postregisterTask(llvm::Module &, const std::string &, const TaskInfo &) = 0;
+  virtual PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<std::string> &,
+      const std::vector<llvm::Type*> &,
+      bool = false) = 0;
+
+  virtual void taskPostamble(
+      llvm::Module &,
+      llvm::Value* = nullptr) = 0;
+
+  virtual void preregisterTask(
+      llvm::Module &,
+      const std::string &,
+      const TaskInfo &) = 0;
+
+  virtual void postregisterTask(
+      llvm::Module &,
+      const std::string &,
+      const TaskInfo &) = 0;
   
   virtual void setTopLevelTask(llvm::Module &, int) = 0;
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
   
-  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
-      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &) = 0;
-  virtual llvm::Value* launch(llvm::Module &, const std::string &, int,
-      const std::vector<llvm::Value*> &, const std::vector<llvm::Value*> &,
+  virtual llvm::Value* launch(
+      llvm::Module &,
+      const std::string &,
+      int,
+      const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &) = 0;
+
+  virtual llvm::Value* launch(
+      llvm::Module &,
+      const std::string &, int,
+      const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &,
       llvm::Value*) = 0;
 
   virtual bool isFuture(llvm::Value*) const = 0;
-  virtual llvm::Value* createFuture(llvm::Module &,llvm::Function*, const std::string &) = 0;
-  virtual llvm::Value* loadFuture(llvm::Module &, llvm::Value*, llvm::Type*, llvm::Value*)=0;
+
+  virtual llvm::AllocaInst* createFuture(
+      llvm::Module &,
+      llvm::Function*,
+      const std::string &) = 0;
+
+  virtual llvm::Value* loadFuture(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Type*,
+      llvm::Value*)=0;
   virtual void destroyFuture(llvm::Module &, llvm::Value*) = 0;
   virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
   virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
 
   virtual bool isField(llvm::Value*) const = 0;
-  virtual llvm::Value* createField(llvm::Module &,llvm::Function*, const std::string &,
-      llvm::Type*, llvm::Value*, llvm::Value*) = 0;
+  virtual llvm::AllocaInst* createField(
+      llvm::Module &,
+      llvm::Function*,
+      const std::string &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) = 0;
   virtual void destroyField(llvm::Module &, llvm::Value*) = 0;
   
-  virtual llvm::Value* createIndexSpace(llvm::Module &, llvm::Function*, const std::string &,
-      llvm::Value*, llvm::Value*) = 0;
-  virtual void destroyIndexSpace(llvm::Module &, llvm::Value*) = 0;
+  virtual bool isRange(llvm::Type*) const = 0;
+  virtual bool isRange(llvm::Value*) const = 0;
+  virtual llvm::Type* getRangeType() const = 0;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      llvm::Function*,
+      const std::string &,
+      llvm::Value*,
+      llvm::Value*) = 0;
+  virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
 
   virtual bool isAccessor(llvm::Type*) const = 0;
   virtual bool isAccessor(llvm::Value*) const = 0;
   virtual llvm::Type* getAccessorType() const = 0;
-  virtual void storeAccessor(llvm::Module &, llvm::Value*, llvm::Value*) const = 0;
-  virtual llvm::Value* loadAccessor(llvm::Module &, llvm::Type*, llvm::Value*) const = 0;
+  virtual void storeAccessor(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*) const = 0;
+  virtual llvm::Value* loadAccessor(
+      llvm::Module &,
+      llvm::Type*,
+      llvm::Value*) const = 0;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
 
   // registration
@@ -109,7 +162,7 @@ public:
   void destroyFields(llvm::Module &, const std::vector<llvm::Value*> &);
 
   // range interface
-  void destroyIndexSpaces(llvm::Module &, const std::vector<llvm::Value*> &);
+  void destroyRanges(llvm::Module &, const std::vector<llvm::Value*> &);
   
   // accessor interface
   void destroyAccessors(llvm::Module &, const std::vector<llvm::Value*> &);
@@ -127,22 +180,36 @@ protected:
   llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;
   void store(llvm::Value*, llvm::Value *) const;
 
-  llvm::Value* offsetPointer(llvm::AllocaInst* PointerA, llvm::AllocaInst* OffsetA,
+  llvm::Value* offsetPointer(
+      llvm::AllocaInst* PointerA,
+      llvm::AllocaInst* OffsetA,
       const std::string & Name = "");
     
-  void increment(llvm::Value* OffsetA, llvm::Value* IncrV,
+  void increment(
+      llvm::Value* OffsetA,
+      llvm::Value* IncrV,
       const std::string & Name = "");
    
-  void memCopy(llvm::Value* SrcGEP, llvm::AllocaInst* TgtA, llvm::Value* SizeV, 
+  void memCopy(
+      llvm::Value* SrcGEP,
+      llvm::AllocaInst* TgtA,
+      llvm::Value* SizeV, 
       const std::string & Name = "");
 
-  llvm::Value* accessStructMember(llvm::AllocaInst* StructA, int i,
+  llvm::Value* accessStructMember(
+      llvm::AllocaInst* StructA,
+      int i,
       const std::string & Name = "");
   
-  llvm::Value* loadStructMember(llvm::AllocaInst* StructA, int i,
+  llvm::Value* loadStructMember(
+      llvm::AllocaInst* StructA,
+      int i,
       const std::string & Name = "");
   
-  void storeStructMember(llvm::Value* ValueV, llvm::AllocaInst* StructA, int i,
+  void storeStructMember(
+      llvm::Value* ValueV,
+      llvm::AllocaInst* StructA,
+      int i,
       const std::string & Name = "");
 };
 

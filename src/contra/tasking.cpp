@@ -206,11 +206,11 @@ void AbstractTasker::destroyFields(Module & TheModule,
 }
 
 //==============================================================================
-void AbstractTasker::destroyIndexSpaces(Module & TheModule,
-    const std::vector<Value*> & IndexSpaces)
+void AbstractTasker::destroyRanges(Module & TheModule,
+    const std::vector<Value*> & Ranges)
 {
-  for (auto IS : IndexSpaces )
-    destroyIndexSpace(TheModule, IS);
+  for (auto IS : Ranges )
+    destroyRange(TheModule, IS);
 }
 
 //==============================================================================
