@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 #include "legion_c.h"
 enum FieldId {
@@ -50,10 +51,21 @@ void field_task(
   legion_accessor_array_1d_t acc = 
     legion_physical_region_get_field_accessor_array_1d( 
       regions[0], FIELD_ID);
+  
+  legion_logical_region_t logical_region = 
+    legion_physical_region_get_logical_region(regions[0]);
+  
+  legion_domain_t domain = 
+    legion_index_space_get_domain(runtime, logical_region.index_space);
+  legion_rect_1d_t rect = legion_domain_get_bounds_1d(domain);
+  
+  legion_rect_1d_t subrect;
+  legion_byte_offset_t offsets;
+  void * data_ptr = legion_accessor_array_1d_raw_rect_ptr(
+      acc, rect, &subrect, &offsets);
 
-  legion_ptr_t ptr{0};
   double field_data;
-  legion_accessor_array_1d_read(acc, ptr, &field_data, sizeof(double));
+  memcpy(&field_data, data_ptr, sizeof(double));
 
   printf("Hello world from task %lld, with field %f!\n",
 		dp.point_data[0], field_data);
@@ -109,15 +121,26 @@ void index_space_task(
     legion_physical_region_get_field_accessor_array_1d( 
       regions[0], FIELD_ID);
 
-  legion_ptr_t ptr{0};
+  legion_logical_region_t logical_region = 
+    legion_physical_region_get_logical_region(regions[0]);
+  
+  legion_domain_t domain = 
+    legion_index_space_get_domain(runtime, logical_region.index_space);
+  legion_rect_1d_t rect = legion_domain_get_bounds_1d(domain);
+  
+  legion_rect_1d_t subrect;
+  legion_byte_offset_t offsets;
+  void * data_ptr = legion_accessor_array_1d_raw_rect_ptr(
+      acc, rect, &subrect, &offsets);
+
   double field_data;
-  legion_accessor_array_1d_read(acc, ptr, &field_data, sizeof(double));
+  memcpy(&field_data, data_ptr, sizeof(double));
 
   printf("Hello world from task %lld, with local arg %d, and global arg %d and field %f!\n",
 		dp.point_data[0], local_arg, global_arg, field_data);
   
   field_data = dp.point_data[0];
-  legion_accessor_array_1d_write(acc, ptr, &field_data, sizeof(double));
+  memcpy(data_ptr, &field_data, sizeof(double));
 
   legion_accessor_array_1d_destroy(acc);
 

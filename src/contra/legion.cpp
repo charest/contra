@@ -72,7 +72,7 @@ void contra_legion_domain_create(
     contra_legion_index_space_t * is,
     legion_domain_t * domain)
 {
-  *domain = legion_domain_from_index_space(*runtime, is->index_space);
+  *domain = legion_domain_from_index_space(*runtime, is->color_space);
 }
 
 //==============================================================================
@@ -1331,6 +1331,11 @@ void LegionTasker::preregisterTask(Module &TheModule, const std::string & Name,
       "legion_runtime_preregister_task_variant_fnptr", PreT);
 
   TaskIdV = Builder_.CreateCall(PreF, PreArgVs, "task_variant_id");
+  
+  destroyOpaqueType(TheModule, ExecSetA, "legion_execution_constraint_set_destroy",
+      "exec_set");
+  destroyOpaqueType(TheModule, LayoutSetA, "legion_task_layout_constraint_set_destroy",
+      "layout_set");
 }
   
 //==============================================================================
