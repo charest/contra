@@ -78,6 +78,7 @@ public:
   virtual llvm::Type* getAccessorType() const = 0;
   virtual void storeAccessor(llvm::Module &, llvm::Value*, llvm::Value*) const = 0;
   virtual llvm::Value* loadAccessor(llvm::Module &, llvm::Type*, llvm::Value*) const = 0;
+  virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -109,6 +110,10 @@ public:
 
   // range interface
   void destroyIndexSpaces(llvm::Module &, const std::vector<llvm::Value*> &);
+  
+  // accessor interface
+  void destroyAccessors(llvm::Module &, const std::vector<llvm::Value*> &);
+
 
 protected:
   

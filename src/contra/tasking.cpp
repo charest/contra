@@ -214,6 +214,14 @@ void AbstractTasker::destroyIndexSpaces(Module & TheModule,
 }
 
 //==============================================================================
+void AbstractTasker::destroyAccessors(Module & TheModule,
+    const std::vector<Value*> & Accessors)
+{
+  for (auto Acc : Accessors )
+    destroyAccessor(TheModule, Acc);
+}
+
+//==============================================================================
 void AbstractTasker::preregisterTasks(Module & TheModule)
 {
   for (const auto & task_pair : TaskTable_ )

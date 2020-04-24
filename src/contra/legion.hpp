@@ -121,9 +121,11 @@ protected:
   llvm::StructType* IndexPartitionType_ = nullptr;
   llvm::StructType* LogicalPartitionType_ = nullptr;
   llvm::StructType* AccessorArrayType_ = nullptr;
+  llvm::StructType* ByteOffsetType_ = nullptr;
 
   llvm::StructType* IndexSpaceDataType_ = nullptr;
   llvm::StructType* FieldDataType_ = nullptr;
+  llvm::StructType* AccessorDataType_ = nullptr;
 
   struct TaskEntry {
     llvm::AllocaInst* ContextAlloca = nullptr;
@@ -185,9 +187,10 @@ public:
   virtual bool isAccessor(llvm::Value*) const override;
   virtual void storeAccessor(llvm::Module &, llvm::Value*, llvm::Value*) const override;
   virtual llvm::Value* loadAccessor(llvm::Module &, llvm::Type*, llvm::Value*) const override;
+  virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
   virtual llvm::Type* getAccessorType() const
-  { return AccessorArrayType_; }
+  { return AccessorDataType_; }
 
   virtual ~LegionTasker() = default;
 
@@ -215,9 +218,11 @@ protected:
   llvm::StructType* createLogicalRegionType(llvm::LLVMContext &);
   llvm::StructType* createIndexPartitionType(llvm::LLVMContext &);
   llvm::StructType* createLogicalPartitionType(llvm::LLVMContext &);
+  llvm::StructType* createByteOffsetType(llvm::LLVMContext &);
 
   llvm::StructType* createIndexSpaceDataType(llvm::LLVMContext &);
   llvm::StructType* createFieldDataType(llvm::LLVMContext &);
+  llvm::StructType* createAccessorDataType(llvm::LLVMContext &);
 
   llvm::AllocaInst* createPredicateTrue(llvm::Module &);
   llvm::AllocaInst* createGlobalArguments(

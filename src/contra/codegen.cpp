@@ -256,6 +256,7 @@ void CodeGen::popScope()
   std::vector<Value*> Futures;
   std::vector<Value*> Fields;
   std::vector<Value*> Ranges;
+  std::vector<Value*> Accessors;
 
   for ( const auto & entry_pair : VariableTable_.front() ) {
     auto VarE = entry_pair.second;
@@ -269,12 +270,15 @@ void CodeGen::popScope()
       Fields.emplace_back(Alloca);
     else if (isRange(Alloca) && VarE.hasTaskData())
       Ranges.emplace_back(Alloca);
+    else if (Tasker_->isAccessor(Alloca))
+      Accessors.emplace_back(Alloca);
   }
   VariableTable_.pop_front();
 
   destroyArrays(Arrays); 
   Tasker_->destroyFutures(*TheModule_, Futures);
   Tasker_->destroyFields(*TheModule_, Fields);
+  Tasker_->destroyAccessors(*TheModule_, Accessors); 
   Tasker_->destroyIndexSpaces(*TheModule_, Ranges);
 }
 
@@ -1909,12 +1913,17 @@ void CodeGen::visit(IndexTaskAST& e)
     auto VarA = Wrapper.ArgAllocas[ArgIdx];
     auto AllocaT = VarA->getType()->getPointerElementType(); // FIX FOR ARRAYS
     Type* VarT = nullptr; 
-    if (Tasker_->isAccessor(AllocaT))
+    bool IsOwner = false;
+    if (Tasker_->isAccessor(AllocaT)) {
       VarT = getLLVMType( e.getVariableDef(ArgIdx)->getType() );
-    else
+      IsOwner = true;
+    }
+    else {
       VarT = AllocaT;
+      IsOwner = false;
+    }
     auto VarE = insertVariable(TaskArgNs[ArgIdx], VarA, VarT);
-    VarE->setOwner(false);
+    VarE->setOwner(IsOwner);
   }
 
   // and the index
