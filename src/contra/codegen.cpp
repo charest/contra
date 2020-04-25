@@ -1850,6 +1850,10 @@ void CodeGen::visit(IndexTaskAST& e)
     else
       TaskArgTs.emplace_back( getLLVMType(VarT) ); 
   }
+      
+  //SOMEWHERE HERE
+  ///if (Tasker_->isRange(VarA))
+      ///  VarA = Tasker_->splitRange(*TheModule_, ParentFunction, RangeV, VarA);
   
 	// generate wrapped task
   auto Wrapper = Tasker_->taskPreamble(*TheModule_, TaskN, TaskArgNs,

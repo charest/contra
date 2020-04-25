@@ -6,63 +6,6 @@
 
 #include "legion/legion_c.h"
 
-extern "C" {
-
-/// forward declaration
-struct contra_legion_field_t;
-struct contra_legion_index_space_t;
-
-/// index space 
-DLLEXPORT void contra_legion_index_space_create(
-    legion_runtime_t *,
-    legion_context_t *,
-    const char *,
-    int_t,
-    int_t,
-    contra_legion_index_space_t *);
-
-DLLEXPORT void contra_legion_index_space_destroy(
-    legion_runtime_t *,
-    legion_context_t *,
-    contra_legion_index_space_t *);
-  
-/// field
-DLLEXPORT void contra_legion_field_create(
-    legion_runtime_t *,
-    legion_context_t *,
-    const char *,
-    size_t,
-    void *,
-    contra_legion_index_space_t *,
-    contra_legion_field_t *);
-
-DLLEXPORT void contra_legion_field_destroy(
-    legion_runtime_t *,
-    legion_context_t *,
-    contra_legion_field_t *);
- 
-DLLEXPORT void contra_legion_pack_field_data_ptr(contra_legion_field_t *, void *);
-DLLEXPORT void contra_legion_pack_field_data_val(contra_legion_field_t, void *);
-
-DLLEXPORT void contra_legion_unpack_field_data(const void *, uint64_t*, uint64_t*);
-
-// domain
-DLLEXPORT void contra_legion_domain_create(
-    legion_runtime_t *,
-    contra_legion_index_space_t *,
-    legion_domain_t *);
-
-/// field arguments
-DLLEXPORT void contra_task_add_region_requirement(
-    legion_task_launcher_t *, 
-    contra_legion_field_t *);
-
-DLLEXPORT void contra_index_add_region_requirement(
-    legion_index_launcher_t *, 
-    contra_legion_field_t *);
-
-} // extern
-
 namespace llvm {
 class AllocaInst;
 }
@@ -126,6 +69,7 @@ protected:
   llvm::StructType* IndexSpaceDataType_ = nullptr;
   llvm::StructType* FieldDataType_ = nullptr;
   llvm::StructType* AccessorDataType_ = nullptr;
+  llvm::StructType* PartitionDataType_ = nullptr;
 
   struct TaskEntry {
     llvm::AllocaInst* ContextAlloca = nullptr;
@@ -233,6 +177,11 @@ public:
       const std::string &,
       llvm::Value*,
       llvm::Value*) override;
+  virtual llvm::AllocaInst* splitRange(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      llvm::Value*) override;
   virtual void destroyRange(llvm::Module &, llvm::Value*) override;
   
   virtual llvm::Type* getRangeType() const
@@ -284,6 +233,7 @@ protected:
   llvm::StructType* createIndexSpaceDataType(llvm::LLVMContext &);
   llvm::StructType* createFieldDataType(llvm::LLVMContext &);
   llvm::StructType* createAccessorDataType(llvm::LLVMContext &);
+  llvm::StructType* createPartitionDataType(llvm::LLVMContext &);
 
   llvm::AllocaInst* createPredicateTrue(llvm::Module &);
   
@@ -302,7 +252,7 @@ protected:
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
-    bool IsIndex);
+    llvm::Value* = nullptr);
   
   llvm::AllocaInst* createOpaqueType(
       llvm::Module&,

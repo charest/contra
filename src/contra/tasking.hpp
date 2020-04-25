@@ -118,6 +118,11 @@ public:
       const std::string &,
       llvm::Value*,
       llvm::Value*) = 0;
+  virtual llvm::AllocaInst* splitRange(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      llvm::Value*) = 0;
   virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
 
   virtual bool isAccessor(llvm::Type*) const = 0;
