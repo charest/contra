@@ -1851,10 +1851,6 @@ void CodeGen::visit(IndexTaskAST& e)
       TaskArgTs.emplace_back( getLLVMType(VarT) ); 
   }
       
-  //SOMEWHERE HERE
-  ///if (Tasker_->isRange(VarA))
-      ///  VarA = Tasker_->splitRange(*TheModule_, ParentFunction, RangeV, VarA);
-  
 	// generate wrapped task
   auto Wrapper = Tasker_->taskPreamble(*TheModule_, TaskN, TaskArgNs,
       TaskArgTs, true);
@@ -1866,6 +1862,7 @@ void CodeGen::visit(IndexTaskAST& e)
     auto VarD = e.getVariableDef(ArgIdx);
     bool IsOwner = false;
     if (Tasker_->isAccessor(AllocaT)) IsOwner = true;
+    else if (Tasker_->isRange(AllocaT)) IsOwner = true;
     auto VarT = getLLVMType( strip(VarD->getType()) );
     auto VarE = insertVariable(TaskArgNs[ArgIdx], VarA, VarT);
     VarE->setOwner(IsOwner);
