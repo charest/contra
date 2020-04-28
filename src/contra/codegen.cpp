@@ -766,11 +766,7 @@ Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
 {
   auto DataSizeV = getTypeSize<int_t>(VariableT);
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  Value* FutureA = FutureV;
-  if (!isa<AllocaInst>(FutureV)) {
-    FutureA = createEntryBlockAlloca(TheFunction, VariableT, "__tmp");
-    Builder_.CreateStore(FutureV, FutureA);
-  }
+  auto FutureA = getAsAlloca(Builder_, TheFunction, FutureV);
   return Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
 }
 
@@ -867,10 +863,17 @@ void CodeGen::visit(ArrayAccessExprAST& e)
 
   // Look this variable up in the function.
   auto VarE = getVariable(e.getName());
+  auto VarA = VarE->getAlloca();
   
   // Load the value.
   auto IndexVal = runExprVisitor(*e.getIndexExpr());
-  ValueResult_ = loadArrayValue(VarE->getAlloca(), IndexVal, VarE->getType(), Name);
+
+  if (Tasker_->isAccessor(VarA)) {
+    ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA, IndexVal);
+  }
+  else {
+    ValueResult_ = loadArrayValue(VarA, IndexVal, VarE->getType(), Name);
+  }
 }
 
 
@@ -1416,7 +1419,12 @@ void CodeGen::visit(AssignStmtAST & e)
   // array[i] = scalar
   if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr())) {
     auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
-    storeArrayValue(VariableV, VariableA, IndexV, VarName);
+    if (Tasker_->isAccessor(VariableA)) {
+      Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
+    }
+    else {
+      storeArrayValue(VariableV, VariableA, IndexV, VarName);
+    }
   }
   //---------------------------------------------------------------------------
   // array = ?
@@ -1862,7 +1870,6 @@ void CodeGen::visit(IndexTaskAST& e)
     auto VarD = e.getVariableDef(ArgIdx);
     bool IsOwner = false;
     if (Tasker_->isAccessor(AllocaT)) IsOwner = true;
-    else if (Tasker_->isRange(AllocaT)) IsOwner = true;
     auto VarT = getLLVMType( strip(VarD->getType()) );
     auto VarE = insertVariable(TaskArgNs[ArgIdx], VarA, VarT);
     VarE->setOwner(IsOwner);

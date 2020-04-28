@@ -118,11 +118,6 @@ public:
       const std::string &,
       llvm::Value*,
       llvm::Value*) = 0;
-  virtual llvm::AllocaInst* splitRange(
-      llvm::Module &,
-      llvm::Function*,
-      llvm::Value*,
-      llvm::Value*) = 0;
   virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
 
   virtual bool isAccessor(llvm::Type*) const = 0;
@@ -131,11 +126,13 @@ public:
   virtual void storeAccessor(
       llvm::Module &,
       llvm::Value*,
-      llvm::Value*) const = 0;
+      llvm::Value*,
+      llvm::Value* = nullptr) const = 0;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
-      llvm::Value*) const = 0;
+      llvm::Value*,
+      llvm::Value* = nullptr) const = 0;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
 
   // registration

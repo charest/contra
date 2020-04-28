@@ -106,8 +106,10 @@ std::vector<llvm::Type*> llvmTypes(const std::vector<llvm::Value*> & Vals);
 
 //============================================================================  
 // create a string
-llvm::Value* llvmString(llvm::LLVMContext & TheContext,
-    llvm::Module &TheModule, const std::string & Str);
+llvm::Value* llvmString(
+    llvm::LLVMContext & TheContext,
+    llvm::Module &TheModule,
+    const std::string & Str);
 
 
 //============================================================================  
@@ -116,21 +118,50 @@ llvm::IRBuilder<> createBuilder(llvm::Function *TheFunction);
 
 //============================================================================  
 // create an entry block alloca
-llvm::AllocaInst* createEntryBlockAlloca(llvm::Function *TheFunction,
-  llvm::Type* Ty, const std::string & Name = "");
+llvm::AllocaInst* createEntryBlockAlloca(
+  llvm::Function *TheFunction,
+  llvm::Type* Ty,
+  const std::string & Name = "");
 
 //============================================================================  
 // get a types size
-llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType,
+llvm::Value* getTypeSize(
+    llvm::IRBuilder<> & Builder,
+    llvm::Type* ElementType,
     llvm::Type* ResultType );
 
 template<typename T>
-llvm::Value* getTypeSize(llvm::IRBuilder<> & Builder, llvm::Type* ElementType)
+llvm::Value* getTypeSize(
+    llvm::IRBuilder<> & Builder,
+    llvm::Type* ElementType)
 {
   auto & TheContext = Builder.getContext();
   return getTypeSize(Builder, ElementType, llvmType<T>(TheContext));
 }
 
+//============================================================================  
+// copy value into alloca if necessary
+llvm::AllocaInst* getAsAlloca(
+    llvm::IRBuilder<> &,
+    llvm::Function*,
+    llvm::Type*,
+    llvm::Value*);
+
+llvm::AllocaInst* getAsAlloca(
+    llvm::IRBuilder<> &,
+    llvm::Function*,
+    llvm::Value*);
+
+//============================================================================  
+// load value if necessary
+llvm::Value* getAsValue(
+    llvm::IRBuilder<> &,
+    llvm::Type*,
+    llvm::Value*);
+
+llvm::Value* getAsValue(
+    llvm::IRBuilder<> &,
+    llvm::Value*);
 } // namespace
 
 #endif // CONFIG_HPP

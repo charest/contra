@@ -177,11 +177,6 @@ public:
       const std::string &,
       llvm::Value*,
       llvm::Value*) override;
-  virtual llvm::AllocaInst* splitRange(
-      llvm::Module &,
-      llvm::Function*,
-      llvm::Value*,
-      llvm::Value*) override;
   virtual void destroyRange(llvm::Module &, llvm::Value*) override;
   
   virtual llvm::Type* getRangeType() const
@@ -192,10 +187,12 @@ public:
   virtual void storeAccessor(
       llvm::Module &,
       llvm::Value*,
+      llvm::Value*,
       llvm::Value*) const override;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
+      llvm::Value*,
       llvm::Value*) const override;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
@@ -248,7 +245,7 @@ protected:
     const std::vector<llvm::Value*> &,
     bool IsIndex);
   
-  void createFieldArguments(
+  llvm::AllocaInst* createFieldArguments(
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,

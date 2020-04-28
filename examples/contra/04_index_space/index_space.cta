@@ -1,36 +1,26 @@
-#function make_index_space(istart : i64, iend : i64, ids : [i64])
-#  
-#  print("Hello world from task with domain (%d, %d)\n", istart, iend)
-#
-#  var chunk = iend - istart + 1
-#  for i in 0 until chunk do
-#    ids[i] = i + istart
-#  end
-#
-#end
-
 task top_level()
   
-  var num_parts = 4
-  #var num_points = 100
-  #var chunk_size = num_points / num_parts
+  var num_points = 4
+  var num_parts = 2
+  var parts = {0 .. num_parts-1}
+  var points = {0 .. num_points-1}
 
-  #var sizes = [chunk_size; num_parts]
-  var is = {0 .. num_parts-1}
+  var myid : over(points) = -1
 
-  var myid : over(is) = 0
-  #field ids1 : i64, dimension(num_parts,chunk_size) = 0
-  #field ids2 : i64, dimension(num_parts,sizes) = 0
-
-  foreach i in is do 
-    print("Loop with counter %d and myid %d\n", i, myid)
-    myid = i
-  #  var istart = i*chunk_size
-  #  var iend = i*chunk_size + chunk_size - 1
-  #  make_index_space(istart, iend, ids1)
+  foreach i in parts do 
+    for j in points do
+      print("Loop with parition %d and local id %d\n", i, j)
+      myid[j] = j
+    end
   end
   
-  foreach i in is do 
+  foreach i in parts do 
+    for j in points do
+      print("Loop with parition %d and local id %d\n", i, myid[j])
+    end
+  end
+  
+  foreach i in points do 
     print("Loop with counter %d and myid is now %d\n", i, myid)
   end
 

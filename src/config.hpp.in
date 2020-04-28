@@ -11,6 +11,7 @@ namespace {
   using int_t = std::int64_t;
   using uint_t = std::uint64_t;
   using real_t = double;
+  using byte_t = unsigned char;
 
 } // namespace
 

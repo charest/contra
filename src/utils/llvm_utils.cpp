@@ -14,8 +14,10 @@ std::vector<Type*>  llvmTypes(const std::vector<Value*> & Vals)
 }
 
 //============================================================================
-Value* llvmString(LLVMContext & TheContext,
-    Module &TheModule, const std::string & Str)
+Value* llvmString(
+    LLVMContext & TheContext,
+    Module &TheModule,
+    const std::string & Str)
 {
   auto ConstantArray = ConstantDataArray::getString(TheContext, Str);
   auto GVStr = new GlobalVariable(TheModule, ConstantArray->getType(), true,
@@ -35,15 +37,19 @@ IRBuilder<> createBuilder(Function *TheFunction)
 }
 
 //============================================================================  
-AllocaInst* createEntryBlockAlloca(Function *TheFunction,
-  Type* Ty, const std::string & Name)
+AllocaInst* createEntryBlockAlloca(
+    Function *TheFunction,
+    Type* Ty,
+    const std::string & Name)
 {
   auto TmpB = createBuilder(TheFunction);
   return TmpB.CreateAlloca(Ty, nullptr, Name.c_str());
 }
 
 //============================================================================  
-Value* getTypeSize(IRBuilder<> & Builder, Type* ElementType,
+Value* getTypeSize(
+    IRBuilder<> & Builder,
+    Type* ElementType,
     Type* ResultType )
 {
   using namespace llvm;
@@ -56,6 +62,62 @@ Value* getTypeSize(IRBuilder<> & Builder, Type* ElementType,
   auto DataSize = CastInst::Create(Instruction::PtrToInt, SizeGEP,
           ResultType, "sizei", TheBlock);
   return DataSize;
+}
+
+//============================================================================  
+// copy value into alloca if necessary
+AllocaInst* getAsAlloca(
+    IRBuilder<> &Builder,
+    Function* TheFunction,
+    Type* ValueT,
+    Value* ValueV)
+{
+  AllocaInst* ValueA = dyn_cast<AllocaInst>(ValueV);
+  if (!ValueA) {
+    ValueA = createEntryBlockAlloca(TheFunction, ValueT);
+    Builder.CreateStore(ValueV, ValueA);
+  }
+  return ValueA;
+}
+
+AllocaInst* getAsAlloca(
+    IRBuilder<> &Builder,
+    Function* TheFunction,
+    Value* ValueV)
+{
+  AllocaInst* ValueA = dyn_cast<AllocaInst>(ValueV);
+  if (!ValueA) {
+    auto ValueT = ValueV->getType();
+    ValueA = createEntryBlockAlloca(TheFunction, ValueT);
+    Builder.CreateStore(ValueV, ValueA);
+  }
+  return ValueA;
+}
+
+//============================================================================  
+// Load a value if necessary
+Value* getAsValue(
+    IRBuilder<> &Builder,
+    Type* ValueT,
+    Value* ValueV)
+{
+  AllocaInst* ValueA = dyn_cast<AllocaInst>(ValueV);
+  if (ValueA) {
+    return Builder.CreateLoad(ValueT, ValueA);
+  }
+  return ValueV;
+}
+
+Value* getAsValue(
+    IRBuilder<> &Builder,
+    Value* ValueV)
+{
+  AllocaInst* ValueA = dyn_cast<AllocaInst>(ValueV);
+  if (ValueA) {
+    auto ValueT = ValueA->getAllocatedType();
+    return Builder.CreateLoad(ValueT, ValueA);
+  }
+  return ValueV;
 }
 
 } // namespace

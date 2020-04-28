@@ -218,7 +218,7 @@ void Analyzer::visit(ArrayAccessExprAST& e)
   // array index
   auto Loc = e.getIndexExpr()->getLoc();
   
-  if (!VarType.isArray())
+  if (!VarType.isArray() && !VarType.isField())
     THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
   
   auto IndexType = runExprVisitor(*e.getIndexExpr());
