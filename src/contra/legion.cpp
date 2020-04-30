@@ -150,18 +150,19 @@ void contra_legion_pack_field_data(
     unsigned regidx,
     void * data)
 {
-  auto fid = static_cast<uint32_t>(f->field_id);
+  auto fid = static_cast<uint64_t>(f->field_id);
   auto rid = static_cast<uint32_t>(regidx);
-  *static_cast<uint64_t*>(data) = ((static_cast<uint64_t>(fid)<<32) | (rid));
+  *static_cast<uint64_t*>(data) = ((fid<<32) | (rid));
 }
 
 void contra_legion_unpack_field_data(
     const void *data,
-    uint64_t*fid,
-    uint64_t*rid)
+    uint32_t*fid,
+    uint32_t*rid)
 {
   uint64_t data_int = *static_cast<const uint64_t*>(data);
-  *rid = static_cast<uint32_t>(data_int & 0xffffffffUL);
+  uint64_t mask = std::numeric_limits<uint32_t>::max();
+  *rid = static_cast<uint32_t>(data_int & mask);
   *fid = static_cast<uint32_t>(data_int >> 32);
 }
 
@@ -305,6 +306,7 @@ void contra_legion_split_range(
 void contra_legion_get_accessor(
     legion_runtime_t * runtime,
     legion_physical_region_t **regionptr,
+    uint32_t* num_regions,
     uint32_t* region_id,
     uint32_t* field_id,
     contra_legion_accessor_t* acc)
@@ -312,6 +314,7 @@ void contra_legion_get_accessor(
 
   acc->field_id = *field_id;
 
+  legion_physical_region_t tmp = (*regionptr)[*region_id];
   acc->physical_region = (*regionptr)[*region_id];
 
   acc->accessor =
@@ -751,6 +754,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
   auto FieldDataT = FunctionType::get(VoidType_, {FieldDataPtrT, UnsignedT, VoidPtrType_}, false);
   auto FieldDataF = TheModule.getOrInsertFunction("contra_legion_pack_field_data", FieldDataT);
 
+  unsigned regidx = 0;
   for (auto i : FieldArgId) {
     Value* ArgV = ArgVorAs[i];
     // load offset
@@ -762,7 +766,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     auto ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
     std::vector<Value*> ArgVs = {
       ArgV,
-      llvmValue(TheContext_, UnsignedT, i),
+      llvmValue(TheContext_, UnsignedT, regidx++),
       OffsetArgDataPtrV };
     Builder_.CreateCall(FieldDataF, ArgVs);
     // increment
@@ -1244,8 +1248,14 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     
   auto AccessorDataPtrT = AccessorDataType_->getPointerTo();
   auto RuntimePtrT = RuntimeType_->getPointerTo();
-  auto GetFieldT = FunctionType::get(VoidType_, {RuntimePtrT, RegionsT, UInt32PtrType,
-      UInt32PtrType, AccessorDataPtrT}, false); 
+  std::vector<Type*> GetFieldArgTs = {
+    RuntimePtrT,
+    RegionsA->getType(),
+    NumRegionsA->getType(),
+    UInt32PtrType,
+    UInt32PtrType,
+    AccessorDataPtrT};
+  auto GetFieldT = FunctionType::get(VoidType_, GetFieldArgTs, false); 
   auto GetFieldF = TheModule.getOrInsertFunction("contra_legion_get_accessor", GetFieldT);
 
   auto FieldIndexT = FieldIdType_;
@@ -1271,7 +1281,14 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     auto ArgGEP = offsetPointer(TaskArgsA, OffsetA, "args");
     Builder_.CreateCall( GetFieldDataF, {ArgGEP, FieldIdA, RegionIdA} );
     // get field pointer
-    Builder_.CreateCall( GetFieldF, {RuntimeA, RegionsA, RegionIdA, FieldIdA, TaskArgAs[i]} );
+    std::vector<Value*> GetFieldArgVs = {
+      RuntimeA,
+      RegionsA,
+      NumRegionsA,
+      RegionIdA,
+      FieldIdA,
+      TaskArgAs[i] };
+    Builder_.CreateCall( GetFieldF, GetFieldArgVs );
     // increment
     increment(FieldIndexA, llvmValue(TheContext_, FieldIndexT, 1), "fieldid");
     increment(OffsetA, llvmValue(TheContext_, OffsetT, 8), "offset");
