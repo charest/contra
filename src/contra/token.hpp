@@ -35,6 +35,8 @@ enum Token {
   tok_until,
   tok_range,
 
+  tok_part,
+
   // operators
   tok_binary,
   tok_unary,
@@ -42,7 +44,6 @@ enum Token {
   // variables
   tok_over,
   tok_dimension,
-  tok_field,
   tok_var,
 
   // numbers / strings

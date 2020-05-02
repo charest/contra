@@ -66,6 +66,7 @@ private:
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
+  void visit(PartitionStmtAST&) override;
   void visit(VarDeclAST&) override;
   void visit(FieldDeclAST&) override;
   void visit(PrototypeAST&) override;

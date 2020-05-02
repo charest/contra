@@ -236,6 +236,15 @@ void Vizualizer::visit(AssignStmtAST& e)
   runVisitor(*e.getRightExpr());
 }
 
+//==============================================================================
+void Vizualizer::visit(PartitionStmtAST& e)
+{
+  auto my_ind = ind_;
+  labelNode(my_ind, makeLabel(e.getClassName(), e.getRangeName()));
+  createLink(my_ind, "Color" );
+  runVisitor(*e.getColorExpr());
+}
+
 
 //==============================================================================
 void Vizualizer::visit(VarDeclAST& e)

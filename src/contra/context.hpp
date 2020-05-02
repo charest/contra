@@ -93,11 +93,12 @@ public:
   auto getType(const std::string & Name) { return TypeTable_.find(Name); }
 
   // Variable interface
-  auto getVariable(const std::string & Name)
+  auto getVariable(const std::string & Name, bool Quietly)
   {
     auto it = CurrentScope_->Variables.find(Name);
-    if (it)
+    if (it && !Quietly) {
       CurrentScope_->AccessedVariables.emplace(it.get(), it.getTable());
+    }
     return it;
   }
 

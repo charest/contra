@@ -37,6 +37,7 @@ private:
       VariableType::Attr::Range);
   
   bool HaveTopLevelTask_ = false;
+  bool TrackVariableAccess_ = true;
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
@@ -44,7 +45,8 @@ private:
 
 public:
 
-  Analyzer(std::shared_ptr<BinopPrecedence> Prec) : BinopPrecedence_(std::move(Prec))
+  Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
+    BinopPrecedence_(std::move(Prec))
   {}
 
   virtual ~Analyzer() = default;
@@ -93,6 +95,8 @@ private:
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
+  void visit(PartitionStmtAST&) override;
+
   void visit(VarDeclAST&) override;
   void visit(FieldDeclAST&) override;
   void visit(PrototypeAST&) override;
@@ -106,12 +110,16 @@ private:
   TypeDef* getType(const Identifier & Id);
 
   // variable interface
-  VariableDef* getVariable(const std::string & Name, const SourceLocation & Loc);
+  VariableDef* getVariable(
+      const std::string & Name,
+      const SourceLocation & Loc);
   VariableDef* getVariable(const Identifier & Id);
   VariableDef* insertVariable(const Identifier & Id, const VariableType & VarType);
 
   // function interface
-  FunctionDef* insertFunction(const Identifier & Id, const VariableTypeList & ArgTypes,
+  FunctionDef* insertFunction(
+      const Identifier & Id,
+      const VariableTypeList & ArgTypes,
       const VariableType & RetType);
   
   FunctionDef* getFunction(const std::string &, const SourceLocation &);
@@ -123,16 +131,23 @@ public:
 private:
 
   // type checking interface
-  void checkIsCastable(const VariableType & FromType, const VariableType & ToType,
+  void checkIsCastable(
+      const VariableType & FromType,
+      const VariableType & ToType,
       const SourceLocation & Loc);
     
-  void checkIsAssignable(const VariableType & LeftType, const VariableType & RightType,
+  void checkIsAssignable(
+      const VariableType & LeftType,
+      const VariableType & RightType,
       const SourceLocation & Loc);
 
-  std::unique_ptr<CastExprAST>
-    insertCastOp( std::unique_ptr<NodeAST> FromExpr, const VariableType & ToType );
+  std::unique_ptr<CastExprAST> insertCastOp(
+      std::unique_ptr<NodeAST> FromExpr,
+      const VariableType & ToType );
 
-  VariableType promote(const VariableType & LeftType, const VariableType & RightType,
+  VariableType promote(
+      const VariableType & LeftType,
+      const VariableType & RightType,
       const SourceLocation & Loc);
   
 

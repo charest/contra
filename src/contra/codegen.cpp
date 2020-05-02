@@ -225,8 +225,12 @@ DISubprogram * CodeGen::createSubprogram(
 //==============================================================================
 // Create a variable
 //==============================================================================
-DILocalVariable *CodeGen::createVariable( DISubprogram *SP,
-    const std::string & Name, unsigned ArgIdx, DIFile *Unit, unsigned LineNo,
+DILocalVariable *CodeGen::createVariable(
+    DISubprogram *SP,
+    const std::string & Name,
+    unsigned ArgIdx,
+    DIFile *Unit,
+    unsigned LineNo,
     Value *Alloca)
 {
   if (isDebug()) {
@@ -297,7 +301,9 @@ void CodeGen::eraseVariable(const std::string & VarN )
 //==============================================================================
 // Move a variable
 //==============================================================================
-VariableAlloca * CodeGen::moveVariable(const std::string & From, const std::string & To)
+VariableAlloca * CodeGen::moveVariable(
+    const std::string & From,
+    const std::string & To)
 {
   auto & CurrTab = VariableTable_.front();
   auto it = CurrTab.find(From);
@@ -324,8 +330,11 @@ VariableAlloca * CodeGen::getVariable(const std::string & VarName)
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-VariableAlloca * CodeGen::createVariable(Function *TheFunction,
-  const std::string &VarName, Type* VarType, bool IsGlobal)
+VariableAlloca * CodeGen::createVariable(
+    Function *TheFunction,
+    const std::string &VarName,
+    Type* VarType,
+    bool IsGlobal)
 {
   Value* NewVar;
 
@@ -348,8 +357,9 @@ VariableAlloca * CodeGen::createVariable(Function *TheFunction,
 //==============================================================================
 /// Insert an already allocated variable
 //==============================================================================
-VariableAlloca *
-CodeGen::insertVariable(const std::string &VarName, VariableAlloca VarE)
+VariableAlloca * CodeGen::insertVariable(
+    const std::string &VarName,
+    VariableAlloca VarE)
 { 
   auto it = VariableTable_.front().emplace(VarName, VarE);
   return &it.first->second;
@@ -358,8 +368,10 @@ CodeGen::insertVariable(const std::string &VarName, VariableAlloca VarE)
 //==============================================================================
 /// Insert an already allocated variable
 //==============================================================================
-VariableAlloca *
-CodeGen::insertVariable(const std::string &VarName, Value* VarAlloca, Type* VarType)
+VariableAlloca * CodeGen::insertVariable(
+    const std::string &VarName,
+    Value* VarAlloca,
+    Type* VarType)
 { 
   VariableAlloca VarE(VarAlloca, VarType);
   return insertVariable(VarName, VarE);
@@ -386,8 +398,11 @@ bool CodeGen::isArray(Value* V)
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-VariableAlloca * CodeGen::createArray(Function *TheFunction,
-  const std::string &VarName, Type* ElementT, bool IsGlobal)
+VariableAlloca * CodeGen::createArray(
+    Function *TheFunction,
+    const std::string &VarName,
+    Type* ElementT,
+    bool IsGlobal)
 {
   Value* NewVar;
 
@@ -407,9 +422,11 @@ VariableAlloca * CodeGen::createArray(Function *TheFunction,
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-VariableAlloca *
-CodeGen::createArray(Function *TheFunction, const std::string &VarName,
-    Type * ElementType, Value * SizeExpr)
+VariableAlloca * CodeGen::createArray(
+    Function *TheFunction,
+    const std::string &VarName,
+    Type * ElementType,
+    Value * SizeExpr)
 {
 
   Function *F; 
@@ -429,7 +446,8 @@ CodeGen::createArray(Function *TheFunction, const std::string &VarName,
 //==============================================================================
 // Initialize Array
 //==============================================================================
-void CodeGen::initArrays( Function *TheFunction,
+void CodeGen::initArrays(
+    Function *TheFunction,
     const std::vector<Value*> & ArrayAs,
     Value * InitV,
     Value * SizeV,
@@ -648,7 +666,10 @@ Value* CodeGen::getArraySize(Value* ArrayA, const std::string & Name)
 //==============================================================================
 // Load an array value
 //==============================================================================
-Value* CodeGen::loadArrayValue(Value* ArrayA, Value* IndexV, Type* ElementT,
+Value* CodeGen::loadArrayValue(
+    Value* ArrayA,
+    Value* IndexV,
+    Type* ElementT,
     const std::string & Name)
 {
   auto ArrayPtrV = loadArrayPointer(ArrayA, ElementT, Name);
@@ -659,7 +680,10 @@ Value* CodeGen::loadArrayValue(Value* ArrayA, Value* IndexV, Type* ElementT,
 //==============================================================================
 // Store array value
 //==============================================================================
-void CodeGen::storeArrayValue(Value* ValueV, Value* ArrayA, Value* IndexV,
+void CodeGen::storeArrayValue(
+    Value* ValueV,
+    Value* ArrayA,
+    Value* IndexV,
     const std::string & Name)
 {
   auto ElementT = ValueV->getType();
@@ -705,9 +729,13 @@ void CodeGen::destroyArrays(const std::vector<Value*> & Arrays)
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-VariableAlloca * CodeGen::createRange(Function *TheFunction,
-  const std::string &VarName, Value* StartV, Value* EndV,
-  bool IsTask, bool IsGlobal)
+VariableAlloca * CodeGen::createRange(
+    Function *TheFunction,
+    const std::string &VarName,
+    Value* StartV,
+    Value* EndV,
+    bool IsTask,
+    bool IsGlobal)
 {
   AllocaInst* RangeA;
 
@@ -773,8 +801,10 @@ Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
 //==============================================================================
 // Create a future alloca
 //==============================================================================
-VariableAlloca * CodeGen::createFuture(Function *TheFunction,
-  const std::string &VarName, Type* VarType)
+VariableAlloca * CodeGen::createFuture(
+    Function *TheFunction,
+    const std::string &VarName,
+    Type* VarType)
 {
   auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
   return insertVariable(VarName, FutureA, VarType);
@@ -788,8 +818,11 @@ VariableAlloca * CodeGen::createFuture(Function *TheFunction,
 //==============================================================================
 // Create a future alloca
 //==============================================================================
-VariableAlloca * CodeGen::createField(const std::string &VarName, Type* VarType,
-    Value* SizeVal, Value* InitVal)
+VariableAlloca * CodeGen::createField(
+    const std::string &VarName,
+    Type* VarType,
+    Value* SizeVal,
+    Value* InitVal)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   auto FieldA = Tasker_->createField(*TheModule_, TheFunction, VarName, VarType, 
@@ -1376,7 +1409,10 @@ void CodeGen::visit(ForeachStmtAST& e)
       const auto & VarN = e.getVarName();
       RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
     }
-    
+
+    for (auto & Stmt : e.getBodyExprs())
+      runStmtVisitor(*Stmt);
+
     std::vector<Value*> TaskArgAs;
     std::vector<Value*> TaskArgSizes;
     for ( const auto & VarD : e.getAccessedVariables() ) {
@@ -1476,6 +1512,41 @@ void CodeGen::visit(AssignStmtAST & e)
 
 }
   
+//==============================================================================
+// Partitionting
+//==============================================================================
+void CodeGen::visit(PartitionStmtAST & e)
+{
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto IsTask = e.getParentFunctionDef()->isTask();
+  //auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, IsTask );
+  //auto RangeA = RangeE->getAlloca();
+    
+  auto ColorV = runExprVisitor(*e.getColorExpr());
+
+  Value* RangeV = nullptr;
+  if (Tasker_->isRange(ColorV)) {
+    RangeV = ColorV;
+  }
+  else if (isArray(ColorV)) {
+    RangeV = Tasker_->createRange(*TheModule_, TheFunction, I64Type_, ColorV);
+  }
+  else {
+    RangeV = Tasker_->createRange(*TheModule_, TheFunction, ColorV);
+  }
+
+  //  auto StartV = runExprVisitor(*RangeExpr->getStartExpr());
+  //  auto EndV = runExprVisitor(*RangeExpr->getEndExpr());
+
+  //  // Register all variables and emit their initializer.
+  //  auto IsTask = e.getParentFunctionDef()->isTask();
+  //  for (unsigned i=0; i<NumVars; ++i) {
+  //    const auto & VarN = e.getVarName(i);
+  //    createRange(TheFunction, VarN, StartV, EndV, IsTask);
+  //  }
+  //  ValueResult_ = nullptr;
+  //  return;
+}
 
 //==============================================================================
 // VarDefExprAST - Expression class for var/in

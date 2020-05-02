@@ -11,8 +11,13 @@
 
 extern "C" {
 
-/// forward declaration
-struct dopevector_t;
+/// simple dopevector type
+struct dopevector_t {
+  void * data = nullptr;
+  int_t size = 0;
+  int_t capacity = 0;
+  int_t data_size = 0;
+};
 
 /// memory allocation
 DLLEXPORT void allocate(int_t size, int_t data_size, dopevector_t * dv);

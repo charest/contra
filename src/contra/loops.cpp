@@ -13,9 +13,13 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
   e.setName(Name);
 
   // lift out the foreach
-  auto IndexTask = std::make_unique<IndexTaskAST>(Name, 
-      std::move(e.moveBodyExprs()), e.getVarName(), e.getAccessedVariables());
-      addFunctionAST(std::move(IndexTask));
+  auto IndexTask = std::make_unique<IndexTaskAST>(
+      Name, 
+      std::move(e.moveBodyExprs()),
+      e.getVarName(),
+      e.getAccessedVariables());
+
+  addFunctionAST(std::move(IndexTask));
 
 }
 

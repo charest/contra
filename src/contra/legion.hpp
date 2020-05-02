@@ -177,6 +177,17 @@ public:
       const std::string &,
       llvm::Value*,
       llvm::Value*) override;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      const std::string &) override;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Type*,
+      llvm::Value*,
+      const std::string &) override;
   virtual void destroyRange(llvm::Module &, llvm::Value*) override;
   
   virtual llvm::Type* getRangeType() const

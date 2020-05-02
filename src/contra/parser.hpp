@@ -131,7 +131,8 @@ public:
   /// varexpr ::= 'var' identifier ('=' expression)?
   ///                    (',' identifier ('=' expression)?)* 'in' expression
   std::unique_ptr<NodeAST> parseVarDefExpr();
-  std::unique_ptr<NodeAST> parseFieldDefExpr();
+  
+  std::unique_ptr<NodeAST> parsePartitionExpr();
 
   /// Top level function parser 
   std::unique_ptr<FunctionAST> parseFunction();

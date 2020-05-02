@@ -130,6 +130,14 @@ public:
     postVisit(e);
   }
   
+  virtual bool preVisit(PartitionStmtAST&) { return false; }
+  virtual void postVisit(PartitionStmtAST&) {}
+  virtual void visit(PartitionStmtAST&e) {
+    if (preVisit(e)) { return; }
+    e.getColorExpr()->accept(*this);
+    postVisit(e);
+  }
+  
   virtual bool preVisit(VarDeclAST&) { return false; }
   virtual void postVisit(VarDeclAST&) {}
   virtual void visit(VarDeclAST&e) {

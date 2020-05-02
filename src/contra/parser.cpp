@@ -307,10 +307,10 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
   case tok_for:
   case tok_foreach:
     return parseForExpr();
+  case tok_part:
+    return parsePartitionExpr();
   case tok_var:
     return parseVarDefExpr();
-  case tok_field:
-    return parseFieldDefExpr();
   case tok_string:
     return parseStringExpr();
   default:
@@ -544,78 +544,28 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
 // varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
 //==============================================================================
-std::unique_ptr<NodeAST> Parser::parseFieldDefExpr() {
+std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
 
-  getNextToken();  // eat the field.
-  // At least one variable name is required.
+  auto Loc = getCurLoc();
+  getNextToken();  // eat the partition
+
+  auto RangeLoc = getCurLoc();
   if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Expected identifier after field", getCurLoc());
+    THROW_SYNTAX_ERROR("Expected an identifier after keyword 'partition'.", RangeLoc);
+  auto RangeName = TheLex_.getIdentifierStr();
+  getNextToken(); // eat identifier.
 
-  std::vector<Identifier> VarNames;
-  VarNames.emplace_back(TheLex_.getIdentifierStr(), getCurLoc());
-  getNextToken();  // eat identifier.
+  auto ByLoc = getCurLoc();
+  if (CurTok_ != tok_by)
+    THROW_SYNTAX_ERROR("Expected 'by' after identifier.", ByLoc);
+  getNextToken(); // eat by.
 
-  Identifier VarType;
+  auto ColorExpr = parseExpression();
 
-  // get additional variables
-  while (CurTok_ == ',') {
-    getNextToken();  // eat ','  
-    if (CurTok_ != tok_identifier)
-      THROW_SYNTAX_ERROR("Only variable names are allowed in definition.", getCurLoc());
-    VarNames.emplace_back( TheLex_.getIdentifierStr(), getCurLoc() );
-    getNextToken();  // eat identifier
-  }
-
-  // read modifiers
-  if (CurTok_ != ':') 
-    THROW_SYNTAX_ERROR("Fields require modifiers after ':'", getCurLoc());
-  getNextToken(); // eat the ':'.
-    
-
-  // type
-  if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Fields require type modifier after ':'", getCurLoc());
-  VarType = Identifier{TheLex_.getIdentifierStr(), getCurLoc()};
-  getNextToken(); // eat the identifier
-
-  if (CurTok_ == ',') getNextToken(); // eat ','
-
-  // dimension
-  if (CurTok_ != tok_dimension)
-    THROW_SYNTAX_ERROR("Fields require 'dimension' modifiers after ':'", getCurLoc());
-  getNextToken(); // eat the dimension
-
-  if (CurTok_ != '(')
-    THROW_SYNTAX_ERROR("'(' required after 'dimension'", getCurLoc());
-  getNextToken(); // eat the '('.
-
-  std::unique_ptr<NodeAST> Size;
-  auto PartExpr = parseExpression();
-  if (CurTok_ == ',') {
-    getNextToken(); // eat ','
-    Size = parseExpression();
-  }
-
-  if (CurTok_ != ')')
-    THROW_SYNTAX_ERROR("Missing '(' after 'dimension' specification", getCurLoc());
-  getNextToken(); // eat the ')'.
-  
-  // Read the optional initializer.
-  std::unique_ptr<NodeAST> Init;
-  auto EqLoc = getCurLoc();
-  if (CurTok_ == tok_asgmt) {
-    getNextToken(); // eat the '='.
-    Init = parseExpression();
-  }
-  else {
-    std::vector<std::string> Names;
-    for ( auto i : VarNames ) Names.emplace_back(i.getName());
-    THROW_SYNTAX_ERROR("Field definition for '" << Names << "'"
-        << " has no initializer", EqLoc);
-  }
-
-  return std::make_unique<FieldDeclAST>(getCurLoc(), VarNames,
-      VarType, std::move(Init), std::move(Size), std::move(PartExpr));
+  return std::make_unique<PartitionStmtAST>(
+      Loc,
+      Identifier{RangeName, RangeLoc},
+      std::move(ColorExpr));
 }
 
 //==============================================================================

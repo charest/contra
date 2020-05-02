@@ -15,7 +15,9 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-TypeDef* Analyzer::getType(const std::string & Name, const SourceLocation & Loc)
+TypeDef* Analyzer::getType(
+    const std::string & Name,
+    const SourceLocation & Loc)
 {
   auto res = Context::instance().getType(Name);
   if (!res)
@@ -84,9 +86,11 @@ FunctionDef* Analyzer::insertFunction(
 
 
 //==============================================================================
-VariableDef* Analyzer::getVariable(const std::string & Name, const SourceLocation & Loc)
+VariableDef* Analyzer::getVariable(
+    const std::string & Name,
+    const SourceLocation & Loc)
 {
-  auto res = Context::instance().getVariable(Name);
+  auto res = Context::instance().getVariable(Name, !TrackVariableAccess_);
   if (!res)
     THROW_NAME_ERROR("Variable '" << Name << "' has not been"
        << " previously defined", Loc);
@@ -98,8 +102,9 @@ VariableDef* Analyzer::getVariable(const Identifier & Id)
 { return getVariable(Id.getName(), Id.getLoc()); }
 
 //==============================================================================
-VariableDef*
-Analyzer::insertVariable(const Identifier & Id, const VariableType & VarType)
+VariableDef* Analyzer::insertVariable(
+    const Identifier & Id,
+    const VariableType & VarType)
 {
   const auto & Name = Id.getName();
   const auto & Loc = Id.getLoc();
@@ -520,7 +525,25 @@ void Analyzer::visit(ForeachStmtAST& e)
   auto VarId = e.getVarId();
   insertVariable(VarId, I64Type_);
   
-  for ( const auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  TrackVariableAccess_ = false; // temporarily disable
+
+  unsigned NumParts = 0;
+  bool DoParts = true;
+  for ( const auto & stmt : e.getBodyExprs() ) {
+    if (dynamic_cast<const PartitionStmtAST *>(stmt.get())) {
+      if (!DoParts)
+        THROW_NAME_ERROR("Partition statements must appear first in 'foreach' loops.",
+            stmt->getLoc());
+      NumParts++;
+    }
+    else if (DoParts) {
+      DoParts = false;
+      TrackVariableAccess_ = true; // turn back on
+    }
+    runStmtVisitor(*stmt);
+  }
+
+  e.setNumPartitions(NumParts);
   
   auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
   e.setAccessedVariables(AccessedVars);
@@ -574,6 +597,24 @@ void Analyzer::visit(AssignStmtAST& e)
   }
   
   TypeResult_ = LeftType;
+}
+
+//==============================================================================
+void Analyzer::visit(PartitionStmtAST& e)
+{
+  const auto & RangeId = e.getRangeId();
+  auto RangeDef = getVariable(RangeId);
+  if (!RangeDef->getType().isRange())
+    THROW_NAME_ERROR("Identifier '" << RangeId.getName()
+        << "' is not a valid range.", RangeId.getLoc());
+
+  auto ColorExpr = e.getColorExpr();
+  auto ColorType = runExprVisitor(*ColorExpr);
+  if ( ColorType != I64Type_ && !ColorType.isArray() && !ColorType.isRange() )
+    THROW_NAME_ERROR("Acceptable types for partitioning are integers, arrays, and ranges.",
+        ColorExpr->getLoc());
+
+  TypeResult_ = RangeDef->getType();
 }
 
 //==============================================================================

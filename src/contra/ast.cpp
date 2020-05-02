@@ -88,6 +88,10 @@ void AssignStmtAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
+void PartitionStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
 void VarDeclAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 

@@ -4,6 +4,7 @@
 #include "errors.hpp"
 #include "legion.hpp"
 #include "utils/llvm_utils.hpp"
+#include "librt/dopevector.hpp"
 
 #include <vector>
 
@@ -57,6 +58,17 @@ struct contra_legion_partition_t {
 //==============================================================================
 /// index space creation
 //==============================================================================
+int_t contra_legion_sum_array(dopevector_t * arr)
+{
+  int_t sum = 0;
+  auto ptr = static_cast<const int_t*>(arr->data);
+  for (int_t i=0; i<arr->size; ++i) sum += ptr[i];
+  return sum;
+}
+
+//==============================================================================
+/// index space creation
+//==============================================================================
 void contra_legion_index_space_create(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
@@ -72,6 +84,29 @@ void contra_legion_index_space_create(
 
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
   legion_index_space_attach_name(*runtime, is->index_space, name, false);  
+}
+
+void contra_legion_index_space_create_from_size(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    int_t size,
+    contra_legion_index_space_t * is)
+{
+  is->start = 0;
+  is->end = size-1;
+  is->index_space = legion_index_space_create(*runtime, *ctx, size);
+}
+
+void contra_legion_index_space_create_from_array(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    dopevector_t *arr,
+    contra_legion_index_space_t * is)
+{
+  std::cout << arr->size << std::endl;
+  //is->start = 0;
+  //is->end = size-1;
+  //is->index_space = legion_index_space_create(*runtime, *ctx, size);
 }
 
 //==============================================================================
@@ -314,7 +349,6 @@ void contra_legion_get_accessor(
 
   acc->field_id = *field_id;
 
-  legion_physical_region_t tmp = (*regionptr)[*region_id];
   acc->physical_region = (*regionptr)[*region_id];
 
   acc->accessor =
@@ -2023,8 +2057,14 @@ AllocaInst* LegionTasker::createField(
   Value* IndexSpaceA = getAsAlloca(Builder_, TheFunction, RangeV);
   VarV = getAsAlloca(Builder_, TheFunction, VarV);
 
-  std::vector<Value*> FunArgVs = {RuntimeA, ContextA, NameV, DataSizeV, 
-    VarV, IndexSpaceA, FieldA};
+  std::vector<Value*> FunArgVs = {
+    RuntimeA,
+    ContextA,
+    NameV,
+    DataSizeV, 
+    VarV,
+    IndexSpaceA,
+    FieldA};
   auto FunArgTs = llvmTypes(FunArgVs);
     
   auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
@@ -2070,7 +2110,7 @@ bool LegionTasker::isRange(Value* RangeA) const
 
 
 //==============================================================================
-// destroey a field
+// create a range
 //==============================================================================
 AllocaInst* LegionTasker::createRange(
     Module & TheModule,
@@ -2105,6 +2145,92 @@ AllocaInst* LegionTasker::createRange(
   return IndexSpaceA;
 
 }
+
+//==============================================================================
+// create a range
+//==============================================================================
+AllocaInst* LegionTasker::createRange(
+    Module & TheModule,
+    Function* TheFunction,
+    Value* ValueV,
+    const std::string & Name)
+{
+  auto IndexSpaceA = createEntryBlockAlloca(TheFunction, IndexSpaceDataType_, "index");
+
+  if (isInsideTask()) {
+    const auto & LegionE = getCurrentTask();
+    const auto & ContextA = LegionE.ContextAlloca;
+    const auto & RuntimeA = LegionE.RuntimeAlloca;
+    
+    std::vector<Value*> FunArgVs = {RuntimeA, ContextA, ValueV, IndexSpaceA};
+    auto FunArgTs = llvmTypes(FunArgVs);
+      
+    auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+    auto FunF = TheModule.getOrInsertFunction(
+        "contra_legion_index_space_create_from_size", FunT);
+      
+    Builder_.CreateCall(FunF, FunArgVs);
+  }
+  else { 
+    auto ZeroC = llvmValue<int_t>(TheContext_, 0);
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
+    auto EndV = Builder_.CreateSub(ValueV, OneC); 
+    storeStructMember(ZeroC, IndexSpaceA, 0, "start");
+    storeStructMember(EndV, IndexSpaceA, 1, "end");
+  }
+
+  
+  return IndexSpaceA;
+
+}
+
+//==============================================================================
+// create a range
+//==============================================================================
+AllocaInst* LegionTasker::createRange(
+    Module & TheModule,
+    Function* TheFunction,
+    Type*,
+    Value* ValueV,
+    const std::string & Name)
+{
+  auto IndexSpaceA = createEntryBlockAlloca(TheFunction, IndexSpaceDataType_, "index");
+  auto ValueA = getAsAlloca(Builder_, TheFunction, ValueV);
+
+  if (isInsideTask()) {
+    const auto & LegionE = getCurrentTask();
+    const auto & ContextA = LegionE.ContextAlloca;
+    const auto & RuntimeA = LegionE.RuntimeAlloca;
+    
+    std::vector<Value*> FunArgVs = {RuntimeA, ContextA, ValueA, IndexSpaceA};
+    auto FunArgTs = llvmTypes(FunArgVs);
+      
+    auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+    auto FunF = TheModule.getOrInsertFunction(
+        "contra_legion_index_space_create_from_array", FunT);
+      
+    Builder_.CreateCall(FunF, FunArgVs);
+  }
+  else { 
+    
+    auto ValueT = ValueA->getType();
+    auto IntT = llvmType<int_t>(TheContext_);
+    auto FunT = FunctionType::get(IntT, ValueT, false);
+    auto FunF = TheModule.getOrInsertFunction("contra_legion_sum_array", FunT);
+    auto SumV = Builder_.CreateCall(FunF, ValueA);
+    
+    auto ZeroC = llvmValue<int_t>(TheContext_, 0);
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
+    auto EndV = Builder_.CreateSub(SumV, OneC); 
+    storeStructMember(ZeroC, IndexSpaceA, 0, "start");
+    storeStructMember(EndV, IndexSpaceA, 1, "end");
+  }
+
+  
+  return IndexSpaceA;
+
+}
+
 
 //==============================================================================
 // destroey a field

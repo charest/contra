@@ -125,17 +125,27 @@ public:
   auto isDebug() { return static_cast<bool>(DBuilder); }
 
   // create a debug entry for a function
-  llvm::DISubroutineType *createFunctionType(unsigned NumArgs, llvm::DIFile *Unit);
+  llvm::DISubroutineType *createFunctionType(
+      unsigned NumArgs,
+      llvm::DIFile *Unit);
 
   // create a subprogram DIE
   llvm::DIFile * createFile();
 
-  llvm::DISubprogram * createSubprogram(unsigned LineNo, unsigned ScopeLine,
-      const std::string & Name, unsigned arg_size, llvm::DIFile *Unit);
+  llvm::DISubprogram * createSubprogram(
+      unsigned LineNo,
+      unsigned ScopeLine,
+      const std::string & Name,
+      unsigned arg_size,
+      llvm::DIFile *Unit);
 
-  llvm::DILocalVariable *createVariable( llvm::DISubprogram *SP,
-      const std::string & Name, unsigned ArgIdx, llvm::DIFile *Unit,
-      unsigned LineNo, Value *Alloca);
+  llvm::DILocalVariable *createVariable(
+      llvm::DISubprogram *SP,
+      const std::string & Name,
+      unsigned ArgIdx,
+      llvm::DIFile *Unit,
+      unsigned LineNo,
+      Value *Alloca);
 
   void emitLocation(NodeAST * ast) { 
     if (isDebug()) KSDbgInfo.emitLocation(Builder_, ast);
@@ -196,6 +206,7 @@ private:
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
+  void visit(PartitionStmtAST&) override;
   void visit(VarDeclAST&) override;
   void visit(FieldDeclAST&) override;
   void visit(PrototypeAST&) override;
@@ -240,16 +251,28 @@ private:
   //============================================================================
   // Variable interface
   //============================================================================
-  VariableAlloca * createVariable(Function *TheFunction,
-    const std::string &VarName, Type* VarType, bool IsGlobal=false);
+  VariableAlloca * createVariable(
+      Function *TheFunction,
+      const std::string &VarName,
+      Type* VarType,
+      bool IsGlobal=false);
   
   VariableAlloca * getVariable(const std::string & VarName);
 
   void eraseVariable(const std::string &);
-  VariableAlloca * moveVariable(const std::string & From, const std::string & To);
 
-  VariableAlloca * insertVariable(const std::string &VarName, VariableAlloca VarEntry);
-  VariableAlloca * insertVariable(const std::string &VarName, llvm::Value*, llvm::Type*);
+  VariableAlloca * moveVariable(
+      const std::string & From,
+      const std::string & To);
+
+  VariableAlloca * insertVariable(
+      const std::string &VarName,
+      VariableAlloca VarEntry);
+  
+  VariableAlloca * insertVariable(
+      const std::string &VarName,
+      llvm::Value*,
+      llvm::Type*);
 
   //============================================================================
   // Array interface
@@ -261,27 +284,36 @@ private:
 
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
-  VariableAlloca * createArray(Function *TheFunction, const std::string &VarName,
-      Type* PtrType, Value * SizeExpr );
+  VariableAlloca * createArray(
+      Function *TheFunction,
+      const std::string &VarName,
+      Type* PtrType,
+      Value * SizeExpr );
   
-  VariableAlloca * createArray(Function *TheFunction, const std::string &VarName,
-      Type* ElementType, bool IsGlobal=false);
+  VariableAlloca * createArray(
+      Function *TheFunction,
+      const std::string &VarName,
+      Type* ElementType,
+      bool IsGlobal=false);
 
   // Initializes a bunch of arrays with a value
-  void initArrays( Function *TheFunction, 
+  void initArrays(
+      Function *TheFunction, 
       const std::vector<Value*> & VarList,
       Value * InitVal,
       Value * SizeExpr,
       Type * ElementType );
 
   // initializes an array with a list of values
-  void initArray( Function *TheFunction, 
+  void initArray(
+      Function *TheFunction, 
       Value* Var,
       const std::vector<Value *> InitVals,
       Type * ElementType );
   
   // copies one array to another
-  void copyArrays( Function *TheFunction, 
+  void copyArrays(
+      Function *TheFunction, 
       Value* Src,
       const std::vector<Value*> Tgts,
       Value * SizeExpr,
@@ -301,8 +333,13 @@ private:
 
   // Load an array
   Value* loadArrayPointer(Value*, Type*, const std::string & = "");
+  
   Value* createArrayPointerAlloca(Function *, Value*, Type*);
-  std::vector<Value*> createArrayPointerAllocas(Function *, const std::vector<Value*> &, Type*);
+
+  std::vector<Value*> createArrayPointerAllocas(
+      Function *,
+      const std::vector<Value*> &,
+      Type*);
 
   // get an arrays size
   Value* getArraySize(Value*, const std::string &);
@@ -311,8 +348,13 @@ private:
   // Range interface
   //============================================================================
 
-  VariableAlloca * createRange(Function *TheFunction, const std::string &VarName,
-      Value* StartV, Value* EndV, bool IsTask, bool IsGlobal=false);
+  VariableAlloca * createRange(
+      Function *TheFunction,
+      const std::string &VarName,
+      Value* StartV,
+      Value* EndV,
+      bool IsTask,
+      bool IsGlobal=false);
 
   //============================================================================
   // Function interface
@@ -329,8 +371,10 @@ private:
   //============================================================================
   llvm::Value* loadFuture(llvm::Type*, llvm::Value*);
   
-  VariableAlloca * createFuture(Function *TheFunction,
-    const std::string &VarName, Type* VarType);
+  VariableAlloca * createFuture(
+      Function *TheFunction,
+      const std::string &VarName,
+      Type* VarType);
 
   VariableAlloca * createField(const std::string &, Type*, Value*, Value*);
 };

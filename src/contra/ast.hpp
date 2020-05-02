@@ -105,8 +105,14 @@ protected:
   ValueType ValueType_;
 
 public:
-  ValueExprAST(const SourceLocation & Loc, const std::string & Val, ValueType Ty)
-    : ExprAST(Loc), Val_(Val), ValueType_(Ty) {}
+  ValueExprAST(
+      const SourceLocation & Loc,
+      const std::string & Val,
+      ValueType Ty) :
+    ExprAST(Loc),
+    Val_(Val),
+    ValueType_(Ty)
+  {}
 
   template<typename T>
   T getVal() const;
@@ -137,8 +143,11 @@ protected:
 
 public:
 
-  VarAccessExprAST(const SourceLocation & Loc, const std::string &Name)
-    : ExprAST(Loc), Name_(Name)
+  VarAccessExprAST(
+      const SourceLocation & Loc,
+      const std::string &Name) :
+    ExprAST(Loc),
+    Name_(Name)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -161,9 +170,12 @@ protected:
   std::unique_ptr<NodeAST> IndexExpr_;
 
 public:
-  ArrayAccessExprAST(const SourceLocation & Loc, const std::string &Name,
-      std::unique_ptr<NodeAST> IndexExpr)
-    : VarAccessExprAST(Loc, Name), IndexExpr_(std::move(IndexExpr))
+  ArrayAccessExprAST(
+      const SourceLocation & Loc,
+      const std::string &Name, 
+      std::unique_ptr<NodeAST> IndexExpr) :
+    VarAccessExprAST(Loc, Name),
+    IndexExpr_(std::move(IndexExpr))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -186,9 +198,13 @@ protected:
 
 public:
 
-  ArrayExprAST(const SourceLocation & Loc, ASTBlock Vals,
-      std::unique_ptr<NodeAST> Size)
-    : ExprAST(Loc), ValExprs_(std::move(Vals)), SizeExpr_(std::move(Size))
+  ArrayExprAST(
+      const SourceLocation & Loc,
+      ASTBlock Vals,
+      std::unique_ptr<NodeAST> Size) :
+    ExprAST(Loc),
+    ValExprs_(std::move(Vals)),
+    SizeExpr_(std::move(Size))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -218,9 +234,13 @@ protected:
 
 public:
 
-  RangeExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> Start,
-      std::unique_ptr<NodeAST> End)
-    : ExprAST(Loc), StartExpr_(std::move(Start)), EndExpr_(std::move(End))
+  RangeExprAST(
+      const SourceLocation & Loc,
+      std::unique_ptr<NodeAST> Start,
+      std::unique_ptr<NodeAST> End) :
+    ExprAST(Loc),
+    StartExpr_(std::move(Start)),
+    EndExpr_(std::move(End))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -249,9 +269,13 @@ protected:
 
 
 public:
-  CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
-      Identifier TypeId) : ExprAST(Loc), FromExpr_(std::move(FromExpr)),
-      TypeId_(TypeId)
+  CastExprAST(
+      const SourceLocation & Loc,
+      std::unique_ptr<NodeAST> FromExpr,
+      Identifier TypeId) :
+    ExprAST(Loc),
+    FromExpr_(std::move(FromExpr)),
+    TypeId_(TypeId)
   {}
 
   CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
@@ -279,10 +303,13 @@ protected:
   std::unique_ptr<NodeAST> OpExpr_;
 
 public:
-  UnaryExprAST(const SourceLocation & Loc,
+  UnaryExprAST(
+      const SourceLocation & Loc,
       char Opcode,
-      std::unique_ptr<NodeAST> Operand)
-    : ExprAST(Loc), OpCode_(Opcode), OpExpr_(std::move(Operand))
+      std::unique_ptr<NodeAST> Operand) :
+    ExprAST(Loc),
+    OpCode_(Opcode),
+    OpExpr_(std::move(Operand))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -305,10 +332,14 @@ protected:
   std::unique_ptr<NodeAST> RightExpr_;
 
 public:
-  BinaryExprAST(const SourceLocation & Loc, 
+  BinaryExprAST(
+      const SourceLocation & Loc, 
       char Op, std::unique_ptr<NodeAST> lhs,
-      std::unique_ptr<NodeAST> rhs)
-    : ExprAST(Loc), OpCode_(Op), LeftExpr_(std::move(lhs)), RightExpr_(std::move(rhs))
+      std::unique_ptr<NodeAST> rhs) :
+    ExprAST(Loc),
+    OpCode_(Op),
+    LeftExpr_(std::move(lhs)),
+    RightExpr_(std::move(rhs))
   {}
 
   auto getOperand() const { return OpCode_; }
@@ -342,10 +373,13 @@ protected:
 
 public:
 
-  CallExprAST(const SourceLocation & Loc,
+  CallExprAST(
+      const SourceLocation & Loc,
       const std::string &Callee,
-      ASTBlock Args)
-    : ExprAST(Loc), Callee_(Callee), ArgExprs_(std::move(Args))
+      ASTBlock Args) :
+    ExprAST(Loc),
+    Callee_(Callee),
+    ArgExprs_(std::move(Args))
   {}
 
   const std::string & getName() const { return Callee_; }
@@ -398,9 +432,13 @@ protected:
 
 public:
 
-  IfStmtAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> Cond,
-       ASTBlock Then)
-    : StmtAST(Loc), CondExpr_(std::move(Cond)), ThenExpr_(std::move(Then))
+  IfStmtAST(
+      const SourceLocation & Loc,
+      std::unique_ptr<NodeAST> Cond,
+      ASTBlock Then) :
+    StmtAST(Loc),
+    CondExpr_(std::move(Cond)),
+    ThenExpr_(std::move(Then))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -443,10 +481,14 @@ public:
       std::unique_ptr<NodeAST> End,
       std::unique_ptr<NodeAST> Step,
       ASTBlock Body,
-      LoopType Loop = LoopType::To)
-    : StmtAST(Loc), VarId_(VarId), StartExpr_(std::move(Start)),
-      EndExpr_(std::move(End)), StepExpr_(std::move(Step)), BodyExprs_(std::move(Body)),
-      Loop_(Loop)
+      LoopType Loop = LoopType::To) :
+    StmtAST(Loc),
+    VarId_(VarId),
+    StartExpr_(std::move(Start)),
+    EndExpr_(std::move(End)),
+    StepExpr_(std::move(Step)),
+    BodyExprs_(std::move(Body)),
+    Loop_(Loop)
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -479,18 +521,26 @@ class ForeachStmtAST : public ForStmtAST {
   std::vector<VariableDef*> AccessedVariables_;
   std::string Name_;
   bool IsLifted_ = false;
+  unsigned NumParts_ = 0;
 
 public:
   
-  ForeachStmtAST(const SourceLocation & Loc,
+  ForeachStmtAST(
+      const SourceLocation & Loc,
       const Identifier &VarId,
       std::unique_ptr<NodeAST> Start,
       std::unique_ptr<NodeAST> End,
       std::unique_ptr<NodeAST> Step,
       ASTBlock Body,
       LoopType Loop = LoopType::To) :
-    ForStmtAST(Loc, VarId, std::move(Start), std::move(End), std::move(Step),
-        std::move(Body), Loop)
+    ForStmtAST(
+        Loc,
+        VarId,
+        std::move(Start),
+        std::move(End),
+        std::move(Step),
+        std::move(Body),
+        Loop)
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -501,7 +551,15 @@ public:
   const auto & getAccessedVariables()
   { return AccessedVariables_; }
 
-  auto moveBodyExprs() { return std::move(BodyExprs_); }
+  auto moveBodyExprs() {
+    ASTBlock NewBody;
+    auto NumBody = BodyExprs_.size();
+    for (unsigned i=NumParts_; i<NumBody; ++i) {
+      NewBody.emplace_front( std::move(BodyExprs_.back()) );
+      BodyExprs_.pop_back();
+    }
+    return NewBody;
+  }
   
   const std::string &getName() const { return Name_; }
   void setName(const std::string& Name) { Name_ = Name; }
@@ -509,7 +567,41 @@ public:
   bool isLifted() const { return IsLifted_; }
   void setLifted(bool IsLifted=true) { IsLifted_ = IsLifted; }
   
+  void setNumPartitions(unsigned NumParts) { NumParts_=NumParts; }
+  auto getNumPartitions() const { return NumParts_; }
 };
+
+//==============================================================================
+/// Partition statement
+//==============================================================================
+class PartitionStmtAST : public StmtAST {
+protected:
+
+  Identifier RangeId_;
+  std::unique_ptr<NodeAST> ColorExpr_;
+
+public:
+  PartitionStmtAST(
+      const SourceLocation & Loc,
+      const Identifier & RangeId,
+      std::unique_ptr<NodeAST> ColorExpr) :
+    StmtAST(Loc),
+    RangeId_(RangeId),
+    ColorExpr_(std::move(ColorExpr))
+  {}
+
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "PartitionStmtAST"; };
+
+  const auto & getRangeName() { return RangeId_.getName(); }
+  const auto & getRangeId() { return RangeId_; }
+
+  auto getColorExpr() const { return ColorExpr_.get(); }
+};
+
+
 
 //==============================================================================
 /// Assignment statement
@@ -521,9 +613,13 @@ protected:
   std::unique_ptr<NodeAST> RightExpr_;
 
 public:
-  AssignStmtAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> lhs,
-      std::unique_ptr<NodeAST> rhs)
-    : StmtAST(Loc), LeftExpr_(std::move(lhs)), RightExpr_(std::move(rhs))
+  AssignStmtAST(
+      const SourceLocation & Loc,
+      std::unique_ptr<NodeAST> lhs,
+      std::unique_ptr<NodeAST> rhs) :
+    StmtAST(Loc),
+    LeftExpr_(std::move(lhs)),
+    RightExpr_(std::move(rhs))
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -566,12 +662,20 @@ protected:
 
 public:
 
-  VarDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
-      Identifier VarType, std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size, AttrType Attr = AttrType::None)
-    : StmtAST(Loc), VarIds_(Vars), TypeId_(VarType),
-      InitExpr_(std::move(Init)), SizeExpr_(std::move(Size)),
-      Attr_(Attr), VarDefs_(Vars.size(),nullptr)
+  VarDeclAST(
+      const SourceLocation & Loc,
+      const std::vector<Identifier> & Vars, 
+      Identifier VarType,
+      std::unique_ptr<NodeAST> Init,
+      std::unique_ptr<NodeAST> Size,
+      AttrType Attr = AttrType::None) :
+    StmtAST(Loc),
+    VarIds_(Vars),
+    TypeId_(VarType),
+    InitExpr_(std::move(Init)),
+    SizeExpr_(std::move(Size)),
+    Attr_(Attr),
+    VarDefs_(Vars.size(),nullptr)
   {}
 
   bool isArray() const { return Attr_ == AttrType::Array; }
@@ -631,12 +735,21 @@ class FieldDeclAST : public VarDeclAST {
 
 public:
 
-  FieldDeclAST(const SourceLocation & Loc, const std::vector<Identifier> & Vars, 
-      Identifier VarType, std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size, std::unique_ptr<NodeAST> Part)
-    : VarDeclAST(Loc, Vars, VarType, std::move(Init), std::move(Size),
+  FieldDeclAST(
+      const SourceLocation & Loc,
+      const std::vector<Identifier> & Vars, 
+      Identifier VarType,
+      std::unique_ptr<NodeAST> Init,
+      std::unique_ptr<NodeAST> Size,
+      std::unique_ptr<NodeAST> Part) :
+    VarDeclAST(
+        Loc,
+        Vars,
+        VarType,
+        std::move(Init),
+        std::move(Size),
         (static_cast<bool>(Size)) ? AttrType::Array : AttrType::None),
-      PartitionExpr_(std::move(Part))
+    PartitionExpr_(std::move(Part))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -673,7 +786,9 @@ protected:
 
 public:
   
-  PrototypeAST(const Identifier & Id) : NodeAST(Id.getLoc()), Id_(Id), IsAnonExpr_(true)  {}
+  PrototypeAST(const Identifier & Id) :
+    NodeAST(Id.getLoc()), Id_(Id), IsAnonExpr_(true)
+  {}
 
   PrototypeAST(
     const Identifier & Id,
@@ -747,21 +862,36 @@ protected:
 
 public:
   
-  FunctionAST(const std::string & Name, ASTBlock Body, bool IsTask = false)
-      : BodyExprs_(std::move(Body)), IsTask_(IsTask), Name_(Name)
+  FunctionAST(
+      const std::string & Name,
+      ASTBlock Body,
+      bool IsTask = false) :
+    BodyExprs_(std::move(Body)),
+    IsTask_(IsTask),
+    Name_(Name)
   {}
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
-      std::unique_ptr<NodeAST> Return, bool IsTask = false)
-      : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-        BodyExprs_(std::move(Body)), ReturnExpr_(std::move(Return)),
-        IsTask_(IsTask), Name_(ProtoExpr_->getName())
+  FunctionAST(
+      std::unique_ptr<PrototypeAST> Proto,
+      ASTBlock Body, 
+      std::unique_ptr<NodeAST> Return,
+      bool IsTask = false) :
+    NodeAST(Proto->getLoc()),
+    ProtoExpr_(std::move(Proto)),
+    BodyExprs_(std::move(Body)),
+    ReturnExpr_(std::move(Return)),
+    IsTask_(IsTask),
+    Name_(ProtoExpr_->getName())
   {}
 
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto, std::unique_ptr<NodeAST> Return)
-      : NodeAST(Proto->getLoc()), ProtoExpr_(std::move(Proto)),
-        ReturnExpr_(std::move(Return)), IsTopExpression_(true),
-        Name_(ProtoExpr_->getName())
+  FunctionAST(
+      std::unique_ptr<PrototypeAST> Proto,
+      std::unique_ptr<NodeAST> Return) :
+    NodeAST(Proto->getLoc()),
+    ProtoExpr_(std::move(Proto)),
+    ReturnExpr_(std::move(Return)),
+    IsTopExpression_(true),
+    Name_(ProtoExpr_->getName())
   {}
 
   auto isTopLevelExpression() const { return IsTopExpression_; }
@@ -796,9 +926,15 @@ class TaskAST : public FunctionAST {
 
 public:
 
-  TaskAST(std::unique_ptr<PrototypeAST> Proto, ASTBlock Body, 
-      std::unique_ptr<NodeAST> Return)
-      : FunctionAST(std::move(Proto), std::move(Body), std::move(Return), true)
+  TaskAST(
+      std::unique_ptr<PrototypeAST> Proto,
+      ASTBlock Body, 
+      std::unique_ptr<NodeAST> Return) :
+    FunctionAST(
+        std::move(Proto),
+        std::move(Body),
+        std::move(Return),
+        true)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -818,10 +954,14 @@ class IndexTaskAST : public FunctionAST {
 
 public:
 
-  IndexTaskAST(const std::string & Name, ASTBlock Body,
-      const std::string & LoopVar, const std::vector<VariableDef*>& Vars)
-      : FunctionAST(Name, std::move(Body), true), LoopVarName_(LoopVar),
-        Vars_(Vars)
+  IndexTaskAST(
+      const std::string & Name,
+      ASTBlock Body,
+      const std::string & LoopVar,
+      const std::vector<VariableDef*>& Vars) :
+    FunctionAST(Name, std::move(Body), true),
+    LoopVarName_(LoopVar),
+    Vars_(Vars)
   {}
 
   virtual void accept(AstVisiter& visiter) override;

@@ -20,6 +20,7 @@ class IfStmtAST;
 class ForStmtAST;
 class ForeachStmtAST;
 class AssignStmtAST;
+class PartitionStmtAST;
 class VarDeclAST;
 class FieldDeclAST;
 class PrototypeAST;
@@ -46,6 +47,7 @@ public:
   virtual void visit(ForStmtAST&) = 0;
   virtual void visit(ForeachStmtAST&) = 0;
   virtual void visit(AssignStmtAST&) = 0;
+  virtual void visit(PartitionStmtAST&) = 0;
 
   virtual void visit(VarDeclAST&) = 0;
   virtual void visit(FieldDeclAST&) = 0;

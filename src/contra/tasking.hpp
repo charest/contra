@@ -118,6 +118,17 @@ public:
       const std::string &,
       llvm::Value*,
       llvm::Value*) = 0;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      const std::string & = "") = 0;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Type*,
+      llvm::Value*,
+      const std::string & = "") = 0;
   virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
 
   virtual bool isAccessor(llvm::Type*) const = 0;
