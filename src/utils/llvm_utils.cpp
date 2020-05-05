@@ -14,7 +14,7 @@ std::vector<Type*>  llvmTypes(const std::vector<Value*> & Vals)
 }
 
 //============================================================================
-Value* llvmString(
+Constant* llvmString(
     LLVMContext & TheContext,
     Module &TheModule,
     const std::string & Str)

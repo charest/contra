@@ -1801,9 +1801,19 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 
   auto ArgcV = llvmValue(TheContext_, Int32Type_, Argc);
   auto ArgvV = Constant::getNullValue(VoidPtrArrayT);
+
+  std::vector<Constant*> ArgVs;
+  for (int i=0; i<Argc; ++i) {
+    ArgVs.emplace_back( llvmString(TheContext_, TheModule, Argv[i]) );
+  }
+  auto ArrayT = ArrayType::get(VoidPtrType_, Argc);
+  auto ConstantArr = ConstantArray::get(ArrayT, ArgVs);
+  auto GVStr = new GlobalVariable(TheModule, ArrayT, true,
+      GlobalValue::InternalLinkage, ConstantArr);
+
   auto BackV = llvmValue(TheContext_, BoolType_, false);
 
-  std::vector<Value*> StartArgVs = { ArgcV, ArgvV, BackV };
+  std::vector<Value*> StartArgVs = { ArgcV, GVStr, BackV };
   auto RetI = Builder_.CreateCall(StartF, StartArgVs, "start");
   return RetI;
 }

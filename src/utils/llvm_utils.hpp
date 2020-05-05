@@ -106,7 +106,7 @@ std::vector<llvm::Type*> llvmTypes(const std::vector<llvm::Value*> & Vals);
 
 //============================================================================  
 // create a string
-llvm::Value* llvmString(
+llvm::Constant* llvmString(
     llvm::LLVMContext & TheContext,
     llvm::Module &TheModule,
     const std::string & Str);

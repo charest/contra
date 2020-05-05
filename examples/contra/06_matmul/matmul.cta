@@ -1,0 +1,22 @@
+task top_level()
+  
+  var n = 4096
+  var num_parts = 2
+  var num_points = n*n
+
+  var parts = {0 .. num_parts-1}
+  var points = {0 .. num_points-1}
+
+  var matrix1 : over(points) = 1.
+  var matrix2 : over(points) = 1.
+  var matrix3 : over(points) = 0.
+
+  foreach i in parts do
+    for j in points do
+      matrix3[j] = matrix1[j] * matrix2[j]
+    end
+  end
+
+end
+
+top_level()

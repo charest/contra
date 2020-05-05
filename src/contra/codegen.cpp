@@ -42,10 +42,15 @@ namespace contra {
 CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 {
 
-  Argc_ = 1;
+  Argc_ = 3;
   Argv_ = new char *[Argc_];
   Argv_[0] = new char[9];
   strcpy(Argv_[0], "./contra");
+  Argv_[1] = new char[10];
+  strcpy(Argv_[1], "-ll:gsize");
+  Argv_[2] = new char[2];
+  strcpy(Argv_[2], "0");
+
 
   Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
