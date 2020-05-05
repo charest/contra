@@ -74,6 +74,7 @@ protected:
   struct TaskEntry {
     llvm::AllocaInst* ContextAlloca = nullptr;
     llvm::AllocaInst* RuntimeAlloca = nullptr;
+    llvm::AllocaInst* PartInfoAlloca = nullptr;
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;
@@ -100,7 +101,8 @@ public:
       const std::string &,
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
-      bool IsIndex=false) override;
+      bool,
+      const std::vector<bool> & = {}) override;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -209,6 +211,18 @@ public:
 
   virtual llvm::Type* getAccessorType() const
   { return AccessorDataType_; }
+  
+  virtual llvm::AllocaInst* partition(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual llvm::AllocaInst* partition(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      llvm::Type*,
+      llvm::Value*) override;
 
   virtual ~LegionTasker() = default;
 
@@ -260,6 +274,7 @@ protected:
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
+    llvm::Value* = nullptr,
     llvm::Value* = nullptr);
   
   llvm::AllocaInst* createOpaqueType(
@@ -282,6 +297,7 @@ protected:
       llvm::AllocaInst*&,
       llvm::AllocaInst*&);
 
+  llvm::AllocaInst* createPartitionInfo(llvm::Module&);
 };
 
 } // namepsace

@@ -602,7 +602,7 @@ void Analyzer::visit(AssignStmtAST& e)
 //==============================================================================
 void Analyzer::visit(PartitionStmtAST& e)
 {
-  const auto & RangeId = e.getRangeId();
+  const auto & RangeId = e.getVarId();
   auto RangeDef = getVariable(RangeId);
   if (!RangeDef->getType().isRange())
     THROW_NAME_ERROR("Identifier '" << RangeId.getName()

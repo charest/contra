@@ -50,7 +50,8 @@ public:
       const std::string &,
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
-      bool = false) = 0;
+      bool,
+      const std::vector<bool> & = {}) = 0;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -78,7 +79,8 @@ public:
 
   virtual llvm::Value* launch(
       llvm::Module &,
-      const std::string &, int,
+      const std::string &,
+      int,
       const std::vector<llvm::Value*> &,
       const std::vector<llvm::Value*> &,
       llvm::Value*) = 0;
@@ -145,6 +147,18 @@ public:
       llvm::Value*,
       llvm::Value* = nullptr) const = 0;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
+  
+  virtual llvm::AllocaInst* partition(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      llvm::Value*) = 0;
+  virtual llvm::AllocaInst* partition(
+      llvm::Module &,
+      llvm::Function*,
+      llvm::Value*,
+      llvm::Type*,
+      llvm::Value*) = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);

@@ -551,6 +551,8 @@ public:
   const auto & getAccessedVariables()
   { return AccessedVariables_; }
 
+  auto getBodyExpr(unsigned i) const { return BodyExprs_[i].get(); }
+
   auto moveBodyExprs() {
     ASTBlock NewBody;
     auto NumBody = BodyExprs_.size();
@@ -595,8 +597,8 @@ public:
   virtual std::string getClassName() const override
   { return "PartitionStmtAST"; };
 
-  const auto & getRangeName() { return RangeId_.getName(); }
-  const auto & getRangeId() { return RangeId_; }
+  const auto & getVarName() const { return RangeId_.getName(); }
+  const auto & getVarId() const { return RangeId_; }
 
   auto getColorExpr() const { return ColorExpr_.get(); }
 };
@@ -951,6 +953,7 @@ class IndexTaskAST : public FunctionAST {
 
   std::string LoopVarName_;
   std::vector<VariableDef*> Vars_;
+  std::vector<bool> VarIsPartitioned_;
 
 public:
 
@@ -958,10 +961,12 @@ public:
       const std::string & Name,
       ASTBlock Body,
       const std::string & LoopVar,
-      const std::vector<VariableDef*>& Vars) :
+      const std::vector<VariableDef*>& Vars,
+      const std::vector<bool>& VarIsPartitioned) :
     FunctionAST(Name, std::move(Body), true),
     LoopVarName_(LoopVar),
-    Vars_(Vars)
+    Vars_(Vars),
+    VarIsPartitioned_(VarIsPartitioned)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -976,6 +981,8 @@ public:
  
   const auto & getLoopVariableName() const { return LoopVarName_; }
   const auto & getName() const { return Name_; }
+
+  const auto & getVarIsPartitioned() const { return VarIsPartitioned_; }
 
 };
 

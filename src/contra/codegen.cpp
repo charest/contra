@@ -1410,17 +1410,29 @@ void CodeGen::visit(ForeachStmtAST& e)
       RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
     }
 
-    for (auto & Stmt : e.getBodyExprs())
-      runStmtVisitor(*Stmt);
+    std::map<std::string, Value*> Partitions;
+    for (auto & Stmt : e.getBodyExprs()) {
+      auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
+      const auto VarN = Node->getVarName();
+      auto VarA = runStmtVisitor(*Stmt);
+      Partitions.emplace( VarN, VarA );
+    }
 
     std::vector<Value*> TaskArgAs;
     std::vector<Value*> TaskArgSizes;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
-      auto VarE = getVariable(Name);
-      auto VarT = VarE->getType();
+      auto it = Partitions.find(Name);
+      Value* VarA = nullptr;
+      if (it != Partitions.end()) {
+        VarA = it->second;
+      }
+      else {
+        auto VarE = getVariable(Name);
+        VarA = VarE->getAlloca();
+      }
+      auto VarT = VarA->getType()->getPointerElementType();
       TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
-      auto VarA = VarE->getAlloca();
       TaskArgAs.emplace_back(VarA); 
     }
 
@@ -1524,28 +1536,16 @@ void CodeGen::visit(PartitionStmtAST & e)
     
   auto ColorV = runExprVisitor(*e.getColorExpr());
 
-  Value* RangeV = nullptr;
-  if (Tasker_->isRange(ColorV)) {
-    RangeV = ColorV;
-  }
-  else if (isArray(ColorV)) {
-    RangeV = Tasker_->createRange(*TheModule_, TheFunction, I64Type_, ColorV);
+  auto VarE = getVariable(e.getVarName());
+  Value * VarA = VarE->getAlloca();
+  
+  if (isArray(ColorV)) {
+    ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, I64Type_, ColorV );
   }
   else {
-    RangeV = Tasker_->createRange(*TheModule_, TheFunction, ColorV);
+    ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, ColorV );
   }
 
-  //  auto StartV = runExprVisitor(*RangeExpr->getStartExpr());
-  //  auto EndV = runExprVisitor(*RangeExpr->getEndExpr());
-
-  //  // Register all variables and emit their initializer.
-  //  auto IsTask = e.getParentFunctionDef()->isTask();
-  //  for (unsigned i=0; i<NumVars; ++i) {
-  //    const auto & VarN = e.getVarName(i);
-  //    createRange(TheFunction, VarN, StartV, EndV, IsTask);
-  //  }
-  //  ValueResult_ = nullptr;
-  //  return;
 }
 
 //==============================================================================
@@ -1931,8 +1931,13 @@ void CodeGen::visit(IndexTaskAST& e)
   }
       
 	// generate wrapped task
-  auto Wrapper = Tasker_->taskPreamble(*TheModule_, TaskN, TaskArgNs,
-      TaskArgTs, true);
+  auto Wrapper = Tasker_->taskPreamble(
+      *TheModule_,
+      TaskN, 
+      TaskArgNs,
+      TaskArgTs,
+      true,
+      e.getVarIsPartitioned());
 
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
