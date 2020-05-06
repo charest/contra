@@ -63,7 +63,9 @@ endif()
 
 # dump output
 file(READ ${output_file} output)
-MESSAGE(${output})
+if (output)
+  MESSAGE(${output})
+endif()
 
 # need to fix the spaces in the passed command for some reason
 separate_arguments( compare_cmd ) 
