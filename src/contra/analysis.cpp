@@ -11,6 +11,34 @@
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
+// Constructor
+////////////////////////////////////////////////////////////////////////////////
+Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
+  BinopPrecedence_(std::move(Prec))
+{
+  auto & ctx = Context::instance();
+  auto IntType = ctx.getInt64Type();
+  auto RealType = ctx.getFloat64Type();
+
+  std::vector< std::pair<TypeDef*, TypeDef*> > casts = {
+    {IntType, RealType},
+    {RealType, IntType}
+  };
+
+  for (const auto & c : casts) {
+    auto RetType = VariableType(c.first);
+    auto ArgType = VariableType(c.second);
+    auto Sy = std::make_unique<BuiltInFunction>(
+        c.first->getName(),
+        RetType,
+        ArgType);
+    ctx.insertFunction( std::move(Sy) );
+  }
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Base type interface
 ////////////////////////////////////////////////////////////////////////////////
 

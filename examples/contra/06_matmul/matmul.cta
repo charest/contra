@@ -1,6 +1,6 @@
 task top_level()
   
-  var num = 8192
+  var num = 1024
   var num_parts = 4
   var num_points = num*num
 

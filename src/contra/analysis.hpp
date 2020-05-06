@@ -45,9 +45,7 @@ private:
 
 public:
 
-  Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
-    BinopPrecedence_(std::move(Prec))
-  {}
+  Analyzer(std::shared_ptr<BinopPrecedence> Prec);
 
   virtual ~Analyzer() = default;
 

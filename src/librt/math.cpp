@@ -68,15 +68,22 @@ std::unique_ptr<contra::FunctionDef> CAbs::check()
 const std::string CMax::Name = "fmax";
 
 Function *CMax::install(LLVMContext & TheContext, Module & TheModule)
-{ return installDoubleFun(TheContext, TheModule, CMax::Name); }
+{
+  auto RealType = llvmType<real_t>(TheContext);
+  std::vector<Type*> Args = {RealType, RealType};
+  auto FunType = FunctionType::get( RealType, Args, false );
+
+  auto Fun = Function::Create(FunType, Function::InternalLinkage,
+      Name, TheModule);
+  return Fun;
+}
 
 std::unique_ptr<contra::FunctionDef> CMax::check()
 {
   auto & C = Context::instance();
-  std::vector<VariableType> Args;
-  Args.emplace_back( C.getFloat64Type() );
-  return std::make_unique<BuiltInFunction>(CMax::Name,
-      VariableType(C.getFloat64Type()), Args);
+  auto RealType = VariableType(C.getFloat64Type());
+  std::vector<VariableType> Args = {RealType, RealType};
+  return std::make_unique<BuiltInFunction>(CMax::Name, RealType, Args);
 }
 
 }

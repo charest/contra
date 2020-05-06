@@ -1134,8 +1134,27 @@ void CodeGen::visit(CallExprAST &e) {
 
   // Look up the name in the global module table.
   auto Name = e.getName();
-  auto CalleeF = getFunction(Name);
 
+  // check if its a cast
+  if (isLLVMType(Name)) {
+    auto TheBlock = Builder_.GetInsertBlock();
+    auto ArgV = runExprVisitor(*e.getArgExpr(0));
+    auto ToT = getLLVMType(Name);
+    if (ToT == I64Type_) {
+      ValueResult_ = CastInst::Create(Instruction::FPToSI, ArgV,
+          llvmType<int_t>(TheContext_), "cast", TheBlock);
+    }
+    else if (ToT == F64Type_) {
+      ValueResult_ = CastInst::Create(Instruction::SIToFP, ArgV,
+          llvmType<real_t>(TheContext_), "cast", TheBlock);
+    }
+    else {
+      ValueResult_ = nullptr;
+    }
+    return;
+  }
+
+  auto CalleeF = getFunction(Name);
   auto IsTask = Tasker_->isTask(Name);
     
   std::vector<Value *> ArgVs;
@@ -1540,7 +1559,7 @@ void CodeGen::visit(AssignStmtAST & e)
 void CodeGen::visit(PartitionStmtAST & e)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto IsTask = e.getParentFunctionDef()->isTask();
+  //auto IsTask = e.getParentFunctionDef()->isTask();
   //auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, IsTask );
   //auto RangeA = RangeE->getAlloca();
     

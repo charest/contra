@@ -1464,7 +1464,6 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     TheModule.getOrInsertFunction("contra_legion_unpack_field_data", GetFieldDataT);
     
   auto AccessorDataPtrT = AccessorDataType_->getPointerTo();
-  auto RuntimePtrT = RuntimeType_->getPointerTo();
   std::vector<Type*> GetFieldArgTs = {
     RuntimeA->getType(),
     RegionsA->getType(),

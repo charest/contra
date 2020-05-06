@@ -243,6 +243,12 @@ private:
   Type* getLLVMType(const Identifier & Id)
   { return TypeTable_.at(Id.getName()); }
 
+  Type* getLLVMType(const std::string & Name)
+  { return TypeTable_.at(Name); }
+
+  bool isLLVMType(const std::string & Name)
+  { return TypeTable_.count(Name); }
+    
 
   template<typename T>
   Value* getTypeSize(Type* ElementType)

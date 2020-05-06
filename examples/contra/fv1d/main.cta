@@ -1,10 +1,9 @@
 function wave_speed(
-  #gamma : f64,
+  gamma : f64,
   d : f64,
   p : f64,
   v : f64 ) -> f64
 
-  var gamma : f64 = 1.4
   var a : f64 = sqrt(gamma * p / d)
   var s : f64 = fabs(v) + a
 
@@ -65,6 +64,7 @@ function main()
   var vertices : [f64] = [0; tot_points]
   for i in ileft to iright do
     vertices[i] = xleft + f64(i-ileft) / f64(num_cells) * length
+    print("%g\n", vertices[i])
   end
   for i in 0 until num_ghost do
     vertices[ileft - num_ghost + i] = xleft - (vertices[ileft + num_ghost - i] - xleft)

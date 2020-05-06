@@ -291,10 +291,15 @@ class BuiltInFunction : public FunctionDef {
 public:
 
   BuiltInFunction(const std::string & Name, const VariableType & ReturnType, 
-      const VariableTypeList & ArgTypes, bool IsVarArg = false)
-    : FunctionDef(Name, ReturnType, ArgTypes, IsVarArg)
+      const VariableTypeList & ArgTypes, bool IsVarArg = false) :
+    FunctionDef(Name, ReturnType, ArgTypes, IsVarArg)
   {}
-
+  
+  BuiltInFunction(const std::string & Name, const VariableType & ReturnType, 
+      const VariableType & ArgType, bool IsVarArg = false) :
+    FunctionDef(Name, ReturnType, VariableTypeList{ArgType}, IsVarArg)
+  {}
+  
 };
 
 
@@ -309,8 +314,15 @@ public:
 
   UserFunction(const std::string & Name, const SourceLocation & Loc,
       const VariableType & ReturnType, const VariableTypeList & ArgTypes,
-      bool IsVarArg = false)
-    : FunctionDef(Name, ReturnType, ArgTypes, IsVarArg), Loc_(Loc)
+      bool IsVarArg = false) :
+    FunctionDef(Name, ReturnType, ArgTypes, IsVarArg), Loc_(Loc)
+  {}
+  
+  UserFunction(const std::string & Name, const SourceLocation & Loc,
+      const VariableType & ReturnType, const VariableType & ArgType,
+      bool IsVarArg = false) :
+    FunctionDef(Name, ReturnType, VariableTypeList{ArgType}, IsVarArg),
+    Loc_(Loc)
   {}
 };
 
