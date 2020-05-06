@@ -1,8 +1,8 @@
 task top_level()
   
-  var n = 4096
-  var num_parts = 2
-  var num_points = n*n
+  var num = 8192
+  var num_parts = 4
+  var num_points = num*num
 
   var parts = {0 .. num_parts-1}
   var points = {0 .. num_points-1}
@@ -12,8 +12,10 @@ task top_level()
   var matrix3 : over(points) = 0.
 
   foreach i in parts do
-    for j in points do
-      matrix3[j] = matrix1[j] * matrix2[j]
+    for n in 1 to 100 do
+      for j in points do
+        matrix3[j] = matrix1[j] * matrix2[j]
+      end
     end
   end
 

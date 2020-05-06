@@ -301,10 +301,13 @@ void contra_legion_index_add_region_requirement(
     legion_context_t * ctx,
     legion_index_launcher_t * launcher,
     contra_legion_index_space_t * cs,
-    contra_legion_index_partitions_t ** index_parts,
-    contra_legion_logical_partitions_t ** logical_parts,
+    void ** void_index_parts,
+    void ** void_logical_parts,
     contra_legion_field_t * field)
 {
+
+  auto index_parts = reinterpret_cast<contra_legion_index_partitions_t**>(void_index_parts);
+  auto logical_parts = reinterpret_cast<contra_legion_logical_partitions_t**>(void_logical_parts);
 
   if (!*index_parts) *index_parts = new contra_legion_index_partitions_t;
   if (!*logical_parts) *logical_parts = new contra_legion_logical_partitions_t;
@@ -483,7 +486,6 @@ void contra_legion_get_accessor(
     uint32_t* field_id,
     contra_legion_accessor_t* acc)
 {
-
   acc->field_id = *field_id;
 
   acc->physical_region = (*regionptr)[*region_id];
@@ -1028,12 +1030,10 @@ AllocaInst* LegionTasker::createFieldArguments(
     const auto & ContextA = LegionE.ContextAlloca;
     const auto & RuntimeA = LegionE.RuntimeAlloca;
 
-    auto LauncherRT = reduceStruct(IndexLauncherType_, TheModule);
-
     std::vector<Type*> FunArgTs = {
       RuntimeA->getType(),
       ContextA->getType(),
-      LauncherRT,
+      IndexLauncherType_->getPointerTo(),
       IndexSpaceA->getType(),
       VoidPtrType_->getPointerTo(),
       VoidPtrType_->getPointerTo(),
@@ -1466,7 +1466,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   auto AccessorDataPtrT = AccessorDataType_->getPointerTo();
   auto RuntimePtrT = RuntimeType_->getPointerTo();
   std::vector<Type*> GetFieldArgTs = {
-    RuntimePtrT,
+    RuntimeA->getType(),
     RegionsA->getType(),
     NumRegionsA->getType(),
     UInt32PtrType,
@@ -1498,13 +1498,16 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     auto ArgGEP = offsetPointer(TaskArgsA, OffsetA, "args");
     Builder_.CreateCall( GetFieldDataF, {ArgGEP, FieldIdA, RegionIdA} );
     // get field pointer
+    auto TheBlock = Builder_.GetInsertBlock();
+    auto ArgPtrV = CastInst::Create(Instruction::BitCast, TaskArgAs[i], AccessorDataPtrT,
+      "cast", TheBlock);
     std::vector<Value*> GetFieldArgVs = {
       RuntimeA,
       RegionsA,
       NumRegionsA,
       RegionIdA,
       FieldIdA,
-      TaskArgAs[i] };
+      ArgPtrV };
     Builder_.CreateCall( GetFieldF, GetFieldArgVs );
     // increment
     increment(FieldIndexA, llvmValue(TheContext_, FieldIndexT, 1), "fieldid");
@@ -1800,7 +1803,6 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
   auto StartF = TheModule.getOrInsertFunction("legion_runtime_start", StartT);
 
   auto ArgcV = llvmValue(TheContext_, Int32Type_, Argc);
-  auto ArgvV = Constant::getNullValue(VoidPtrArrayT);
 
   std::vector<Constant*> ArgVs;
   for (int i=0; i<Argc; ++i) {
@@ -1811,9 +1813,14 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
   auto GVStr = new GlobalVariable(TheModule, ArrayT, true,
       GlobalValue::InternalLinkage, ConstantArr);
 
+  auto ZeroC = Constant::getNullValue(IntegerType::getInt32Ty(TheContext_));
+  std::vector<Value*> IndicesC = {ZeroC, ZeroC};
+  auto ArgvV = ConstantExpr::getGetElementPtr(
+      nullptr, GVStr, IndicesC, true);
+
   auto BackV = llvmValue(TheContext_, BoolType_, false);
 
-  std::vector<Value*> StartArgVs = { ArgcV, GVStr, BackV };
+  std::vector<Value*> StartArgVs = { ArgcV, ArgvV, BackV };
   auto RetI = Builder_.CreateCall(StartF, StartArgVs, "start");
   return RetI;
 }
@@ -2220,8 +2227,8 @@ void LegionTasker::copyFuture(
 
   auto FunT = FunctionType::get(FutureRT, FutureRT, false);
   auto FunF = TheModule.getOrInsertFunction("legion_future_copy", FunT);
-    
-  auto FutureRV = Builder_.CreateCall(FunF, ValueV, "future");
+  auto ValueRV = Builder_.CreateExtractValue(ValueV, 0);
+  auto FutureRV = Builder_.CreateCall(FunF, ValueRV, "future");
   store(FutureRV, FutureA);
 }
 
