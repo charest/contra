@@ -1,4 +1,4 @@
-task top_level()
+function top_level()
   
   var num = 1024
   var num_points = num*num

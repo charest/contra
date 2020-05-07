@@ -475,6 +475,8 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
       VarType = Identifier{TheLex_.getIdentifierStr(), getCurLoc()};
       getNextToken(); // eat the identifier
     }
+    
+    if (CurTok_ == ',') getNextToken(); // eat ','
 
     //--------------------------------------------------------------------------
     // array

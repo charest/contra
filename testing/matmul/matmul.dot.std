@@ -1,6 +1,6 @@
 digraph {
 subgraph cluster0 {
-node0[label=<TaskAST<BR /><FONT POINT-SIZE="12">top_level</FONT>>];
+node0[label=<FunctionAST<BR /><FONT POINT-SIZE="12">top_level</FONT>>];
 node0 -> node1;
 node1[label=Body];
 node1 -> node2;

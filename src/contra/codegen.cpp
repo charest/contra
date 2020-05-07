@@ -909,13 +909,16 @@ void CodeGen::visit(ArrayAccessExprAST& e)
   auto VarA = VarE->getAlloca();
   
   // Load the value.
-  auto IndexVal = runExprVisitor(*e.getIndexExpr());
+  auto IndexV = runExprVisitor(*e.getIndexExpr());
 
   if (Tasker_->isAccessor(VarA)) {
-    ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA, IndexVal);
+    ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA, IndexV);
+  }
+  else if (Tasker_->isRange(VarA)) {
+    ValueResult_ = Tasker_->loadRange(*TheModule_, VarE->getType(), VarA, IndexV);
   }
   else {
-    ValueResult_ = loadArrayValue(VarA, IndexVal, VarE->getType(), Name);
+    ValueResult_ = loadArrayValue(VarA, IndexV, VarE->getType(), Name);
   }
 }
 
@@ -1140,6 +1143,7 @@ void CodeGen::visit(CallExprAST &e) {
     auto TheBlock = Builder_.GetInsertBlock();
     auto ArgV = runExprVisitor(*e.getArgExpr(0));
     auto ToT = getLLVMType(Name);
+    ValueResult_ = nullptr;
     if (ToT == I64Type_) {
       ValueResult_ = CastInst::Create(Instruction::FPToSI, ArgV,
           llvmType<int_t>(TheContext_), "cast", TheBlock);
@@ -1148,9 +1152,13 @@ void CodeGen::visit(CallExprAST &e) {
       ValueResult_ = CastInst::Create(Instruction::SIToFP, ArgV,
           llvmType<real_t>(TheContext_), "cast", TheBlock);
     }
-    else {
-      ValueResult_ = nullptr;
-    }
+    return;
+  }
+  else if (Name == "length") {
+    auto ArgV = runExprVisitor(*e.getArgExpr(0));
+    ValueResult_ = nullptr;
+    if (Tasker_->isRange(ArgV))
+      ValueResult_ = Tasker_->getRangeSize(*TheModule_, ArgV);
     return;
   }
 
@@ -1317,10 +1325,12 @@ void CodeGen::visit(ForStmtAST& e) {
   Value* StartV = runStmtVisitor(*e.getStartExpr());
   Value* EndA = nullptr;
   if (Tasker_->isRange(StartV)) {
-    auto EndV = Builder_.CreateExtractValue(StartV, 1);
+    auto SizeV = Tasker_->getRangeSize(*TheModule_, StartV);
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
+    auto EndV = Builder_.CreateSub(SizeV, OneC);
     EndA = createEntryBlockAlloca(TheFunction, VarT, VarN+"end");
     Builder_.CreateStore(EndV, EndA);
-    StartV = Builder_.CreateExtractValue(StartV, 0);
+    StartV = llvmValue<int_t>(TheContext_, 0);
   }
   Builder_.CreateStore(StartV, VarA);
 

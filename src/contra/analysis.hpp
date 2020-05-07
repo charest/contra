@@ -33,7 +33,8 @@ private:
   VariableType BoolType_ = VariableType(Context::instance().getBoolType());
   VariableType VoidType_ = VariableType(Context::instance().getVoidType());
 
-  VariableType RangeType_ = VariableType(Context::instance().getInt64Type(),
+  VariableType RangeType_ = VariableType(
+      Context::instance().getInt64Type(),
       VariableType::Attr::Range);
   
   bool HaveTopLevelTask_ = false;

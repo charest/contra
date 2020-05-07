@@ -17,21 +17,18 @@ Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
   BinopPrecedence_(std::move(Prec))
 {
   auto & ctx = Context::instance();
-  auto IntType = ctx.getInt64Type();
-  auto RealType = ctx.getFloat64Type();
 
-  std::vector< std::pair<TypeDef*, TypeDef*> > casts = {
-    {IntType, RealType},
-    {RealType, IntType}
+  std::vector< std::tuple<std::string, VariableType, VariableType> > fun = {
+    {I64Type_.getBaseType()->getName(), I64Type_, F64Type_},
+    {F64Type_.getBaseType()->getName(), F64Type_, I64Type_},
+    {"length", I64Type_, RangeType_}
   };
 
-  for (const auto & c : casts) {
-    auto RetType = VariableType(c.first);
-    auto ArgType = VariableType(c.second);
+  for (const auto & f : fun) {
     auto Sy = std::make_unique<BuiltInFunction>(
-        c.first->getName(),
-        RetType,
-        ArgType);
+        std::get<0>(f),
+        std::get<1>(f),
+        std::get<2>(f));
     ctx.insertFunction( std::move(Sy) );
   }
 }
@@ -246,12 +243,12 @@ void Analyzer::visit(ArrayAccessExprAST& e)
 {
   const auto & Name = e.getName();
   auto VarDef = getVariable(Name, e.getLoc());
-  auto VarType = VarDef->getType();
+  const auto & VarType = VarDef->getType();
 
   // array index
   auto Loc = e.getIndexExpr()->getLoc();
   
-  if (!VarType.isArray() && !VarType.isField())
+  if (!VarType.isIndexable())
     THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
   
   auto IndexType = runExprVisitor(*e.getIndexExpr());
@@ -259,10 +256,8 @@ void Analyzer::visit(ArrayAccessExprAST& e)
     THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
         << "evaluate to an integer.", Loc );
 
-  VarType.setArray(false); // revert to scalar
-
   // result
-  TypeResult_ = VarType;
+  TypeResult_ = VarType.getIndexType();
   e.setType(TypeResult_);
   e.setVariableDef(VarDef);
 }

@@ -132,6 +132,14 @@ public:
       llvm::Value*,
       const std::string & = "") = 0;
   virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
+  virtual llvm::Value* getRangeSize(
+      llvm::Module &,
+      llvm::Value*) = 0;
+  virtual llvm::Value* loadRange(
+      llvm::Module &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) = 0;
 
   virtual bool isAccessor(llvm::Type*) const = 0;
   virtual bool isAccessor(llvm::Value*) const = 0;

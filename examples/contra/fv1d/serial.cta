@@ -22,15 +22,14 @@ function compute_flux(
   dl : f64,
   pl : f64,
   vl : f64,
+  el : f64,
   dr : f64,
   pr : f64,
   vr : f64,
+  er : f64,
   flux : [f64] )
 
-  var el : f64 = pl / (dl *(gamma-1.)) + 0.5*vl*vl
   var sl : f64 = wave_speed(gamma, dl, pl, vl) 
-  
-  var er : f64 = pr / (dr *(gamma-1.)) + 0.5*vr*vr
   var sr : f64 = wave_speed(gamma, dr, pr, vr)
 
   var smax : f64 = fmax(sl, sr)
@@ -155,8 +154,17 @@ function main()
 
     for i in ileft to iright do
 
-      compute_flux( gamma, density[i-1], pressure[i-1], velocity[i-1],
-        density[i], pressure[i], velocity[i], flux )
+      compute_flux(
+        gamma,
+        density[i-1],
+        pressure[i-1],
+        velocity[i-1],
+        energy[i-1],
+        density[i],
+        pressure[i],
+        velocity[i],
+        energy[i],
+        flux )
 
       dmassdt[i-1] = dmassdt[i-1] + flux[0]
       dmomdt [i-1] = dmomdt [i-1] + flux[1]

@@ -2577,6 +2577,31 @@ void LegionTasker::destroyRange(Module &TheModule, Value* RangeV)
 }
 
 //==============================================================================
+// get a range size
+//==============================================================================
+llvm::Value* LegionTasker::getRangeSize(Module &TheModule, Value* RangeV)
+{
+  auto StartV = Builder_.CreateExtractValue(RangeV, 0);
+  auto EndV = Builder_.CreateExtractValue(RangeV, 1);
+  auto DeltaV = Builder_.CreateSub(EndV, StartV); 
+  auto OneC = llvmValue<int_t>(TheContext_, 1);
+  return Builder_.CreateAdd(DeltaV, OneC);
+}
+
+//==============================================================================
+// get a range value
+//==============================================================================
+llvm::Value* LegionTasker::loadRange(
+    Module &TheModule,
+    Type* ElementT,
+    Value* RangeA,
+    Value* IndexV)
+{
+  return nullptr;;
+}
+
+
+//==============================================================================
 // Is this an accessor type
 //==============================================================================
 bool LegionTasker::isAccessor(Type* AccessorT) const

@@ -191,6 +191,14 @@ public:
       llvm::Value*,
       const std::string &) override;
   virtual void destroyRange(llvm::Module &, llvm::Value*) override;
+  virtual llvm::Value* getRangeSize(
+      llvm::Module &,
+      llvm::Value*) override;
+  virtual llvm::Value* loadRange(
+      llvm::Module &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) override;
   
   virtual llvm::Type* getRangeType() const
   { return IndexSpaceDataType_; }

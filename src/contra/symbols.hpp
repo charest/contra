@@ -106,17 +106,22 @@ public:
     : Type_(Type.Type_), Attrs_(Type.Attrs_)
   {}
   
-  explicit VariableType(const VariableType & Type, Attr Attrs)
+  explicit VariableType(const VariableType & Type, unsigned Attrs)
     : Type_(Type.Type_), Attrs_(Attrs)
   {}
 
-  explicit VariableType(TypeDef* Type, Attr Attrs = Attr::None)
+  explicit VariableType(TypeDef* Type, unsigned Attrs = Attr::None)
     : Type_(Type), Attrs_(Attrs)
   {}
 
   //virtual ~VariableType() = default;
 
-  const TypeDef* getBaseType() const { return Type_; }
+  TypeDef* getBaseType() const { return Type_; }
+
+  VariableType getIndexType() const {
+    auto Attrs = Attrs_ & (~Array) & (~Range) & (~Field);
+    return VariableType(Type_, Attrs);
+  }
 
   bool isArray() const { return ((Attrs_ & Attr::Array) == Attr::Array); }
   void setArray(bool IsArray=true) {
@@ -149,6 +154,8 @@ public:
   }
 
   bool isNumber() const { return (!isArray() && !isRange() && Type_->isNumber()); }
+  
+  bool isIndexable() const { return (isArray() || isRange() || isField()); }
 
   bool isCastableTo(const VariableType &To) const
   { return (isNumber() && To.isNumber()); }
