@@ -33,6 +33,13 @@ struct CMax {
   static std::unique_ptr<contra::FunctionDef> check();
 };
 
+
+struct CMin {
+  static const std::string Name;
+  static void setup(llvm::LLVMContext &) {}
+  static llvm::Function *install(llvm::LLVMContext &, llvm::Module &);
+  static std::unique_ptr<contra::FunctionDef> check();
+};
 } // namespace
 
 

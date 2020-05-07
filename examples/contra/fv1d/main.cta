@@ -1,3 +1,6 @@
+###############################################################################
+# The wave speed
+###############################################################################
 function wave_speed(
   gamma : f64,
   d : f64,
@@ -11,6 +14,9 @@ function wave_speed(
 end
   
 
+###############################################################################
+# The flux
+###############################################################################
 function compute_flux( 
   gamma : f64,
   dl : f64,
@@ -34,12 +40,42 @@ function compute_flux(
   var enerl : f64 = dl*el
   var enerr : f64 = dr*er
 
-  flux[0] = 0.5 * (moml    + momr   ) - 0.5 * smax * (dr - dl)
+  flux[0] = 0.5 * (moml + momr) - 0.5 * smax * (dr - dl)
   flux[1] = 0.5 * (moml*vl + pl + momr*vr + pr) - 0.5 * smax * (momr - moml)
   flux[2] = 0.5 * (moml*el + pl*vl + momr*er + pr*vr) - 0.5 * smax * (enerr - enerl)
   
 end
 
+###############################################################################
+# Ghost solution
+###############################################################################
+function update_ghost(
+  density : [f64],
+  velocity : [f64],
+  pressure : [f64],
+  energy : [f64],
+  ileft : i64,
+  iright : i64,
+  num_ghost : i64 )
+
+  for i in 0 until num_ghost do
+    # left
+    var jghost = ileft - num_ghost + i
+    var jinter = ileft + num_ghost - i - 1
+    density[jghost] = density[jinter]
+    pressure[jghost] = pressure[jinter]
+    velocity[jghost] = velocity[jinter]
+    energy[jghost] = energy[jinter]
+    # right
+    jghost = iright + num_ghost - i - 1
+    jinter = iright - num_ghost + i
+    density[jghost] = density[jinter]
+    pressure[jghost] = pressure[jinter]
+    velocity[jghost] = velocity[jinter]
+    energy[jghost] = energy[jinter]
+  end
+
+end
 
 ###############################################################################
 # This is the main function
@@ -47,10 +83,19 @@ end
 function main()
 
   # input parameters
-  var num_cells : i64 = 10
+  var num_cells : i64 = 1000
   var num_ghost : i64 = 1
   var xleft : f64 = 0
   var xright : f64 = 1
+
+  var cfl : f64 = 1.
+  var max_its : i64 = 1000
+
+  var max_time : f64 = 0.2
+  var gamma : f64 = 1.4
+  
+  #============================================================================
+  # geometry
 
   # compute the rest of the mesh
   var tot_cells : i64 = num_cells + num_ghost*2
@@ -64,7 +109,6 @@ function main()
   var vertices : [f64] = [0; tot_points]
   for i in ileft to iright do
     vertices[i] = xleft + f64(i-ileft) / f64(num_cells) * length
-    print("%g\n", vertices[i])
   end
   for i in 0 until num_ghost do
     vertices[ileft - num_ghost + i] = xleft - (vertices[ileft + num_ghost - i] - xleft)
@@ -79,8 +123,8 @@ function main()
     deltax[i] = vertices[i+1] - vertices[i]
   end
  
+  #============================================================================
   # initalize the solution
-  var gamma : f64 = 1.4
 
   var density, velocity, pressure, energy : [f64] = [0; tot_cells]
   for i in ileft until iright do
@@ -93,55 +137,80 @@ function main()
       pressure[i] = 0.1
       velocity[i] = 0.
     end
+    energy[i] = pressure[i] / (density[i] *(gamma-1.)) + 0.5*velocity[i]*velocity[i]
   end
   
-  for i in 0 until num_ghost do
-    # left
-    var jghost = ileft - num_ghost + i
-    var jinter = ileft + num_ghost - i
-    density[jghost] = density[jinter]
-    pressure[jghost] = pressure[jinter]
-    velocity[jghost] = velocity[jinter]
-    # right
-    jghost = iright + num_ghost - i
-    jinter = iright - num_ghost + i
-    density[jghost] = density[jinter]
-    pressure[jghost] = pressure[jinter]
-    velocity[jghost] = velocity[jinter]
-  end
+  update_ghost(density, velocity, pressure, energy, ileft, iright, num_ghost)
 
-  # compute rhs
-  var flux : [f64] = [0; 3]
-  var dmassdt, dmomdt, denerdt : [f64] = [0; tot_cells]
+  #============================================================================
+  # advance solution
 
-  for i in ileft until iright do
+  var time = 0.
 
-    compute_flux( gamma, density[i-1], pressure[i-1], velocity[i-1],
-      density[i], pressure[i], velocity[i], flux )
+  for n in 1 to max_its do
+
+    # compute rhs
+    var flux : [f64] = [0; 3]
+    var dmassdt, dmomdt, denerdt : [f64] = [0; tot_cells]
+
+    for i in ileft to iright do
+
+      compute_flux( gamma, density[i-1], pressure[i-1], velocity[i-1],
+        density[i], pressure[i], velocity[i], flux )
+
+      dmassdt[i-1] = dmassdt[i-1] + flux[0]
+      dmomdt [i-1] = dmomdt [i-1] + flux[1]
+      denerdt[i-1] = denerdt[i-1] + flux[2]
+      
+      dmassdt[i] = dmassdt[i] - flux[0]
+      dmomdt [i] = dmomdt [i] - flux[1]
+      denerdt[i] = denerdt[i] - flux[2]
+
+    end
+
+    # compute time step
+    var deltat : f64 = 0
+    for i in ileft until iright do
+      var inv_dt : f64 = wave_speed(gamma, density[i], pressure[i], velocity[i]) / deltax[i]
+      deltat = fmax( inv_dt, deltat )
+    end
+
+    deltat = cfl / deltat
+    deltat = fmin( max_time - time, deltat )
+
+    # apply the update
+    for i in ileft until iright do
+      var factor = deltat / deltax[i]
+      # density update
+      var old_density = density[i]
+      density[i] = density[i] - dmassdt[i] * factor
+      var inv_density = 1. / density[i]
+      # momentum
+      velocity[i] = (old_density*velocity[i] - dmomdt[i] * factor) * inv_density
+      # energy
+      energy[i] = (old_density*energy[i] - denerdt[i] * factor) * inv_density
+      # pressure
+      pressure[i] = (energy[i] -  0.5*velocity[i]*velocity[i]) * density[i] * (gamma-1.)
+    end
     
-    dmassdt[i-1] = dmassdt[i-1] + flux[0]
-    dmomdt [i-1] = dmomdt [i-1] + flux[1]
-    denerdt[i-1] = denerdt[i-1] + flux[3]
-    
-    dmassdt[i] = dmassdt[i] - flux[0]
-    dmomdt [i] = dmomdt [i] - flux[1]
-    denerdt[i] = denerdt[i] - flux[3]
-    
+    update_ghost(density, velocity, pressure, energy, ileft, iright, num_ghost)
+
+    time = time + deltat
+
+    print("Step %5d, Time %e\n", n, time)
+
   end
 
-  # compute time step
-  var deltat : f64 = 0
-  for i in ileft until iright do
-    var inv_dt : f64 = wave_speed(gamma, density[i], pressure[i], velocity[i]) / deltax[i]
-    deltat = fmax( inv_dt, deltat )
+  #============================================================================
+  # output
+ 
+  print("--BEGIN SOLUTION--\n")
+  print("i x d v p e\n")
+  for i in 0 until tot_cells do
+    print("%d %e %e %e %e %e\n", i, centroids[i], density[i], velocity[i], pressure[i], energy[i])
   end
-  deltat = 1. / deltat
-  print("%g\n", deltat)
+  print("--END SOLUTION--\n")
 
-  # apply the update
-  for i in ileft until iright do
-    density[i] = density[i] - dmassdt[i] * deltat / deltax[i]
-  end
 
 end
 

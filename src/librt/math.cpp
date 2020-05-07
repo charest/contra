@@ -86,4 +86,28 @@ std::unique_ptr<contra::FunctionDef> CMax::check()
   return std::make_unique<BuiltInFunction>(CMax::Name, RealType, Args);
 }
 
+//==============================================================================
+// Installs the min functions
+//==============================================================================
+const std::string CMin::Name = "fmin";
+
+Function *CMin::install(LLVMContext & TheContext, Module & TheModule)
+{
+  auto RealType = llvmType<real_t>(TheContext);
+  std::vector<Type*> Args = {RealType, RealType};
+  auto FunType = FunctionType::get( RealType, Args, false );
+
+  auto Fun = Function::Create(FunType, Function::InternalLinkage,
+      Name, TheModule);
+  return Fun;
+}
+
+std::unique_ptr<contra::FunctionDef> CMin::check()
+{
+  auto & C = Context::instance();
+  auto RealType = VariableType(C.getFloat64Type());
+  std::vector<VariableType> Args = {RealType, RealType};
+  return std::make_unique<BuiltInFunction>(CMin::Name, RealType, Args);
+}
+
 }
