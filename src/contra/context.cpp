@@ -1,5 +1,6 @@
 
 #include "context.hpp"
+#include <algorithm>
 
 namespace contra {
 
@@ -36,6 +37,9 @@ std::vector<VariableDef*> Context::getVariablesAccessedFromAbove() const
       }
     }
   );
+  std::sort(Vars.begin(), Vars.end());
+  auto last = std::unique(Vars.begin(), Vars.end());
+  Vars.erase(last, Vars.end());
   return Vars;
 }
 

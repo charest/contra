@@ -19,6 +19,109 @@ namespace contra {
 
 extern "C" {
 
+enum FieldId { INDEX_SPACE_TASK_ID = 777777 };
+ 
+void contra_legion_partition_index_space_task(
+    const void *data,
+    size_t datalen,
+    const void * userdata,
+    size_t userlen,
+    realm_id_t proc_id)
+{
+  legion_task_t task;
+  const legion_physical_region_t *regions = nullptr;
+  uint32_t num_regions = 0;
+  legion_context_t ctx;
+  legion_runtime_t runtime;
+
+  legion_task_preamble(
+    data,
+    datalen,
+    proc_id,
+    &task,
+    &regions,
+    &num_regions,
+    &ctx,
+    &runtime);
+	
+  size_t global_arglen = legion_task_get_arglen(task);
+  assert(global_arglen == sizeof(legion_field_id_t) &&
+      "Arg size mismatch in contra_legion_partition_index_space_task");
+
+  auto field_id = *(legion_field_id_t *)legion_task_get_args(task);
+  
+  assert(num_regions == 1);
+  legion_accessor_array_1d_t acc = 
+    legion_physical_region_get_field_accessor_array_1d( regions[0], field_id);
+
+  legion_logical_region_t logical_region = 
+    legion_physical_region_get_logical_region(regions[0]);
+  
+  legion_domain_t domain = 
+    legion_index_space_get_domain(runtime, logical_region.index_space);
+  legion_rect_1d_t rect = legion_domain_get_bounds_1d(domain);
+  
+  legion_rect_1d_t subrect;
+  legion_byte_offset_t offsets;
+  auto data_ptr = (legion_point_1d_t*)legion_accessor_array_1d_raw_rect_ptr(
+      acc, rect, &subrect, &offsets);
+
+  legion_domain_point_t dp = legion_task_get_index_point(task);
+  size_t my_size = subrect.hi.x[0] - subrect.lo.x[0] + 1;
+  
+  if ( dp.point_data[0] == 0 ) {
+    for (size_t i=0; i<my_size; ++i)
+      data_ptr[i].x[0] = i;
+  }
+  else {
+    for (size_t i=0; i<my_size; ++i)
+      data_ptr[i].x[0] = 2 + i;
+  }
+  
+  legion_accessor_array_1d_destroy(acc);
+  
+  void* retval = nullptr;
+  size_t retsize = 0;
+  legion_task_postamble(
+    runtime,
+    ctx,
+    retval,
+    retsize);
+}
+
+
+void contra_legion_startup() {
+  legion_execution_constraint_set_t execution_constraints =
+    legion_execution_constraint_set_create();
+
+  legion_task_layout_constraint_set_t layout_constraints =
+    legion_task_layout_constraint_set_create();
+
+  legion_execution_constraint_set_add_processor_constraint(
+    execution_constraints, LOC_PROC);
+
+  legion_task_config_options_t options{
+      /*.leaf=*/ false,
+      /*.inner=*/ false,
+      /*.idempotent=*/ false,
+      /*.replicable=*/ false};
+
+  legion_runtime_preregister_task_variant_fnptr(
+      INDEX_SPACE_TASK_ID,
+      AUTO_GENERATE_ID,
+      "contra_legion_partition_index_space_task task",
+      "contra_legion_partition_index_space_task variant",
+      execution_constraints,
+      layout_constraints,
+      options,
+      contra_legion_partition_index_space_task,
+      nullptr,
+      0);
+    
+  legion_execution_constraint_set_destroy(execution_constraints);
+  legion_task_layout_constraint_set_destroy(layout_constraints);
+}
+
 struct contra_legion_index_space_t {
   int_t start;
   int_t end;
@@ -131,31 +234,165 @@ void contra_legion_index_space_partition_from_array(
 {
   if (!*index_parts) *index_parts = new contra_legion_index_partitions_t;
 
-  legion_coloring_t coloring = legion_coloring_create();
-  
   auto ptr = static_cast<const int_t*>(arr->data);
-  int_t offset = 0;
-  for (int_t i=0; i<arr->size; ++i) {
-    legion_ptr_t lo{ offset };
-    legion_ptr_t hi{ offset + ptr[i] - 1 };
-    legion_coloring_add_range(coloring, i, lo, hi);
-    offset += ptr[i];
-  }
-
-  auto & index_part = (*index_parts)->IndexPartitions[is->index_space.id];
+  int_t expanded_size = 0;
+  int_t color_size = arr->size;
+  for (int_t i=0; i<color_size; ++i) expanded_size += ptr[i];
   
-  index_part = std::make_unique<legion_index_partition_t>(
-    legion_index_partition_create_coloring(
+  auto & index_part = (*index_parts)->IndexPartitions[is->index_space.id];
+    
+  //------------------------------------
+  // if the sizes are differeint 
+  auto index_size = is->end - is->start;
+  if (expanded_size != index_size) {
+
+    std::cout << "SPECIAL COLORING" << std::endl;
+    
+    // create coloring
+    legion_coloring_t expanded_coloring = legion_coloring_create();
+
+    int_t offset{0};
+    for (int_t i=0; i<color_size; ++i) {
+      legion_ptr_t lo{ offset };
+      legion_ptr_t hi{ offset + ptr[i] - 1 };
+      legion_coloring_add_range(expanded_coloring, i, lo, hi);
+      offset += ptr[i];
+    }
+
+    legion_index_space_t expanded_space =
+      legion_index_space_create(*runtime, *ctx, expanded_size);
+  
+    legion_index_partition_t expanded_index_part =
+      legion_index_partition_create_coloring(
+          *runtime,
+          *ctx,
+          expanded_space,
+          expanded_coloring,
+          true,
+          /*part color*/ AUTO_GENERATE_ID );
+  
+    // create field for projection
+    legion_field_space_t field_space = legion_field_space_create(*runtime, *ctx);
+    legion_field_allocator_t field_allocator = legion_field_allocator_create(
+        *runtime,
+        *ctx,
+        field_space);
+    legion_field_id_t field_id = legion_field_allocator_allocate_field(
+        field_allocator,
+        sizeof(legion_point_1d_t),
+        AUTO_GENERATE_ID );
+
+    // setup regions
+    legion_logical_region_t expanded_region = legion_logical_region_create(
+        *runtime,
+        *ctx,
+        expanded_space,
+        field_space,
+        false);
+      
+    legion_logical_partition_t expanded_logical_part = legion_logical_partition_create(
+          *runtime,
+          *ctx,
+          expanded_region,
+          expanded_index_part);
+  
+    // create args
+    legion_argument_map_t arg_map = legion_argument_map_create();
+    for (int_t i=0; i<color_size; i++) {
+      legion_task_argument_t local_task_args;
+      int_t input = 0;
+      local_task_args.args = &input;
+      local_task_args.arglen = sizeof(input);
+      legion_point_1d_t tmp_p;
+      tmp_p.x[0] = i;
+      legion_domain_point_t dp = legion_domain_point_from_point_1d(tmp_p);
+      legion_argument_map_set_point(arg_map, dp, local_task_args, true);
+    }
+  
+    legion_task_argument_t global_task_args;
+    global_task_args.args = &field_id;
+    global_task_args.arglen = sizeof(field_id);
+    
+    // launch inded task
+    legion_index_space_t color_space = legion_index_space_create(*runtime, *ctx, color_size);
+    legion_domain_t launch_domain = legion_domain_from_index_space(*runtime, color_space);
+
+    legion_index_launcher_t index_launcher = legion_index_launcher_create(
+        INDEX_SPACE_TASK_ID,
+        launch_domain,
+        global_task_args,
+        arg_map,
+        legion_predicate_true(),
+        false,
+        0,
+        0);
+
+    unsigned idx = legion_index_launcher_add_region_requirement_logical_partition(
+      index_launcher,
+      expanded_logical_part,
+      /* legion_projection_id_t */ 0,
+      WRITE_DISCARD,
+      EXCLUSIVE,
+      expanded_region,
+      /* legion_mapping_tag_id_t */ 0,
+      /* bool verified */ false);
+
+    legion_index_launcher_add_field(index_launcher, idx, field_id, /* bool inst */ true);
+
+    legion_future_map_t fm = legion_index_launcher_execute(*runtime, *ctx, index_launcher);
+    legion_future_map_wait_all_results(fm);
+    
+    // partition with results
+    index_part = std::make_unique<legion_index_partition_t>(
+      legion_index_partition_create_by_image(
         *runtime,
         *ctx,
         is->index_space,
-        coloring,
-        true,
-        /*part color*/ AUTO_GENERATE_ID ));
+        expanded_logical_part,
+        expanded_region,
+        field_id,
+        color_space,
+        /* part_kind */ COMPUTE_KIND,
+        /* color */ AUTO_GENERATE_ID,
+        /* mapper_id */ 0,
+        /* mapping_tag_id */ 0));
+
+    // clean up
+    legion_index_space_destroy(*runtime, *ctx, expanded_space);
+    legion_coloring_destroy(expanded_coloring);
+  
+
+  }
+  //------------------------------------
+  // Naive partitioning
+  else {
+  
+    // create coloring
+    legion_coloring_t coloring = legion_coloring_create();
+
+    int_t offset{0};
+    for (int_t i=0; i<color_size; ++i) {
+      legion_ptr_t lo{ offset };
+      legion_ptr_t hi{ offset + ptr[i] - 1 };
+      legion_coloring_add_range(coloring, i, lo, hi);
+      offset += ptr[i];
+    }
+  
+    index_part = std::make_unique<legion_index_partition_t>(
+      legion_index_partition_create_coloring(
+          *runtime,
+          *ctx,
+          is->index_space,
+          coloring,
+          true,
+          /*part color*/ AUTO_GENERATE_ID ));
+
+    // destroy coloring
+    legion_coloring_destroy(coloring);
+  }
+  //------------------------------------
 
   *part = *index_part;
-
-  legion_coloring_destroy(coloring);
 }
 
 //==============================================================================
@@ -170,7 +407,7 @@ void contra_legion_index_space_create(
     contra_legion_index_space_t * is)
 {
   is->start = start;
-  is->end = end;
+  is->end = end+1;
 
   int_t size = end - start + 1;
 
@@ -185,7 +422,7 @@ void contra_legion_index_space_create_from_size(
     contra_legion_index_space_t * is)
 {
   is->start = 0;
-  is->end = size-1;
+  is->end = size;
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
 }
 
@@ -413,7 +650,6 @@ void contra_legion_split_range(
   legion_domain_t color_domain = legion_task_get_index_domain(*task);
   legion_domain_point_t color = legion_task_get_index_point(*task);
 
-
   legion_index_space_t cs = legion_index_space_create_domain(
       *runtime,
       *ctx,
@@ -440,8 +676,8 @@ void contra_legion_split_range(
   legion_rect_1d_t rect = legion_domain_get_rect_1d(new_domain);
 
   is->index_space = new_is;
-  is->start = 0;
-  is->end = rect.hi.x[0] - rect.lo.x[0];
+  is->start = rect.lo.x[0];
+  is->end = rect.hi.x[0] + 1;
 
   legion_index_partition_destroy(*runtime, *ctx, index_part);
   legion_index_space_destroy(*runtime, *ctx, cs);
@@ -471,8 +707,8 @@ void contra_legion_range_from_index_partition(
   
   legion_rect_1d_t rect = legion_domain_get_rect_1d(domain);
 
-  is->start = 0;
-  is->end = rect.hi.x[0] - rect.lo.x[0];
+  is->start = rect.lo.x[0];
+  is->end = rect.hi.x[0] + 1;
 }
 
 //==============================================================================
@@ -1795,6 +2031,12 @@ void LegionTasker::setTopLevelTask(Module &TheModule, int TaskId )
 //==============================================================================
 Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 {
+
+
+  auto StartupT = FunctionType::get(VoidType_, VoidType_, false);
+  auto StartupF = TheModule.getOrInsertFunction("contra_legion_startup", StartupT);
+  Builder_.CreateCall(StartupF);
+
   auto VoidPtrArrayT = VoidPtrType_->getPointerTo();
 
   std::vector<Type*> StartArgTs = { Int32Type_, VoidPtrArrayT, BoolType_ };
@@ -2356,6 +2598,8 @@ AllocaInst* LegionTasker::createRange(
   }
   else { 
     storeStructMember(StartV, IndexSpaceA, 0, "start");
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
+    EndV = Builder_.CreateAdd(EndV, OneC);
     storeStructMember(EndV, IndexSpaceA, 1, "end");
   }
 
@@ -2391,10 +2635,8 @@ AllocaInst* LegionTasker::createRange(
   }
   else { 
     auto ZeroC = llvmValue<int_t>(TheContext_, 0);
-    auto OneC = llvmValue<int_t>(TheContext_, 1);
-    auto EndV = Builder_.CreateSub(ValueV, OneC); 
     storeStructMember(ZeroC, IndexSpaceA, 0, "start");
-    storeStructMember(EndV, IndexSpaceA, 1, "end");
+    storeStructMember(ValueV, IndexSpaceA, 1, "end");
   }
 
   
@@ -2438,10 +2680,8 @@ AllocaInst* LegionTasker::createRange(
     auto SumV = Builder_.CreateCall(FunF, ValueA);
     
     auto ZeroC = llvmValue<int_t>(TheContext_, 0);
-    auto OneC = llvmValue<int_t>(TheContext_, 1);
-    auto EndV = Builder_.CreateSub(SumV, OneC); 
     storeStructMember(ZeroC, IndexSpaceA, 0, "start");
-    storeStructMember(EndV, IndexSpaceA, 1, "end");
+    storeStructMember(SumV, IndexSpaceA, 1, "end");
   }
 
   
@@ -2577,27 +2817,47 @@ void LegionTasker::destroyRange(Module &TheModule, Value* RangeV)
 }
 
 //==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* LegionTasker::getRangeStart(Module &TheModule, Value* RangeV)
+{
+  return Builder_.CreateExtractValue(RangeV, 0);
+}
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* LegionTasker::getRangeEnd(Module &TheModule, Value* RangeV)
+{
+  Value* EndV = Builder_.CreateExtractValue(RangeV, 1);
+  auto OneC = llvmValue<int_t>(TheContext_, 1);
+  return Builder_.CreateSub(EndV, OneC);
+}
+
+
+//==============================================================================
 // get a range size
 //==============================================================================
 llvm::Value* LegionTasker::getRangeSize(Module &TheModule, Value* RangeV)
 {
   auto StartV = Builder_.CreateExtractValue(RangeV, 0);
   auto EndV = Builder_.CreateExtractValue(RangeV, 1);
-  auto DeltaV = Builder_.CreateSub(EndV, StartV); 
-  auto OneC = llvmValue<int_t>(TheContext_, 1);
-  return Builder_.CreateAdd(DeltaV, OneC);
+  return Builder_.CreateSub(EndV, StartV);
 }
 
 //==============================================================================
 // get a range value
 //==============================================================================
-llvm::Value* LegionTasker::loadRange(
+llvm::Value* LegionTasker::loadRangeValue(
     Module &TheModule,
     Type* ElementT,
     Value* RangeA,
     Value* IndexV)
 {
-  return nullptr;;
+  auto ZeroC = ConstantInt::get(TheContext_, APInt(32, 0, true));
+  Value* StartV = Builder_.CreateGEP(RangeA, {ZeroC, ZeroC});
+  StartV = Builder_.CreateLoad(llvmType<int_t>(TheContext_), StartV);
+  return Builder_.CreateAdd(StartV, IndexV);
 }
 
 

@@ -915,7 +915,7 @@ void CodeGen::visit(ArrayAccessExprAST& e)
     ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA, IndexV);
   }
   else if (Tasker_->isRange(VarA)) {
-    ValueResult_ = Tasker_->loadRange(*TheModule_, VarE->getType(), VarA, IndexV);
+    ValueResult_ = Tasker_->loadRangeValue(*TheModule_, VarE->getType(), VarA, IndexV);
   }
   else {
     ValueResult_ = loadArrayValue(VarA, IndexV, VarE->getType(), Name);

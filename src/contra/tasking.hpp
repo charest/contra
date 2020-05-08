@@ -135,7 +135,13 @@ public:
   virtual llvm::Value* getRangeSize(
       llvm::Module &,
       llvm::Value*) = 0;
-  virtual llvm::Value* loadRange(
+  virtual llvm::Value* getRangeStart(
+      llvm::Module &,
+      llvm::Value*) = 0;
+  virtual llvm::Value* getRangeEnd(
+      llvm::Module &,
+      llvm::Value*) = 0;
+  virtual llvm::Value* loadRangeValue(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,

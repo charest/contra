@@ -91,8 +91,8 @@ end
 task main()
 
   # input parameters
-  var num_parts = 4
-  var num_cells : i64 = 10
+  var num_parts = 2
+  var num_cells : i64 = 3
   var num_ghost : i64 = 1
   var xleft : f64 = 0
   var xright : f64 = 1
@@ -153,7 +153,7 @@ task main()
   var iright = tot_points - 1 - num_ghost
   
   # compute the vertices
-  for i in parts do
+  foreach i in parts do
   
     # internal
     var jleft = 0
@@ -170,25 +170,34 @@ task main()
       vertices[j] = xleft + spacing(k-ileft, num_cells) * length
     end
 
-#    # exterior
-#    if (i==0) then
-#      for j in 0 until num_ghost do
-#        vertices[jleft - num_ghost + j] = xleft - (vertices[jleft + num_ghost - j] - xleft)
-#      end
-#    elif (i==num_parts-1) then
-#      for j in 0 until num_ghost do
-#        vertices[jright + num_ghost - j] = xright + (xright - vertices[jright - num_ghost + j])
-#      end
-#    end
+    # exterior
+    if (i==0) then
+      for j in 0 until num_ghost do
+        vertices[jleft - num_ghost + j] = xleft - (vertices[jleft + num_ghost - j] - xleft)
+      end
+    elif (i==num_parts-1) then
+      for j in 0 until num_ghost do
+        vertices[jright + num_ghost - j] = xright + (xright - vertices[jright - num_ghost + j])
+      end
+    end
 
   end
 
-## now compute the cell centroids
-#    for i in 0 until tot_cells do
-#      centroids[i] = (vertices[i] + vertices[i+1]) / 2
-#      deltax[i] = vertices[i+1] - vertices[i]
-#    end
-#  end
+  # now compute the cell centroids
+  foreach i in parts do
+    partition points by point_chunks
+    #with
+    #  for j in points do
+    #    points[j] = point_offsets[j] + j - num_ghost
+    #  end
+    #end
+
+    for j in cells do
+      print("Cell (p,i)=(%d,%d) has xl=%f and xr=%f\n", i, cells[j], vertices[j], vertices[j+1])
+      #centroids[j] = (vertices[j] + vertices[j+1]) / 2
+      #deltax[j] = vertices[j+1] - vertices[j]
+    end
+  end
  
 #  #============================================================================
 #  # initalize the solution
