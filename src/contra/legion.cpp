@@ -246,7 +246,10 @@ void contra_legion_index_space_partition_from_array(
   auto index_size = is->end - is->start;
   if (expanded_size != index_size) {
 
-    std::cout << "SPECIAL COLORING" << std::endl;
+    legion_runtime_print_once(*runtime, *ctx, stdout,
+        "Index spaces partitioned by arrays, without a 'where' clause, MUST "
+        "match the size of the original index space\n");
+    abort();
     
     // create coloring
     legion_coloring_t expanded_coloring = legion_coloring_create();
@@ -576,10 +579,14 @@ void contra_legion_index_add_region_requirement(
           *index_part));
   }
 
+  legion_privilege_mode_t priviledge = READ_WRITE;
+  if (!legion_index_partition_is_disjoint(*runtime, *index_part))
+    priviledge = READ_ONLY;
+
   unsigned idx = legion_index_launcher_add_region_requirement_logical_partition(
     *launcher, *logical_part,
     /* legion_projection_id_t */ 0,
-    READ_WRITE, EXCLUSIVE,
+    priviledge, EXCLUSIVE,
     field->logical_region,
     /* legion_mapping_tag_id_t */ 0,
     /* bool verified */ false);
@@ -1061,8 +1068,7 @@ AllocaInst* LegionTasker::createPredicateTrue(Module &TheModule)
 //==============================================================================
 AllocaInst* LegionTasker::createGlobalArguments(
     Module &TheModule,
-    const std::vector<Value*> & ArgVorAs,
-    const std::vector<Value*> & ArgSizes)
+    const std::vector<TaskArgument> & ArgVorAs)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -1079,10 +1085,11 @@ AllocaInst* LegionTasker::createGlobalArguments(
 
   for (unsigned i=0; i<NumArgs; i++) {
     ArgType ArgEnum;
-    if (isFuture(ArgVorAs[i])) {
+    auto ArgVorA = ArgVorAs[i]->getValue();
+    if (isFuture(ArgVorA)) {
       ArgEnum = ArgType::Future;
     }
-    else if (isField(ArgVorAs[i])) {
+    else if (isField(ArgVorA)) {
       ArgEnum = ArgType::Field;
       FieldArgId.emplace_back(i);
     }
@@ -1105,7 +1112,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
   // count user argument sizes
   for (auto i : ValueArgId) {
     ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
-    increment(ArgSizeGEP, ArgSizes[i], "addoffset");
+    increment(ArgSizeGEP, ArgVorAs[i]->getSize(), "addoffset");
   }
   
   // add 8 bytes for each field argument
@@ -1143,13 +1150,13 @@ AllocaInst* LegionTasker::createGlobalArguments(
   Builder_.CreateStore( llvmValue(TheContext_, ArgSizeT, NumArgs), ArgSizeGEP );
   
   for (auto i : ValueArgId) {
-    auto ArgV = getAsAlloca(Builder_, TheFunction, ArgVorAs[i]);
+    auto ArgV = getAsAlloca(Builder_, TheFunction, ArgVorAs[i]->getValue());
     // load offset
     ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
     // copy
     auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
     auto OffsetArgDataPtrV = Builder_.CreateGEP(ArgDataPtrV, ArgSizeV, "args.offset");
-    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgV, 1, ArgSizes[i]); 
+    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgV, 1, ArgVorAs[i]->getSize()); 
     // increment
     ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
     increment(ArgSizeGEP, ArgSizes[i], "addoffset");
@@ -1165,7 +1172,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
 
   unsigned regidx = 0;
   for (auto i : FieldArgId) {
-    Value* ArgV = ArgVorAs[i];
+    Value* ArgV = ArgVorAs[i]->getValue();
     // load offset
     ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
     // offset data pointer
@@ -2073,8 +2080,7 @@ Value* LegionTasker::launch(
     Module &TheModule,
     const std::string & Name,
     int TaskId,
-    const std::vector<Value*> & ArgVs,
-    const std::vector<Value*> & ArgSizes)
+    const std::vector<TaskArgument> & ArgVs)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -2164,8 +2170,7 @@ Value* LegionTasker::launch(
     Module &TheModule,
     const std::string & Name,
     int TaskId,
-    const std::vector<Value*> & ArgAs,
-    const std::vector<Value*> & ArgSizes,
+    const std::vector<TaskArgument> & ArgAs,
     Value* RangeV)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();

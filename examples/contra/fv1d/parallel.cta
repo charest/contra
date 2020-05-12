@@ -115,26 +115,28 @@ task main()
   var points = {0 .. tot_points-1}
 
   # size the cell index space
-  var cell_chunks = [0; num_parts]
+  var cell_sizes = [0; num_parts]
   var chunk = num_cells / num_parts
   var remain = num_cells % num_parts
 
   for i in 0 until num_parts do
-    cell_chunks[i] = chunk
+    cell_sizes[i] = chunk
     if (remain > 0) then
-      cell_chunks[i] = cell_chunks[i] + 1
+      cell_sizes[i] = cell_sizes[i] + 1
       remain = remain - 1
     end
   end
 
   # add boundary ghosts to each side
-  cell_chunks[0] = cell_chunks[0] + num_ghost
-  cell_chunks[num_parts-1] = cell_chunks[num_parts-1] + num_ghost
+  cell_sizes[0] = cell_sizes[0] + num_ghost
+  cell_sizes[num_parts-1] = cell_sizes[num_parts-1] + num_ghost
   
   # size the points
-  var point_chunks = [0; num_parts]
+  var point_sizes = [0; num_parts]
+  var point_offsets = [0; num_parts+1]
   for i in 0 until num_parts do
-    point_chunks[i] = cell_chunks[i] + 1
+    point_sizes[i] = cell_sizes[i] + 1
+    point_offsets[i+1] = point_offsets[i] + cell_sizes[i]
   end
   
   #============================================================================
@@ -185,12 +187,11 @@ task main()
 
   # now compute the cell centroids
   foreach i in parts do
-    partition points by point_chunks
-    #with
-    #  for j in points do
-    #    points[j] = point_offsets[j] + j - num_ghost
-    #  end
-    #end
+    partition points by point_sizes where
+      for j in points do
+        points[j] = point_offsets[j] + j - num_ghost
+      end
+    end
 
     for j in cells do
       print("Cell (p,i)=(%d,%d) has xl=%f and xr=%f\n", i, cells[j], vertices[j], vertices[j+1])

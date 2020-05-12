@@ -49,7 +49,8 @@ void Tokens::setup() {
     { tok_to, "to" },
     { tok_unary, "unary" },
     { tok_until, "until" },
-    { tok_var, "var" }
+    { tok_var, "var" },
+    { tok_where, "where" }
   };
 
   // create keyword list

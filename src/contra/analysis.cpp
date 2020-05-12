@@ -546,13 +546,13 @@ void Analyzer::visit(ForeachStmtAST& e)
   createScope();
   
   auto VarId = e.getVarId();
-  insertVariable(VarId, I64Type_);
+  auto VarD = insertVariable(VarId, I64Type_);
   
-  TrackVariableAccess_ = false; // temporarily disable
-
+  const auto & BodyExprs = e.getBodyExprs();
+  
   unsigned NumParts = 0;
   bool DoParts = true;
-  for ( const auto & stmt : e.getBodyExprs() ) {
+  for ( const auto & stmt : BodyExprs ) {
     if (dynamic_cast<const PartitionStmtAST *>(stmt.get())) {
       if (!DoParts)
         THROW_NAME_ERROR("Partition statements must appear first in 'foreach' loops.",
@@ -561,14 +561,25 @@ void Analyzer::visit(ForeachStmtAST& e)
     }
     else if (DoParts) {
       DoParts = false;
-      TrackVariableAccess_ = true; // turn back on
     }
-    runStmtVisitor(*stmt);
   }
+  
+  createScope();
+  for (unsigned i=0; i<NumParts; ++i) runStmtVisitor(*BodyExprs[i]);
+  popScope();
+
+  createScope();
+  auto NumExprs = BodyExprs.size();
+  for (unsigned i=NumParts; i<NumExprs; ++i) runStmtVisitor(*BodyExprs[i]);
+  auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
+  {
+    auto it = std::find(AccessedVars.begin(), AccessedVars.end(), VarD);
+    if (it != AccessedVars.end()) AccessedVars.erase(it);
+  }
+  popScope();
 
   e.setNumPartitions(NumParts);
   
-  auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
   e.setAccessedVariables(AccessedVars);
   
   popScope();
@@ -625,6 +636,9 @@ void Analyzer::visit(AssignStmtAST& e)
 //==============================================================================
 void Analyzer::visit(PartitionStmtAST& e)
 {
+
+  TrackVariableAccess_ = false; // temporarily disable
+
   const auto & RangeId = e.getVarId();
   auto RangeDef = getVariable(RangeId);
   if (!RangeDef->getType().isRange())
@@ -636,6 +650,30 @@ void Analyzer::visit(PartitionStmtAST& e)
   if ( ColorType != I64Type_ && !ColorType.isArray() && !ColorType.isRange() )
     THROW_NAME_ERROR("Acceptable types for partitioning are integers, arrays, and ranges.",
         ColorExpr->getLoc());
+
+  TrackVariableAccess_ = true; // turn back on
+  
+  createScope();
+
+ for (const auto & Expr : e.getBodyExprs()) runStmtVisitor(*Expr);
+  
+  auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
+  
+  auto it = std::find(AccessedVars.begin(), AccessedVars.end(), RangeDef);
+  if (it != AccessedVars.end()) AccessedVars.erase(it);
+
+  for (auto V : AccessedVars) {
+    if (V->getType().isRange()) {
+      THROW_NAME_ERROR("The range '" << V->getName() << "' is not allowed "
+          << " inside the partition declaration for '" << RangeId.getName()
+          << "'.", ColorExpr->getLoc());
+    }
+  }
+  
+  e.setAccessedVariables(AccessedVars);
+
+  popScope();
+
 
   TypeResult_ = RangeDef->getType();
 }

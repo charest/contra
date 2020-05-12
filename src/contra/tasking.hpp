@@ -1,6 +1,7 @@
 #ifndef CONTRA_TASKING_HPP
 #define CONTRA_TASKING_HPP
 
+#include "taskarg.hpp"
 #include "taskinfo.hpp"
 
 #include <iostream>
@@ -74,15 +75,13 @@ public:
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &) = 0;
+      const std::vector<TaskArgument> &) = 0;
 
   virtual llvm::Value* launch(
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &,
+      const std::vector<TaskArgument> &,
       llvm::Value*) = 0;
 
   virtual bool isFuture(llvm::Value*) const = 0;

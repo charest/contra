@@ -564,10 +564,23 @@ std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
 
   auto ColorExpr = parseExpression();
 
+  // if where is included
+  ASTBlock Body;
+  if (CurTok_ == tok_where) {
+    getNextToken(); // eat where
+    while (CurTok_ != tok_end) {
+      auto E = parseExpression();
+      Body.emplace_back( std::move(E) );
+      if (CurTok_ == tok_sep) getNextToken();
+    }
+    getNextToken(); // eat end
+  }
+
   return std::make_unique<PartitionStmtAST>(
       Loc,
       Identifier{RangeName, RangeLoc},
-      std::move(ColorExpr));
+      std::move(ColorExpr),
+      std::move(Body));
 }
 
 //==============================================================================

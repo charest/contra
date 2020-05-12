@@ -581,15 +581,19 @@ protected:
 
   Identifier RangeId_;
   std::unique_ptr<NodeAST> ColorExpr_;
+  ASTBlock BodyExprs_;
+  std::vector<VariableDef*> AccessedVariables_;
 
 public:
   PartitionStmtAST(
       const SourceLocation & Loc,
       const Identifier & RangeId,
-      std::unique_ptr<NodeAST> ColorExpr) :
+      std::unique_ptr<NodeAST> ColorExpr,
+      ASTBlock BodyExprs) :
     StmtAST(Loc),
     RangeId_(RangeId),
-    ColorExpr_(std::move(ColorExpr))
+    ColorExpr_(std::move(ColorExpr)),
+    BodyExprs_(std::move(BodyExprs))
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -601,6 +605,16 @@ public:
   const auto & getVarId() const { return RangeId_; }
 
   auto getColorExpr() const { return ColorExpr_.get(); }
+  
+  bool hasBodyExprs() const { return !BodyExprs_.empty(); }
+  const auto & getBodyExprs() const { return BodyExprs_; }
+  
+  void setAccessedVariables(const std::vector<VariableDef*> & VarDefs)
+  { AccessedVariables_ = VarDefs; }
+
+  const auto & getAccessedVariables()
+  { return AccessedVariables_; }
+
 };
 
 

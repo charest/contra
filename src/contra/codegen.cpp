@@ -1189,9 +1189,9 @@ void CodeGen::visit(CallExprAST &e) {
       Tasker_->start(*TheModule_, Argc_, Argv_);
     }
     else {
-      std::vector<Value*> ArgSizes;
-      for (auto V : ArgVs) ArgSizes.emplace_back( getTypeSize<size_t>(V->getType()) );
-      FutureV = Tasker_->launch(*TheModule_, Name, TaskI.getId(), ArgVs, ArgSizes);
+      std::vector<TaskArgument> TaskArgVs;
+      for (auto V : ArgVs) TaskArgVs.emplace_back( V->getType(), V );
+      FutureV = Tasker_->launch(*TheModule_, Name, TaskI.getId(), TaskArgVs);
     }
   
     ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
@@ -1457,8 +1457,7 @@ void CodeGen::visit(ForeachStmtAST& e)
       Partitions.emplace( VarN, VarA );
     }
 
-    std::vector<Value*> TaskArgAs;
-    std::vector<Value*> TaskArgSizes;
+    std::vector<TaskArgument> TaskArgAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
       auto it = Partitions.find(Name);
@@ -1471,13 +1470,12 @@ void CodeGen::visit(ForeachStmtAST& e)
         VarA = VarE->getAlloca();
       }
       auto VarT = VarA->getType()->getPointerElementType();
-      TaskArgSizes.emplace_back( getTypeSize<size_t>(VarT) );
-      TaskArgAs.emplace_back(VarA); 
+      TaskArgAs.emplace_back(VarT, VarA); 
     }
 
     auto TaskN = e.getName();
     auto TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, TaskArgSizes, RangeV);
+    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, RangeV);
     
     popScope();
 	  ValueResult_ = UndefValue::get(VoidType_);
@@ -1577,12 +1575,31 @@ void CodeGen::visit(PartitionStmtAST & e)
 
   auto VarE = getVariable(e.getVarName());
   Value * VarA = VarE->getAlloca();
-  
-  if (isArray(ColorV)) {
-    ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, I64Type_, ColorV );
+ 
+  //------------------------------------
+  // With 'where' specifier
+  if (e.hasBodyExprs()) {
+    
+    std::vector< std::pair<Type*, Value*> > TaskArgs;
+    for ( const auto & VarD : e.getAccessedVariables() ) {
+      const auto & Name = VarD->getName();
+      auto VarE = getVariable(Name);
+      TaskArgs.emplace_back( VarE->getType(), VarE->getAlloca() );
+    }
+    
+    for (auto & Stmt : e.getBodyExprs()) runStmtVisitor(*Stmt);
+    
+    abort();
   }
+  //------------------------------------
+  // Without 'where' specifier
   else {
-    ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, ColorV );
+    if (isArray(ColorV)) {
+      ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, I64Type_, ColorV );
+    }
+    else {
+      ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, ColorV );
+    }
   }
 
 }

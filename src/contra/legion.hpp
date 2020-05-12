@@ -128,14 +128,12 @@ public:
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &) override;
+      const std::vector<TaskArgument> &) override;
   virtual llvm::Value* launch(
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &,
+      const std::vector<TaskArgument> &,
       llvm::Value*) override;
   
   virtual bool isFuture(llvm::Value*) const override;
@@ -275,8 +273,7 @@ protected:
   
   llvm::AllocaInst* createGlobalArguments(
       llvm::Module &,
-      const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &);
+      const std::vector<TaskArgument> &);
   
   void createGlobalFutures(
     llvm::Module &,

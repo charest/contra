@@ -36,6 +36,7 @@ enum Token {
   tok_range,
 
   tok_part,
+  tok_where,
 
   // operators
   tok_binary,
