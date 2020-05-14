@@ -128,12 +128,12 @@ public:
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<TaskArgument> &) override;
+      const std::vector<llvm::Value*> &) override;
   virtual llvm::Value* launch(
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<TaskArgument> &,
+      const std::vector<llvm::Value*> &,
       llvm::Value*) override;
   
   virtual bool isFuture(llvm::Value*) const override;
@@ -144,8 +144,7 @@ public:
   virtual llvm::Value* loadFuture(
       llvm::Module &,
       llvm::Value*,
-      llvm::Type*,
-      llvm::Value*) override;
+      llvm::Type*) override;
   virtual void destroyFuture(
     llvm::Module &,
     llvm::Value*) override;
@@ -234,7 +233,8 @@ public:
       llvm::Function*,
       llvm::Value*,
       llvm::Type*,
-      llvm::Value*) override;
+      llvm::Value*,
+      bool) override;
 
   virtual ~LegionTasker() = default;
 
@@ -273,7 +273,7 @@ protected:
   
   llvm::AllocaInst* createGlobalArguments(
       llvm::Module &,
-      const std::vector<TaskArgument> &);
+      const std::vector<llvm::Value*> &);
   
   void createGlobalFutures(
     llvm::Module &,

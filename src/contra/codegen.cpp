@@ -57,8 +57,6 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
     strcpy(Argv_[i], Args[i].data());
   }
 
-  Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
-
   librt::RunTimeLib::setup(TheContext_);
 
   I64Type_  = llvmType<int_t>(TheContext_);
@@ -72,6 +70,8 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
   TypeTable_.emplace( C.getVoidType()->getName(), VoidType_);
 
   VariableTable_.push_front({});
+  
+  Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
   initializeModuleAndPassManager();
 
@@ -802,10 +802,9 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
 //==============================================================================
 Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
 {
-  auto DataSizeV = getTypeSize<int_t>(VariableT);
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   auto FutureA = getAsAlloca(Builder_, TheFunction, FutureV);
-  return Tasker_->loadFuture(*TheModule_, FutureA, VariableT, DataSizeV);
+  return Tasker_->loadFuture(*TheModule_, FutureA, VariableT);
 }
 
 //==============================================================================
@@ -1189,9 +1188,7 @@ void CodeGen::visit(CallExprAST &e) {
       Tasker_->start(*TheModule_, Argc_, Argv_);
     }
     else {
-      std::vector<TaskArgument> TaskArgVs;
-      for (auto V : ArgVs) TaskArgVs.emplace_back( V->getType(), V );
-      FutureV = Tasker_->launch(*TheModule_, Name, TaskI.getId(), TaskArgVs);
+      FutureV = Tasker_->launch(*TheModule_, Name, TaskI.getId(), ArgVs);
     }
   
     ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
@@ -1445,10 +1442,18 @@ void CodeGen::visit(ForeachStmtAST& e)
     // regular
     else {
       auto EndV = runStmtVisitor(*e.getEndExpr());
+      if (e.getLoopType() == ForStmtAST::LoopType::Until) {
+        Value *OneC = llvmValue<int_t>(TheContext_, 1);
+        EndV = Builder_.CreateSub(EndV, OneC, "loopsub");
+      }
       const auto & VarN = e.getVarName();
       RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
     }
+    auto PreviousRange = CurrentRange_;
+    CurrentRange_ = RangeV;
 
+    //----------------------------------
+    // Partition Tasks
     std::map<std::string, Value*> Partitions;
     for (auto & Stmt : e.getBodyExprs()) {
       auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
@@ -1457,7 +1462,9 @@ void CodeGen::visit(ForeachStmtAST& e)
       Partitions.emplace( VarN, VarA );
     }
 
-    std::vector<TaskArgument> TaskArgAs;
+    //----------------------------------
+    // Main Task
+    std::vector<Value*> TaskArgAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
       auto it = Partitions.find(Name);
@@ -1469,8 +1476,7 @@ void CodeGen::visit(ForeachStmtAST& e)
         auto VarE = getVariable(Name);
         VarA = VarE->getAlloca();
       }
-      auto VarT = VarA->getType()->getPointerElementType();
-      TaskArgAs.emplace_back(VarT, VarA); 
+      TaskArgAs.emplace_back(VarA); 
     }
 
     auto TaskN = e.getName();
@@ -1479,6 +1485,8 @@ void CodeGen::visit(ForeachStmtAST& e)
     
     popScope();
 	  ValueResult_ = UndefValue::get(VoidType_);
+
+    CurrentRange_ = PreviousRange;
   }
 }
 
@@ -1573,33 +1581,49 @@ void CodeGen::visit(PartitionStmtAST & e)
     
   auto ColorV = runExprVisitor(*e.getColorExpr());
 
-  auto VarE = getVariable(e.getVarName());
+  const auto & VarN = e.getVarName();
+  auto VarE = getVariable(VarN);
   Value * VarA = VarE->getAlloca();
+
+  auto HasBody = e.hasBodyExprs();
+    
+  // initial partition
+  if (isArray(ColorV)) {
+    ValueResult_ = Tasker_->partition(
+        *TheModule_,
+        TheFunction,
+        VarA,
+        I64Type_,
+        ColorV,
+        !HasBody );
+  }
+  else {
+    ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, ColorV );
+  }
  
   //------------------------------------
   // With 'where' specifier
-  if (e.hasBodyExprs()) {
+  if (HasBody) {
     
-    std::vector< std::pair<Type*, Value*> > TaskArgs;
+    auto FieldE = createField(VarN, I64Type_, ValueResult_);
+    
+    std::vector<Value*> TaskArgAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
       auto VarE = getVariable(Name);
-      TaskArgs.emplace_back( VarE->getType(), VarE->getAlloca() );
+      TaskArgAs.emplace_back( VarE->getAlloca() );
     }
+    TaskArgAs.emplace_back(FieldE->getAlloca());
     
-    for (auto & Stmt : e.getBodyExprs()) runStmtVisitor(*Stmt);
+    const auto & TaskN = e.getTaskName();
+    auto TaskI = Tasker_->getTask(TaskN);
+    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, CurrentRange_);
     
-    abort();
-  }
-  //------------------------------------
-  // Without 'where' specifier
-  else {
-    if (isArray(ColorV)) {
-      ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, I64Type_, ColorV );
-    }
-    else {
-      ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, ColorV );
-    }
+    ValueResult_ = Tasker_->partition(
+        *TheModule_,
+        TheFunction,
+        VarA,
+        FieldE->getAlloca() );
   }
 
 }

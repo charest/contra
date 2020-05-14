@@ -1,7 +1,7 @@
 #ifndef CONTRA_TASKING_HPP
 #define CONTRA_TASKING_HPP
 
-#include "taskarg.hpp"
+#include "serializer.hpp"
 #include "taskinfo.hpp"
 
 #include <iostream>
@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace contra {
+
 
 //==============================================================================
 // Main tasking interface
@@ -26,10 +27,17 @@ protected:
   llvm::IRBuilder<> & Builder_;
   llvm::LLVMContext & TheContext_;
 
+  Serializer DefaultSerializer_;
+  std::map<llvm::Type*, std::unique_ptr<Serializer>> Serializer_;
+
 public:
   
-  AbstractTasker(llvm::IRBuilder<> & TheBuilder, llvm::LLVMContext & TheContext) :
-    Builder_(TheBuilder), TheContext_(TheContext)
+  AbstractTasker(
+      llvm::IRBuilder<> & TheBuilder,
+      llvm::LLVMContext & TheContext) :
+    Builder_(TheBuilder),
+    TheContext_(TheContext),
+    DefaultSerializer_(TheBuilder, TheContext)
   {}
   
   virtual ~AbstractTasker() = default;
@@ -75,13 +83,13 @@ public:
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<TaskArgument> &) = 0;
+      const std::vector<llvm::Value*> &) = 0;
 
   virtual llvm::Value* launch(
       llvm::Module &,
       const std::string &,
       int,
-      const std::vector<TaskArgument> &,
+      const std::vector<llvm::Value*> &,
       llvm::Value*) = 0;
 
   virtual bool isFuture(llvm::Value*) const = 0;
@@ -94,8 +102,7 @@ public:
   virtual llvm::Value* loadFuture(
       llvm::Module &,
       llvm::Value*,
-      llvm::Type*,
-      llvm::Value*)=0;
+      llvm::Type*)=0;
   virtual void destroyFuture(llvm::Module &, llvm::Value*) = 0;
   virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
   virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
@@ -171,7 +178,8 @@ public:
       llvm::Function*,
       llvm::Value*,
       llvm::Type*,
-      llvm::Value*) = 0;
+      llvm::Value*,
+      bool) = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -251,6 +259,12 @@ protected:
       llvm::AllocaInst* StructA,
       int i,
       const std::string & Name = "");
+
+  // Serializer
+  llvm::Value* getSize(llvm::Value*, llvm::Type*);
+  llvm::Value* serialize(llvm::Value*, llvm::Value*, llvm::Value* = nullptr);
+  llvm::Value* deserialize(llvm::AllocaInst*, llvm::Value*, llvm::Value* = nullptr);
+
 };
 
 } // namespace

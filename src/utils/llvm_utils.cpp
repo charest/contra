@@ -120,4 +120,43 @@ Value* getAsValue(
   return ValueV;
 }
 
+
+//============================================================================  
+void increment(
+    IRBuilder<> &Builder,
+    Value* OffsetA,
+    Value* IncrV,
+    const std::string & Name)
+{
+  std::string Str = Name.empty() ? "" : Name + ".";
+  auto OffsetT = OffsetA->getType()->getPointerElementType();
+  auto OffsetV = Builder.CreateLoad(OffsetT, OffsetA, Str+"offset");
+  auto NewOffsetV = Builder.CreateAdd(OffsetV, IncrV, Str+"add");
+  Builder.CreateStore( NewOffsetV, OffsetA );
+}
+
+//==============================================================================
+Value* offsetPointer(
+    IRBuilder<> &Builder,
+    Value* Pointer,
+    Value* Offset,
+    const std::string & Name)
+{
+  std::string Str = Name.empty() ? "" : Name + ".";
+  // load
+  Value* OffsetV = Offset;
+  if (Offset->getType()->isPointerTy()) {
+    auto OffsetT = Offset->getType()->getPointerElementType();
+    OffsetV = Builder.CreateLoad(OffsetT, Offset, Str+"offset");
+  }
+  // offset 
+  Value* PointerV = Pointer;
+  if (isa<AllocaInst>(Pointer)) {
+    auto PointerT = Pointer->getType()->getPointerElementType();
+    PointerV = Builder.CreateLoad(PointerT, Pointer, Str+"ptr");
+  }
+  return Builder.CreateGEP(PointerV, OffsetV);
+}
+  
+
 } // namespace

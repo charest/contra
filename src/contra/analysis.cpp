@@ -545,10 +545,10 @@ void Analyzer::visit(ForeachStmtAST& e)
       
   createScope();
   
-  auto VarId = e.getVarId();
+  const auto & VarId = e.getVarId();
   auto VarD = insertVariable(VarId, I64Type_);
   
-  const auto & BodyExprs = e.getBodyExprs();
+  auto & BodyExprs = e.getBodyExprs();
   
   unsigned NumParts = 0;
   bool DoParts = true;
@@ -565,7 +565,11 @@ void Analyzer::visit(ForeachStmtAST& e)
   }
   
   createScope();
-  for (unsigned i=0; i<NumParts; ++i) runStmtVisitor(*BodyExprs[i]);
+  for (unsigned i=0; i<NumParts; ++i) {
+    auto Expr = dynamic_cast<PartitionStmtAST*>(BodyExprs[i].get());
+    runStmtVisitor(*Expr);
+    Expr->eraseAccessedVariable(VarD);
+  }
   popScope();
 
   createScope();
@@ -655,7 +659,7 @@ void Analyzer::visit(PartitionStmtAST& e)
   
   createScope();
 
- for (const auto & Expr : e.getBodyExprs()) runStmtVisitor(*Expr);
+  for (const auto & Expr : e.getBodyExprs()) runStmtVisitor(*Expr);
   
   auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
   
@@ -671,6 +675,7 @@ void Analyzer::visit(PartitionStmtAST& e)
   }
   
   e.setAccessedVariables(AccessedVars);
+  e.setVarDef(RangeDef);
 
   popScope();
 

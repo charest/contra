@@ -14,14 +14,15 @@ namespace contra {
 class LoopLifter : public RecursiveAstVisiter {
 
   std::deque<std::unique_ptr<FunctionAST>> FunctionQueue_;
-  unsigned LoopCounter_ = 0;
+  std::map<std::string, unsigned> LoopCounters_;
 
   std::string CurrentName_;
 
-  auto getNextId() { return LoopCounter_++; }
-  auto makeName() { 
+  auto makeName(const std::string & BaseName) { 
+    auto & Id = LoopCounters_[BaseName];
     std::stringstream Name;
-    Name << "__" << CurrentName_ << "_loop" << getNextId() << "__";
+    Name << "__" << CurrentName_ << "_" << BaseName << Id << "__";
+    Id++;
     return Name.str();
   }
 

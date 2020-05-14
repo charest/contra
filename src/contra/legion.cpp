@@ -19,109 +19,6 @@ namespace contra {
 
 extern "C" {
 
-enum FieldId { INDEX_SPACE_TASK_ID = 777777 };
- 
-void contra_legion_partition_index_space_task(
-    const void *data,
-    size_t datalen,
-    const void * userdata,
-    size_t userlen,
-    realm_id_t proc_id)
-{
-  legion_task_t task;
-  const legion_physical_region_t *regions = nullptr;
-  uint32_t num_regions = 0;
-  legion_context_t ctx;
-  legion_runtime_t runtime;
-
-  legion_task_preamble(
-    data,
-    datalen,
-    proc_id,
-    &task,
-    &regions,
-    &num_regions,
-    &ctx,
-    &runtime);
-	
-  size_t global_arglen = legion_task_get_arglen(task);
-  assert(global_arglen == sizeof(legion_field_id_t) &&
-      "Arg size mismatch in contra_legion_partition_index_space_task");
-
-  auto field_id = *(legion_field_id_t *)legion_task_get_args(task);
-  
-  assert(num_regions == 1);
-  legion_accessor_array_1d_t acc = 
-    legion_physical_region_get_field_accessor_array_1d( regions[0], field_id);
-
-  legion_logical_region_t logical_region = 
-    legion_physical_region_get_logical_region(regions[0]);
-  
-  legion_domain_t domain = 
-    legion_index_space_get_domain(runtime, logical_region.index_space);
-  legion_rect_1d_t rect = legion_domain_get_bounds_1d(domain);
-  
-  legion_rect_1d_t subrect;
-  legion_byte_offset_t offsets;
-  auto data_ptr = (legion_point_1d_t*)legion_accessor_array_1d_raw_rect_ptr(
-      acc, rect, &subrect, &offsets);
-
-  legion_domain_point_t dp = legion_task_get_index_point(task);
-  size_t my_size = subrect.hi.x[0] - subrect.lo.x[0] + 1;
-  
-  if ( dp.point_data[0] == 0 ) {
-    for (size_t i=0; i<my_size; ++i)
-      data_ptr[i].x[0] = i;
-  }
-  else {
-    for (size_t i=0; i<my_size; ++i)
-      data_ptr[i].x[0] = 2 + i;
-  }
-  
-  legion_accessor_array_1d_destroy(acc);
-  
-  void* retval = nullptr;
-  size_t retsize = 0;
-  legion_task_postamble(
-    runtime,
-    ctx,
-    retval,
-    retsize);
-}
-
-
-void contra_legion_startup() {
-  legion_execution_constraint_set_t execution_constraints =
-    legion_execution_constraint_set_create();
-
-  legion_task_layout_constraint_set_t layout_constraints =
-    legion_task_layout_constraint_set_create();
-
-  legion_execution_constraint_set_add_processor_constraint(
-    execution_constraints, LOC_PROC);
-
-  legion_task_config_options_t options{
-      /*.leaf=*/ false,
-      /*.inner=*/ false,
-      /*.idempotent=*/ false,
-      /*.replicable=*/ false};
-
-  legion_runtime_preregister_task_variant_fnptr(
-      INDEX_SPACE_TASK_ID,
-      AUTO_GENERATE_ID,
-      "contra_legion_partition_index_space_task task",
-      "contra_legion_partition_index_space_task variant",
-      execution_constraints,
-      layout_constraints,
-      options,
-      contra_legion_partition_index_space_task,
-      nullptr,
-      0);
-    
-  legion_execution_constraint_set_destroy(execution_constraints);
-  legion_task_layout_constraint_set_destroy(layout_constraints);
-}
-
 struct contra_legion_index_space_t {
   int_t start;
   int_t end;
@@ -156,6 +53,11 @@ struct contra_legion_logical_partitions_t {
   using partition_pair = std::pair<legion_field_id_t, legion_index_partition_id_t>;
   std::map< partition_pair, std::unique_ptr<legion_logical_partition_t> > LogicalPartitions;
 };
+
+//==============================================================================
+// Additional startup operations
+//==============================================================================
+void contra_legion_startup() {}
 
 //==============================================================================
 /// index space creation
@@ -198,6 +100,9 @@ void contra_legion_index_space_partition(
   *part = *index_part;
 }
 
+//==============================================================================
+/// index space creation
+//==============================================================================
 void contra_legion_index_space_partition_from_size(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
@@ -224,13 +129,17 @@ void contra_legion_index_space_partition_from_size(
   *part = *index_part;
 }
 
+//==============================================================================
+/// index space creation
+//==============================================================================
 void contra_legion_index_space_partition_from_array(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
     dopevector_t *arr,
     contra_legion_index_space_t * is,
     contra_legion_index_partitions_t ** index_parts,
-    legion_index_partition_t * part)
+    legion_index_partition_t * part,
+    bool do_report)
 {
   if (!*index_parts) *index_parts = new contra_legion_index_partitions_t;
 
@@ -246,10 +155,11 @@ void contra_legion_index_space_partition_from_array(
   auto index_size = is->end - is->start;
   if (expanded_size != index_size) {
 
-    legion_runtime_print_once(*runtime, *ctx, stdout,
-        "Index spaces partitioned by arrays, without a 'where' clause, MUST "
-        "match the size of the original index space\n");
-    abort();
+    if (do_report) {
+      legion_runtime_print_once(*runtime, *ctx, stdout,
+          "Index spaces partitioned by arrays, without a 'where' clause, MUST "
+          "match the size of the original index space\n");
+    }
     
     // create coloring
     legion_coloring_t expanded_coloring = legion_coloring_create();
@@ -264,15 +174,18 @@ void contra_legion_index_space_partition_from_array(
 
     legion_index_space_t expanded_space =
       legion_index_space_create(*runtime, *ctx, expanded_size);
+    std::cout << "Partitinoing ehrherher" << std::endl;
+    std::cout << "expanded index space " << expanded_space.id << std::endl;
   
-    legion_index_partition_t expanded_index_part =
+    index_part = std::make_unique<legion_index_partition_t>(
       legion_index_partition_create_coloring(
           *runtime,
           *ctx,
           expanded_space,
           expanded_coloring,
           true,
-          /*part color*/ AUTO_GENERATE_ID );
+          /*part color*/ AUTO_GENERATE_ID ));
+#if 0
   
     // create field for projection
     legion_field_space_t field_space = legion_field_space_create(*runtime, *ctx);
@@ -360,8 +273,9 @@ void contra_legion_index_space_partition_from_array(
         /* mapper_id */ 0,
         /* mapping_tag_id */ 0));
 
+#endif
     // clean up
-    legion_index_space_destroy(*runtime, *ctx, expanded_space);
+    //legion_index_space_destroy(*runtime, *ctx, expanded_space);
     legion_coloring_destroy(expanded_coloring);
   
 
@@ -397,6 +311,55 @@ void contra_legion_index_space_partition_from_array(
 
   *part = *index_part;
 }
+
+//==============================================================================
+/// index space creation
+//==============================================================================
+void contra_legion_index_space_partition_from_field(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    contra_legion_field_t *field,
+    contra_legion_index_space_t * is,
+    contra_legion_index_partitions_t ** index_parts,
+    legion_index_partition_t * part)
+{
+  std::cout << "EHRHERHREEHHER" << std::endl;
+  if (!*index_parts) *index_parts = new contra_legion_index_partitions_t;
+
+  auto & index_part = (*index_parts)->IndexPartitions[is->index_space.id];
+  auto expanded_index_part = *index_part;
+
+  legion_logical_partition_t logical_part = 
+    legion_logical_region_get_parent_logical_partition(
+        *runtime,
+        field->logical_region);
+
+   legion_index_space_t color_space = legion_index_partition_get_color_space(
+       *runtime,
+       expanded_index_part);
+    
+  // partition with results
+  index_part = std::make_unique<legion_index_partition_t>(
+    legion_index_partition_create_by_image(
+      *runtime,
+      *ctx,
+      is->index_space,
+      logical_part,
+      field->logical_region,
+      field->field_id,
+      color_space,
+      /* part_kind */ COMPUTE_KIND,
+      /* color */ AUTO_GENERATE_ID,
+      /* mapper_id */ 0,
+      /* mapping_tag_id */ 0));
+  
+  // old one is no longer any use
+  legion_index_partition_destroy(*runtime, *ctx, expanded_index_part);
+  legion_index_space_destroy(*runtime, *ctx, field->index_space);
+
+  *part = *index_part;
+}
+
 
 //==============================================================================
 /// index space partitioning
@@ -486,13 +449,46 @@ void contra_legion_field_create(
     fld->field_allocator, data_size, AUTO_GENERATE_ID );
   legion_field_id_attach_name(*runtime, fld->field_space, fld->field_id, name, false);  
 
+  std::cout << "field on index space " << is->index_space.id << std::endl;
   fld->logical_region =
     legion_logical_region_create(*runtime, *ctx, is->index_space,
         fld->field_space, false);
   
-  legion_runtime_fill_field(*runtime, *ctx, fld->logical_region,
-    fld->logical_region, fld->field_id, init, data_size, legion_predicate_true());
+  if (init && data_size>0) {
+    legion_runtime_fill_field(*runtime, *ctx, fld->logical_region,
+      fld->logical_region, fld->field_id, init, data_size, legion_predicate_true());
+  }
 }
+
+//==============================================================================
+/// field creation
+//==============================================================================
+void contra_legion_field_create_from_partition(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    const char *name,
+    size_t data_size,
+    void* init,
+    legion_index_partition_t * index_part,
+    contra_legion_field_t * fld)
+{
+  contra_legion_index_space_t is;
+
+  is.index_space = 
+    legion_index_partition_get_parent_index_space(
+        *runtime,
+        *index_part);
+  legion_domain_t domain = legion_index_space_get_domain(
+      *runtime,
+      is.index_space);
+  legion_rect_1d_t rect = legion_domain_get_rect_1d(domain);
+
+  is.start = rect.lo.x[0];
+  is.end = rect.hi.x[0] + 1;
+
+  contra_legion_field_create(runtime, ctx, name, data_size, init, &is, fld);
+}
+
 
 
 //==============================================================================
@@ -1068,7 +1064,7 @@ AllocaInst* LegionTasker::createPredicateTrue(Module &TheModule)
 //==============================================================================
 AllocaInst* LegionTasker::createGlobalArguments(
     Module &TheModule,
-    const std::vector<TaskArgument> & ArgVorAs)
+    const std::vector<Value*> & ArgVorAs)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -1082,10 +1078,14 @@ AllocaInst* LegionTasker::createGlobalArguments(
   std::vector<Constant*> ArgEnumC(NumArgs);
   std::vector<unsigned> ValueArgId;
   std::vector<unsigned> FieldArgId;
+  
+  auto ArgSizesT = ArrayType::get(SizeType_, NumArgs);
+  auto ArgSizesA = createEntryBlockAlloca(TheFunction, ArgSizesT);
+
 
   for (unsigned i=0; i<NumArgs; i++) {
     ArgType ArgEnum;
-    auto ArgVorA = ArgVorAs[i]->getValue();
+    auto ArgVorA = ArgVorAs[i];
     if (isFuture(ArgVorA)) {
       ArgEnum = ArgType::Future;
     }
@@ -1098,6 +1098,9 @@ AllocaInst* LegionTasker::createGlobalArguments(
       ArgEnum = ArgType::None;
     }
     ArgEnumC[i] = llvmValue(TheContext_, CharType_, static_cast<char>(ArgEnum));
+  
+    auto ArgSizeV = getSize(ArgVorA, SizeType_);
+    storeStructMember(ArgSizeV, ArgSizesA, i);
   }
 
   //----------------------------------------------------------------------------
@@ -1112,7 +1115,9 @@ AllocaInst* LegionTasker::createGlobalArguments(
   // count user argument sizes
   for (auto i : ValueArgId) {
     ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
-    increment(ArgSizeGEP, ArgVorAs[i]->getSize(), "addoffset");
+    auto ArgSizesV = Builder_.CreateLoad(ArgSizesT, ArgSizesA);
+    auto ArgSizeV = Builder_.CreateExtractValue(ArgSizesV, i);
+    increment(ArgSizeGEP, ArgSizeV, "addoffset");
   }
   
   // add 8 bytes for each field argument
@@ -1150,16 +1155,17 @@ AllocaInst* LegionTasker::createGlobalArguments(
   Builder_.CreateStore( llvmValue(TheContext_, ArgSizeT, NumArgs), ArgSizeGEP );
   
   for (auto i : ValueArgId) {
-    auto ArgV = getAsAlloca(Builder_, TheFunction, ArgVorAs[i]->getValue());
+    auto ArgV = getAsAlloca(Builder_, TheFunction, ArgVorAs[i]);
     // load offset
     ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
     // copy
     auto ArgDataPtrV = loadStructMember(TaskArgsA, 0, "args");
-    auto OffsetArgDataPtrV = Builder_.CreateGEP(ArgDataPtrV, ArgSizeV, "args.offset");
-    Builder_.CreateMemCpy(OffsetArgDataPtrV, 1, ArgV, 1, ArgVorAs[i]->getSize()); 
+    serialize(ArgV, ArgDataPtrV, ArgSizeGEP);
     // increment
     ArgSizeGEP = accessStructMember(TaskArgsA, 1, "arglen");
-    increment(ArgSizeGEP, ArgSizes[i], "addoffset");
+    auto ArgSizesV = Builder_.CreateLoad(ArgSizesT, ArgSizesA);
+    auto ArgSizeV = Builder_.CreateExtractValue(ArgSizesV, i);
+    increment(ArgSizeGEP, ArgSizeV, "addoffset");
   }
   
   //----------------------------------------------------------------------------
@@ -1172,7 +1178,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
 
   unsigned regidx = 0;
   for (auto i : FieldArgId) {
-    Value* ArgV = ArgVorAs[i]->getValue();
+    Value* ArgV = ArgVorAs[i];
     // load offset
     ArgSizeV = loadStructMember(TaskArgsA, 1, "arglen");
     // offset data pointer
@@ -1544,20 +1550,17 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
 
   auto NumArgs = TaskArgTs.size();
   std::vector<AllocaInst*> TaskArgAs;
-  std::vector<Value*> ArgSizes;
   for (unsigned i=0; i<NumArgs; ++i) {
     auto ArgN = TaskArgNs[i] + ".alloca";
     if (!IsPartition.empty() && IsPartition[i]) {
       auto ArgT = IndexPartitionType_;
       auto ArgA = createEntryBlockAlloca(WrapperF, ArgT, ArgN);
       TaskArgAs.emplace_back(ArgA);
-      ArgSizes.emplace_back( getTypeSize<size_t>(Builder_, ArgT) );
     }
     else {
       auto ArgT = TaskArgTs[i];
       auto ArgA = createEntryBlockAlloca(WrapperF, ArgT, ArgN);
       TaskArgAs.emplace_back(ArgA);
-      ArgSizes.emplace_back( getTypeSize<size_t>(Builder_, ArgT) );
     }
   }
   
@@ -1588,12 +1591,10 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     Builder_.CreateCondBr(CondV, ThenBB, MergeBB);
     // Emit then block
     Builder_.SetInsertPoint(ThenBB);
-    // offset 
-    auto ArgGEP = offsetPointer(TaskArgsA, OffsetA, "args");
     // copy
-    memCopy(ArgGEP, TaskArgAs[i], ArgSizes[i]);
+    auto ArgSizeV = deserialize(TaskArgAs[i], TaskArgsA, OffsetA);
     // increment
-    increment(OffsetA, ArgSizes[i], "offset");
+    increment(OffsetA, ArgSizeV, "offset");
     // finish then
     ThenBB->getFirstNonPHI();
     Builder_.CreateBr(MergeBB);
@@ -1681,7 +1682,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     auto ArgA = TaskArgAs[i];
     auto ArgT = ArgA->getType()->getPointerElementType();
     // copy
-    auto ArgV = loadFuture(TheModule, FutureA, ArgT, ArgSizes[i]);
+    auto ArgV = loadFuture(TheModule, FutureA, ArgT);
     Builder_.CreateStore( ArgV, ArgA );
     // consume the future
     destroyFuture(TheModule, FutureA);
@@ -1850,7 +1851,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
 
     // return size
     auto RetsizeT = RetsizeV->getType();
-    RetsizeV = getTypeSize(Builder_, ResultT, RetsizeT);
+    RetsizeV = getSize(ResultV, RetsizeT);
     auto RetsizeA = createEntryBlockAlloca(TheFunction, RetsizeT, "retsize");
     Builder_.CreateStore( RetsizeV, RetsizeA );
 
@@ -1869,6 +1870,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
     RetvalV = Builder_.CreateLoad(RetvalT, RetvalA);
     RetsizeV = Builder_.CreateLoad(RetsizeT, RetsizeA);
     Builder_.CreateMemCpy(RetvalV, 1, ResultA, 1, RetsizeV); 
+    serialize(ResultA, RetvalV);
 
 
     // final loads
@@ -2080,15 +2082,15 @@ Value* LegionTasker::launch(
     Module &TheModule,
     const std::string & Name,
     int TaskId,
-    const std::vector<TaskArgument> & ArgVs)
+    const std::vector<Value*> & ArgVs)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
+
   //----------------------------------------------------------------------------
   // Global arguments
   std::vector<unsigned> FutureArgId;
   std::vector<unsigned> FieldArgId;
-  auto TaskArgsA = createGlobalArguments(TheModule, ArgVs, ArgSizes);
+  auto TaskArgsA = createGlobalArguments(TheModule, ArgVs);
   
  
   //----------------------------------------------------------------------------
@@ -2170,7 +2172,7 @@ Value* LegionTasker::launch(
     Module &TheModule,
     const std::string & Name,
     int TaskId,
-    const std::vector<TaskArgument> & ArgAs,
+    const std::vector<Value*> & ArgAs,
     Value* RangeV)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
@@ -2182,12 +2184,12 @@ Value* LegionTasker::launch(
   auto & IndexPartInfoA = LegionE.PartInfoAlloca;
 
   if (!IndexPartInfoA) IndexPartInfoA = createPartitionInfo(TheModule);
-  
+
   //----------------------------------------------------------------------------
   // Global arguments
   std::vector<unsigned> FutureArgId;
   std::vector<unsigned> FieldArgId;
-  auto TaskArgsA = createGlobalArguments(TheModule, ArgAs, ArgSizes);
+  auto TaskArgsA = createGlobalArguments(TheModule, ArgAs);
 
   //----------------------------------------------------------------------------
   // Predicate
@@ -2380,8 +2382,7 @@ Value* LegionTasker::launch(
 Value* LegionTasker::loadFuture(
     Module &TheModule,
     Value* FutureA,
-    Type *DataT,
-    Value* DataSizeV)
+    Type *DataT)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
@@ -2396,9 +2397,8 @@ Value* LegionTasker::loadFuture(
   auto DataPtrA = createEntryBlockAlloca(TheFunction, VoidPtrType_, "future.alloca");
   Builder_.CreateStore(DataPtrV, DataPtrA);
 
-  DataPtrV = Builder_.CreateLoad(VoidPtrType_, DataPtrA);
   auto DataA = createEntryBlockAlloca(TheFunction, DataT);
-  memCopy(DataPtrV, DataA, DataSizeV);
+  deserialize(DataA, DataPtrA);
 
   return Builder_.CreateLoad(DataT, DataA, "future");
 }
@@ -2517,11 +2517,19 @@ AllocaInst* LegionTasker::createField(
   const auto & RuntimeA = LegionE.RuntimeAlloca;
   
   auto NameV = llvmString(TheContext_, TheModule, VarN);
-  auto DataSizeV = getTypeSize<size_t>(Builder_, VarT);
-  
-  Value* IndexSpaceA = getAsAlloca(Builder_, TheFunction, RangeV);
-  VarV = getAsAlloca(Builder_, TheFunction, VarV);
 
+  Value* DataSizeV;
+  if (VarV) {
+    DataSizeV = getTypeSize<size_t>(Builder_, VarT);
+    VarV = getAsAlloca(Builder_, TheFunction, VarV);
+  }
+  else {
+    DataSizeV = llvmValue<size_t>(TheContext_, 0);
+    VarV = Constant::getNullValue(VoidPtrType_);
+  }
+    
+  Value* IndexSpaceA = getAsAlloca(Builder_, TheFunction, RangeV);
+  
   std::vector<Value*> FunArgVs = {
     RuntimeA,
     ContextA,
@@ -2533,10 +2541,13 @@ AllocaInst* LegionTasker::createField(
   auto FunArgTs = llvmTypes(FunArgVs);
     
   auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
-  auto FunF = TheModule.getOrInsertFunction("contra_legion_field_create", FunT);
-    
-  Builder_.CreateCall(FunF, FunArgVs);
   
+  std::string FunN = isRange(RangeV) ?
+    "contra_legion_field_create" : "contra_legion_field_create_from_partition";
+  
+  auto FunF = TheModule.getOrInsertFunction(FunN, FunT);
+  Builder_.CreateCall(FunF, FunArgVs);
+    
   return FieldA;
 }
 
@@ -2714,6 +2725,7 @@ AllocaInst* LegionTasker::partition(
   
   auto IndexPartA = createEntryBlockAlloca(TheFunction, IndexPartitionType_);
 
+  //------------------------------------
   if (isRange(ValueA)) {
     ValueA = getAsAlloca(Builder_, TheFunction, ValueA);
 
@@ -2732,6 +2744,25 @@ AllocaInst* LegionTasker::partition(
   
     Builder_.CreateCall(FunF, FunArgVs);
   }
+  //------------------------------------
+  else if (isField(ValueA)) {
+    std::vector<Value*> FunArgVs = {
+      RuntimeA,
+      ContextA,
+      ValueA,
+      IndexSpaceA,
+      IndexPartInfoA,
+      IndexPartA};
+    auto FunArgTs = llvmTypes(FunArgVs);
+
+    auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+    auto FunF = TheModule.getOrInsertFunction(
+        "contra_legion_index_space_partition_from_field", FunT);
+  
+    Builder_.CreateCall(FunF, FunArgVs);
+    std::cout << "HERHEHERHEHEHR" << std::endl;
+  }
+  //------------------------------------
   else {
     auto ValueV = getAsValue(Builder_, ValueA);
 
@@ -2750,6 +2781,7 @@ AllocaInst* LegionTasker::partition(
   
     Builder_.CreateCall(FunF, FunArgVs);
   }
+  //------------------------------------
 
   return IndexPartA;
     
@@ -2763,7 +2795,8 @@ AllocaInst* LegionTasker::partition(
     Function* TheFunction,
     Value* IndexSpaceA,
     Type*,
-    Value* ValueV)
+    Value* ValueV,
+    bool ReportSizeError)
 {
 
   auto & LegionE = getCurrentTask();
@@ -2784,7 +2817,9 @@ AllocaInst* LegionTasker::partition(
     ValueA,
     IndexSpaceA,
     IndexPartInfoA,
-    IndexPartA};
+    IndexPartA,
+    llvmValue<bool>(TheContext_, ReportSizeError)
+  };
   auto FunArgTs = llvmTypes(FunArgVs);
     
   auto FunT = FunctionType::get(VoidType_, FunArgTs, false);

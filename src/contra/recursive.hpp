@@ -135,6 +135,7 @@ public:
   virtual void visit(PartitionStmtAST&e) {
     if (preVisit(e)) { return; }
     e.getColorExpr()->accept(*this);
+    visitBlock(e.getBodyExprs());
     postVisit(e);
   }
   

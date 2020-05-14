@@ -1,11 +1,16 @@
 #include "tasking.hpp"
 
+#include "utils/llvm_utils.hpp"
+
 namespace contra {
 
 using namespace llvm;
+using namespace utils;
 
 //==============================================================================
-Type* AbstractTasker::reduceStruct(StructType * StructT, const Module &TheModule) const
+Type* AbstractTasker::reduceStruct(
+    StructType * StructT,
+    const Module &TheModule) const
 {
   auto NumElem = StructT->getNumElements();
   auto ElementTs = StructT->elements();
@@ -16,7 +21,9 @@ Type* AbstractTasker::reduceStruct(StructType * StructT, const Module &TheModule
 }
 
 //==============================================================================
-Type* AbstractTasker::reduceArray(ArrayType * ArrayT, const Module &TheModule) const
+Type* AbstractTasker::reduceArray(
+    ArrayType * ArrayT,
+    const Module &TheModule) const
 {
   auto NumElem = ArrayT->getNumElements();
   auto ElementT = ArrayT->getElementType();
@@ -43,11 +50,17 @@ Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
 }
 
 //==============================================================================
-void AbstractTasker::sanitize(std::vector<Value*> & Vs, const Module &TheModule ) const
-{ for (auto & V : Vs ) V = sanitize(V, TheModule); }
+void AbstractTasker::sanitize(
+    std::vector<Value*> & Vs,
+    const Module &TheModule ) const
+{
+  for (auto & V : Vs ) V = sanitize(V, TheModule);
+}
 
 //==============================================================================
-Value* AbstractTasker::load(Value * Alloca, const Module &TheModule,
+Value* AbstractTasker::load(
+    Value * Alloca,
+    const Module &TheModule,
     std::string Str) const
 {
   if (!Str.empty()) Str += ".";
@@ -88,33 +101,28 @@ void AbstractTasker::store(Value* Val, Value * Alloca) const
   }
 }
 //==============================================================================
-Value* AbstractTasker::offsetPointer(AllocaInst* PointerA, AllocaInst* OffsetA,
+Value* AbstractTasker::offsetPointer(
+    AllocaInst* PointerA,
+    AllocaInst* OffsetA,
     const std::string & Name)
 {
-  std::string Str = Name.empty() ? "" : Name + ".";
-  // load
-  auto OffsetT = OffsetA->getAllocatedType();
-  auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, Str+"offset");
-  // offset 
-  auto PointerT = PointerA->getAllocatedType();
-  auto BaseT = PointerT->getPointerElementType();
-  auto TaskArgsV = Builder_.CreateLoad(PointerT, PointerA, Str+"ptr");
-  return Builder_.CreateGEP(BaseT, TaskArgsV, OffsetV, Str+"gep");
+  return utils::offsetPointer(Builder_, PointerA, OffsetA, Name);
 }
   
 //==============================================================================
-void AbstractTasker::increment(Value* OffsetA, Value* IncrV,
+void AbstractTasker::increment(
+    Value* OffsetA,
+    Value* IncrV,
     const std::string & Name)
 {
-  std::string Str = Name.empty() ? "" : Name + ".";
-  auto OffsetT = OffsetA->getType()->getPointerElementType();
-  auto OffsetV = Builder_.CreateLoad(OffsetT, OffsetA, Str);
-  auto NewOffsetV = Builder_.CreateAdd(OffsetV, IncrV, Str+"add");
-  Builder_.CreateStore( NewOffsetV, OffsetA );
+  return utils::increment(Builder_, OffsetA, IncrV, Name);
 }
  
 //==============================================================================
-void AbstractTasker::memCopy(Value* SrcGEP, AllocaInst* TgtA, Value* SizeV, 
+void AbstractTasker::memCopy(
+    Value* SrcGEP,
+    AllocaInst* TgtA,
+    Value* SizeV, 
     const std::string & Name)
 {
   std::string Str = Name.empty() ? "" : Name + ".";
@@ -125,7 +133,9 @@ void AbstractTasker::memCopy(Value* SrcGEP, AllocaInst* TgtA, Value* SizeV,
 }
 
 //==============================================================================
-Value* AbstractTasker::accessStructMember(AllocaInst* StructA, int i,
+Value* AbstractTasker::accessStructMember(
+    AllocaInst* StructA,
+    int i,
     const std::string & Name)
 {
   std::vector<Value*> MemberIndices = {
@@ -137,7 +147,9 @@ Value* AbstractTasker::accessStructMember(AllocaInst* StructA, int i,
 }
 
 //==============================================================================
-Value* AbstractTasker::loadStructMember(AllocaInst* StructA, int i,
+Value* AbstractTasker::loadStructMember(
+    AllocaInst* StructA,
+    int i,
     const std::string & Name)
 {
   auto ValueGEP = accessStructMember(StructA, i, Name);
@@ -146,7 +158,10 @@ Value* AbstractTasker::loadStructMember(AllocaInst* StructA, int i,
 }
 
 //==============================================================================
-void AbstractTasker::storeStructMember(Value* ValueV, AllocaInst* StructA, int i,
+void AbstractTasker::storeStructMember(
+    Value* ValueV,
+    AllocaInst* StructA,
+    int i,
     const std::string & Name)
 {
   auto ValueGEP = accessStructMember(StructA, i, Name);
@@ -187,7 +202,8 @@ TaskInfo AbstractTasker::popTask(const std::string & Name)
 }
 
 //==============================================================================
-void AbstractTasker::destroyFutures(Module & TheModule,
+void AbstractTasker::destroyFutures(
+    Module & TheModule,
     const std::vector<Value*> & Futures)
 {
   for (auto Future : Futures )
@@ -195,7 +211,8 @@ void AbstractTasker::destroyFutures(Module & TheModule,
 }
 
 //==============================================================================
-void AbstractTasker::destroyFields(Module & TheModule,
+void AbstractTasker::destroyFields(
+    Module & TheModule,
     const std::vector<Value*> & Fields)
 {
   for (auto Field : Fields )
@@ -203,7 +220,8 @@ void AbstractTasker::destroyFields(Module & TheModule,
 }
 
 //==============================================================================
-void AbstractTasker::destroyRanges(Module & TheModule,
+void AbstractTasker::destroyRanges(
+    Module & TheModule,
     const std::vector<Value*> & Ranges)
 {
   for (auto IS : Ranges )
@@ -211,7 +229,8 @@ void AbstractTasker::destroyRanges(Module & TheModule,
 }
 
 //==============================================================================
-void AbstractTasker::destroyAccessors(Module & TheModule,
+void AbstractTasker::destroyAccessors(
+    Module & TheModule,
     const std::vector<Value*> & Accessors)
 {
   for (auto Acc : Accessors )
@@ -232,4 +251,40 @@ void AbstractTasker::postregisterTasks(Module & TheModule)
     postregisterTask(TheModule, task_pair.first, task_pair.second);
 }
  
+//==============================================================================
+Value* AbstractTasker::getSize(Value* Val, Type* ResultT)
+{
+  auto ValT = Val->getType();
+  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
+  auto it = Serializer_.find(ValT);
+  if (it != Serializer_.end()) return it->second->getSize(Val, ResultT);
+
+  // default behaviour
+  return DefaultSerializer_.getSize(Val, ResultT);
+}
+
+Value* AbstractTasker::serialize(Value* Val, Value* DataPtrV, Value* OffsetA)
+{
+  auto ValT = Val->getType();
+  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
+  auto it = Serializer_.find(ValT);
+  if (it != Serializer_.end())
+    return it->second->serialize(Val, DataPtrV, OffsetA);
+  else
+    return DefaultSerializer_.serialize(Val, DataPtrV, OffsetA);
+}
+
+Value* AbstractTasker::deserialize(
+    AllocaInst* ValA,
+    Value* DataPtrV,
+    Value* OffsetA)
+{
+  auto ValT = ValA->getAllocatedType();
+  auto it = Serializer_.find(ValT);
+  if (it != Serializer_.end())
+    return it->second->deserialize(ValA, DataPtrV, OffsetA);
+  else
+    return DefaultSerializer_.deserialize(ValA, DataPtrV, OffsetA);
+}
+
 } // namespace

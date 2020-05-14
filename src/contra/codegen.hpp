@@ -34,7 +34,7 @@ class CodeGen : public RecursiveAstVisiter {
   using Function = llvm::Function;
   using Type = llvm::Type;
   using Value = llvm::Value;
-  using VariableTable = std::map<std::string, std::shared_ptr<VariableAlloca>>;
+  using VariableTable = std::map<std::string, VariableAlloca>;
   
   // LLVM builder types  
   llvm::LLVMContext TheContext_;
@@ -48,6 +48,7 @@ class CodeGen : public RecursiveAstVisiter {
   // visitor results
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
+  Value* CurrentRange_ = nullptr;
 
   // symbol tables
   std::map<std::string, Type*> TypeTable_;
@@ -233,7 +234,7 @@ private:
 
   Type* getLLVMType(const VariableType & Ty)
   {
-    if (Ty.isArray()) { std::cout << "array" << std::endl; abort(); }
+    if (Ty.isArray()) return ArrayType_;
     if (Ty.isRange()) return Tasker_->getRangeType();
     if (Ty.isField()) { std::cout << "field" << std::endl; abort(); }
     if (Ty.isFuture()) { std::cout << "future" << std::endl; abort(); }
@@ -382,7 +383,11 @@ private:
       const std::string &VarName,
       Type* VarType);
 
-  VariableAlloca * createField(const std::string &, Type*, Value*, Value*);
+  VariableAlloca * createField(
+      const std::string &,
+      Type*,
+      Value*,
+      Value* = nullptr);
 };
 
 } // namespace

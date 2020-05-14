@@ -8,6 +8,7 @@
 #include "sourceloc.hpp"
 #include "symbols.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <deque>
 #include <iostream>
@@ -584,6 +585,11 @@ protected:
   ASTBlock BodyExprs_;
   std::vector<VariableDef*> AccessedVariables_;
 
+  VariableDef* Var_;
+
+  std::string TaskName_;
+  bool HasBody_ = false;
+
 public:
   PartitionStmtAST(
       const SourceLocation & Loc,
@@ -593,7 +599,8 @@ public:
     StmtAST(Loc),
     RangeId_(RangeId),
     ColorExpr_(std::move(ColorExpr)),
-    BodyExprs_(std::move(BodyExprs))
+    BodyExprs_(std::move(BodyExprs)),
+    HasBody_(!BodyExprs_.empty())
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -606,15 +613,42 @@ public:
 
   auto getColorExpr() const { return ColorExpr_.get(); }
   
-  bool hasBodyExprs() const { return !BodyExprs_.empty(); }
+  bool hasBodyExprs() const { return HasBody_; }
   const auto & getBodyExprs() const { return BodyExprs_; }
   
   void setAccessedVariables(const std::vector<VariableDef*> & VarDefs)
   { AccessedVariables_ = VarDefs; }
+  
+  void eraseAccessedVariable(const std::string & VarN)
+  {
+    auto it = std::find_if(
+        AccessedVariables_.begin(),
+        AccessedVariables_.end(), 
+        [&](auto Def) { return Def->getName() == VarN; });
+    if (it != AccessedVariables_.end())
+      AccessedVariables_.erase(it);
+  }
+  
+  void eraseAccessedVariable(VariableDef* VarD)
+  {
+    auto it = std::find(
+        AccessedVariables_.begin(),
+        AccessedVariables_.end(),
+        VarD);
+    if (it != AccessedVariables_.end())
+      AccessedVariables_.erase(it);
+  }
 
   const auto & getAccessedVariables()
   { return AccessedVariables_; }
+  
+  const std::string &getTaskName() const { return TaskName_; }
+  void setTaskName(const std::string& Name) { TaskName_ = Name; }
 
+  auto moveBodyExprs() { return std::move(BodyExprs_); }
+
+  auto getVarDef() const { return Var_; }
+  void setVarDef(VariableDef* Var) { Var_ = Var; }
 };
 
 

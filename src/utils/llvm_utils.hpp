@@ -162,6 +162,21 @@ llvm::Value* getAsValue(
 llvm::Value* getAsValue(
     llvm::IRBuilder<> &,
     llvm::Value*);
+
+//============================================================================  
+void increment(
+    llvm::IRBuilder<> &,
+    llvm::Value* OffsetA,
+    llvm::Value* IncrV,
+    const std::string & Name = "");
+
+//============================================================================  
+llvm::Value* offsetPointer(
+    llvm::IRBuilder<> &,
+    llvm::Value* PointerA,
+    llvm::Value* OffsetA,
+    const std::string & Name = "");
+
 } // namespace
 
 #endif // CONFIG_HPP
