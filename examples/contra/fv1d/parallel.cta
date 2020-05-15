@@ -188,10 +188,11 @@ task main()
   # now compute the cell centroids
   foreach i in parts do
     partition points by point_sizes where
-      print("%d\n", i)
-      #for j in points do
-      #  points[j] = point_offsets[j] + j - num_ghost
-      #end
+      print("i=%d\n", i)
+      for j in points do
+        print("i=%d, j=%d, points[j]=%di, num_ghost=%d, point_offset[i]=%d\n", i, j, points[j], num_ghost, point_offsets[i])
+        points[j] = point_offsets[j] + j - num_ghost
+      end
     end
 
     for j in cells do

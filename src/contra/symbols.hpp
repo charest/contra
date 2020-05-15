@@ -90,7 +90,8 @@ public:
     Future = (1u << 2),
     Global = (1u << 3),
     Range  = (1u << 4),
-    Field  = (1u << 5)
+    Field  = (1u << 5),
+    Partition = (1u << 6)
   };
 
 protected:
@@ -123,6 +124,8 @@ public:
     return VariableType(Type_, Attrs);
   }
 
+  void reset() { Attrs_ = Attr::None; }
+
   bool isArray() const { return ((Attrs_ & Attr::Array) == Attr::Array); }
   void setArray(bool IsArray=true) {
     if (IsArray) Attrs_ |= Attr::Array;
@@ -153,6 +156,12 @@ public:
     else Attrs_ &= ~Attr::Field;
   }
 
+  bool isPartition() const { return ((Attrs_ & Attr::Partition) == Attr::Partition); }
+  void setPartition(bool IsPartition=true) {
+    if (IsPartition) Attrs_ |= Attr::Partition;
+    else Attrs_ &= ~Attr::Partition;
+  }
+
   bool isNumber() const { return (!isArray() && !isRange() && Type_->isNumber()); }
   
   bool isIndexable() const { return (isArray() || isRange() || isField()); }
@@ -181,8 +190,10 @@ public:
       if (obj.isFuture()) out << "(F)";
       if (obj.isField()) out << "(Fld)";
       if (obj.isArray()) out << "[";
+      if (obj.isRange()) out << "{";
       out << obj.Type_->getName();
       if (obj.isArray()) out << "]";
+      if (obj.isRange()) out << "}";
     }
     else {
       out << "undef";

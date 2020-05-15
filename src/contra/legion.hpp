@@ -102,7 +102,7 @@ public:
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
       bool,
-      const std::vector<bool> & = {}) override;
+      const std::map<std::string, VariableType> & = {}) override;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -134,7 +134,8 @@ public:
       const std::string &,
       int,
       const std::vector<llvm::Value*> &,
-      llvm::Value*) override;
+      llvm::Value*,
+      bool) override;
   
   virtual bool isFuture(llvm::Value*) const override;
   virtual llvm::AllocaInst* createFuture(
@@ -235,6 +236,12 @@ public:
       llvm::Type*,
       llvm::Value*,
       bool) override;
+  
+  virtual bool isPartition(llvm::Type*) const;
+  virtual bool isPartition(llvm::Value*) const;
+  
+  virtual llvm::Type* getPointType() const override
+  { return PointType_; }
 
   virtual ~LegionTasker() = default;
 
@@ -281,7 +288,7 @@ protected:
     const std::vector<llvm::Value*> &,
     bool IsIndex);
   
-  llvm::AllocaInst* createFieldArguments(
+  void createFieldArguments(
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
@@ -309,6 +316,7 @@ protected:
       llvm::AllocaInst*&);
 
   llvm::AllocaInst* createPartitionInfo(llvm::Module&);
+  void destroyPartitionInfo(llvm::Module&);
 };
 
 } // namepsace

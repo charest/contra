@@ -64,6 +64,8 @@ class CodeGen : public RecursiveAstVisiter {
   Type* F64Type_ = nullptr;
   Type* VoidType_ = nullptr;
   Type* ArrayType_ = nullptr;
+  Type* AccessorType_ = nullptr;
+  Type* PointType_ = nullptr;
 
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;

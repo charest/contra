@@ -1,3 +1,4 @@
+#include "context.hpp"
 #include "loops.hpp"
 
 namespace contra {
@@ -21,11 +22,23 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
     std::string PartTaskName = makeName("partition");
     PartExpr->setTaskName(PartTaskName);
 
+    auto PartDef = PartExpr->getVarDef();
     auto AccessedVars = PartExpr->getAccessedVariables();
-    std::vector<bool> VarIsPartition(AccessedVars.size()+1, false);
+    AccessedVars.emplace_back(PartDef);
+  
+    std::string FieldName = "__"+PartVarName+"_field__";
+    auto FieldType = VariableType(PointType_, VariableType::Attrs::Field);
+    auto S = std::make_unique<VariableDef>(FieldName, SourceLocation(), FieldType);
+    auto res = Context::instance().insertVariable( std::move(S) );
+    AccessedVars.emplace_back(res.get());
 
-    AccessedVars.emplace_back(PartExpr->getVarDef());
-    VarIsPartition.back() = true;
+   
+    std::map<std::string, VariableType> VarOverride;
+    auto & PartOverrideType = VarOverride[PartVarName];
+    PartOverrideType = PartDef->getType();
+    PartOverrideType.reset();
+    PartOverrideType.setPartition();
+
     
     // find mine to st partition
 
@@ -34,14 +47,21 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
         std::move(PartExpr->moveBodyExprs()),
         LoopVarName,
         AccessedVars,
-        VarIsPartition);
+        VarOverride);
   
     addFunctionAST(std::move(PartitionTask));
   }
 
-  std::vector<bool> VarIsPartition;
-  for (auto VarD : e.getAccessedVariables())
-    VarIsPartition.emplace_back( PartitionNs.count(VarD->getName()) );
+  std::map<std::string, VariableType> VarOverride;
+  for (auto VarD : e.getAccessedVariables()) {
+    const auto & VarN = VarD->getName();
+    if (PartitionNs.count(VarN)) {
+      auto & OverrideType = VarOverride[VarN];
+      OverrideType = VarD->getType();
+      OverrideType.reset();
+      OverrideType.setPartition();
+    }
+  }
 
   // lift out the foreach
   std::string LoopTaskName = makeName("loop");
@@ -53,7 +73,7 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
       std::move(e.moveBodyExprs()),
       LoopVarName,
       e.getAccessedVariables(),
-      VarIsPartition);
+      VarOverride);
 
   addFunctionAST(std::move(IndexTask));
 

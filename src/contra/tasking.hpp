@@ -11,6 +11,7 @@
 
 namespace contra {
 
+class VariableType;
 
 //==============================================================================
 // Main tasking interface
@@ -60,7 +61,7 @@ public:
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
       bool,
-      const std::vector<bool> & = {}) = 0;
+      const std::map<std::string, VariableType> & = {}) = 0;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -90,7 +91,8 @@ public:
       const std::string &,
       int,
       const std::vector<llvm::Value*> &,
-      llvm::Value*) = 0;
+      llvm::Value*,
+      bool = true) = 0;
 
   virtual bool isFuture(llvm::Value*) const = 0;
 
@@ -180,6 +182,8 @@ public:
       llvm::Type*,
       llvm::Value*,
       bool) = 0;
+  
+  virtual llvm::Type* getPointType() const = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);

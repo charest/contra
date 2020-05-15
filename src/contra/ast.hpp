@@ -1001,7 +1001,7 @@ class IndexTaskAST : public FunctionAST {
 
   std::string LoopVarName_;
   std::vector<VariableDef*> Vars_;
-  std::vector<bool> VarIsPartitioned_;
+  std::map<std::string, VariableType> VarOverrides_;
 
 public:
 
@@ -1010,11 +1010,11 @@ public:
       ASTBlock Body,
       const std::string & LoopVar,
       const std::vector<VariableDef*>& Vars,
-      const std::vector<bool>& VarIsPartitioned) :
+      const std::map<std::string, VariableType>& VarOverrides) :
     FunctionAST(Name, std::move(Body), true),
     LoopVarName_(LoopVar),
     Vars_(Vars),
-    VarIsPartitioned_(VarIsPartitioned)
+    VarOverrides_(VarOverrides)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -1030,7 +1030,7 @@ public:
   const auto & getLoopVariableName() const { return LoopVarName_; }
   const auto & getName() const { return Name_; }
 
-  const auto & getVarIsPartitioned() const { return VarIsPartitioned_; }
+  const auto & getVarOverrides() const { return VarOverrides_; }
 
 };
 

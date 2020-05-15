@@ -63,6 +63,8 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
   F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
   ArrayType_ = librt::DopeVector::DopeVectorType;
+  AccessorType_ = Tasker_->getAccessorType();
+  PointType_ = Tasker_->getPointType();
 
   auto & C = Context::instance();
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
@@ -1512,8 +1514,12 @@ void CodeGen::visit(AssignStmtAST & e)
   // array[i] = scalar
   if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr())) {
     auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
+
     if (Tasker_->isAccessor(VariableA)) {
       Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
+    }
+    else if (Tasker_->isRange(VariableA)) {
+      std::cout << "SPECIAL CASE FOUND HEREHEHRHEH" << std::endl;
     }
     else {
       storeArrayValue(VariableV, VariableA, IndexV, VarName);
@@ -1558,6 +1564,12 @@ void CodeGen::visit(AssignStmtAST & e)
     VariableV = loadFuture(VariableT, VariableV);
     Builder_.CreateStore(VariableV, VariableA);
   }
+  //---------------------------------------------------------------------------
+  // Range = value
+  //else if (Tasker_->isRange(VariableV)) {
+  //  std::cout << "range " << VarName << std::endl;
+  //  abort();
+  //}
   //---------------------------------------------------------------------------
   // scalar = scalar
   else {
@@ -1605,25 +1617,33 @@ void CodeGen::visit(PartitionStmtAST & e)
   // With 'where' specifier
   if (HasBody) {
     
-    auto FieldE = createField(VarN, I64Type_, ValueResult_);
+    Value* InitV = llvmValue(TheContext_, I64Type_, -1);
+    auto FieldE = createField("__"+VarN+"_field__", PointType_, ValueResult_, InitV);
     
     std::vector<Value*> TaskArgAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
       auto VarE = getVariable(Name);
-      TaskArgAs.emplace_back( VarE->getAlloca() );
+        TaskArgAs.emplace_back( VarE->getAlloca() );
     }
+    TaskArgAs.emplace_back(ValueResult_);
     TaskArgAs.emplace_back(FieldE->getAlloca());
     
     const auto & TaskN = e.getTaskName();
     auto TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, CurrentRange_);
+    Tasker_->launch(
+        *TheModule_,
+        TaskN,
+        TaskI.getId(),
+        TaskArgAs,
+        CurrentRange_,
+        false);
     
     ValueResult_ = Tasker_->partition(
         *TheModule_,
         TheFunction,
         VarA,
-        FieldE->getAlloca() );
+        FieldE->getAlloca());
   }
 
 }
@@ -1996,18 +2016,25 @@ void CodeGen::visit(IndexTaskAST& e)
   }
   
   auto TaskN = e.getName();
+  const auto & VarOverrides = e.getVarOverrides();
 
   // get global args
   std::vector<Type*> TaskArgTs;
   std::vector<std::string> TaskArgNs;
   for ( const auto & VarE : e.getVariableDefs() ) {
     const auto & VarN = VarE->getName();
-    const auto & VarT = VarE->getType();
     TaskArgNs.emplace_back( VarN );
-    if (VarT.isField()) 
-      TaskArgTs.emplace_back( Tasker_->getAccessorType() ); 
-    else
+    // check overrides
+    auto vit = VarOverrides.find(VarN);
+    bool OverrideField = (vit != VarOverrides.end() && vit->second.isField());
+    // overrided field types
+    const auto & VarT = VarE->getType();
+    if (VarT.isField() || OverrideField) { 
+      TaskArgTs.emplace_back( AccessorType_ ); 
+    }
+    else {
       TaskArgTs.emplace_back( getLLVMType(VarT) ); 
+    }
   }
       
 	// generate wrapped task
@@ -2017,7 +2044,7 @@ void CodeGen::visit(IndexTaskAST& e)
       TaskArgNs,
       TaskArgTs,
       true,
-      e.getVarIsPartitioned());
+      VarOverrides);
 
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
