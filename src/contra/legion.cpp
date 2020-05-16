@@ -1308,7 +1308,6 @@ void LegionTasker::createFieldArguments(
       IndexLauncherType_->getPointerTo(),
       IndexSpaceA->getType(),
       VoidPtrType_->getPointerTo(),
-      VoidPtrType_->getPointerTo(),
       FieldDataType_->getPointerTo()
     };
 
@@ -2072,7 +2071,7 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 {
 
 
-  auto StartupT = FunctionType::get(VoidType_, VoidType_, false);
+  auto StartupT = FunctionType::get(VoidType_, false);
   auto StartupF = TheModule.getOrInsertFunction("contra_legion_startup", StartupT);
   Builder_.CreateCall(StartupF);
 
