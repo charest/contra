@@ -25,9 +25,12 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
     auto PartDef = PartExpr->getVarDef();
     auto AccessedVars = PartExpr->getAccessedVariables();
     AccessedVars.emplace_back(PartDef);
-  
+
+    auto & ctx = Context::instance();
+    auto PointType = ctx.insertType(std::make_unique<BuiltInTypeDef>("point")).get();
+
     std::string FieldName = "__"+PartVarName+"_field__";
-    auto FieldType = VariableType(PointType_, VariableType::Attrs::Field);
+    auto FieldType = VariableType(PointType, VariableType::Field);
     auto S = std::make_unique<VariableDef>(FieldName, SourceLocation(), FieldType);
     auto res = Context::instance().insertVariable( std::move(S) );
     AccessedVars.emplace_back(res.get());

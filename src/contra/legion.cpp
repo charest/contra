@@ -50,6 +50,16 @@ struct contra_legion_partitions_t {
   
   using partition_pair = std::pair<legion_field_id_t, legion_index_partition_id_t>;
   std::map< partition_pair, std::unique_ptr<legion_logical_partition_t> > LogicalPartitions;
+
+  std::map< legion_index_space_id_t, legion_index_space_id_t > IndexSpaces;
+
+  legion_index_space_id_t getIndexSpace(legion_index_space_id_t id)
+  {
+    auto parent = id;
+    auto it = IndexSpaces.find(id);
+    if (it != IndexSpaces.end()) parent = it->second;
+    return parent;
+  }
 };
 
 //==============================================================================
@@ -145,9 +155,9 @@ void contra_legion_index_space_partition_from_array(
   int_t expanded_size = 0;
   int_t color_size = arr->size;
   for (int_t i=0; i<color_size; ++i) expanded_size += ptr[i];
-  
-  auto & index_part = (*parts)->IndexPartitions[is->index_space.id];
-    
+
+  legion_index_partition_t * index_part = nullptr;
+
   //------------------------------------
   // if the sizes are differeint 
   auto index_size = is->end - is->start;
@@ -157,6 +167,7 @@ void contra_legion_index_space_partition_from_array(
       legion_runtime_print_once(*runtime, *ctx, stdout,
           "Index spaces partitioned by arrays, without a 'where' clause, MUST "
           "match the size of the original index space\n");
+      abort();
     }
     
     // create coloring
@@ -172,15 +183,25 @@ void contra_legion_index_space_partition_from_array(
 
     legion_index_space_t expanded_space =
       legion_index_space_create(*runtime, *ctx, expanded_size);
-  
-    index_part = std::make_unique<legion_index_partition_t>(
-      legion_index_partition_create_coloring(
-          *runtime,
-          *ctx,
-          expanded_space,
-          expanded_coloring,
-          true,
-          /*part color*/ AUTO_GENERATE_ID ));
+    
+    auto res = (*parts)->IndexPartitions.emplace(
+        is->index_space.id,
+        std::make_unique<legion_index_partition_t>(
+          legion_index_partition_create_coloring(
+            *runtime,
+            *ctx,
+            expanded_space,
+            expanded_coloring,
+            true,
+            /*part color*/ AUTO_GENERATE_ID )));
+    if (!res.second) {
+      legion_runtime_print_once(*runtime, *ctx, stdout,
+          "You are clobbering a previous index partition!\n");
+      abort();
+    }
+    index_part = res.first->second.get();
+
+    (*parts)->IndexSpaces[expanded_space.id] = is->index_space.id;
 
 #if 0
   
@@ -292,14 +313,22 @@ void contra_legion_index_space_partition_from_array(
       offset += ptr[i];
     }
   
-    index_part = std::make_unique<legion_index_partition_t>(
-      legion_index_partition_create_coloring(
-          *runtime,
-          *ctx,
-          is->index_space,
-          coloring,
-          true,
-          /*part color*/ AUTO_GENERATE_ID ));
+    auto res = (*parts)->IndexPartitions.emplace(
+        is->index_space.id,
+        std::make_unique<legion_index_partition_t>(
+          legion_index_partition_create_coloring(
+            *runtime,
+            *ctx,
+            is->index_space,
+            coloring,
+            true,
+            /*part color*/ AUTO_GENERATE_ID )));
+    if (!res.second) {
+      legion_runtime_print_once(*runtime, *ctx, stdout,
+          "You are clobbering a previous index partition!\n");
+      abort();
+    }
+    index_part = res.first->second.get();
 
     // destroy coloring
     legion_coloring_destroy(coloring);
@@ -320,12 +349,9 @@ void contra_legion_index_space_partition_from_field(
     contra_legion_partitions_t ** parts,
     legion_index_partition_t * part)
 {
-  
-  std::cout << "about to look for " << is->index_space.id << std::endl;
-  for (auto & i : (*parts)->IndexPartitions) {
-    std::cout << "have " << i.first << std::endl;
-  }
-  auto & index_part = (*parts)->IndexPartitions[is->index_space.id];
+ 
+  auto parent = (*parts)->getIndexSpace(field->index_space.id);
+  auto & index_part = (*parts)->IndexPartitions[parent];
   auto expanded_index_part = *index_part;
 
   auto & logical_part =
@@ -540,11 +566,13 @@ void contra_legion_index_add_region_requirement(
   auto parts = reinterpret_cast<contra_legion_partitions_t**>(void_parts);
 
   if (!*parts) *parts = new contra_legion_partitions_t;
+  
+  auto parent = (*parts)->getIndexSpace(field->index_space.id);
 
   // index partition 
   auto & index_part =
-    (*parts)->IndexPartitions[field->index_space.id];
-  
+    (*parts)->IndexPartitions[parent];
+
   if (!index_part) {
     index_part = std::make_unique<legion_index_partition_t>(
       legion_index_partition_create_equal(
@@ -714,7 +742,6 @@ void contra_legion_get_accessor(
   
   acc->logical_region = 
     legion_physical_region_get_logical_region(acc->physical_region);
-
 
   acc->domain = 
     legion_index_space_get_domain(*runtime, acc->logical_region.index_space);
@@ -1237,8 +1264,6 @@ AllocaInst* LegionTasker::createPartitionInfo(
 void LegionTasker::destroyPartitionInfo(
     llvm::Module & TheModule )
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
   const auto & LegionE = getCurrentTask();
   const auto & ContextA = LegionE.ContextAlloca;
   const auto & RuntimeA = LegionE.RuntimeAlloca;
@@ -3000,5 +3025,27 @@ bool LegionTasker::isPartition(Value* PartA) const
   if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
   return isPartition(PartT);
 }
+
+//==============================================================================
+// Make a point with a value
+//==============================================================================
+Value* LegionTasker::makePoint(std::intmax_t val) const
+{
+  auto ValC = llvmValue<legion_coord_t>(TheContext_, val);
+  return ConstantArray::get(Point1dType_, ValC);
+}
+
+Value* LegionTasker::makePoint(Value* ValV) const
+{
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto PointA = createEntryBlockAlloca(TheFunction, Point1dType_);
+  auto ZeroC = Constant::getNullValue(Int32Type_);
+  std::vector<Value*> IndicesC = {ZeroC,  ZeroC};
+  auto PointGEP = Builder_.CreateGEP(PointA, IndicesC);
+  ValV = getAsValue(Builder_, ValV);
+	Builder_.CreateStore(ValV, PointGEP);
+  return PointA; 
+}
+
 
 }

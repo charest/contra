@@ -31,7 +31,6 @@ protected:
   llvm::Type* MappingTagIdType_ = nullptr;
   llvm::Type* FutureIdType_ = nullptr;
   llvm::Type* CoordType_ = nullptr;
-  llvm::Type* Point1dType_ = nullptr;
   llvm::Type* IndexSpaceIdType_ = nullptr;
   llvm::Type* IndexTreeIdType_ = nullptr;
   llvm::Type* TypeTagType_ = nullptr;
@@ -39,6 +38,8 @@ protected:
   llvm::Type* FieldIdType_ = nullptr;
   llvm::Type* RegionTreeIdType_ = nullptr;
   llvm::Type* IndexPartitionIdType_ = nullptr;
+  
+  llvm::ArrayType* Point1dType_ = nullptr;
   
   llvm::StructType* TaskType_ = nullptr;
   llvm::StructType* RegionType_ = nullptr;
@@ -241,7 +242,10 @@ public:
   virtual bool isPartition(llvm::Value*) const;
   
   virtual llvm::Type* getPointType() const override
-  { return PointType_; }
+  { return Point1dType_; }
+
+  virtual llvm::Value* makePoint(std::intmax_t) const override;
+  virtual llvm::Value* makePoint(llvm::Value*) const override;
 
   virtual ~LegionTasker() = default;
 

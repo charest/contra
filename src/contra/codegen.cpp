@@ -58,6 +58,8 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
   }
 
   librt::RunTimeLib::setup(TheContext_);
+  
+  Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
   I64Type_  = llvmType<int_t>(TheContext_);
   F64Type_  = llvmType<real_t>(TheContext_);
@@ -71,9 +73,9 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
   TypeTable_.emplace( C.getFloat64Type()->getName(),  F64Type_);
   TypeTable_.emplace( C.getVoidType()->getName(), VoidType_);
 
+  TypeTable_.emplace( "point", PointType_ );
+
   VariableTable_.push_front({});
-  
-  Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
 
   initializeModuleAndPassManager();
 
@@ -1506,8 +1508,8 @@ void CodeGen::visit(AssignStmtAST & e)
   auto VariableV = runExprVisitor(*e.getRightExpr());
 
   // Look up the name.
-  const auto & VarName = LHSE->getName();
-  auto VarE = getVariable(VarName);
+  const auto & VarN = LHSE->getName();
+  auto VarE = getVariable(VarN);
   Value* VariableA = VarE->getAlloca();
 
   //---------------------------------------------------------------------------
@@ -1519,10 +1521,13 @@ void CodeGen::visit(AssignStmtAST & e)
       Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
     }
     else if (Tasker_->isRange(VariableA)) {
-      std::cout << "SPECIAL CASE FOUND HEREHEHRHEH" << std::endl;
+      auto FieldVarE = getVariable("__"+VarN+"_field__");
+      auto FieldVarA = FieldVarE->getAlloca();
+      auto PointVarV = Tasker_->makePoint(VariableV); 
+      Tasker_->storeAccessor(*TheModule_, PointVarV, FieldVarA, IndexV);
     }
     else {
-      storeArrayValue(VariableV, VariableA, IndexV, VarName);
+      storeArrayValue(VariableV, VariableA, IndexV, VarN);
     }
   }
   //---------------------------------------------------------------------------
@@ -1564,12 +1569,6 @@ void CodeGen::visit(AssignStmtAST & e)
     VariableV = loadFuture(VariableT, VariableV);
     Builder_.CreateStore(VariableV, VariableA);
   }
-  //---------------------------------------------------------------------------
-  // Range = value
-  //else if (Tasker_->isRange(VariableV)) {
-  //  std::cout << "range " << VarName << std::endl;
-  //  abort();
-  //}
   //---------------------------------------------------------------------------
   // scalar = scalar
   else {
@@ -1617,7 +1616,7 @@ void CodeGen::visit(PartitionStmtAST & e)
   // With 'where' specifier
   if (HasBody) {
     
-    Value* InitV = llvmValue(TheContext_, I64Type_, -1);
+    Value* InitV = Tasker_->makePoint(-1);
     auto FieldE = createField("__"+VarN+"_field__", PointType_, ValueResult_, InitV);
     
     std::vector<Value*> TaskArgAs;

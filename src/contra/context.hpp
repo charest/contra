@@ -101,6 +101,9 @@ public:
     }
     return it;
   }
+  
+  auto insertType(std::unique_ptr<TypeDef> V)
+  { return TypeTable_.insert(std::move(V)); }
 
   auto insertVariable(std::unique_ptr<VariableDef> V)
   { return CurrentScope_->Variables.insert(std::move(V)); }

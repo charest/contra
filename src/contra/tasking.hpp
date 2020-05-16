@@ -184,6 +184,8 @@ public:
       bool) = 0;
   
   virtual llvm::Type* getPointType() const = 0;
+  virtual llvm::Value* makePoint(std::intmax_t) const = 0;
+  virtual llvm::Value* makePoint(llvm::Value*) const = 0;
 
   // registration
   void preregisterTasks(llvm::Module &);

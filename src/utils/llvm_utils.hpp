@@ -51,7 +51,7 @@ struct LlvmType< T,
     return nullptr;
   }
   
-  static llvm::Value* getValue(llvm::LLVMContext & TheContext, T Val)
+  static llvm::Constant* getValue(llvm::LLVMContext & TheContext, T Val)
   {
     auto IntType = getType(TheContext);
     auto Size = IntType->getIntegerBitWidth();
@@ -67,7 +67,7 @@ struct LlvmType<
   static llvm::Type* getType(llvm::LLVMContext & TheContext)
   {return llvm::Type::getFloatTy(TheContext); }
 
-  static llvm::Value* getValue(llvm::LLVMContext & TheContext, T Val)
+  static llvm::Constant* getValue(llvm::LLVMContext & TheContext, T Val)
   { return llvm::ConstantFP::get(TheContext, llvm::APFloat(Val)); }
 };
 
@@ -78,7 +78,7 @@ struct LlvmType<
   static llvm::Type* getType(llvm::LLVMContext & TheContext)
   {return llvm::Type::getDoubleTy(TheContext); }
   
-  static llvm::Value* getValue(llvm::LLVMContext & TheContext, T Val)
+  static llvm::Constant* getValue(llvm::LLVMContext & TheContext, T Val)
   { return llvm::ConstantFP::get(TheContext, llvm::APFloat(Val)); }
 };
 
