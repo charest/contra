@@ -126,7 +126,7 @@ task main()
       remain = remain - 1
     end
   end
-
+  
   # add boundary ghosts to each side
   cell_sizes[0] = cell_sizes[0] + num_ghost
   cell_sizes[num_parts-1] = cell_sizes[num_parts-1] + num_ghost
@@ -291,10 +291,10 @@ task main()
   #============================================================================
   # advance solution
       
-  var cells_expanded = {0 .. tot_cells_with_ghost-1}
-  var dmassdt : f64, over(cells_expanded) = 0
-  var dmomdt  : f64, over(cells_expanded) = 0
-  var denerdt : f64, over(cells_expanded) = 0
+  var cells_disjoint = {0 .. tot_cells-1}
+  var dmassdt : f64, over(cells_disjoint) = 0
+  var dmomdt  : f64, over(cells_disjoint) = 0
+  var denerdt : f64, over(cells_disjoint) = 0
 
   var time = 0.
 
@@ -330,7 +330,7 @@ task main()
     # Compute residual
     foreach i in parts do
     
-      partition cells_expanded by cell_sizes_with_ghost
+      partition cells_disjoint by cell_sizes
 
       partition cells by cell_sizes_with_ghost where
         for j in cells do
@@ -341,8 +341,17 @@ task main()
       var local_cells = length(cells)
       
       # determine left and right indices
-      var jleft = num_ghost
-      var jright = local_cells - num_ghost - 1
+      var jleft = 0
+      var jright = length(cells_disjoint) - 1
+     
+      if (i==0) then
+        jleft = jleft + num_ghost
+      elif (i==num_parts-1) then
+        jright = jright - num_ghost
+      end
+
+      var offset = 0
+      if (i!=0) offset = num_ghost
 
       # compute rhs
       var flux : [f64] = [0; 3]
@@ -361,15 +370,17 @@ task main()
           energy[j],
           flux )
 
-        if (j!=jleft) then
-          dmassdt[j-1] = dmassdt[j-1] + flux[0]
-          dmomdt [j-1] = dmomdt [j-1] + flux[1]
-          denerdt[j-1] = denerdt[j-1] + flux[2]
+        if (j!=0) then
+          dmassdt[j] = dmassdt[j-1] + flux[0]
+          dmomdt [j] = dmomdt [j-1] + flux[1]
+          denerdt[j] = denerdt[j-1] + flux[2]
         end
         
         dmassdt[j] = dmassdt[j] - flux[0]
         dmomdt [j] = dmomdt [j] - flux[1]
         denerdt[j] = denerdt[j] - flux[2]
+
+        k = k+1
   
       end # flux
 
@@ -377,43 +388,62 @@ task main()
 
     #-----------------------------------
     # Apply update
-#    foreach i in parts do
-#    
-#      partition cells_expanded by cell_sizes_with_ghost
-#      partition cells by cell_sizes
-#   
-#      # adjust boundaries
-#      var jleft = 0
-#      var jright = length(points) - 1
-#      
-#      if (i==0) then
-#        jleft = jleft + num_ghost
-#      else
-#        if (i==num_parts-1) then
-#          jright = jright - num_ghost
-#        end
-#      end
-# 
-#      # apply the update
-#      for j in jleft to jright do 
-#        var factor = deltat / deltax[j]
-#        # density update
-#        var old_density = density[j]
-#        density[j] = density[j] - dmassdt[j] * factor
-#        var inv_density = 1. / density[j]
-#        # momentum
-#        velocity[j] = (old_density*velocity[j] - dmomdt[j] * factor) * inv_density
-#        # energy
-#        energy[j] = (old_density*energy[j] - denerdt[j] * factor) * inv_density
-#        # pressure
-#        pressure[j] = (energy[j] -  0.5*velocity[j]*velocity[j]) * density[j] * (gamma-1.)
-#      end
-#
-#    end # parts
-#    
-#    update_ghost(density, velocity, pressure, energy, ileft, iright, num_ghost)
-#
-#    time = time + deltat
+    foreach i in parts do
+    
+      partition cells_disjoint by cell_sizes
+      partition cells by cell_sizes
+   
+      # adjust boundaries
+      var jleft = 0
+      var jright = length(cells) - 1
+      
+      if (i==0) then
+        jleft = jleft + num_ghost
+      elif (i==num_parts-1) then
+         jright = jright - num_ghost
+      end
+ 
+      # apply the update
+      for j in jleft to jright do 
+        var factor = deltat / deltax[j]
+        # density update
+        var old_density = density[j]
+        density[j] = density[j] - dmassdt[j] * factor
+        var inv_density = 1. / density[j]
+        # momentum
+        velocity[j] = (old_density*velocity[j] - dmomdt[j] * factor) * inv_density
+        # energy
+        energy[j] = (old_density*energy[j] - denerdt[j] * factor) * inv_density
+        # pressure
+        pressure[j] = (energy[j] -  0.5*velocity[j]*velocity[j]) * density[j] * (gamma-1.)
+      end
+    
+      # left boundary
+      if (i==0) then
+        for j in 0 until num_ghost do
+          var jghost = j
+          var jinter = 2*num_ghost - j - 1
+          density[jghost] = density[jinter]
+          pressure[jghost] = pressure[jinter]
+          velocity[jghost] = velocity[jinter]
+          energy[jghost] = energy[jinter]
+        end
+      # right boundary
+      elif (i == num_parts-1) then
+        var end_cells = length(cells) - 1
+        for j in 0 until num_ghost do
+          var jghost = end_cells + num_ghost - j - 1
+          var jinter = end_cells - num_ghost + j
+          density[jghost] = density[jinter]
+          pressure[jghost] = pressure[jinter]
+          velocity[jghost] = velocity[jinter]
+          energy[jghost] = energy[jinter]
+        end
+      end
+
+    end # parts
+
+    time = time + deltat
 
     print("Step %5d, Time %e\n", n, time)
 

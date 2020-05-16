@@ -1686,55 +1686,87 @@ void CodeGen::visit(VarDeclAST & e) {
   bool InitIsFuture = Tasker_->isFuture(InitVal);
 
   //---------------------------------------------------------------------------
-  // Array already on right hand side
-  if (e.isArray() && dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
-
-    // transfer to first
-    const auto & VarN = e.getVarName(0);
-    auto VarE = moveVariable("__tmp", VarN);
-    auto Alloca = VarE->getAlloca();
-
-    //auto SizeExpr = getArraySize(Alloca, VarName);
-    auto SizeExpr = VarE->getSize();
-  
-    // Register all variables and emit their initializer.
-    std::vector<Value*> ArrayAllocas;
-    for (unsigned i=1; i<NumVars; ++i) {
-      const auto & VarN = e.getVarName(i);
-      auto VarType = setArray(e.getVarType(i), false);
-      auto VarT = getLLVMType( VarType );
-      auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
-      ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
-    }
-
-    copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr, VarE->getType() );
-  }
-  
-  //---------------------------------------------------------------------------
-  // Array with Scalar Initializer
-  else if (e.isArray()) {
-
-    // create a size expr
-    Value* SizeExpr = nullptr;
-    if (e.hasSize())
-      SizeExpr = runExprVisitor(*e.getSizeExpr());
-    // otherwise scalar
-    else
-      SizeExpr = llvmValue<int_t>(TheContext_, 1);
+  // Arrays
+  if (e.isArray()) {
  
-    // Register all variables and emit their initializer.
-    std::vector<Value*> ArrayAllocas;
-    for (unsigned i=0; i<NumVars; ++i) {
-      const auto & VarN = e.getVarName(i);
-      auto VarType = setArray(e.getVarType(i), false);
-      auto VarT = getLLVMType( VarType );
-      auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
-      ArrayAllocas.emplace_back(ArrayE->getAlloca());
+    //----------------------------------
+    // Array already on right hand side
+    if (dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
+
+      // transfer to first
+      const auto & VarN = e.getVarName(0);
+      auto VarE = moveVariable("__tmp", VarN);
+      auto Alloca = VarE->getAlloca();
+
+      //auto SizeExpr = getArraySize(Alloca, VarName);
+      auto SizeExpr = VarE->getSize();
+  
+      // Register all variables and emit their initializer.
+      std::vector<Value*> ArrayAllocas;
+      for (unsigned i=1; i<NumVars; ++i) {
+        const auto & VarN = e.getVarName(i);
+        auto VarType = setArray(e.getVarType(i), false);
+        auto VarT = getLLVMType( VarType );
+        auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
+        ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
+      }
+
+      copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr, VarE->getType() );
+    }
+    //----------------------------------
+    // Array variable on righ hand side
+    else if (auto ArrayExpr = dynamic_cast<VarAccessExprAST*>(e.getInitExpr()))
+    {
+      const auto & InitVarN = ArrayExpr->getName();
+      auto InitVarE = getVariable(InitVarN);
+      auto InitVarA = InitVarE->getAlloca();
+      
+      std::vector<Value*> Indices = { 
+        ConstantInt::get(TheContext_, APInt(32, 0, true)),
+        ConstantInt::get(TheContext_, APInt(32, 1, true)),
+      };
+      auto SizeGEP = Builder_.CreateGEP(InitVarA, Indices);
+      auto SizeV = Builder_.CreateLoad(I64Type_, SizeGEP);
+
+      // Register all variables and emit their initializer.
+      std::vector<Value*> ArrayAs;
+      for (unsigned i=0; i<NumVars; ++i) {
+        const auto & VarN = e.getVarName(i);
+        auto VarType = setArray(e.getVarType(i), false);
+        auto VarT = getLLVMType( VarType );
+        auto ArrayE = createArray(TheFunction, VarN, VarT, SizeV);
+        ArrayAs.emplace_back( ArrayE->getAlloca() ); 
+      }
+      
+      copyArrays(TheFunction, InitVarA, ArrayAs, SizeV, InitVarE->getType() );
     }
 
-    auto VarType = setArray(e.getVarType(0), false);
-    auto VarT = getLLVMType( VarType );
-    initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarT);
+    //----------------------------------
+    // Array with Scalar Initializer
+    else {
+
+      // create a size expr
+      Value* SizeExpr = nullptr;
+      if (e.hasSize())
+        SizeExpr = runExprVisitor(*e.getSizeExpr());
+      // otherwise scalar
+      else
+        SizeExpr = llvmValue<int_t>(TheContext_, 1);
+ 
+      // Register all variables and emit their initializer.
+      std::vector<Value*> ArrayAllocas;
+      for (unsigned i=0; i<NumVars; ++i) {
+        const auto & VarN = e.getVarName(i);
+        auto VarType = setArray(e.getVarType(i), false);
+        auto VarT = getLLVMType( VarType );
+        auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
+        ArrayAllocas.emplace_back(ArrayE->getAlloca());
+      }
+
+      auto VarType = setArray(e.getVarType(0), false);
+      auto VarT = getLLVMType( VarType );
+      initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarT);
+    }
 
   }
   //---------------------------------------------------------------------------
