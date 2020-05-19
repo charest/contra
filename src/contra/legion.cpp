@@ -427,7 +427,6 @@ void contra_legion_index_space_create(
   is->end = end+1;
 
   int_t size = end - start + 1;
-    std::cout << "index space" << std::endl;
 
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
   legion_index_space_attach_name(*runtime, is->index_space, name, false);  
@@ -439,7 +438,6 @@ void contra_legion_index_space_create_from_size(
     int_t size,
     contra_legion_index_space_t * is)
 {
-    std::cout << "index space" << std::endl;
   is->start = 0;
   is->end = size;
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
@@ -1699,7 +1697,6 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
       auto vit = VarOverrides.find(ArgN);
       auto ForceIndex = (vit != VarOverrides.end() && vit->second.isPartition());
       if (isRange(TaskArgAs[i])) {
-        std::cout << ArgN << " is a range" << std::endl;
         Builder_.CreateCall(SplitRangeF, {RuntimeA, ContextA, TaskA, TaskArgAs[i]});
       }
       else if (ForceIndex || isPartition(TaskArgAs[i])) {
