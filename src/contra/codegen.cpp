@@ -1459,33 +1459,50 @@ void CodeGen::visit(ForeachStmtAST& e)
     //----------------------------------
     // Partition Tasks
     std::map<std::string, Value*> Partitions;
+    std::map<std::string, Value*> Fields;
     for (auto & Stmt : e.getBodyExprs()) {
       auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
+      auto VarD = Node->getVarDef();
       const auto VarN = Node->getVarName();
-      auto VarA = runStmtVisitor(*Stmt);
-      Partitions.emplace( VarN, VarA );
+      if (!VarD->getType().isField()) {
+        auto VarA = runStmtVisitor(*Stmt);
+        Partitions.emplace( VarN, VarA );
+      }
+      else {
+        auto ColorExpr = dynamic_cast<const VarAccessExprAST*>(Node->getColorExpr());
+        const auto & ColorVarN = ColorExpr->getName();
+        auto ColorVarE = getVariable(ColorVarN);
+        auto ColorVarA = ColorVarE->getAlloca();
+        Fields.emplace(VarN, ColorVarA) ;
+      }
     }
 
     //----------------------------------
     // Main Task
     std::vector<Value*> TaskArgAs;
+    std::vector<Value*> PartAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
-      auto it = Partitions.find(Name);
+      auto pit = Partitions.find(Name);
       Value* VarA = nullptr;
-      if (it != Partitions.end()) {
-        VarA = it->second;
+      if (pit != Partitions.end()) {
+        VarA = pit->second;
       }
       else {
         auto VarE = getVariable(Name);
         VarA = VarE->getAlloca();
       }
       TaskArgAs.emplace_back(VarA); 
+      
+      Value* PartA = nullptr;
+      auto fit = Fields.find(Name);
+      if (fit != Fields.end()) PartA = fit->second;
+      PartAs.emplace_back(PartA);
     }
 
     auto TaskN = e.getName();
     auto TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, RangeV);
+    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, PartAs, RangeV);
     
     popScope();
 	  ValueResult_ = UndefValue::get(VoidType_);
@@ -1589,8 +1606,18 @@ void CodeGen::visit(PartitionStmtAST & e)
   //auto IsTask = e.getParentFunctionDef()->isTask();
   //auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, IsTask );
   //auto RangeA = RangeE->getAlloca();
+  
+  // SPECIAL CASE
+  auto ColorExpr = e.getColorExpr();
+  if (!ColorExpr) {
     
-  auto ColorV = runExprVisitor(*e.getColorExpr());
+    const auto & VarN = e.getColorName();
+    auto VarE = getVariable(VarN);
+    ValueResult_ = VarE->getAlloca();
+    return;
+  }
+    
+  auto ColorV = runExprVisitor(*ColorExpr);
 
   const auto & VarN = e.getVarName();
   auto VarE = getVariable(VarN);
@@ -1615,7 +1642,6 @@ void CodeGen::visit(PartitionStmtAST & e)
   //------------------------------------
   // With 'where' specifier
   if (HasBody) {
-    
     Value* InitV = Tasker_->makePoint(-1);
     auto FieldE = createField("__"+VarN+"_field__", PointType_, ValueResult_, InitV);
     
@@ -1623,20 +1649,53 @@ void CodeGen::visit(PartitionStmtAST & e)
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
       auto VarE = getVariable(Name);
-        TaskArgAs.emplace_back( VarE->getAlloca() );
+      TaskArgAs.emplace_back( VarE->getAlloca() );
     }
     TaskArgAs.emplace_back(ValueResult_);
     TaskArgAs.emplace_back(FieldE->getAlloca());
     
     const auto & TaskN = e.getTaskName();
     auto TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(
-        *TheModule_,
-        TaskN,
-        TaskI.getId(),
-        TaskArgAs,
-        CurrentRange_,
-        false);
+
+    if (CurrentRange_) {
+
+      Tasker_->launch(
+          *TheModule_,
+          TaskN,
+          TaskI.getId(),
+          TaskArgAs,
+          std::vector<Value*>(TaskArgAs.size(), nullptr),
+          CurrentRange_,
+          false);
+    }
+    else {
+      auto ForeachExpr = dynamic_cast<ForeachStmtAST*>(e.getBodyExpr(0));
+      Value* RangeV = nullptr;
+      Value* StartV = runStmtVisitor(*ForeachExpr->getStartExpr());
+      // range
+      if (Tasker_->isRange(StartV)) {
+        RangeV = StartV;
+      }
+      // regular
+      else {
+        auto EndV = runStmtVisitor(*ForeachExpr->getEndExpr());
+        if (ForeachExpr->getLoopType() == ForStmtAST::LoopType::Until) {
+          Value *OneC = llvmValue<int_t>(TheContext_, 1);
+          EndV = Builder_.CreateSub(EndV, OneC, "loopsub");
+        }
+        const auto & VarN = ForeachExpr->getVarName();
+        auto ParentFunction = Builder_.GetInsertBlock()->getParent();
+        RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
+      }
+      Tasker_->launch(
+          *TheModule_,
+          TaskN,
+          TaskI.getId(),
+          TaskArgAs,
+          std::vector<Value*>(TaskArgAs.size(), nullptr),
+          RangeV,
+          false);
+    }
     
     ValueResult_ = Tasker_->partition(
         *TheModule_,
@@ -1768,6 +1827,23 @@ void CodeGen::visit(VarDeclAST & e) {
       initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarT);
     }
 
+  }
+  //---------------------------------------------------------------------------
+  // Partition variable
+  else if (e.isPartition()) {
+    for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
+      const auto & VarN = e.getVarName(VarIdx);
+      auto Ty = e.getVarType(VarIdx);
+      auto VarT = getLLVMType(Ty);
+      auto VarE = createVariable(TheFunction, VarN, VarT, Ty.isGlobal());
+      auto Alloca = VarE->getAlloca();
+      if (Ty.isGlobal())
+        cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
+      else if (isa<AllocaInst>(InitVal)) 
+        VarE->setAlloca(InitVal);
+      else
+        Builder_.CreateStore(InitVal, Alloca);
+    }
   }
   //---------------------------------------------------------------------------
   // Scalar variable
@@ -2045,7 +2121,7 @@ void CodeGen::visit(IndexTaskAST& e)
     CreatedScope = true;
     createScope();
   }
-  
+
   auto TaskN = e.getName();
   const auto & VarOverrides = e.getVarOverrides();
 

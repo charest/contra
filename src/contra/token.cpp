@@ -48,6 +48,7 @@ void Tokens::setup() {
     { tok_then, "then" },
     { tok_to, "to" },
     { tok_unary, "unary" },
+    { tok_use, "use" },
     { tok_until, "until" },
     { tok_var, "var" },
     { tok_where, "where" }

@@ -523,6 +523,7 @@ class ForeachStmtAST : public ForStmtAST {
   std::string Name_;
   bool IsLifted_ = false;
   unsigned NumParts_ = 0;
+  std::vector<NodeAST*> FieldExprs_;
 
 public:
   
@@ -572,6 +573,9 @@ public:
   
   void setNumPartitions(unsigned NumParts) { NumParts_=NumParts; }
   auto getNumPartitions() const { return NumParts_; }
+  
+  void setFieldPartitions(const std::vector<NodeAST*> & FieldExprs)
+  { FieldExprs_ = FieldExprs; }
 };
 
 //==============================================================================
@@ -581,6 +585,7 @@ class PartitionStmtAST : public StmtAST {
 protected:
 
   Identifier RangeId_;
+  Identifier ColorId_;
   std::unique_ptr<NodeAST> ColorExpr_;
   ASTBlock BodyExprs_;
   std::vector<VariableDef*> AccessedVariables_;
@@ -602,6 +607,15 @@ public:
     BodyExprs_(std::move(BodyExprs)),
     HasBody_(!BodyExprs_.empty())
   {}
+  
+  PartitionStmtAST(
+      const SourceLocation & Loc,
+      const Identifier & RangeId,
+      const Identifier &  ColorId) :
+    StmtAST(Loc),
+    RangeId_(RangeId),
+    ColorId_(std::move(ColorId))
+  {}
 
   virtual void accept(AstVisiter& visiter) override;
   
@@ -612,9 +626,13 @@ public:
   const auto & getVarId() const { return RangeId_; }
 
   auto getColorExpr() const { return ColorExpr_.get(); }
+
+  const auto & getColorName() const { return ColorId_.getName(); }
+  const auto & getColorId() const { return ColorId_; }
   
   bool hasBodyExprs() const { return HasBody_; }
   const auto & getBodyExprs() const { return BodyExprs_; }
+  auto getBodyExpr(unsigned i) const { return BodyExprs_[i].get(); }
   
   void setAccessedVariables(const std::vector<VariableDef*> & VarDefs)
   { AccessedVariables_ = VarDefs; }
@@ -695,7 +713,7 @@ class VarDeclAST : public StmtAST {
 public:
 
   enum class AttrType {
-    None, Array, Range
+    None, Array, Range, Partition
   };
 
 protected:
@@ -739,6 +757,13 @@ public:
     if (Attr_ != AttrType::Range && IsRange) Attr_ = AttrType::Range;
     if (Attr_ == AttrType::Range && !IsRange) Attr_ = AttrType::None;
   }
+  
+  bool isPartition() const { return Attr_ == AttrType::Partition; }
+  void setPartition(bool IsPartition=true) {
+    if (Attr_ != AttrType::Partition && IsPartition) Attr_ = AttrType::Partition;
+    if (Attr_ == AttrType::Partition && !IsPartition) Attr_ = AttrType::None;
+  }
+  
   
   virtual void accept(AstVisiter& visiter) override;
   

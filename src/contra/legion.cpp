@@ -46,12 +46,56 @@ struct contra_legion_accessor_t {
 };
 
 struct contra_legion_partitions_t {
-  std::map< legion_index_space_id_t, std::unique_ptr<legion_index_partition_t> > IndexPartitions;
+  
+  struct IndexPartitionDeleter {
+    legion_runtime_t * runtime;
+    legion_context_t * context;
+    IndexPartitionDeleter(legion_runtime_t * rt, legion_context_t * ctx) :
+      runtime(rt), context(ctx)
+    {}
+    void operator()(legion_index_partition_t *ptr)
+    {
+      legion_index_partition_destroy(*runtime, *context, *ptr);
+      delete ptr;
+    }
+  };
+
+  using IndexPartitionPtr = std::unique_ptr<legion_index_partition_t, IndexPartitionDeleter>;
+  std::map< legion_index_space_id_t, IndexPartitionPtr > IndexPartitions;
   
   using partition_pair = std::pair<legion_field_id_t, legion_index_partition_id_t>;
   std::map< partition_pair, std::unique_ptr<legion_logical_partition_t> > LogicalPartitions;
 
   std::map< legion_index_space_id_t, legion_index_space_id_t > IndexSpaces;
+
+  auto createIndexPartition(
+      legion_runtime_t *rt,
+      legion_context_t *ctx,
+      legion_index_space_id_t id)
+  {
+    std::cout << "creating index part" << std::endl;
+    IndexPartitionDeleter Deleter(rt, ctx);
+    auto it = IndexPartitions.find(id);
+    if (it == IndexPartitions.end()) {
+      auto res = IndexPartitions.emplace(
+          id,
+          IndexPartitionPtr(new legion_index_partition_t, Deleter) );
+      return res.first->second.get();
+    }
+    else {
+      it->second = IndexPartitionPtr(new legion_index_partition_t, Deleter);
+      return it->second.get();
+    }
+  }
+  
+  legion_index_partition_t* getIndexPartition(legion_index_space_id_t id)
+  { 
+    auto it = IndexPartitions.find(id);
+    if (it==IndexPartitions.end())
+      return nullptr;
+    else
+      return it->second.get();
+  }
 
   legion_index_space_id_t getIndexSpace(legion_index_space_id_t id)
   {
@@ -91,20 +135,16 @@ void contra_legion_index_space_partition(
 {
   if (!*parts) *parts = new contra_legion_partitions_t;
 
-  auto & index_part =
-    (*parts)->IndexPartitions[is->index_space.id];
+  auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
+ 
+  *index_part = legion_index_partition_create_equal(
+      *runtime,
+      *ctx,
+      is->index_space,
+      cs->index_space,
+      /* granularity */ 1,
+      /*color*/ AUTO_GENERATE_ID );
   
-  if (!index_part) {
-    index_part = std::make_unique<legion_index_partition_t>(
-      legion_index_partition_create_equal(
-          *runtime,
-          *ctx,
-          is->index_space,
-          cs->index_space,
-          /* granularity */ 1,
-          /*color*/ AUTO_GENERATE_ID ));
-  }
-
   *part = *index_part;
 }
 
@@ -123,16 +163,15 @@ void contra_legion_index_space_partition_from_size(
 
   legion_index_space_t color_space = legion_index_space_create(*runtime, *ctx, size);
 
-  auto & index_part = (*parts)->IndexPartitions[is->index_space.id];
+  auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
   
-  index_part = std::make_unique<legion_index_partition_t>(
-    legion_index_partition_create_equal(
-        *runtime,
-        *ctx,
-        is->index_space,
-        color_space,
-        /* granularity */ 1,
-        /*color*/ AUTO_GENERATE_ID ));
+  *index_part = legion_index_partition_create_equal(
+      *runtime,
+      *ctx,
+      is->index_space,
+      color_space,
+      /* granularity */ 1,
+      /*color*/ AUTO_GENERATE_ID );
 
   *part = *index_part;
 }
@@ -156,7 +195,7 @@ void contra_legion_index_space_partition_from_array(
   int_t color_size = arr->size;
   for (int_t i=0; i<color_size; ++i) expanded_size += ptr[i];
 
-  legion_index_partition_t * index_part = nullptr;
+  auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
 
   //------------------------------------
   // if the sizes are differeint 
@@ -184,114 +223,16 @@ void contra_legion_index_space_partition_from_array(
     legion_index_space_t expanded_space =
       legion_index_space_create(*runtime, *ctx, expanded_size);
     
-    auto res = (*parts)->IndexPartitions.emplace(
-        is->index_space.id,
-        std::make_unique<legion_index_partition_t>(
-          legion_index_partition_create_coloring(
-            *runtime,
-            *ctx,
-            expanded_space,
-            expanded_coloring,
-            true,
-            /*part color*/ AUTO_GENERATE_ID )));
-    if (!res.second) {
-      legion_runtime_print_once(*runtime, *ctx, stdout,
-          "You are clobbering a previous index partition!\n");
-      abort();
-    }
-    index_part = res.first->second.get();
-
-    (*parts)->IndexSpaces[expanded_space.id] = is->index_space.id;
-
-#if 0
-  
-    // create field for projection
-    legion_field_space_t field_space = legion_field_space_create(*runtime, *ctx);
-    legion_field_allocator_t field_allocator = legion_field_allocator_create(
-        *runtime,
-        *ctx,
-        field_space);
-    legion_field_id_t field_id = legion_field_allocator_allocate_field(
-        field_allocator,
-        sizeof(legion_point_1d_t),
-        AUTO_GENERATE_ID );
-
-    // setup regions
-    legion_logical_region_t expanded_region = legion_logical_region_create(
+    *index_part = legion_index_partition_create_coloring(
         *runtime,
         *ctx,
         expanded_space,
-        field_space,
-        false);
-      
-    legion_logical_partition_t expanded_logical_part = legion_logical_partition_create(
-          *runtime,
-          *ctx,
-          expanded_region,
-          expanded_index_part);
-  
-    // create args
-    legion_argument_map_t arg_map = legion_argument_map_create();
-    for (int_t i=0; i<color_size; i++) {
-      legion_task_argument_t local_task_args;
-      int_t input = 0;
-      local_task_args.args = &input;
-      local_task_args.arglen = sizeof(input);
-      legion_point_1d_t tmp_p;
-      tmp_p.x[0] = i;
-      legion_domain_point_t dp = legion_domain_point_from_point_1d(tmp_p);
-      legion_argument_map_set_point(arg_map, dp, local_task_args, true);
-    }
-  
-    legion_task_argument_t global_task_args;
-    global_task_args.args = &field_id;
-    global_task_args.arglen = sizeof(field_id);
-    
-    // launch inded task
-    legion_index_space_t color_space = legion_index_space_create(*runtime, *ctx, color_size);
-    legion_domain_t launch_domain = legion_domain_from_index_space(*runtime, color_space);
+        expanded_coloring,
+        true,
+        /*part color*/ AUTO_GENERATE_ID );
 
-    legion_index_launcher_t index_launcher = legion_index_launcher_create(
-        INDEX_SPACE_TASK_ID,
-        launch_domain,
-        global_task_args,
-        arg_map,
-        legion_predicate_true(),
-        false,
-        0,
-        0);
+    (*parts)->IndexSpaces[expanded_space.id] = is->index_space.id;
 
-    unsigned idx = legion_index_launcher_add_region_requirement_logical_partition(
-      index_launcher,
-      expanded_logical_part,
-      /* legion_projection_id_t */ 0,
-      WRITE_DISCARD,
-      EXCLUSIVE,
-      expanded_region,
-      /* legion_mapping_tag_id_t */ 0,
-      /* bool verified */ false);
-
-    legion_index_launcher_add_field(index_launcher, idx, field_id, /* bool inst */ true);
-
-    legion_future_map_t fm = legion_index_launcher_execute(*runtime, *ctx, index_launcher);
-    legion_future_map_wait_all_results(fm);
-    
-    // partition with results
-    index_part = std::make_unique<legion_index_partition_t>(
-      legion_index_partition_create_by_image(
-        *runtime,
-        *ctx,
-        is->index_space,
-        expanded_logical_part,
-        expanded_region,
-        field_id,
-        color_space,
-        /* part_kind */ COMPUTE_KIND,
-        /* color */ AUTO_GENERATE_ID,
-        /* mapper_id */ 0,
-        /* mapping_tag_id */ 0));
-
-#endif
     // clean up
     //legion_index_space_destroy(*runtime, *ctx, expanded_space);
     legion_coloring_destroy(expanded_coloring);
@@ -313,27 +254,19 @@ void contra_legion_index_space_partition_from_array(
       offset += ptr[i];
     }
   
-    auto res = (*parts)->IndexPartitions.emplace(
-        is->index_space.id,
-        std::make_unique<legion_index_partition_t>(
-          legion_index_partition_create_coloring(
-            *runtime,
-            *ctx,
-            is->index_space,
-            coloring,
-            true,
-            /*part color*/ AUTO_GENERATE_ID )));
-    if (!res.second) {
-      legion_runtime_print_once(*runtime, *ctx, stdout,
-          "You are clobbering a previous index partition!\n");
-      abort();
-    }
-    index_part = res.first->second.get();
+    *index_part = legion_index_partition_create_coloring(
+        *runtime,
+        *ctx,
+        is->index_space,
+        coloring,
+        true,
+        /*part color*/ AUTO_GENERATE_ID );
 
     // destroy coloring
     legion_coloring_destroy(coloring);
   }
   //------------------------------------
+    
 
   *part = *index_part;
 }
@@ -351,19 +284,19 @@ void contra_legion_index_space_partition_from_field(
 {
  
   auto parent = (*parts)->getIndexSpace(field->index_space.id);
-  auto & index_part = (*parts)->IndexPartitions[parent];
-  auto expanded_index_part = *index_part;
+  auto index_part = (*parts)->getIndexPartition(parent);
 
   auto & logical_part =
     (*parts)->LogicalPartitions[{field->field_id, index_part->id}];
 
-   legion_index_space_t color_space = legion_index_partition_get_color_space(
-       *runtime,
-       expanded_index_part);
+  legion_index_space_t color_space = legion_index_partition_get_color_space(
+      *runtime,
+      *index_part);
+  
+  legion_index_partition_destroy(*runtime, *ctx, *index_part);
     
   // partition with results
-  index_part = std::make_unique<legion_index_partition_t>(
-    legion_index_partition_create_by_image(
+  *index_part = legion_index_partition_create_by_image(
       *runtime,
       *ctx,
       is->index_space,
@@ -374,10 +307,9 @@ void contra_legion_index_space_partition_from_field(
       /* part_kind */ COMPUTE_KIND,
       /* color */ AUTO_GENERATE_ID,
       /* mapper_id */ 0,
-      /* mapping_tag_id */ 0));
+      /* mapping_tag_id */ 0);
   
   // old one is no longer any use
-  legion_index_partition_destroy(*runtime, *ctx, expanded_index_part);
   legion_index_space_destroy(*runtime, *ctx, field->index_space);
 
   *part = *index_part;
@@ -399,6 +331,7 @@ void contra_legion_index_space_create(
   is->end = end+1;
 
   int_t size = end - start + 1;
+    std::cout << "index space" << std::endl;
 
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
   legion_index_space_attach_name(*runtime, is->index_space, name, false);  
@@ -410,6 +343,7 @@ void contra_legion_index_space_create_from_size(
     int_t size,
     contra_legion_index_space_t * is)
 {
+    std::cout << "index space" << std::endl;
   is->start = 0;
   is->end = size;
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
@@ -560,34 +494,43 @@ void contra_legion_index_add_region_requirement(
     legion_index_launcher_t * launcher,
     contra_legion_index_space_t * cs,
     void ** void_parts,
+    legion_index_partition_t * specified_part,
     contra_legion_field_t * field)
 {
-
   auto parts = reinterpret_cast<contra_legion_partitions_t**>(void_parts);
 
   if (!*parts) *parts = new contra_legion_partitions_t;
+
+  legion_index_partition_t * index_part = nullptr;
+
+  if ( specified_part ) {
+    index_part = specified_part;
+  }
+  else {
   
-  auto parent = (*parts)->getIndexSpace(field->index_space.id);
+    auto parent = (*parts)->getIndexSpace(field->index_space.id);
 
-  // index partition 
-  auto & index_part =
-    (*parts)->IndexPartitions[parent];
+    // index partition 
+    index_part = (*parts)->getIndexPartition(parent);
 
-  if (!index_part) {
-    index_part = std::make_unique<legion_index_partition_t>(
-      legion_index_partition_create_equal(
+    if (!index_part) {
+      index_part = (*parts)->createIndexPartition(runtime, ctx, parent);
+      *index_part = legion_index_partition_create_equal(
           *runtime,
           *ctx,
           field->index_space,
           cs->index_space,
           /* granularity */ 1,
-          /*color*/ AUTO_GENERATE_ID ));
-  }
+          /*color*/ AUTO_GENERATE_ID );
+    }
+
+  } // specified_part
 
   // region partition
   auto & logical_part =
     (*parts)->LogicalPartitions[{field->field_id, index_part->id}];
   if (!logical_part) {
+    std::cout << "logical partitioning" << std::endl;
     logical_part = std::make_unique<legion_logical_partition_t>(
       legion_logical_partition_create(
           *runtime,
@@ -637,9 +580,6 @@ void contra_legion_partitions_destroy(
     contra_legion_partitions_t ** parts)
 {
   if (!*parts) return;
-  
-  for (auto & index_part : (*parts)->IndexPartitions)
-    legion_index_partition_destroy(*runtime, *ctx, *index_part.second);
   
   for (auto & logical_part : (*parts)->LogicalPartitions)
     legion_logical_partition_destroy(*runtime, *ctx, *logical_part.second);
@@ -704,6 +644,7 @@ void contra_legion_range_from_index_partition(
     legion_index_partition_t * part,
     contra_legion_index_space_t * is)
 {
+
   legion_domain_point_t color = legion_task_get_index_point(*task);
 
   is->index_space = 
@@ -1287,6 +1228,7 @@ void LegionTasker::createFieldArguments(
     llvm::Module & TheModule,
     Value* LauncherA,
     const std::vector<Value*> & ArgVorAs,
+    const std::vector<Value*> & PartVorAs,
     Value* IndexSpaceA,
     Value* PartInfoA )
 {
@@ -1308,6 +1250,7 @@ void LegionTasker::createFieldArguments(
       IndexLauncherType_->getPointerTo(),
       IndexSpaceA->getType(),
       VoidPtrType_->getPointerTo(),
+      IndexPartitionType_->getPointerTo(),
       FieldDataType_->getPointerTo()
     };
 
@@ -1318,12 +1261,15 @@ void LegionTasker::createFieldArguments(
       auto FieldA = ArgVorAs[i];
       if (!isField(FieldA)) continue;
       FieldA = getAsAlloca(Builder_, TheFunction, FieldA);
+      Value* PartA = Constant::getNullValue(IndexPartitionType_->getPointerTo());
+      if (PartVorAs[i]) PartA = getAsAlloca(Builder_, TheFunction, PartVorAs[i]);
       std::vector<Value*> FunArgVs = {
         RuntimeA,
         ContextA,
         LauncherA,
         IndexSpaceA,
         PartInfoA,
+        PartA,
         FieldA
       };
       Builder_.CreateCall(FunF, FunArgVs);
@@ -1657,6 +1603,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
       auto vit = VarOverrides.find(ArgN);
       auto ForceIndex = (vit != VarOverrides.end() && vit->second.isPartition());
       if (isRange(TaskArgAs[i])) {
+        std::cout << ArgN << " is a range" << std::endl;
         Builder_.CreateCall(SplitRangeF, {RuntimeA, ContextA, TaskA, TaskArgAs[i]});
       }
       else if (ForceIndex || isPartition(TaskArgAs[i])) {
@@ -2202,6 +2149,7 @@ Value* LegionTasker::launch(
     const std::string & Name,
     int TaskId,
     const std::vector<Value*> & ArgAs,
+    const std::vector<Value*> & PartAs,
     Value* RangeV,
     bool CleanupPartitions )
 {
@@ -2331,6 +2279,7 @@ Value* LegionTasker::launch(
       TheModule,
       LauncherA,
       ArgAs,
+      PartAs,
       IndexSpaceA,
       PartInfoA);
   
@@ -2372,7 +2321,7 @@ Value* LegionTasker::launch(
   
   destroyOpaqueType(TheModule, LauncherA, "legion_index_launcher_destroy", "task_launcher");
   
-  if (CleanupPartitions) destroyPartitionInfo(TheModule);
+  //if (CleanupPartitions) destroyPartitionInfo(TheModule);
   
   destroyGlobalArguments(TheModule, TaskArgsA);
 

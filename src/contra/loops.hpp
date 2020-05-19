@@ -52,6 +52,7 @@ public:
   }
 
   virtual void postVisit(ForeachStmtAST&e) override;
+  virtual bool preVisit(PartitionStmtAST&e) override;
 
 };
 

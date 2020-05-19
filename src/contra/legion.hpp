@@ -135,6 +135,7 @@ public:
       const std::string &,
       int,
       const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &,
       llvm::Value*,
       bool) override;
   
@@ -241,6 +242,9 @@ public:
   virtual bool isPartition(llvm::Type*) const;
   virtual bool isPartition(llvm::Value*) const;
   
+  virtual llvm::Type* getPartitionType() const
+  { return IndexPartitionType_; }
+  
   virtual llvm::Type* getPointType() const override
   { return Point1dType_; }
 
@@ -296,6 +300,7 @@ protected:
     llvm::Module &,
     llvm::Value*,
     const std::vector<llvm::Value*> &,
+    const std::vector<llvm::Value*> & = {},
     llvm::Value* = nullptr,
     llvm::Value* = nullptr);
   

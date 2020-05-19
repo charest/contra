@@ -91,6 +91,7 @@ public:
       const std::string &,
       int,
       const std::vector<llvm::Value*> &,
+      const std::vector<llvm::Value*> &,
       llvm::Value*,
       bool = true) = 0;
 
@@ -182,6 +183,8 @@ public:
       llvm::Type*,
       llvm::Value*,
       bool) = 0;
+  
+  virtual llvm::Type* getPartitionType() const = 0;
   
   virtual llvm::Type* getPointType() const = 0;
   virtual llvm::Value* makePoint(std::intmax_t) const = 0;

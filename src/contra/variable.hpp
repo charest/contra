@@ -18,6 +18,7 @@ public:
   VariableAlloca(llvm::Value* Alloca, llvm::Type* Type, llvm::Value* Size = nullptr)
     : Alloca_(Alloca), Type_(Type), Size_(Size) {}
   auto getAlloca() const { return Alloca_; }
+  void setAlloca(llvm::Value* Alloca) { Alloca_ = Alloca; }
   auto getType() const { return Type_; }
   auto getSize() const { return Size_; }
   void setOwner(bool IsOwner=true) { IsOwner_=IsOwner; }

@@ -308,6 +308,7 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
   case tok_foreach:
     return parseForExpr();
   case tok_part:
+  case tok_use:
     return parsePartitionExpr();
   case tok_var:
     return parseVarDefExpr();
@@ -548,39 +549,68 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
 
+  bool IsUse = CurTok_ == tok_use;
+
   auto Loc = getCurLoc();
   getNextToken();  // eat the partition
 
-  auto RangeLoc = getCurLoc();
-  if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Expected an identifier after keyword 'partition'.", RangeLoc);
-  auto RangeName = TheLex_.getIdentifierStr();
-  getNextToken(); // eat identifier.
+  if (IsUse) {
 
-  auto ByLoc = getCurLoc();
-  if (CurTok_ != tok_by)
-    THROW_SYNTAX_ERROR("Expected 'by' after identifier.", ByLoc);
-  getNextToken(); // eat by.
+    auto ColorLoc = getCurLoc();
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Expected an identifier after keyword 'use'.", ColorLoc);
+    auto ColorName = TheLex_.getIdentifierStr();
+    getNextToken(); // eat identifier.
 
-  auto ColorExpr = parseExpression();
+    auto ForLoc = getCurLoc();
+    if (CurTok_ != tok_for)
+      THROW_SYNTAX_ERROR("Expected 'for' after identifier.", ForLoc);
+    getNextToken(); // eat for.
 
-  // if where is included
-  ASTBlock Body;
-  if (CurTok_ == tok_where) {
-    getNextToken(); // eat where
-    while (CurTok_ != tok_end) {
-      auto E = parseExpression();
-      Body.emplace_back( std::move(E) );
-      if (CurTok_ == tok_sep) getNextToken();
+    auto RangeLoc = getCurLoc();
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Expected an identifier after keyword 'for'.", RangeLoc);
+    auto RangeName = TheLex_.getIdentifierStr();
+    getNextToken(); // eat identifier.
+
+    return std::make_unique<PartitionStmtAST>(
+        Loc,
+        Identifier{RangeName, RangeLoc},
+        Identifier{ColorName, ColorLoc});
+  } 
+  else {
+
+    auto RangeLoc = getCurLoc();
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Expected an identifier after keyword 'partition'.", RangeLoc);
+    auto RangeName = TheLex_.getIdentifierStr();
+    getNextToken(); // eat identifier.
+
+    auto ByLoc = getCurLoc();
+    if (CurTok_ != tok_by)
+      THROW_SYNTAX_ERROR("Expected 'by' after identifier.", ByLoc);
+    getNextToken(); // eat by.
+
+    auto ColorExpr = parseExpression();
+
+    // if where is included
+    ASTBlock Body;
+    if (CurTok_ == tok_where) {
+      getNextToken(); // eat where
+      while (CurTok_ != tok_end) {
+        auto E = parseExpression();
+        Body.emplace_back( std::move(E) );
+        if (CurTok_ == tok_sep) getNextToken();
+      }
+      getNextToken(); // eat end
     }
-    getNextToken(); // eat end
-  }
 
-  return std::make_unique<PartitionStmtAST>(
-      Loc,
-      Identifier{RangeName, RangeLoc},
-      std::move(ColorExpr),
-      std::move(Body));
+    return std::make_unique<PartitionStmtAST>(
+        Loc,
+        Identifier{RangeName, RangeLoc},
+        std::move(ColorExpr),
+        std::move(Body));
+  }
 }
 
 //==============================================================================

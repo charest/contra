@@ -240,6 +240,7 @@ private:
     if (Ty.isRange()) return Tasker_->getRangeType();
     if (Ty.isField()) { std::cout << "field" << std::endl; abort(); }
     if (Ty.isFuture()) { std::cout << "future" << std::endl; abort(); }
+    if (Ty.isPartition()) return Tasker_->getPartitionType();
     return TypeTable_.at(Ty.getBaseType()->getName());
   }
   

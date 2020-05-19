@@ -645,15 +645,26 @@ void Analyzer::visit(PartitionStmtAST& e)
 
   const auto & RangeId = e.getVarId();
   auto RangeDef = getVariable(RangeId);
-  if (!RangeDef->getType().isRange())
+  if (!RangeDef->getType().isRange() && !RangeDef->getType().isField())
     THROW_NAME_ERROR("Identifier '" << RangeId.getName()
-        << "' is not a valid range.", RangeId.getLoc());
+        << "' is not a valid range or field.", RangeId.getLoc());
 
   auto ColorExpr = e.getColorExpr();
-  auto ColorType = runExprVisitor(*ColorExpr);
-  if ( ColorType != I64Type_ && !ColorType.isArray() && !ColorType.isRange() )
-    THROW_NAME_ERROR("Acceptable types for partitioning are integers, arrays, and ranges.",
-        ColorExpr->getLoc());
+  if (ColorExpr) {
+    auto ColorType = runExprVisitor(*ColorExpr);
+    if ( ColorType != I64Type_ && !ColorType.isArray() && !ColorType.isRange() &&
+        !ColorType.isPartition())
+      THROW_NAME_ERROR("Acceptable types for partitioning are integers, arrays, and ranges.",
+          ColorExpr->getLoc());
+  }
+  else {
+    const auto & ColorId = e.getColorId();
+    auto ColorDef = getVariable(ColorId);
+    auto ColorType = ColorDef->getType();
+    if (!ColorType.isPartition())
+      THROW_NAME_ERROR("Only partitions expected in 'use' statement.",
+          ColorExpr->getLoc());
+  }
 
   TrackVariableAccess_ = true; // turn back on
   
@@ -666,6 +677,7 @@ void Analyzer::visit(PartitionStmtAST& e)
   auto it = std::find(AccessedVars.begin(), AccessedVars.end(), RangeDef);
   if (it != AccessedVars.end()) AccessedVars.erase(it);
 
+#if 0
   for (auto V : AccessedVars) {
     if (V->getType().isRange()) {
       THROW_NAME_ERROR("The range '" << V->getName() << "' is not allowed "
@@ -673,6 +685,7 @@ void Analyzer::visit(PartitionStmtAST& e)
           << "'.", ColorExpr->getLoc());
     }
   }
+#endif
   
   e.setAccessedVariables(AccessedVars);
   e.setVarDef(RangeDef);
@@ -681,6 +694,8 @@ void Analyzer::visit(PartitionStmtAST& e)
 
 
   TypeResult_ = RangeDef->getType();
+  TypeResult_.setRange(false);
+  TypeResult_.setPartition();
 }
 
 //==============================================================================
@@ -693,6 +708,7 @@ void Analyzer::visit(VarDeclAST& e)
     VarType = VariableType(getType(TypeId));
     VarType.setArray( e.isArray() );
     VarType.setRange( e.isRange() );
+    VarType.setRange( e.isPartition() );
     DestinationType_ = VarType;
   }
   
@@ -701,6 +717,7 @@ void Analyzer::visit(VarDeclAST& e)
     VarType = InitType;
     e.setArray(InitType.isArray());
     e.setRange(InitType.isRange());
+    e.setPartition(InitType.isPartition());
   }
 
   //----------------------------------------------------------------------------
@@ -734,6 +751,13 @@ void Analyzer::visit(VarDeclAST& e)
   else if (e.isRange()) {
     if (! dynamic_cast<RangeExprAST*>(e.getInitExpr()) )
       THROW_NAME_ERROR( "Range expressions can only be inialized with ranges.",
+          e.getInitExpr()->getLoc());
+  }
+  //----------------------------------------------------------------------------
+  // Partition Variable
+  else if (e.isPartition()) {
+    if (! dynamic_cast<PartitionStmtAST*>(e.getInitExpr()) )
+      THROW_NAME_ERROR( "Partition expressions can only be inialized with partitions.",
           e.getInitExpr()->getLoc());
   }
   //----------------------------------------------------------------------------
