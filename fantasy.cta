@@ -60,18 +60,26 @@ end
 task main()
 
   # input parameters
-  var num_parts = 2
-  var num_cells : i64 = 1000000
+  var num_parts = 4
+  var num_cells : i64 = 100000
   var num_ghost : i64 = 1
   var xleft : f64 = 0
   var xright : f64 = 1
 
-  var cfl : f64 = 1.
-  var max_its : i64 = 100
-  var deltat : f64 = 1e-6
-
+  var cfl : f64 = 0.5
+  var deltat : f64 = 1e-1
   var max_time : f64 = 0.2
-  var gamma : f64 = 1.4
+  var max_its : i64 = 100000
+
+  var gamma : f64 = 1.4 
+        
+  var dl = 1.0
+  var pl = 1.0
+  var vl = 0.
+
+  var dr = 0.125 
+  var pr = 0.1
+  var vr = 0.
   
   #============================================================================
   # setup
@@ -230,13 +238,13 @@ task main()
 
     for j in cells do
       if centroids[j] < 0.5 then
-        density[j] = 1.
-        pressure[j] = 1.
-        velocity[j] = 0.
+        density[j] = dl
+        pressure[j] = pl
+        velocity[j] = vl
       else
-        density[j] = 0.125
-        pressure[j] = 0.1
-        velocity[j] = 0.
+        density[j] = dr
+        pressure[j] = pr
+        velocity[j] = vr
       end
       energy[j] = pressure[j] / (density[j] *(gamma-1.)) + 0.5*velocity[j]*velocity[j]
     end
@@ -269,6 +277,20 @@ task main()
     end
 
   end # parts
+  
+  #============================================================================
+  # estimate time step
+
+  var deltax_ave = length / num_cells
+
+  var deltat_l = cfl * deltax_ave / wave_speed(gamma, dl, pl, vl)
+  var deltat_r = cfl * deltax_ave / wave_speed(gamma, dr, pr, vr)
+
+  deltat = fmin( deltat, deltat_l )
+  deltat = fmin( deltat, deltat_r )
+
+  max_its = fmin( max_its, max_time / deltat )
+    
 
   #============================================================================
   # advance solution
@@ -464,17 +486,17 @@ task main()
   #============================================================================
   # output
   
-  #var serialize = {0 .. 0}
-  #foreach i in serialize do
+  var serialize = {0 .. 0}
+  foreach i in serialize do
  
-  #  print("--BEGIN SOLUTION--\n")
-  #  print("i x d v p e\n")
-  #  for j in cells do
-  #    print("%d %e %e %e %e %e\n", j, centroids[j], density[j], velocity[j], pressure[j], energy[j])
-  #  end
-  #  print("--END SOLUTION--\n")
+    print("--BEGIN SOLUTION--\n")
+    print("i x d v p e\n")
+    for j in cells do
+      print("%d %e %e %e %e %e\n", j, centroids[j], density[j], velocity[j], pressure[j], energy[j])
+    end
+    print("--END SOLUTION--\n")
 
-  #end
+  end
 
 
 end

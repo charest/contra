@@ -55,37 +55,6 @@ function compute_flux(
 end
 
 ###############################################################################
-# Ghost solution
-###############################################################################
-function update_ghost(
-  density : [f64],
-  velocity : [f64],
-  pressure : [f64],
-  energy : [f64],
-  ileft : i64,
-  iright : i64,
-  num_ghost : i64 )
-
-  for i in 0 until num_ghost do
-    # left
-    var jghost = ileft - num_ghost + i
-    var jinter = ileft + num_ghost - i - 1
-    density[jghost] = density[jinter]
-    pressure[jghost] = pressure[jinter]
-    velocity[jghost] = velocity[jinter]
-    energy[jghost] = energy[jinter]
-    # right
-    jghost = iright + num_ghost - i - 1
-    jinter = iright - num_ghost + i
-    density[jghost] = density[jinter]
-    pressure[jghost] = pressure[jinter]
-    velocity[jghost] = velocity[jinter]
-    energy[jghost] = energy[jinter]
-  end
-
-end
-
-###############################################################################
 # This is the main function
 ###############################################################################
 task main()

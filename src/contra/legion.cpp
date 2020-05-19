@@ -6,6 +6,7 @@
 #include "utils/llvm_utils.hpp"
 #include "librt/dopevector.hpp"
 
+#include <unordered_map>
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,32 +60,75 @@ struct contra_legion_partitions_t {
       delete ptr;
     }
   };
-
-  using IndexPartitionPtr = std::unique_ptr<legion_index_partition_t, IndexPartitionDeleter>;
-  std::map< legion_index_space_id_t, IndexPartitionPtr > IndexPartitions;
   
-  using partition_pair = std::pair<legion_field_id_t, legion_index_partition_id_t>;
-  std::map< partition_pair, std::unique_ptr<legion_logical_partition_t> > LogicalPartitions;
+  struct LogicalPartitionDeleter {
+    legion_runtime_t * runtime;
+    legion_context_t * context;
+    LogicalPartitionDeleter(legion_runtime_t * rt, legion_context_t * ctx) :
+      runtime(rt), context(ctx)
+    {}
+    void operator()(legion_logical_partition_t *ptr)
+    {
+      legion_logical_partition_destroy(*runtime, *context, *ptr);
+      delete ptr;
+    }
+  };
 
-  std::map< legion_index_space_id_t, legion_index_space_id_t > IndexSpaces;
+  using IndexPartitionVal = std::unique_ptr<legion_index_partition_t, IndexPartitionDeleter>;
+  std::unordered_map< legion_index_space_id_t, IndexPartitionVal > IndexPartitions;
+  
+  using LogicalPartitionKey = std::pair<legion_field_id_t, legion_index_partition_id_t>;
+  using LogicalPartitionVal = std::unique_ptr<legion_logical_partition_t, LogicalPartitionDeleter>;
+
+  struct LogicalPartitionHash {
+    std::size_t operator () (const LogicalPartitionKey &p) const
+    {
+      auto a = static_cast<uint64_t>(p.first);
+      auto b = static_cast<uint32_t>(p.second);
+      return ((a<<32) | (b));
+    }
+  };
+
+  std::unordered_map< LogicalPartitionKey, LogicalPartitionVal, LogicalPartitionHash >
+    LogicalPartitions;
+
+  std::unordered_map< legion_index_space_id_t, legion_index_space_id_t > IndexSpaces;
 
   auto createIndexPartition(
       legion_runtime_t *rt,
       legion_context_t *ctx,
       legion_index_space_id_t id)
   {
-    std::cout << "creating index part" << std::endl;
     IndexPartitionDeleter Deleter(rt, ctx);
     auto it = IndexPartitions.find(id);
     if (it == IndexPartitions.end()) {
       auto res = IndexPartitions.emplace(
           id,
-          IndexPartitionPtr(new legion_index_partition_t, Deleter) );
+          IndexPartitionVal(new legion_index_partition_t, Deleter) );
       return res.first->second.get();
     }
     else {
-      it->second = IndexPartitionPtr(new legion_index_partition_t, Deleter);
+      it->second = IndexPartitionVal(new legion_index_partition_t, Deleter);
       return it->second.get();
+    }
+  }
+  
+  std::pair<legion_index_partition_t*, bool>
+    getOrCreateIndexPartition(
+      legion_runtime_t *rt,
+      legion_context_t *ctx,
+      legion_index_space_id_t id)
+  {
+    auto it = IndexPartitions.find(id);
+    if (it==IndexPartitions.end()) {
+      IndexPartitionDeleter Deleter(rt, ctx);
+      auto res = IndexPartitions.emplace(
+          id,
+          IndexPartitionVal(new legion_index_partition_t, Deleter) );
+      return std::make_pair(res.first->second.get(), false);
+    }
+    else {
+      return std::make_pair(it->second.get(), true);
     }
   }
   
@@ -104,6 +148,59 @@ struct contra_legion_partitions_t {
     if (it != IndexSpaces.end()) parent = it->second;
     return parent;
   }
+  
+  auto createLogicalPartition(
+      legion_runtime_t *rt,
+      legion_context_t *ctx,
+      legion_field_id_t fid,
+      legion_index_partition_id_t pid)
+  {
+    LogicalPartitionDeleter Deleter(rt, ctx);
+    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
+    if (it == LogicalPartitions.end()) {
+      auto res = LogicalPartitions.emplace(
+          std::make_pair(fid, pid),
+          LogicalPartitionVal(new legion_logical_partition_t, Deleter) );
+      return res.first->second.get();
+    }
+    else {
+      it->second = LogicalPartitionVal(new legion_logical_partition_t, Deleter);
+      return it->second.get();
+    }
+  }
+  
+  std::pair<legion_logical_partition_t*, bool>
+    getOrCreateLogicalPartition(
+      legion_runtime_t *rt,
+      legion_context_t *ctx,
+      legion_field_id_t fid,
+      legion_index_partition_id_t pid)
+  {
+    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
+    if (it==LogicalPartitions.end()) {
+      LogicalPartitionDeleter Deleter(rt, ctx);
+      auto res = LogicalPartitions.emplace(
+          std::make_pair(fid, pid),
+          LogicalPartitionVal(new legion_logical_partition_t, Deleter) );
+      return std::make_pair(res.first->second.get(), false);
+    }
+    else {
+      return std::make_pair(it->second.get(), true);
+    }
+  }
+  
+  
+  legion_logical_partition_t* getLogicalPartition(
+      legion_field_id_t fid,
+      legion_index_partition_id_t pid)
+  { 
+    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
+    if (it==LogicalPartitions.end())
+      return nullptr;
+    else
+      return it->second.get();
+  }
+
 };
 
 //==============================================================================
@@ -234,7 +331,7 @@ void contra_legion_index_space_partition_from_array(
     (*parts)->IndexSpaces[expanded_space.id] = is->index_space.id;
 
     // clean up
-    //legion_index_space_destroy(*runtime, *ctx, expanded_space);
+    legion_index_space_destroy(*runtime, *ctx, expanded_space);
     legion_coloring_destroy(expanded_coloring);
   
 
@@ -286,8 +383,7 @@ void contra_legion_index_space_partition_from_field(
   auto parent = (*parts)->getIndexSpace(field->index_space.id);
   auto index_part = (*parts)->getIndexPartition(parent);
 
-  auto & logical_part =
-    (*parts)->LogicalPartitions[{field->field_id, index_part->id}];
+  auto logical_part = (*parts)->getLogicalPartition(field->field_id, index_part->id);
 
   legion_index_space_t color_space = legion_index_partition_get_color_space(
       *runtime,
@@ -511,10 +607,10 @@ void contra_legion_index_add_region_requirement(
     auto parent = (*parts)->getIndexSpace(field->index_space.id);
 
     // index partition 
-    index_part = (*parts)->getIndexPartition(parent);
+    auto res = (*parts)->getOrCreateIndexPartition(runtime, ctx, parent);
+    index_part = res.first;
 
-    if (!index_part) {
-      index_part = (*parts)->createIndexPartition(runtime, ctx, parent);
+    if (!res.second) {
       *index_part = legion_index_partition_create_equal(
           *runtime,
           *ctx,
@@ -527,16 +623,19 @@ void contra_legion_index_add_region_requirement(
   } // specified_part
 
   // region partition
-  auto & logical_part =
-    (*parts)->LogicalPartitions[{field->field_id, index_part->id}];
-  if (!logical_part) {
-    std::cout << "logical partitioning" << std::endl;
-    logical_part = std::make_unique<legion_logical_partition_t>(
-      legion_logical_partition_create(
-          *runtime,
-          *ctx,
-          field->logical_region,
-          *index_part));
+  auto res = (*parts)->getOrCreateLogicalPartition(
+      runtime,
+      ctx,
+      field->field_id,
+      index_part->id);
+  auto logical_part = res.first;
+
+  if (!res.second) {
+    *logical_part = legion_logical_partition_create(
+        *runtime,
+        *ctx,
+        field->logical_region,
+        *index_part);
   }
 
   legion_privilege_mode_t priviledge = READ_WRITE;
@@ -580,9 +679,6 @@ void contra_legion_partitions_destroy(
     contra_legion_partitions_t ** parts)
 {
   if (!*parts) return;
-  
-  for (auto & logical_part : (*parts)->LogicalPartitions)
-    legion_logical_partition_destroy(*runtime, *ctx, *logical_part.second);
   
   delete *parts;
   *parts = nullptr;
