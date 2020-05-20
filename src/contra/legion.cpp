@@ -69,7 +69,7 @@ struct contra_legion_partitions_t {
     {}
     void operator()(legion_logical_partition_t *ptr)
     {
-      legion_logical_partition_destroy(*runtime, *context, *ptr);
+      //legion_logical_partition_destroy(*runtime, *context, *ptr);
       delete ptr;
     }
   };
@@ -270,6 +270,8 @@ void contra_legion_index_space_partition_from_size(
       /* granularity */ 1,
       /*color*/ AUTO_GENERATE_ID );
 
+  legion_index_space_destroy(*runtime, *ctx, color_space);
+
   *part = *index_part;
 }
 
@@ -291,6 +293,17 @@ void contra_legion_index_space_partition_from_array(
   int_t expanded_size = 0;
   int_t color_size = arr->size;
   for (int_t i=0; i<color_size; ++i) expanded_size += ptr[i];
+    
+  // create coloring
+  legion_coloring_t coloring = legion_coloring_create();
+
+  int_t offset{0};
+  for (int_t i=0; i<color_size; ++i) {
+    legion_ptr_t lo{ offset };
+    legion_ptr_t hi{ offset + ptr[i] - 1 };
+    legion_coloring_add_range(coloring, i, lo, hi);
+    offset += ptr[i];
+  }
 
   auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
 
@@ -306,17 +319,6 @@ void contra_legion_index_space_partition_from_array(
       abort();
     }
     
-    // create coloring
-    legion_coloring_t expanded_coloring = legion_coloring_create();
-
-    int_t offset{0};
-    for (int_t i=0; i<color_size; ++i) {
-      legion_ptr_t lo{ offset };
-      legion_ptr_t hi{ offset + ptr[i] - 1 };
-      legion_coloring_add_range(expanded_coloring, i, lo, hi);
-      offset += ptr[i];
-    }
-
     legion_index_space_t expanded_space =
       legion_index_space_create(*runtime, *ctx, expanded_size);
     
@@ -324,32 +326,21 @@ void contra_legion_index_space_partition_from_array(
         *runtime,
         *ctx,
         expanded_space,
-        expanded_coloring,
+        coloring,
         true,
         /*part color*/ AUTO_GENERATE_ID );
+
 
     (*parts)->IndexSpaces[expanded_space.id] = is->index_space.id;
 
     // clean up
-    legion_index_space_destroy(*runtime, *ctx, expanded_space);
-    legion_coloring_destroy(expanded_coloring);
+    //legion_index_space_destroy(*runtime, *ctx, expanded_space);
   
 
   }
   //------------------------------------
   // Naive partitioning
   else {
-  
-    // create coloring
-    legion_coloring_t coloring = legion_coloring_create();
-
-    int_t offset{0};
-    for (int_t i=0; i<color_size; ++i) {
-      legion_ptr_t lo{ offset };
-      legion_ptr_t hi{ offset + ptr[i] - 1 };
-      legion_coloring_add_range(coloring, i, lo, hi);
-      offset += ptr[i];
-    }
   
     *index_part = legion_index_partition_create_coloring(
         *runtime,
@@ -359,11 +350,11 @@ void contra_legion_index_space_partition_from_array(
         true,
         /*part color*/ AUTO_GENERATE_ID );
 
-    // destroy coloring
-    legion_coloring_destroy(coloring);
   }
   //------------------------------------
     
+  // destroy coloring
+  legion_coloring_destroy(coloring);
 
   *part = *index_part;
 }
@@ -677,6 +668,8 @@ void contra_legion_partitions_destroy(
     contra_legion_partitions_t ** parts)
 {
   if (!*parts) return;
+
+  //for (auto & part : (*parts)->LogicalPartitions) part.second.reset();
   
   delete *parts;
   *parts = nullptr;
