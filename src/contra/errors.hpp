@@ -81,7 +81,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 #define THROW_SYNTAX_ERROR(msg,loc)                                            \
   do {                                                                         \
-    throw ::contra::SyntaxError(Formatter() << msg, loc );                     \
+    throw ::contra::SyntaxError(::contra::Formatter() << msg, loc );           \
   } while(0)
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 #define THROW_NAME_ERROR(msg,loc)                                              \
   do {                                                                         \
-    throw ::contra::SyntaxError(Formatter() << msg, loc);                      \
+    throw ::contra::SyntaxError(::contra::Formatter() << msg, loc);            \
   } while(0)
 
 
@@ -99,7 +99,7 @@ public:
 #define THROW_CONTRA_ERROR(msg)                                                \
   do {                                                                         \
     std::cerr << "General runtime error:" << std::endl;                        \
-    throw ::contra::ContraError(Formatter() << msg  );                         \
+    throw ::contra::ContraError(::contra::Formatter() << msg  );               \
   } while(0)
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +108,7 @@ public:
 #define THROW_IMPLEMENTED_ERROR(msg)                                           \
   do {                                                                         \
     std::cerr << "Implementation error:" << std::endl;                         \
-    throw ::contra::ContraError(Formatter() << msg  );                         \
+    throw ::contra::ContraError(::contra::Formatter() << msg  );               \
   } while(0)
 
 
