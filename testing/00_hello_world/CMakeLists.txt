@@ -1,4 +1,4 @@
-foreach(_test hello)
+foreach(_test hello comments print)
   create_test(
     NAME test_${_test}
     COMMAND $<TARGET_FILE:contra> -d${_test}.dot ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta

@@ -6,5 +6,4 @@ print("Hello Again!\n")
 print("Printing the number one, %d\n", 1)
 
 # do some math
-print("1 + 2 = \n")
-1+2
+print("1 + 2 = %d\n", 1+2)

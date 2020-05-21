@@ -1,4 +1,4 @@
-foreach(_test variables arrays1 arrays2 arrays3 globals assign)
+foreach(_test assign)
   create_test(
     NAME test_${_test}
     COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta

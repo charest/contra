@@ -1,0 +1,375 @@
+###############################################################################
+# The spacing function
+###############################################################################
+fn spacing( i64 i, i64 n ) {
+  f64(i) / f64(n)
+}
+  
+###############################################################################
+# The wave speed
+###############################################################################
+fn wave_speed(f64 gamma, f64 d, f64 p, f64 v) {
+  a = sqrt(gamma * p / d)
+  s = fabs(v) + a
+  s
+}
+  
+
+###############################################################################
+# The flux
+###############################################################################
+fn compute_flux(
+  f64 gamma,
+  f64 dl, f64 pl, f64 vl, f64 el,
+  f64 dr, f64 pr, f64 vr, f64 er )
+{
+
+  sl = wave_speed(gamma, dl, pl, vl) 
+  sr = wave_speed(gamma, dr, pr, vr)
+
+  smax = fmax(sl, sr)
+
+  moml = dl*vl
+  momr = dr*vr
+  enerl = dl*el
+  enerr = dr*er
+
+  mass = 0.5 * (moml + momr) - 0.5 * smax * (dr - dl)
+  mom  = 0.5 * (moml*vl + pl + momr*vr + pr) - 0.5 * smax * (momr - moml)
+  ener = 0.5 * (moml*el + pl*vl + momr*er + pr*vr) - 0.5 * smax * (enerr - enerl)
+
+  mass, mom, ener
+}
+
+###############################################################################
+# This is the main function
+###############################################################################
+task main() {
+
+  # input parameters
+  num_parts = 2
+  num_cells = 100000
+  num_ghost = 1
+  f64 xleft = 0
+  f64 xright = 1
+
+  f64 cfl = 0.5
+  f64 max_time = 0.2
+  deltat = 1e-1
+  max_its = 100
+
+  gamma = 1.4 
+        
+  dl = 1.0
+  pl = 1.0
+  vl = 0.
+
+  dr = 0.125 
+  pr = 0.1
+  vr = 0.
+  
+  #============================================================================
+  # setup
+  
+  # setup main indexes
+  num_points = num_cells + 1
+ 
+  parts = 0 : num_parts-1
+  cells = 0 : tot_cells-1
+  points = 0 : tot_points-1
+
+  # size the cell index space
+  cell_sizes = [0; num_parts]
+  chunk = num_cells / num_parts
+  remain = num_cells % num_parts
+
+  for i = 0:num_parts-1 {
+    cell_sizes[i] = chunk
+    if remain > 0 {
+      cell_sizes[i] = cell_sizes[i] + 1
+      remain = remain - 1
+    }
+  }
+  
+  # size the points
+  point_sizes = [0; num_parts]
+  point_offsets = [0; num_parts+1]
+  for i = 0 : num_parts-1 {
+    point_sizes[i] = cell_sizes[i] + 1
+    point_offsets[i+1] = point_offsets[i] + cell_sizes[i]
+  }
+
+  # size the cells with extra ghosts
+  cell_sizes_with_ghost = [0; num_parts]
+  cell_sizes_with_ghost[0] = cell_sizes[0] + num_ghost
+  for i = 1 : num_parts-2
+    cell_sizes_with_ghost[i] = cell_sizes[i] + 2*num_ghost
+  cell_sizes_with_ghost[num_parts-1] = cell_sizes[num_parts-1] + num_ghost
+  
+  # determine the cell starting id for each rank
+  cnt = 0
+  cell_offsets = [0; num_parts+1]
+  for i = 0 : num_parts-1 {
+    cnt += cell_sizes[i]
+    cell_offsets[i+1] = cnt - num_ghost
+  }
+  
+  #============================================================================
+  # distributed fields
+  
+  vertices{points} = 0.
+  centroids{cells} = 0.
+  deltax{cells} = 0.
+
+  #============================================================================
+  # geometry
+  
+  f64 length = xright - xleft
+  ileft = num_ghost
+  iright = tot_points - 1 - num_ghost
+  
+  #-------------------------------------
+  # Points
+  
+  # compute the vertices
+  foreach i = parts {
+  
+    local_points = length(points)
+    
+    for j = local_points {
+      k = points[j]
+      vertices[j] = xleft + spacing(k-ileft, num_cells) * length
+    }
+
+  }
+    
+  #-------------------------------------
+  # Cells
+
+  cells_disjoint_part = partition(cells, cell_sizes)
+
+  points_part = partition(
+    points,
+    point_sizes,
+    (i, j){ point_offsets[i] + j }
+  )
+
+
+  # now compute the cell centroids
+  foreach i = parts {
+    cells     & cells_disjoint_part
+    centroids & cells_disjoint_part
+    deltax    & cells_disjoint_part
+    vertices  & points_part
+
+    for j = cells {
+      centroids[j] = (vertices[j] + vertices[j+1]) / 2
+      deltax[j] = vertices[j+1] - vertices[j]
+    }
+  }
+ 
+  #============================================================================
+  # initalize the solution
+
+  density {cells} = 0.
+  velocity{cells} = 0.
+  pressure{cells} = 0.
+  energy  {cells} = 0.
+  
+  foreach i in parts do
+    cells     & cells_disjoint_part
+    centroids & cells_disjoint_part
+    density   & cells_disjoint_part
+    pressure  & cells_disjoint_part
+    velocity  & cells_disjoint_part
+    energy    & cells_disjoint_part
+
+    for j = cells {
+      if centroids[j] < 0.5 {
+        density[j] = dl
+        pressure[j] = pl
+        velocity[j] = vl
+      }
+      else {
+        density[j] = dr
+        pressure[j] = pr
+        velocity[j] = vr
+      }
+      energy[j] = pressure[j] / (density[j] *(gamma-1.)) + 0.5*velocity[j]*velocity[j]
+    }
+
+  } # parts
+  
+  #============================================================================
+  # estimate time step
+
+  deltax_ave = length / num_cells
+
+  deltat_l = cfl * deltax_ave / wave_speed(gamma, dl, pl, vl)
+  deltat_r = cfl * deltax_ave / wave_speed(gamma, dr, pr, vr)
+
+  deltat = fmin( deltat, deltat_l )
+  deltat = fmin( deltat, deltat_r )
+
+  max_its = fmin( max_its, max_time / deltat )
+    
+
+  #============================================================================
+  # advance solution
+      
+  dmassdt{cells} = 0.
+  dmomdt {cells} = 0.
+  denerdt{cells} = 0.
+
+  cells_overlap_part = partition(
+    cells,
+    cell_sizes_with_ghost,
+    (i,j){ cell_offsets[i] + j }
+  )
+
+  time = 0.
+
+  for n = 1 : max_its {
+    
+    
+    #-----------------------------------
+    # Compute time step
+    
+#    foreach i in parts do
+#      partition cells by cell_sizes
+#
+#      var jleft = 0
+#      var jright = length(cells) - 1
+#  
+#      if (i==0) then
+#        jleft = jleft + num_ghost
+#      elif (i==num_parts-1) then
+#        jright = jright - num_ghost
+#      end
+#    
+#      for j in ileft to iright do
+#        var inv_dt : f64 = wave_speed(gamma, density[j], pressure[j], velocity[j]) / deltax[j]
+#        deltat = fmax( inv_dt, deltat )
+#      end
+#    end
+#
+#    deltat = cfl / deltat
+    deltat = fmin( max_time - time, deltat )
+
+    #-----------------------------------
+    # Compute residual
+    foreach i = parts {
+    
+      cells & cells_disjoint_part for cells
+    
+      density  & cells_overlap_part
+      pressure & cells_overlap_part
+      velocity & cells_overlap_part
+      energy   & cells_overlap_part
+      
+      dmassdt & cells_overlap_part
+      dmomdt  & cells_overlap_part
+      denerdt & cells_overlap_part
+ 
+      # zero residuals
+      local_cells = length(cells)
+      for j = 0 : local_cells-1 {
+        dmassdt[j] = 0
+        dmomdt [j] = 0
+        denerdt[j] = 0
+      }
+      
+      # determine the left index for overlapping partition
+      offset = if (i!=0) num_ghost else 0
+
+      # compute rhs
+      for j = cells {
+
+        k = j + offset
+      
+        mass, mom, ener = compute_flux(
+          gamma,
+          density[k-1],
+          pressure[k-1],
+          velocity[k-1],
+          energy[k-1],
+          density[k],
+          pressure[k],
+          velocity[k],
+          energy[k] )
+
+        if j > 0 {
+          dmassdt[j-1] = dmassdt[j-1] + mass
+          dmomdt [j-1] = dmomdt [j-1] + mom
+          denerdt[j-1] = denerdt[j-1] + ener
+        }
+
+        if j < jright {
+          dmassdt[j] = dmassdt[j] - mass
+          dmomdt [j] = dmomdt [j] - mom
+          denerdt[j] = denerdt[j] - ener
+        }
+  
+      } # flux
+
+    } # parts
+
+    #-----------------------------------
+    # Apply update
+    foreach i = parts {
+    
+      cells & cells_disjoint_part for cells
+    
+      density  & cells_disjoint_part
+      pressure & cells_disjoint_part
+      velocity & cells_disjoint_part
+      energy   & cells_disjoint_part
+      
+      dmassdt & cells_disjoint_part
+      dmomdt  & cells_disjoint_part
+      denerdt & cells_disjoint_part
+   
+      # apply the update
+      for j = cells { 
+        factor = deltat / deltax[j]
+        # density update
+        old_density = density[j]
+        density[j] = density[j] - dmassdt[j] * factor
+        inv_density = 1. / density[j]
+        # momentum
+        velocity[j] = (old_density*velocity[j] - dmomdt[j] * factor) * inv_density
+        # energy
+        energy[j] = (old_density*energy[j] - denerdt[j] * factor) * inv_density
+        # pressure
+        pressure[j] = (energy[j] -  0.5*velocity[j]*velocity[j]) * density[j] * (gamma-1.)
+      }
+
+    } # parts
+
+    time += deltat
+
+    print("Step %5d, Time %e\n", n, time)
+
+  }
+
+  #============================================================================
+  # output
+  
+  foreach i = 0:0 {
+ 
+    print("--BEGIN SOLUTION--\n")
+    print("i x d v p e\n")
+    for j = cells 
+      print("%d %e %e %e %e %e\n", j, centroids[j], density[j], velocity[j], pressure[j], energy[j])
+    print("--END SOLUTION--\n")
+
+  }
+
+
+end
+
+
+###############################################################################
+# launch main
+###############################################################################
+main()

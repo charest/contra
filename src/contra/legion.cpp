@@ -9,6 +9,13 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined( _WIN32 )
+#include <Windows.h>
+#else
+#include <sys/time.h>
+#endif
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Legion runtime
 ////////////////////////////////////////////////////////////////////////////////
@@ -818,6 +825,41 @@ void contra_legion_accessor_destroy(
   legion_accessor_array_1d_destroy(acc->accessor);
 }
 
+
+//==============================================================================
+/// get the timer
+//==============================================================================
+
+real_t get_wall_time(void) {
+#if defined( _WIN32 )
+  
+  // use windows api
+  LARGE_INTEGER time,freq;
+  if (!QueryPerformanceFrequency(&freq)) 
+    THROW_CONTRA_ERROR( "Error getting clock frequency." );
+  if (!QueryPerformanceCounter(&time))
+    THROW_CONTRA_ERROR( "Error getting wall time." );
+  return (real_t)time.QuadPart / freq.QuadPart;
+
+#else
+  
+  // Use system time call
+  struct timeval tm;
+  if (gettimeofday( &tm, 0 )) THROW_CONTRA_ERROR( "Error getting wall time." );
+  return (real_t)tm.tv_sec + (real_t)tm.tv_usec * 1.e-6;
+
+#endif
+}
+
+void contra_legion_timer_start(real_t * time)
+{
+  *time = get_wall_time() * 1e3;
+}
+
+void contra_legion_timer_stop(real_t * time)
+{
+  std::cout << get_wall_time()*1e3 - *time << std::endl;
+}
 
 } // extern
 
@@ -2240,6 +2282,15 @@ Value* LegionTasker::launch(
     bool CleanupPartitions )
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
+
+  auto RealT = llvmType<real_t>(TheContext_);
+  auto RealPtrT = RealT->getPointerTo();
+  auto TimerA = createEntryBlockAlloca(TheFunction, RealT);
+  auto TimerT = FunctionType::get(VoidType_, RealPtrT, false);
+  auto StartTimerF = TheModule.getOrInsertFunction("contra_legion_timer_start", TimerT);
+  auto StopTimerF = TheModule.getOrInsertFunction("contra_legion_timer_stop", TimerT);
+  
+  Builder_.CreateCall(StartTimerF, TimerA);
   
   // temporaries
   auto & LegionE = getCurrentTask();
@@ -2368,6 +2419,8 @@ Value* LegionTasker::launch(
       PartAs,
       IndexSpaceA,
       PartInfoA);
+  
+  Builder_.CreateCall(StopTimerF, TimerA);
   
   //----------------------------------------------------------------------------
   // Execute

@@ -1,0 +1,8 @@
+# This is a comment, and is ignored by the compiler
+print("Hello World!\n")
+
+# Everything after the '#' is ignored.
+# Multi-line comments need a '#' on each line
+
+x = 5 # + 5
+print("x is %lld\n", 5)

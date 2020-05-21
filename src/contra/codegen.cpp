@@ -45,7 +45,10 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
     "./contra",
     "-ll:gsize", "0",
     "-ll:csize", "2048",
-    "-ll:cpu", "4"};
+    "-ll:cpu", "2",
+    "-lg:prof", "1",
+    "-lg:prof_logfile", "prof_%.gz"
+  };
 
   Argc_ = Args.size();
   Argv_ = new char *[Argc_];
