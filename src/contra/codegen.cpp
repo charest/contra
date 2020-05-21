@@ -45,7 +45,11 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
     "./contra",
     "-ll:gsize", "0",
     "-ll:csize", "2048",
-    "-ll:cpu", "4"};
+    "-ll:cpu", "4"//,
+    //"-lg:prof", "1",
+    //"-lg:prof_logfile", "prof_%.gz"
+  };
+
 
   Argc_ = Args.size();
   Argv_ = new char *[Argc_];
@@ -2183,7 +2187,9 @@ void CodeGen::visit(IndexTaskAST& e)
 	Builder_.CreateRetVoid();
   
 	// register it
-  auto TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
+  auto & TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
+  //if (TaskN == "__main_loop3__" || TaskN == "__main_loop4__")
+  //  TaskI.setLeaf(); // HACK
  	verifyFunction(*Wrapper.TheFunction);
 
 	FunctionResult_ = Wrapper.TheFunction;

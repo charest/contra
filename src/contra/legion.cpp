@@ -1447,6 +1447,7 @@ void LegionTasker::destroyGlobalArguments(
 //==============================================================================
 void LegionTasker::createRegistrationArguments(
     Module& TheModule,
+    const TaskInfo & Task,
     llvm::AllocaInst *& ExecSetA,
     llvm::AllocaInst *& LayoutSetA,
     llvm::AllocaInst *& TaskConfigA)
@@ -1485,6 +1486,11 @@ void LegionTasker::createRegistrationArguments(
   auto BoolT = TaskConfigType_->getElementType(0);
   auto FalseV = Constant::getNullValue(BoolT);
   Builder_.CreateMemSet(TaskConfigA, FalseV, 4, 1); 
+
+  if (Task.isLeaf()) {
+    auto TrueV = llvmValue(TheContext_, BoolT, 1);
+    storeStructMember(TrueV, TaskConfigA, 0);
+  }
 }
 
 //==============================================================================
@@ -1990,7 +1996,12 @@ void LegionTasker::postregisterTask(
   // arguments
   
   llvm::AllocaInst *ExecSetA, *LayoutSetA, *TaskConfigA;
-  createRegistrationArguments(TheModule, ExecSetA, LayoutSetA, TaskConfigA);
+  createRegistrationArguments(
+      TheModule,
+      Task,
+      ExecSetA,
+      LayoutSetA,
+      TaskConfigA);
   
   
   //----------------------------------------------------------------------------
@@ -2041,7 +2052,12 @@ void LegionTasker::preregisterTask(
   // arguments
   
   llvm::AllocaInst *ExecSetA, *LayoutSetA, *TaskConfigA;
-  createRegistrationArguments(TheModule, ExecSetA, LayoutSetA, TaskConfigA);
+  createRegistrationArguments(
+      TheModule,
+      Task,
+      ExecSetA,
+      LayoutSetA,
+      TaskConfigA);
   
   //----------------------------------------------------------------------------
   // registration

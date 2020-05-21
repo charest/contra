@@ -320,6 +320,7 @@ protected:
 
   void createRegistrationArguments(
       llvm::Module&,
+      const TaskInfo &,
       llvm::AllocaInst*&,
       llvm::AllocaInst*&,
       llvm::AllocaInst*&);
