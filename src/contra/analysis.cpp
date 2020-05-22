@@ -1,4 +1,3 @@
-#include "ast.hpp"
 #include "analysis.hpp"
 #include "token.hpp"
 
@@ -40,19 +39,14 @@ Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-TypeDef* Analyzer::getType(
-    const std::string & Name,
-    const SourceLocation & Loc)
+TypeDef* Analyzer::getType(const Identifier & Id)
 {
+  const auto & Name = Id.getName();
   auto res = Context::instance().getType(Name);
   if (!res)
-    THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Loc);
+    THROW_NAME_ERROR("Unknown type specifier '" << Name << "'.", Id.getLoc());
   return res.get();
 }
-
-//==============================================================================
-TypeDef* Analyzer::getType(const Identifier & Id)
-{ return getType(Id.getName(), Id.getLoc()); }
 
   
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +60,7 @@ void Analyzer::removeFunction(const std::string & Name)
 //==============================================================================
 FunctionDef* Analyzer::getFunction(
     const std::string & Name,
-    const SourceLocation & Loc)
+    const LocationRange & Loc)
 {
   
   // If not, check whether we can codegen the declaration from some existing
@@ -111,20 +105,15 @@ FunctionDef* Analyzer::insertFunction(
 
 
 //==============================================================================
-VariableDef* Analyzer::getVariable(
-    const std::string & Name,
-    const SourceLocation & Loc)
+VariableDef* Analyzer::getVariable(const Identifier & Id)
 {
+  const auto & Name = Id.getName();
   auto res = Context::instance().getVariable(Name, !TrackVariableAccess_);
   if (!res)
     THROW_NAME_ERROR("Variable '" << Name << "' has not been"
-       << " previously defined", Loc);
+       << " previously defined", Id.getLoc());
   return res.get();
 }
-
-//==============================================================================
-VariableDef* Analyzer::getVariable(const Identifier & Id)
-{ return getVariable(Id.getName(), Id.getLoc()); }
 
 //==============================================================================
 VariableDef* Analyzer::insertVariable(
@@ -141,6 +130,26 @@ VariableDef* Analyzer::insertVariable(
   return res.get();
 }
 
+//==============================================================================
+VariableDef* Analyzer::getOrInsertVariable(
+    const Identifier & Id,
+    const VariableType & VarType)
+{
+  const auto & Name = Id.getName();
+  const auto & Loc = Id.getLoc();
+  
+  {
+    auto res = Context::instance().getVariable(Name, !TrackVariableAccess_);
+    if (res) return res.get();
+  }
+ 
+  {
+    auto S = std::make_unique<VariableDef>(Name, Loc, VarType);
+    auto res = Context::instance().insertVariable( std::move(S) );
+    return res.get();
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // type checking interface
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,7 +158,7 @@ VariableDef* Analyzer::insertVariable(
 void Analyzer::checkIsCastable(
     const VariableType & FromType,
     const VariableType & ToType,
-    const SourceLocation & Loc)
+    const LocationRange & Loc)
 {
   auto IsCastable = FromType.isCastableTo(ToType);
   if (!IsCastable) {
@@ -162,7 +171,7 @@ void Analyzer::checkIsCastable(
 void Analyzer::checkIsAssignable(
     const VariableType & LeftType,
     const VariableType & RightType,
-    const SourceLocation & Loc)
+    const LocationRange & Loc)
 {
   auto IsAssignable = RightType.isAssignableTo(LeftType);
   if (!IsAssignable)
@@ -186,7 +195,7 @@ VariableType
 Analyzer::promote(
     const VariableType & LeftType,
     const VariableType & RightType,
-    const SourceLocation & Loc)
+    const LocationRange & Loc)
 {
   if (LeftType == RightType) return LeftType;
 
@@ -229,7 +238,7 @@ void Analyzer::visit(ValueExprAST& e)
 void Analyzer::visit(VarAccessExprAST& e)
 {
   const auto & Name = e.getName();
-  auto VarDef = getVariable(Name, e.getLoc());
+  auto VarDef = getVariable(Identifier{Name, e.getLoc()});
   auto VarType = VarDef->getType();
 
   // result
@@ -242,7 +251,7 @@ void Analyzer::visit(VarAccessExprAST& e)
 void Analyzer::visit(ArrayAccessExprAST& e)
 {
   const auto & Name = e.getName();
-  auto VarDef = getVariable(Name, e.getLoc());
+  auto VarDef = getVariable(Identifier{Name, e.getLoc()});
   const auto & VarType = VarDef->getType();
 
   // array index
@@ -612,20 +621,30 @@ void Analyzer::visit(AssignStmtAST& e)
   auto Loc = e.getLoc();
   auto LeftLoc = e.getLeftExpr()->getLoc();
   
-  auto LeftType = runExprVisitor(*e.getLeftExpr());
-  DestinationType_ = LeftType;
-  
-  auto RightType = runExprVisitor(*e.getRightExpr());
-
   // Assignment requires the LHS to be an identifier.
   // This assume we're building without RTTI because LLVM builds that way by
   // default.  If you build LLVM with RTTI this can be changed to a
   // dynamic_cast for automatic error checking.
-  auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
+  auto LeftExpr = e.getLeftExpr();
+  auto LHSE = dynamic_cast<VarAccessExprAST*>(LeftExpr);
   if (!LHSE)
     THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
 
+
   auto Name = LHSE->getName();
+  auto LeftDef = getOrInsertVariable( Identifier{Name, LeftExpr->getLoc()} );
+  auto LeftType = runExprVisitor(*e.getLeftExpr());
+
+  DestinationType_ = LeftType;
+  auto RightType = runExprVisitor(*e.getRightExpr());
+
+
+
+  if (!LeftType) {
+    LeftType = RightType;
+    LHSE->setType(LeftType);
+    LeftDef->getType() = RightType;
+  }
   
   checkIsAssignable( LeftType, RightType, Loc );
 
@@ -773,8 +792,6 @@ void Analyzer::visit(VarDeclAST& e)
   // End
   //----------------------------------------------------------------------------
   
-  if (isGlobalScope()) VarType.setGlobal();
-
   auto NumVars = e.getNumVars();
   for (unsigned i=0; i<NumVars; ++i) {
     auto VarId = e.getVarId(i);
@@ -845,8 +862,6 @@ void Analyzer::visit(FieldDeclAST& e)
        e.getPartExpr()->getLoc());
 
   
-  if (isGlobalScope()) VarType.setGlobal();
-
   VarType.setField();
 
   auto NumVars = e.getNumVars();

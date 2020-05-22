@@ -37,7 +37,7 @@ bool LoopLifter::preVisit(PartitionStmtAST& e)
       auto PointType = ctx.insertType(std::make_unique<BuiltInTypeDef>("point")).get();
       std::string FieldName = "__"+PartVarName+"_field__";
       auto FieldType = VariableType(PointType, VariableType::Field);
-      auto S = std::make_unique<VariableDef>(FieldName, SourceLocation(), FieldType);
+      auto S = std::make_unique<VariableDef>(FieldName, LocationRange(), FieldType);
       auto res = Context::instance().insertVariable( std::move(S) );
       AccessedVars.emplace_back(res.get());
 
@@ -92,7 +92,7 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
 
     std::string FieldName = "__"+PartVarName+"_field__";
     auto FieldType = VariableType(PointType, VariableType::Field);
-    auto S = std::make_unique<VariableDef>(FieldName, SourceLocation(), FieldType);
+    auto S = std::make_unique<VariableDef>(FieldName, LocationRange(), FieldType);
     auto res = Context::instance().insertVariable( std::move(S) );
     AccessedVars.emplace_back(res.get());
 

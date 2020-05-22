@@ -5,6 +5,9 @@
 
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+/// Base source location
+////////////////////////////////////////////////////////////////////////////////
 class SourceLocation {
   int Line_ = 1;
   int Col_ = 0;
@@ -22,6 +25,25 @@ public:
      return out;            
   }
 
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/// Identifier start/stop
+////////////////////////////////////////////////////////////////////////////////
+class LocationRange {
+  SourceLocation Begin_;
+  SourceLocation End_;
+public:
+  LocationRange() = default;
+  LocationRange(const SourceLocation & Begin, const SourceLocation & End)
+    : Begin_(Begin), End_(End) {}
+  const auto & getBegin() const { return Begin_; }
+  const auto & getEnd() const { return End_; }
+  friend std::ostream &operator<<( std::ostream &out, const LocationRange &obj ) { 
+     out << "Begin :: " << obj.Begin_ << std::endl;
+     out << "End   :: " << obj.End_ << std::endl;
+     return out;            
+  }
 };
 
 }

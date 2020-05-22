@@ -26,7 +26,7 @@ namespace contra {
 ////////////////////////////////////////////////////////////////////////////////
 class NodeAST {
   
-  SourceLocation Loc_;
+  LocationRange Loc_;
 
   FunctionDef* ParentFunction_ = nullptr;
 
@@ -34,7 +34,7 @@ public:
 
 	NodeAST() = default;
   
-  NodeAST(const SourceLocation & Loc) : Loc_(Loc) {}
+  NodeAST(const LocationRange & Loc) : Loc_(Loc) {}
   
   virtual ~NodeAST() = default;
 
@@ -43,8 +43,6 @@ public:
   virtual std::string getClassName() const = 0;
   
   const auto & getLoc() const { return Loc_; }
-  int getLine() const { return Loc_.getLine(); }
-  int getCol() const { return Loc_.getCol(); }
 
   void setParentFunctionDef(FunctionDef* FunDef)
   { ParentFunction_ = FunDef; }
@@ -73,8 +71,8 @@ protected:
   
 public:
   
-  ExprAST(const SourceLocation & Loc) : NodeAST(Loc) {}
-  ExprAST(const SourceLocation & Loc, VariableType Type) : NodeAST(Loc),
+  ExprAST(const LocationRange & Loc) : NodeAST(Loc) {}
+  ExprAST(const LocationRange & Loc, VariableType Type) : NodeAST(Loc),
     Type_(Type) {}
 
   virtual ~ExprAST() = default;
@@ -107,7 +105,7 @@ protected:
 
 public:
   ValueExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const std::string & Val,
       ValueType Ty) :
     ExprAST(Loc),
@@ -145,7 +143,7 @@ protected:
 public:
 
   VarAccessExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const std::string &Name) :
     ExprAST(Loc),
     Name_(Name)
@@ -172,7 +170,7 @@ protected:
 
 public:
   ArrayAccessExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const std::string &Name, 
       std::unique_ptr<NodeAST> IndexExpr) :
     VarAccessExprAST(Loc, Name),
@@ -200,7 +198,7 @@ protected:
 public:
 
   ArrayExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       ASTBlock Vals,
       std::unique_ptr<NodeAST> Size) :
     ExprAST(Loc),
@@ -236,7 +234,7 @@ protected:
 public:
 
   RangeExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       std::unique_ptr<NodeAST> Start,
       std::unique_ptr<NodeAST> End) :
     ExprAST(Loc),
@@ -271,7 +269,7 @@ protected:
 
 public:
   CastExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       std::unique_ptr<NodeAST> FromExpr,
       Identifier TypeId) :
     ExprAST(Loc),
@@ -279,7 +277,7 @@ public:
     TypeId_(TypeId)
   {}
 
-  CastExprAST(const SourceLocation & Loc, std::unique_ptr<NodeAST> FromExpr,
+  CastExprAST(const LocationRange & Loc, std::unique_ptr<NodeAST> FromExpr,
       const VariableType & Type) : ExprAST(Loc, Type), FromExpr_(std::move(FromExpr))
   {}
 
@@ -305,7 +303,7 @@ protected:
 
 public:
   UnaryExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       char Opcode,
       std::unique_ptr<NodeAST> Operand) :
     ExprAST(Loc),
@@ -334,7 +332,7 @@ protected:
 
 public:
   BinaryExprAST(
-      const SourceLocation & Loc, 
+      const LocationRange & Loc, 
       char Op, std::unique_ptr<NodeAST> lhs,
       std::unique_ptr<NodeAST> rhs) :
     ExprAST(Loc),
@@ -375,7 +373,7 @@ protected:
 public:
 
   CallExprAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const std::string &Callee,
       ASTBlock Args) :
     ExprAST(Loc),
@@ -415,7 +413,7 @@ class StmtAST : public NodeAST {
   
 public:
   
-  StmtAST(const SourceLocation & Loc) : NodeAST(Loc) {}
+  StmtAST(const LocationRange & Loc) : NodeAST(Loc) {}
 
   virtual ~StmtAST() = default;
 
@@ -434,7 +432,7 @@ protected:
 public:
 
   IfStmtAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       std::unique_ptr<NodeAST> Cond,
       ASTBlock Then) :
     StmtAST(Loc),
@@ -447,8 +445,11 @@ public:
   virtual std::string getClassName() const override
   { return "IfStmtAST"; };
 
+  using ConditionList =
+    std::list< std::pair<LocationRange, std::unique_ptr<NodeAST>> >;
+
   static std::unique_ptr<NodeAST> makeNested( 
-    std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> > & Conds,
+    ConditionList & Conds,
     ASTBlockList & Blocks );
 
   auto getCondExpr() const { return CondExpr_.get(); }
@@ -476,7 +477,7 @@ protected:
 
 public:
 
-  ForStmtAST(const SourceLocation & Loc,
+  ForStmtAST(const LocationRange & Loc,
       const Identifier &VarId,
       std::unique_ptr<NodeAST> Start,
       std::unique_ptr<NodeAST> End,
@@ -528,7 +529,7 @@ class ForeachStmtAST : public ForStmtAST {
 public:
   
   ForeachStmtAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const Identifier &VarId,
       std::unique_ptr<NodeAST> Start,
       std::unique_ptr<NodeAST> End,
@@ -597,7 +598,7 @@ protected:
 
 public:
   PartitionStmtAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const Identifier & RangeId,
       std::unique_ptr<NodeAST> ColorExpr,
       ASTBlock BodyExprs) :
@@ -609,7 +610,7 @@ public:
   {}
   
   PartitionStmtAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const Identifier & RangeId,
       const Identifier &  ColorId) :
     StmtAST(Loc),
@@ -682,7 +683,7 @@ protected:
 
 public:
   AssignStmtAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       std::unique_ptr<NodeAST> lhs,
       std::unique_ptr<NodeAST> rhs) :
     StmtAST(Loc),
@@ -731,7 +732,7 @@ protected:
 public:
 
   VarDeclAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const std::vector<Identifier> & Vars, 
       Identifier VarType,
       std::unique_ptr<NodeAST> Init,
@@ -811,7 +812,7 @@ class FieldDeclAST : public VarDeclAST {
 public:
 
   FieldDeclAST(
-      const SourceLocation & Loc,
+      const LocationRange & Loc,
       const std::vector<Identifier> & Vars, 
       Identifier VarType,
       std::unique_ptr<NodeAST> Init,

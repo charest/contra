@@ -1,7 +1,6 @@
 #ifndef CONTRA_CODEGEN_HPP
 #define CONTRA_CODEGEN_HPP
 
-#include "debug.hpp"
 #include "recursive.hpp"
 #include "tasking.hpp"
 #include "jit.hpp"
@@ -26,7 +25,6 @@ namespace contra {
 class BinopPrecedence;
 class PrototypeAST;
 class JIT;
-class DebugInfo;
  
 class CodeGen : public RecursiveAstVisiter {
 
@@ -54,10 +52,6 @@ class CodeGen : public RecursiveAstVisiter {
   std::map<std::string, Type*> TypeTable_;
   std::forward_list< VariableTable > VariableTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
-
-  // debug extras
-  std::unique_ptr<llvm::DIBuilder> DBuilder;
-  DebugInfo KSDbgInfo;
 
   // defined types
   Type* I64Type_ = nullptr;
@@ -125,43 +119,8 @@ public:
   //============================================================================
   
   // Return true if in debug mode
-  auto isDebug() { return static_cast<bool>(DBuilder); }
+  auto isDebug() { return false; }
 
-  // create a debug entry for a function
-  llvm::DISubroutineType *createFunctionType(
-      unsigned NumArgs,
-      llvm::DIFile *Unit);
-
-  // create a subprogram DIE
-  llvm::DIFile * createFile();
-
-  llvm::DISubprogram * createSubprogram(
-      unsigned LineNo,
-      unsigned ScopeLine,
-      const std::string & Name,
-      unsigned arg_size,
-      llvm::DIFile *Unit);
-
-  llvm::DILocalVariable *createVariable(
-      llvm::DISubprogram *SP,
-      const std::string & Name,
-      unsigned ArgIdx,
-      llvm::DIFile *Unit,
-      unsigned LineNo,
-      Value *Alloca);
-
-  void emitLocation(NodeAST * ast) { 
-    if (isDebug()) KSDbgInfo.emitLocation(Builder_, ast);
-  }
-  
-  void pushLexicalBlock(llvm::DISubprogram *SP) {
-    if (isDebug()) KSDbgInfo.LexicalBlocks.push_back(SP);
-  }
-  
-  void popLexicalBlock() {
-    if (isDebug()) KSDbgInfo.LexicalBlocks.pop_back();
-  }
-  
   //============================================================================
   // Vizitor interface
   //============================================================================
@@ -264,8 +223,12 @@ private:
   VariableAlloca * createVariable(
       Function *TheFunction,
       const std::string &VarName,
-      Type* VarType,
-      bool IsGlobal=false);
+      Type* VarType);
+
+  VariableAlloca * getOrCreateVariable(
+      Function *TheFunction,
+      const std::string &VarName,
+      Type* VarType);
   
   VariableAlloca * getVariable(const std::string & VarName);
 
@@ -303,8 +266,7 @@ private:
   VariableAlloca * createArray(
       Function *TheFunction,
       const std::string &VarName,
-      Type* ElementType,
-      bool IsGlobal=false);
+      Type* ElementType);
 
   // Initializes a bunch of arrays with a value
   void initArrays(
@@ -363,8 +325,7 @@ private:
       const std::string &VarName,
       Value* StartV,
       Value* EndV,
-      bool IsTask,
-      bool IsGlobal=false);
+      bool IsTask);
 
   //============================================================================
   // Function interface

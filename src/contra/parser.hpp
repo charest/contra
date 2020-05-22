@@ -66,7 +66,7 @@ public:
   const auto & getLexLoc() const { return TheLex_.getLexLoc(); }
   
   // print out current line
-  std::ostream & barf(std::ostream& out, const SourceLocation & Loc)
+  std::ostream & barf(std::ostream& out, const LocationRange & Loc)
   { return TheLex_.barf(out, Loc); } 
 
   std::shared_ptr<BinopPrecedence> getBinopPrecedence() const

@@ -105,15 +105,14 @@ private:
   void visit(IndexTaskAST&) override;
   
   // base type interface
-  TypeDef* getType(const std::string & Name, const SourceLocation & Loc);
   TypeDef* getType(const Identifier & Id);
 
   // variable interface
-  VariableDef* getVariable(
-      const std::string & Name,
-      const SourceLocation & Loc);
   VariableDef* getVariable(const Identifier & Id);
   VariableDef* insertVariable(const Identifier & Id, const VariableType & VarType);
+  VariableDef* getOrInsertVariable(
+      const Identifier & Id,
+      const VariableType & VarType = VariableType());
 
   // function interface
   FunctionDef* insertFunction(
@@ -121,7 +120,7 @@ private:
       const VariableTypeList & ArgTypes,
       const VariableType & RetType);
   
-  FunctionDef* getFunction(const std::string &, const SourceLocation &);
+  FunctionDef* getFunction(const std::string &, const LocationRange &);
   FunctionDef* getFunction(const Identifier & Id);
  
 public:
@@ -133,12 +132,12 @@ private:
   void checkIsCastable(
       const VariableType & FromType,
       const VariableType & ToType,
-      const SourceLocation & Loc);
+      const LocationRange & Loc);
     
   void checkIsAssignable(
       const VariableType & LeftType,
       const VariableType & RightType,
-      const SourceLocation & Loc);
+      const LocationRange & Loc);
 
   std::unique_ptr<CastExprAST> insertCastOp(
       std::unique_ptr<NodeAST> FromExpr,
@@ -147,7 +146,7 @@ private:
   VariableType promote(
       const VariableType & LeftType,
       const VariableType & RightType,
-      const SourceLocation & Loc);
+      const LocationRange & Loc);
   
 
   // Scope interface

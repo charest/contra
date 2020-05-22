@@ -82,22 +82,6 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 
   initializeModuleAndPassManager();
 
-  if (debug) {
-
-    // Add the current debug info version into the module.
-    TheModule_->addModuleFlag(Module::Warning, "Debug Info Version",
-                             DEBUG_METADATA_VERSION);
-
-    // Darwin only supports dwarf2.
-    if (Triple(sys::getProcessTriple()).isOSDarwin())
-      TheModule_->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
-
-    DBuilder = std::make_unique<DIBuilder>(*TheModule_);
-    KSDbgInfo.TheCU = DBuilder->createCompileUnit(
-      dwarf::DW_LANG_C, DBuilder->createFile("fib.ks", "."),
-      "Kaleidoscope Compiler", 0, "", 0);
-  }
-
 }
   
 //==============================================================================
@@ -107,9 +91,6 @@ CodeGen::~CodeGen() {
   // delete arguments
   for (int i=0; i<Argc_; ++i) delete[] Argv_[i];
   delete[] Argv_;
-  
-  // finish debug
-  if (DBuilder) DBuilder->finalize();
 }
 
 
@@ -185,86 +166,6 @@ JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
 void CodeGen::removeJIT( JIT::VModuleKey H )
 { TheJIT_.removeModule(H); }
 
-////////////////////////////////////////////////////////////////////////////////
-// Debug related interface
-////////////////////////////////////////////////////////////////////////////////
-
-//==============================================================================
-// Create a debug function type
-//==============================================================================
-DISubroutineType *CodeGen::createFunctionType(unsigned NumArgs, DIFile *Unit) {
-  
-  if (!isDebug()) return nullptr;
-
-  SmallVector<Metadata *, 8> EltTys;
-  DIType *DblTy = KSDbgInfo.getDoubleTy(*DBuilder);
-
-  // Add the result type.
-  EltTys.push_back(DblTy);
-
-  for (unsigned i = 0, e = NumArgs; i != e; ++i)
-    EltTys.push_back(DblTy);
-
-  return DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(EltTys));
-}
-  
-DIFile * CodeGen::createFile() {
-  if (isDebug())
-    return DBuilder->createFile(KSDbgInfo.TheCU->getFilename(),
-        KSDbgInfo.TheCU->getDirectory());
-  else
-    return nullptr;
-}
-
-//==============================================================================
-// create a subprogram DIE
-//==============================================================================
-DISubprogram * CodeGen::createSubprogram(
-    unsigned LineNo,
-    unsigned ScopeLine,
-    const std::string & Name,
-    unsigned arg_size,
-    DIFile * Unit)
-{
-  if (isDebug()) {
-    DIScope *FContext = Unit;
-    DISubprogram *SP = DBuilder->createFunction(
-        FContext, Name, StringRef(), Unit, LineNo,
-        createFunctionType(arg_size, Unit), ScopeLine,
-        DINode::FlagPrototyped, DISubprogram::SPFlagDefinition);
-    return SP;
-  }
-  else {
-    return nullptr;
-  }
-}
- 
-//==============================================================================
-// Create a variable
-//==============================================================================
-DILocalVariable *CodeGen::createVariable(
-    DISubprogram *SP,
-    const std::string & Name,
-    unsigned ArgIdx,
-    DIFile *Unit,
-    unsigned LineNo,
-    Value *Alloca)
-{
-  if (isDebug()) {
-    DILocalVariable *D = DBuilder->createParameterVariable(
-      SP, Name, ArgIdx, Unit, LineNo, KSDbgInfo.getDoubleTy(*DBuilder),
-      true);
-
-    DBuilder->insertDeclare(Alloca, D, DBuilder->createExpression(),
-        DebugLoc::get(LineNo, 0, SP),
-        Builder_.GetInsertBlock());
-
-    return D;
-  }
-  else {
-    return nullptr;
-  }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Scope Interface
@@ -350,24 +251,28 @@ VariableAlloca * CodeGen::getVariable(const std::string & VarName)
 VariableAlloca * CodeGen::createVariable(
     Function *TheFunction,
     const std::string &VarName,
-    Type* VarType,
-    bool IsGlobal)
+    Type* VarType)
 {
   Value* NewVar;
-
-  if (IsGlobal) {
-    auto GVar = new GlobalVariable(*TheModule_,
-        VarType,
-        false,
-        GlobalValue::ExternalLinkage,
-        nullptr, // has initializer, specified below
-        VarName);
-    NewVar = GVar;
+  NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
+  return insertVariable(VarName, VariableAlloca{NewVar, VarType});
+}
+        
+//==============================================================================
+/// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+/// the function.  This is used for mutable variables etc.
+//==============================================================================
+VariableAlloca * CodeGen::getOrCreateVariable(
+    Function *TheFunction,
+    const std::string &VarName,
+    Type* VarType)
+{
+  for ( auto & ST : VariableTable_ ) {
+    auto it = ST.find(VarName);
+    if (it != ST.end()) return &it->second;
   }
-  else {
-    NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
-  }
 
+  auto NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
   return insertVariable(VarName, VariableAlloca{NewVar, VarType});
 }
         
@@ -418,18 +323,10 @@ bool CodeGen::isArray(Value* V)
 VariableAlloca * CodeGen::createArray(
     Function *TheFunction,
     const std::string &VarName,
-    Type* ElementT,
-    bool IsGlobal)
+    Type* ElementT)
 {
   Value* NewVar;
-
-  if (IsGlobal) {
-    THROW_CONTRA_ERROR("Global arrays are not implemented yet.");
-  }
-  else {
-    NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
-  }
-
+  NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
   auto it = VariableTable_.front().emplace(VarName, VariableAlloca{NewVar, ElementT});
   return &it.first->second;
 }
@@ -751,17 +648,11 @@ VariableAlloca * CodeGen::createRange(
     const std::string &VarName,
     Value* StartV,
     Value* EndV,
-    bool IsTask,
-    bool IsGlobal)
+    bool IsTask)
 {
   AllocaInst* RangeA;
 
-  if (IsGlobal) {
-    THROW_CONTRA_ERROR("Global ranges are not implemented yet.");
-  }
-  else {
-    RangeA = Tasker_->createRange(*TheModule_, TheFunction, VarName, StartV, EndV);
-  }
+  RangeA = Tasker_->createRange(*TheModule_, TheFunction, VarName, StartV, EndV);
 
   auto RangeT = RangeA->getAllocatedType();
   auto it = VariableTable_.front().emplace(VarName, VariableAlloca{RangeA, RangeT});
@@ -856,8 +747,6 @@ VariableAlloca * CodeGen::createField(
 //==============================================================================
 void CodeGen::visit(ValueExprAST & e)
 {
-  emitLocation(&e);
-
   switch (e.getValueType()) {
   case ValueExprAST::ValueType::Int:
     ValueResult_ = llvmValue<int_t>(TheContext_, e.getVal<int_t>());
@@ -880,16 +769,13 @@ void CodeGen::visit(VarAccessExprAST& e)
   auto Name = e.getName();
 
   // Look this variable up in the function.
-  auto VarE = getVariable(e.getName());
+  auto VarE = getVariable(Name);
   Value * VarA = VarE->getAlloca();
   
   // Load the value.
   auto VarT = VarA->getType();
   VarT = VarT->getPointerElementType();
   
-  if (isa<GlobalVariable>(VarA))
-    VarA = TheModule_->getOrInsertGlobal(e.getName(), VarT);
-
   auto Ty = e.getType();
   if (Tasker_->isFuture(VarA) && !Ty.isFuture()) {
     ValueResult_ = loadFuture(VarE->getType(), VarA);
@@ -1035,7 +921,6 @@ void CodeGen::visit(UnaryExprAST & e) {
   }
 
   auto F = getFunction(std::string("unary") + e.getOperand());
-  emitLocation(&e);
   ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
 }
 
@@ -1043,7 +928,6 @@ void CodeGen::visit(UnaryExprAST & e) {
 // BinaryExprAST - Expression class for a binary operator.
 //==============================================================================
 void CodeGen::visit(BinaryExprAST& e) {
-  emitLocation(&e);
   
   Value *L = runExprVisitor(*e.getLeftExpr());
   Value *R = runExprVisitor(*e.getRightExpr());
@@ -1139,7 +1023,6 @@ void CodeGen::visit(BinaryExprAST& e) {
 // CallExprAST - Expression class for function calls.
 //==============================================================================
 void CodeGen::visit(CallExprAST &e) {
-  emitLocation(&e);
 
   // Look up the name in the global module table.
   auto Name = e.getName();
@@ -1223,7 +1106,6 @@ void CodeGen::visit(CallExprAST &e) {
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
 void CodeGen::visit(IfStmtAST & e) {
-  emitLocation(&e);
 
   if ( e.getThenExprs().empty() && e.getElseExprs().empty() ) {
     ValueResult_ = Constant::getNullValue(VoidType_);
@@ -1323,8 +1205,6 @@ void CodeGen::visit(ForStmtAST& e) {
   auto VarE = createVariable(TheFunction, VarN, VarT);
   auto VarA = VarE->getAlloca();
   
-  emitLocation(&e);
-
   // Emit the start code first, without 'variable' in scope.
   Value* StartV = runStmtVisitor(*e.getStartExpr());
   Value* EndA = nullptr;
@@ -1528,8 +1408,10 @@ void CodeGen::visit(AssignStmtAST & e)
   auto VariableV = runExprVisitor(*e.getRightExpr());
 
   // Look up the name.
+  auto VarT = getLLVMType(LHSE->getType());
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
   const auto & VarN = LHSE->getName();
-  auto VarE = getVariable(VarN);
+  auto VarE = getOrCreateVariable(TheFunction, VarN, VarT);
   Value* VariableA = VarE->getAlloca();
 
   //---------------------------------------------------------------------------
@@ -1838,11 +1720,9 @@ void CodeGen::visit(VarDeclAST & e) {
       const auto & VarN = e.getVarName(VarIdx);
       auto Ty = e.getVarType(VarIdx);
       auto VarT = getLLVMType(Ty);
-      auto VarE = createVariable(TheFunction, VarN, VarT, Ty.isGlobal());
+      auto VarE = createVariable(TheFunction, VarN, VarT);
       auto Alloca = VarE->getAlloca();
-      if (Ty.isGlobal())
-        cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
-      else if (isa<AllocaInst>(InitVal)) 
+      if (isa<AllocaInst>(InitVal)) 
         VarE->setAlloca(InitVal);
       else
         Builder_.CreateStore(InitVal, Alloca);
@@ -1866,19 +1746,15 @@ void CodeGen::visit(VarDeclAST & e) {
           Tasker_->toFuture(*TheModule_, InitVal, FutureA);
       }
       else {
-        auto VarE = createVariable(TheFunction, VarN, VarT, Ty.isGlobal());
+        auto VarE = createVariable(TheFunction, VarN, VarT);
         auto Alloca = VarE->getAlloca();
-        if (Ty.isGlobal())
-          cast<GlobalVariable>(Alloca)->setInitializer(cast<Constant>(InitVal));
-        else
-          Builder_.CreateStore(InitVal, Alloca);
+        Builder_.CreateStore(InitVal, Alloca);
       }
     }
   
   } // end var type
   //---------------------------------------------------------------------------
 
-  emitLocation(&e);
   ValueResult_ = InitVal;
 }
 
@@ -1915,7 +1791,6 @@ void CodeGen::visit(FieldDeclAST& e)
     createField(VarN, VarT, PartsV, InitV);
   }
 
-  emitLocation(&e);
   ValueResult_ = InitV;
 }
 
@@ -1958,7 +1833,6 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 {
   for ( auto & stmt : e.getBodyExprs() )
   {
-    emitLocation(stmt.get());
     runStmtVisitor(*stmt);
   }
 
@@ -1990,23 +1864,6 @@ void CodeGen::visit(FunctionAST& e)
   BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TheFunction);
   Builder_.SetInsertPoint(BB);
 
-  // Create a subprogram DIE for this function.
-  auto Unit = createFile();
-  unsigned LineNo = P.getLine();
-  unsigned ScopeLine = LineNo;
-  DISubprogram *SP = createSubprogram( LineNo, ScopeLine, P.getName(),
-      TheFunction->arg_size(), Unit);
-  if (SP)
-    TheFunction->setSubprogram(SP);
-
-  // Push the current scope.
-  pushLexicalBlock(SP);
-
-  // Unset the location for the prologue emission (leading instructions with no
-  // location in a function are considered part of the prologue and the debugger
-  // will run past them when breaking on a function)
-  emitLocation(nullptr);
-
   // Record the function arguments in the NamedValues map.
   unsigned ArgIdx = 0;
   for (auto &Arg : TheFunction->args()) {
@@ -2026,9 +1883,6 @@ void CodeGen::visit(FunctionAST& e)
     VarE->setOwner(false);
     auto Alloca = VarE->getAlloca();
     
-    // Create a debug descriptor for the variable.
-    createVariable( SP, Arg.getName(), ++ArgIdx, Unit, LineNo, Alloca);
-
     // Store the initial value into the alloca.
     Builder_.CreateStore(&Arg, Alloca);
   

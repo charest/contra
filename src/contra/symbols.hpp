@@ -65,15 +65,15 @@ public:
 // The builtin symbol type
 //==============================================================================
 class UserTypeDef : public TypeDef {
-  SourceLocation Loc_;
+  LocationRange Loc_;
 public:
 
-  UserTypeDef(const std::string & Name, const SourceLocation & Loc) : TypeDef(Name),
-    Loc_(Loc) {}
+  UserTypeDef(const std::string & Name, const LocationRange & Loc)
+    : TypeDef(Name), Loc_(Loc) {}
 
   virtual ~UserTypeDef() = default;
 
-  virtual const SourceLocation & getLoc() const { return Loc_; }
+  virtual const LocationRange & getLoc() const { return Loc_; }
 
 };
 
@@ -88,10 +88,9 @@ public:
     None   = (1u << 0),
     Array  = (1u << 1),
     Future = (1u << 2),
-    Global = (1u << 3),
-    Range  = (1u << 4),
-    Field  = (1u << 5),
-    Partition = (1u << 6)
+    Range  = (1u << 3),
+    Field  = (1u << 4),
+    Partition = (1u << 5)
   };
 
 protected:
@@ -132,12 +131,6 @@ public:
     else Attrs_ &= ~Attr::Array;
   }
 
-  bool isGlobal() const { return ((Attrs_ & Attr::Global) == Attr::Global); }
-  void setGlobal(bool IsGlobal=true) {
-    if (IsGlobal) Attrs_ |= Attr::Global;
-    else Attrs_ &= ~Attr::Global;
-  }
-  
   bool isFuture() const { return ((Attrs_ & Attr::Future) == Attr::Future); }
   void setFuture(bool IsFuture=true) {
     if (IsFuture) Attrs_ |= Attr::Future;
@@ -236,24 +229,34 @@ class VariableDef : public Identifier, public VariableType {
 
 public:
 
-  VariableDef(const std::string & Name, const SourceLocation & Loc, 
-      TypeDef* Type, Attr Attrs = Attr::None)
-    : Identifier(Name, Loc), VariableType(Type, Attrs)
+  VariableDef(
+      const std::string & Name,
+      const LocationRange & Loc, 
+      TypeDef* Type,
+      Attr Attrs = Attr::None)
+    : 
+      Identifier(Name, Loc),
+      VariableType(Type, Attrs)
   {}
 
-  VariableDef(const std::string & Name, const SourceLocation & Loc, 
+  VariableDef(
+      const std::string & Name,
+      const LocationRange & Loc, 
       const VariableType & VarType)
-    : Identifier(Name, Loc), VariableType(VarType)
+    : 
+      Identifier(Name, Loc),
+      VariableType(VarType)
   {}
+  
+  VariableDef(
+      const std::string &,
+      const LocationRange &,
+      TypeDef*, bool)
+    = delete;
+
 
   const VariableType & getType() const { return *this; }
   VariableType& getType() { return *this; }
-
-  //virtual ~Variable() = default;
-  
-private:
-
-  VariableDef(const std::string &, const SourceLocation &, TypeDef*, bool) {}
 
 };
 
@@ -326,18 +329,25 @@ public:
 //==============================================================================
 class UserFunction : public FunctionDef {
 
-  SourceLocation Loc_;
+  LocationRange Loc_;
 
 public:
 
-  UserFunction(const std::string & Name, const SourceLocation & Loc,
-      const VariableType & ReturnType, const VariableTypeList & ArgTypes,
+  UserFunction(
+      const std::string & Name,
+      const LocationRange & Loc,
+      const VariableType & ReturnType,
+      const VariableTypeList & ArgTypes,
       bool IsVarArg = false) :
-    FunctionDef(Name, ReturnType, ArgTypes, IsVarArg), Loc_(Loc)
+    FunctionDef(Name, ReturnType, ArgTypes, IsVarArg),
+    Loc_(Loc)
   {}
   
-  UserFunction(const std::string & Name, const SourceLocation & Loc,
-      const VariableType & ReturnType, const VariableType & ArgType,
+  UserFunction(
+      const std::string & Name,
+      const LocationRange & Loc,
+      const VariableType & ReturnType,
+      const VariableType & ArgType,
       bool IsVarArg = false) :
     FunctionDef(Name, ReturnType, VariableTypeList{ArgType}, IsVarArg),
     Loc_(Loc)

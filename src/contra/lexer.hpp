@@ -67,13 +67,17 @@ public:
   const SourceLocation & getLexLoc() const { return LexLoc_; }
   // get the current location
   const SourceLocation & getCurLoc() const { return CurLoc_; }
+  // get both locations as a range
+  LocationRange getIdentifierLoc() const
+  { return LocationRange(CurLoc_, LexLoc_); }
+
 
   // get the identifier string
   const std::string & getIdentifierStr() const
   { return IdentifierStr_; }
 
   // print out current line
-  std::ostream & barf(std::ostream& out, SourceLocation Loc);
+  std::ostream & barf(std::ostream& out, const LocationRange & Loc);
 };
 
 } // namespace

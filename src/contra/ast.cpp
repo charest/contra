@@ -51,7 +51,7 @@ void CallExprAST::accept(AstVisiter& visiter)
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
 std::unique_ptr<NodeAST> IfStmtAST::makeNested( 
-  std::list< std::pair<SourceLocation, std::unique_ptr<NodeAST>> > & Conds,
+  IfStmtAST::ConditionList & Conds,
   ASTBlockList & Blocks )
 {
   auto TopCond = std::move(Conds.front());

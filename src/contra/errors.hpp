@@ -42,12 +42,24 @@ public:
 //==============================================================================
 class CodeError : public ContraError
 {
-  SourceLocation Loc_;
+  LocationRange Loc_;
 public:
-  CodeError(const char *str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
-  CodeError(const std::string & str, SourceLocation Loc) : ContraError(str), Loc_(Loc) {}
-  SourceLocation getLoc() const { return Loc_; }
+  CodeError(const char *str, const SourceLocation & Loc) 
+    : ContraError(str), Loc_(Loc, Loc) {}
+
+  CodeError(const std::string & str, const SourceLocation & Loc) 
+    : ContraError(str), Loc_(Loc,Loc) {}
+
+  CodeError(const char *str, const LocationRange & Loc) 
+    : ContraError(str), Loc_(Loc) {}
+
+  CodeError(const std::string & str, const LocationRange & Loc) 
+    : ContraError(str), Loc_(Loc) {}
+
+  const LocationRange & getLoc() const { return Loc_; }
+  
   virtual ~CodeError() {}
+
   virtual void accept(const ErrorVisiter& visiter) const override
   { visiter.visit(*this); }
 };
@@ -59,8 +71,18 @@ public:
 class NameError : public CodeError
 {
 public:
-  NameError(const char *str, SourceLocation Loc) : CodeError(str, Loc) {}
-  NameError(const std::string & str, SourceLocation Loc) : CodeError(str, Loc) {}
+  NameError(const char *str, const SourceLocation & Loc) 
+    : CodeError(str, Loc) {}
+  
+  NameError(const std::string & str, const SourceLocation & Loc) 
+    : CodeError(str, Loc) {}
+  
+  NameError(const char *str, const LocationRange& Loc) 
+    : CodeError(str, Loc) {}
+  
+  NameError(const std::string & str, const LocationRange & Loc) 
+    : CodeError(str, Loc) {}
+  
   virtual ~NameError() {}
 };
 
@@ -70,8 +92,18 @@ public:
 class SyntaxError : public CodeError
 {
 public:
-  SyntaxError(const char *str, SourceLocation Loc) : CodeError(str, Loc) {}
-  SyntaxError(const std::string & str, SourceLocation Loc) : CodeError(str, Loc) {}
+  SyntaxError(const char *str, const SourceLocation & Loc) 
+    : CodeError(str, Loc) {}
+  
+  SyntaxError(const std::string & str, const SourceLocation & Loc) 
+    : CodeError(str, Loc) {}
+  
+  SyntaxError(const char *str, const LocationRange& Loc) 
+    : CodeError(str, Loc) {}
+  
+  SyntaxError(const std::string & str, const LocationRange & Loc) 
+    : CodeError(str, Loc) {}
+
   virtual ~SyntaxError() {}
 };
 
