@@ -26,3 +26,8 @@ print("default_integer=%d\n", default_integer)
 # A type can also be inferred from context 
 inferred_type = an_integer
 print("inferred_type=%d\n", inferred_type)
+
+
+# can define multiple types at once
+yet_another_integer, and_another_integer = 9
+f64 yet_another_float, and_another_float = 0

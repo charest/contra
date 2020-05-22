@@ -14,7 +14,6 @@ enum Token {
 
   // commands
   tok_def = -100,
-  tok_extern,
 
   // primary
   tok_identifier,
@@ -45,13 +44,14 @@ enum Token {
 
   // variables
   tok_over,
-  tok_dimension,
-  tok_var,
 
   // numbers / strings
-  tok_string,
-  tok_int_number,
-  tok_real_number,
+  tok_true,
+  tok_false,
+  tok_char_literal,
+  tok_int_literal,
+  tok_real_literal,
+  tok_string_literal,
 
   // functions
   tok_function,

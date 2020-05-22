@@ -104,51 +104,6 @@ void Contra::handleFunction()
 }
 
 //==============================================================================
-// Top-Level definition handler
-//==============================================================================
-void Contra::handleDefinition()
-{
-  if (IsVerbose_) std::cerr << "Handling definition" << std::endl;
-
-  try {
-    auto FnAST = TheParser_->parseDefinition();
-    auto FnIR = TheCG_->runFuncVisitor(*FnAST);
-    if (dumpDot()) TheViz_->runVisitor(*FnAST);
-    if (dumpIR()) FnIR->print(*IRFileStream_);
-    if (!isCompiled()) TheCG_->doJIT();
-  }
-  catch (const CodeError & e) {
-    reportError(e);
-    // Skip token for error recovery.
-    if (IsInteractive_) TheParser_->getNextToken();
-    // otherwise keep throwing the error
-    else throw e;
-  }
-}
-
-//==============================================================================
-// Top-Level external handler
-//==============================================================================
-void Contra::handleExtern()
-{
-  if (IsVerbose_) std::cerr << "Handling extern" << std::endl;
-
-  try {
-    auto ProtoAST = TheParser_->parseExtern();
-    auto FnIR = TheCG_->runFuncVisitor(*ProtoAST);
-    if (dumpIR()) FnIR->print(*IRFileStream_);
-    if (!IsDebug_) TheCG_->insertFunction(std::move(ProtoAST));
-  }
-  catch (const ContraError & e) {
-    reportError(e);
-    // Skip token for error recovery.
-    if (IsInteractive_) TheParser_->getNextToken();
-    // otherwise keep throwing the error
-    else throw e;
-  }
-}
-
-//==============================================================================
 // Top-Level expression handler
 //==============================================================================
 void Contra::handleTopLevelExpression()
@@ -239,17 +194,9 @@ void Contra::mainLoop() {
     case tok_sep: // ignore top-level semicolons.
       TheParser_->getNextToken();
       break;
-    case tok_def:
-      handleDefinition();
-      if (IsInteractive_) std::cerr << "contra> " << std::flush;
-      break;
     case tok_task:
     case tok_function:
       handleFunction();
-      if (IsInteractive_) std::cerr << "contra> " << std::flush;
-      break;
-    case tok_extern:
-      handleExtern();
       if (IsInteractive_) std::cerr << "contra> " << std::flush;
       break;
     default:

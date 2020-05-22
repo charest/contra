@@ -81,8 +81,6 @@ public:
 private:
 
   void handleFunction();
-  void handleDefinition();
-  void handleExtern();  
   void handleTopLevelExpression();
 
   std::vector<std::unique_ptr<FunctionAST>>

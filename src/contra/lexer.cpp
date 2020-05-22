@@ -129,9 +129,9 @@ int Lexer::gettok() {
     }
 
     if (is_float)
-      return tok_real_number;
+      return tok_real_literal;
     else
-      return tok_int_number;
+      return tok_int_literal;
   }
 
   //----------------------------------------------------------------------------
@@ -153,7 +153,7 @@ int Lexer::gettok() {
       quoted += LastChar_;
     IdentifierStr_ = unescape(quoted);
     LastChar_ = advance();
-    return tok_string;
+    return tok_string_literal;
   }
   
   //----------------------------------------------------------------------------

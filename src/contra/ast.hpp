@@ -714,18 +714,21 @@ class VarDeclAST : public StmtAST {
 public:
 
   enum class AttrType {
-    None, Array, Range, Partition
+    None, Array, Range, Partition, Field
+  };
+
+  struct VariableInfo {
+    Identifier Id;
+    AttrType Attr;
+    std::unique_ptr<NodeAST> SizeExpr;
+    std::unique_ptr<NodeAST> IndexExpr;
   };
 
 protected:
 
-  std::vector<Identifier> VarIds_;
+  std::vector<VariableInfo> Vars_;
   Identifier TypeId_;
   std::unique_ptr<NodeAST> InitExpr_;
-  std::unique_ptr<NodeAST> SizeExpr_;
-  std::unique_ptr<NodeAST> IndexExpr_;
-  AttrType Attr_ = AttrType::None;
-
 
   std::vector<VariableDef*> VarDefs_;
 
@@ -733,39 +736,52 @@ public:
 
   VarDeclAST(
       const LocationRange & Loc,
-      const std::vector<Identifier> & Vars, 
+      const std::vector<VariableInfo> & Vars, 
       Identifier VarType,
-      std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size,
-      AttrType Attr = AttrType::None) :
+      std::unique_ptr<NodeAST> Init) :
     StmtAST(Loc),
-    VarIds_(Vars),
+    Vars_(Vars),
     TypeId_(VarType),
     InitExpr_(std::move(Init)),
-    SizeExpr_(std::move(Size)),
-    Attr_(Attr),
     VarDefs_(Vars.size(),nullptr)
   {}
 
-  bool isArray() const { return Attr_ == AttrType::Array; }
-  void setArray(bool IsArray=true) {
+  bool isArray(unsigned i) const
+  { return Vars_[i].Attr == AttrType::Array; }
+
+  void setArray(unsigned i, bool IsArray=true) {
+    auto & Attr_ = Vars_[i].Attr;
     if (Attr_ != AttrType::Array && IsArray) Attr_ = AttrType::Array;
     if (Attr_ == AttrType::Array && !IsArray) Attr_ = AttrType::None;
   }
   
-  bool isRange() const { return Attr_ == AttrType::Range; }
-  void setRange(bool IsRange=true) {
+  bool isRange(unsigned i) const
+  { return Vars_[i].Attr == AttrType::Range; }
+
+  void setRange(unsigned i, bool IsRange=true) {
+    auto & Attr_ = Vars_[i].Attr;
     if (Attr_ != AttrType::Range && IsRange) Attr_ = AttrType::Range;
     if (Attr_ == AttrType::Range && !IsRange) Attr_ = AttrType::None;
-  }
+  }  
   
-  bool isPartition() const { return Attr_ == AttrType::Partition; }
-  void setPartition(bool IsPartition=true) {
+  bool isPartition(unsigned i) const
+  { return Vars_[i].Attr == AttrType::Partition; }
+
+  void setPartition(unsigned i, bool IsPartition=true) {
+    auto & Attr_ = Vars_[i].Attr;
     if (Attr_ != AttrType::Partition && IsPartition) Attr_ = AttrType::Partition;
     if (Attr_ == AttrType::Partition && !IsPartition) Attr_ = AttrType::None;
   }
   
-  
+  bool isField(unsigned i) const
+  { return Vars_[i].Attr == AttrType::Field; }
+
+  void setField(unsigned i, bool IsField=true) {
+    auto & Attr_ = Vars_[i].Attr;
+    if (Attr_ != AttrType::Field && IsField) Attr_ = AttrType::Field;
+    if (Attr_ == AttrType::Field && !IsField) Attr_ = AttrType::None;
+  }
+
   virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
@@ -774,17 +790,25 @@ public:
   std::vector<std::string> getVarNames() const
   {
     std::vector<std::string> strs;
-    for (const auto & Id : VarIds_)
-      strs.emplace_back( Id.getName() );
+    for (const auto & V : Vars_)
+      strs.emplace_back( V.Id.getName() );
     return strs;
   }
 
   const auto & getTypeId() const { return TypeId_; }
 
-  auto getNumVars() const { return VarIds_.size(); }
-  const auto & getVarIds() const { return VarIds_; }
-  const auto & getVarId(unsigned i) const { return VarIds_[i]; }
-  const auto & getVarName(unsigned i) const { return VarIds_[i].getName(); }
+  auto getNumVars() const { return Vars_.size(); }
+ 
+  auto getVarIds() const
+  {
+    std::vector<Identifier> Ids;
+    for (const auto & V : Vars_)
+      Ids.emplace_back( V.Id );
+    return Ids;
+  }
+  
+  const auto & getVarId(unsigned i) const { return Vars_[i].Id; }
+  const auto & getVarName(unsigned i) const { return Vars_[i].Id.getName(); }
 
   const auto & getVarType(unsigned i) const { return VarDefs_[i]->getType(); }
   auto & getVarType(unsigned i) { return VarDefs_[i]->getType(); }
@@ -793,48 +817,13 @@ public:
   auto moveInitExpr() { return std::move(InitExpr_); }
   auto setInitExpr(std::unique_ptr<NodeAST> Init) { InitExpr_ = std::move(Init); }
   
-  bool hasSize() const { return static_cast<bool>(SizeExpr_); }
-  auto getSizeExpr() const { return SizeExpr_.get(); }
+  bool hasSize(unsigned i) const { return static_cast<bool>(Vars_[i].SizeExpr); }
+  auto getSizeExpr(unsigned i) const { return Vars_[i].SizeExpr.get(); }
 
   void setVariableDef(unsigned i, VariableDef* VarDef) { VarDefs_[i]=VarDef; }
   VariableDef* getVariableDef(unsigned i) const { return VarDefs_[i]; }
   
   bool isFuture(unsigned i) const { return VarDefs_[i]->getType().isFuture(); }
-};
-
-//==============================================================================
-/// VarDefExprAST - Expression class for var/in
-//==============================================================================
-class FieldDeclAST : public VarDeclAST {
-
-  std::unique_ptr<NodeAST> PartitionExpr_;
-
-public:
-
-  FieldDeclAST(
-      const LocationRange & Loc,
-      const std::vector<Identifier> & Vars, 
-      Identifier VarType,
-      std::unique_ptr<NodeAST> Init,
-      std::unique_ptr<NodeAST> Size,
-      std::unique_ptr<NodeAST> Part) :
-    VarDeclAST(
-        Loc,
-        Vars,
-        VarType,
-        std::move(Init),
-        std::move(Size),
-        (static_cast<bool>(Size)) ? AttrType::Array : AttrType::None),
-    PartitionExpr_(std::move(Part))
-  {}
-  
-  virtual void accept(AstVisiter& visiter) override;
-  
-  virtual std::string getClassName() const override
-  { return "FieldDeclAST"; };
-
-  auto getPartExpr() const { return PartitionExpr_.get(); }
-
 };
 
 
