@@ -7,6 +7,7 @@
 
 namespace contra {
 
+class ExprListAST;
 class ValueExprAST;
 class VarAccessExprAST;
 class ArrayAccessExprAST;
@@ -33,6 +34,7 @@ public:
 
   virtual ~AstVisiter() = default;
   
+  virtual void visit(ExprListAST&) = 0;
   virtual void visit(ValueExprAST&) = 0;
   virtual void visit(VarAccessExprAST&) = 0;
   virtual void visit(ArrayAccessExprAST&) = 0;
@@ -49,8 +51,8 @@ public:
   virtual void visit(AssignStmtAST&) = 0;
   virtual void visit(PartitionStmtAST&) = 0;
 
-  virtual void visit(VarDeclAST&) = 0;
-  virtual void visit(FieldDeclAST&) = 0;
+  //virtual void visit(VarDeclAST&) = 0;
+  //virtual void visit(FieldDeclAST&) = 0;
   virtual void visit(PrototypeAST&) = 0;
   
   virtual void visit(FunctionAST&) = 0;

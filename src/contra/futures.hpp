@@ -24,8 +24,8 @@ public:
   
   void postVisit(CallExprAST& e) override;
   void visit(AssignStmtAST& e) override;
-  void visit(VarDeclAST& e) override;
-  void visit(FieldDeclAST& e) override;
+  //void visit(VarDeclAST& e) override;
+  //void visit(FieldDeclAST& e) override;
 
 };
 

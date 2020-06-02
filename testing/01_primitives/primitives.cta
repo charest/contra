@@ -1,33 +1,42 @@
-# Variables MUST have an initializer
+fn main() {
 
-# Variables can be type annotated.
-bool boolean = true
-print("boolean=%d\n", boolean)
+  # Variables MUST have an initializer
+  
+  # Variables can be type annotated.
+  #bool boolean = true
+  #print("boolean=%d\n", boolean)
+  
+  # Regular annotation
+  f64 a_float = 1.0
+  print("a_float=%f\n", a_float)
+  
+  i64 an_integer = 5
+  print("an_integer=%d\n", an_integer)
+  
+  # suffix annotation
+  #another_integer = 4_i64
+  #print("another_integer=%lld\n", another_integer)
+  
+  
+  # Or a default will be used.
+  default_float   = 3.0 # `f64`
+  print("default_float=%f\n", default_float)
+  
+  default_integer = 7   # `i64`
+  print("default_integer=%d\n", default_integer)
+  
+  # A type can also be inferred from context 
+  inferred_type = an_integer
+  print("inferred_type=%d\n", inferred_type)
+  
+  
+  # can define multiple types at once
+  yet_another_integer, and_another_integer = 9
+  print("yet_another_integer=%d, and_another_integer=%d\n", yet_another_integer, and_another_integer)
 
-# Regular annotation
-f64 a_float = 1.0
-print("a_float=%f\n", a_float)
+  f64 yet_another_float, and_another_float = 1, 2
+  print("yet_another_float=%f, and_another_float=%f\n", yet_another_float, and_another_float)
 
-i32 an_integer = 5
-print("an_integer=%d\n", an_integer)
+}
 
-# suffix annotation
-another_integer = 4_i64
-print("another_integer=%lld\n", another_integer)
-
-
-# Or a default will be used.
-default_float   = 3.0 # `f64`
-print("default_float=%f\n", default_float)
-
-default_integer = 7   # `i32`
-print("default_integer=%d\n", default_integer)
-
-# A type can also be inferred from context 
-inferred_type = an_integer
-print("inferred_type=%d\n", inferred_type)
-
-
-# can define multiple types at once
-yet_another_integer, and_another_integer = 9
-f64 yet_another_float, and_another_float = 0
+main()

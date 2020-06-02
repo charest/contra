@@ -88,6 +88,14 @@ public:
     visitBlock(e.getArgExprs());
     postVisit(e);
   }
+  
+  virtual bool preVisit(ExprListAST&) { return false; }
+  virtual void postVisit(ExprListAST&) {}
+  virtual void visit(ExprListAST&e) {
+    if (preVisit(e)) { return; }
+    for (const auto & Expr : e.getExprs()) Expr->accept(*this);
+    postVisit(e);
+  }
 
   virtual bool preVisit(IfStmtAST&) { return false; }
   virtual void postVisit(IfStmtAST&) {}
@@ -125,8 +133,8 @@ public:
   virtual void postVisit(AssignStmtAST&) {}
   virtual void visit(AssignStmtAST&e) {
     if (preVisit(e)) { return; }
-    e.getLeftExpr()->accept(*this);
-    e.getRightExpr()->accept(*this);
+    visitBlock(e.getLeftExprs());
+    visitBlock(e.getRightExprs());
     postVisit(e);
   }
   
@@ -140,23 +148,14 @@ public:
     postVisit(e);
   }
   
-  virtual bool preVisit(VarDeclAST&) { return false; }
-  virtual void postVisit(VarDeclAST&) {}
-  virtual void visit(VarDeclAST&e) {
-    if (preVisit(e)) { return; }
-    if (e.isArray() && e.hasSize()) e.getSizeExpr()->accept(*this);
-    e.getInitExpr()->accept(*this);
-    postVisit(e);
-  }
-  
-  virtual bool preVisit(FieldDeclAST&) { return false; }
-  virtual void postVisit(FieldDeclAST&) {}
-  virtual void visit(FieldDeclAST&e) {
-    if (preVisit(e)) { return; }
-    if (e.isArray() && e.hasSize()) e.getSizeExpr()->accept(*this);
-    e.getInitExpr()->accept(*this);
-    postVisit(e);
-  }
+  //virtual bool preVisit(FieldDeclAST&) { return false; }
+  //virtual void postVisit(FieldDeclAST&) {}
+  //virtual void visit(FieldDeclAST&e) {
+  //  if (preVisit(e)) { return; }
+  //  if (e.isArray() && e.hasSize()) e.getSizeExpr()->accept(*this);
+  //  e.getInitExpr()->accept(*this);
+  //  postVisit(e);
+  //}
   
   virtual bool preVisit(PrototypeAST&) { return false; }
   virtual void postVisit(PrototypeAST&) {}

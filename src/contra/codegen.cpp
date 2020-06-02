@@ -262,18 +262,31 @@ VariableAlloca * CodeGen::createVariable(
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
-VariableAlloca * CodeGen::getOrCreateVariable(
-    Function *TheFunction,
+std::pair<VariableAlloca*, bool> CodeGen::getOrCreateVariable(
     const std::string &VarName,
-    Type* VarType)
+    const VariableType & VarType)
 {
   for ( auto & ST : VariableTable_ ) {
     auto it = ST.find(VarName);
-    if (it != ST.end()) return &it->second;
+    if (it != ST.end()) return {&it->second, false};
   }
 
-  auto NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
-  return insertVariable(VarName, VariableAlloca{NewVar, VarType});
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  AllocaInst* NewVar = nullptr;
+  Type* VarT = nullptr;
+
+  if (VarType.isArray()) {
+    VarT = getLLVMType(VarType.getIndexedType());
+    NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
+  }
+  else {
+    VarT = getLLVMType(VarType);
+    NewVar = createEntryBlockAlloca(TheFunction, VarT, VarName);
+  }
+  
+  auto VarE = insertVariable(VarName, VariableAlloca{NewVar, VarT});
+  
+  return {VarE, true};
 }
         
 //==============================================================================
@@ -1399,85 +1412,103 @@ void CodeGen::visit(ForeachStmtAST& e)
 //==============================================================================
 void CodeGen::visit(AssignStmtAST & e)
 {
-  // Assignment requires the LHS to be an identifier.
-  // This assume we're building without RTTI because LLVM builds that way by
-  // default.  If you build LLVM with RTTI this can be changed to a
-  // dynamic_cast for automatic error checking.
-  auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
-  // Codegen the RHS.
-  auto VariableV = runExprVisitor(*e.getRightExpr());
+  auto NumLeft = e.getNumLeftExprs();
+  auto NumRight = e.getNumRightExprs();
 
-  // Look up the name.
-  auto VarT = getLLVMType(LHSE->getType());
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  const auto & VarN = LHSE->getName();
-  auto VarE = getOrCreateVariable(TheFunction, VarN, VarT);
-  Value* VariableA = VarE->getAlloca();
+  // Loop over variables
+  for (unsigned il=0, ir=0; il<NumLeft; il++) {
 
-  //---------------------------------------------------------------------------
-  // array[i] = scalar
-  if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(e.getLeftExpr())) {
-    auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
+    // Assignment requires the LHS to be an identifier.
+    // This assume we're building without RTTI because LLVM builds that way by
+    // default.  If you build LLVM with RTTI this can be changed to a
+    // dynamic_cast for automatic error checking.
+    auto LeftExpr = e.getLeftExpr(il);
+    auto LHSE = dynamic_cast<VarAccessExprAST*>(LeftExpr);
+    
+    // Codegen the RHS.
+    auto RightExpr = e.getRightExpr(ir);
+    Value* VariableV = nullptr;
+    if (auto CastExpr = e.getCast(il))
+      VariableV = runExprVisitor(*CastExpr);
+    else
+      VariableV = runExprVisitor(*RightExpr);
 
-    if (Tasker_->isAccessor(VariableA)) {
-      Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
+    // Look up the name.
+    auto VarT = getLLVMType(LHSE->getType());
+    const auto & VarN = LHSE->getName();
+    auto VarPair = getOrCreateVariable(VarN, LHSE->getType());
+    auto VarE = VarPair.first;
+    auto VarInserted = VarPair.second; 
+    Value* VariableA = VarE->getAlloca();
+
+    //---------------------------------------------------------------------------
+    // array[i] = scalar
+    if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(LeftExpr)) {
+      auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
+  
+      if (Tasker_->isAccessor(VariableA)) {
+        Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
+      }
+      else if (Tasker_->isRange(VariableA)) {
+        auto FieldVarE = getVariable("__"+VarN+"_field__");
+        auto FieldVarA = FieldVarE->getAlloca();
+        auto PointVarV = Tasker_->makePoint(VariableV); 
+        Tasker_->storeAccessor(*TheModule_, PointVarV, FieldVarA, IndexV);
+      }
+      else {
+        storeArrayValue(VariableV, VariableA, IndexV, VarN);
+      }
     }
-    else if (Tasker_->isRange(VariableA)) {
-      auto FieldVarE = getVariable("__"+VarN+"_field__");
-      auto FieldVarA = FieldVarE->getAlloca();
-      auto PointVarV = Tasker_->makePoint(VariableV); 
-      Tasker_->storeAccessor(*TheModule_, PointVarV, FieldVarA, IndexV);
+    //---------------------------------------------------------------------------
+    // array = ?
+    else if (isArray(VariableA)) {
+      // array = [val0, val1, ..., valn ]
+      if (dynamic_cast<ArrayExprAST*>(RightExpr)) {
+        if (!VarInserted) destroyArray(VariableA);
+        Builder_.CreateStore(VariableV, VariableA);
+        eraseVariable("__tmp");
+      }
+      // array = array
+      else if (isArray(VariableV)) {
+        copyArray(VariableV, VariableA);
+      }
     }
-    else {
-      storeArrayValue(VariableV, VariableA, IndexV, VarN);
+    //---------------------------------------------------------------------------
+    // future = ?
+    else if (Tasker_->isFuture(VariableA)) {
+      //Tasker_->destroyFuture(*TheModule_, VariableA);
+      // future = future
+      if (Tasker_->isFuture(VariableV)) {
+        Tasker_->copyFuture(*TheModule_, VariableV, VariableA);
+      }
+      // future = value
+      else {
+        Tasker_->toFuture(*TheModule_, VariableV, VariableA);
+      }
     }
-  }
-  //---------------------------------------------------------------------------
-  // array = ?
-  else if (isArray(VariableA)) {
-    // array = [val0, val1, ..., valn ]
-    if (dynamic_cast<ArrayExprAST*>(e.getRightExpr())) {
-      destroyArray(VariableA);
+    //---------------------------------------------------------------------------
+    // Field = value
+    else if (Tasker_->isAccessor(VariableA)) {
+      Tasker_->storeAccessor(*TheModule_, VariableV, VariableA);
+    }
+    //---------------------------------------------------------------------------
+    // value = future
+    else if (Tasker_->isFuture(VariableV)) {
+      auto VariableT = VarE->getType();
+      VariableV = loadFuture(VariableT, VariableV);
       Builder_.CreateStore(VariableV, VariableA);
-      eraseVariable("__tmp");
     }
-    // array = array
-    else if (isArray(VariableV)) {
-      copyArray(VariableV, VariableA);
-    }
-  }
-  //---------------------------------------------------------------------------
-  // future = ?
-  else if (Tasker_->isFuture(VariableA)) {
-    //Tasker_->destroyFuture(*TheModule_, VariableA);
-    // future = future
-    if (Tasker_->isFuture(VariableV)) {
-      Tasker_->copyFuture(*TheModule_, VariableV, VariableA);
-    }
-    // future = value
+    //---------------------------------------------------------------------------
+    // scalar = scalar
     else {
-      Tasker_->toFuture(*TheModule_, VariableV, VariableA);
+      Builder_.CreateStore(VariableV, VariableA);
     }
-  }
-  //---------------------------------------------------------------------------
-  // Field = value
-  else if (Tasker_->isAccessor(VariableA)) {
-    Tasker_->storeAccessor(*TheModule_, VariableV, VariableA);
-  }
-  //---------------------------------------------------------------------------
-  // value = future
-  else if (Tasker_->isFuture(VariableV)) {
-    auto VariableT = VarE->getType();
-    VariableV = loadFuture(VariableT, VariableV);
-    Builder_.CreateStore(VariableV, VariableA);
-  }
-  //---------------------------------------------------------------------------
-  // scalar = scalar
-  else {
-    Builder_.CreateStore(VariableV, VariableA);
-  }
 
-  ValueResult_ = VariableV;
+    if (NumRight>1) ir++;
+
+  } // for
+
+  ValueResult_ = nullptr;
   return;
 
 }
@@ -1591,6 +1622,7 @@ void CodeGen::visit(PartitionStmtAST & e)
 
 }
 
+#if 0
 //==============================================================================
 // VarDefExprAST - Expression class for var/in
 //==============================================================================
@@ -1793,7 +1825,7 @@ void CodeGen::visit(FieldDeclAST& e)
 
   ValueResult_ = InitV;
 }
-
+#endif
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.

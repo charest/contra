@@ -131,7 +131,7 @@ VariableDef* Analyzer::insertVariable(
 }
 
 //==============================================================================
-VariableDef* Analyzer::getOrInsertVariable(
+std::pair<VariableDef*, bool> Analyzer::getOrInsertVariable(
     const Identifier & Id,
     const VariableType & VarType)
 {
@@ -140,13 +140,13 @@ VariableDef* Analyzer::getOrInsertVariable(
   
   {
     auto res = Context::instance().getVariable(Name, !TrackVariableAccess_);
-    if (res) return res.get();
+    if (res) return {res.get(), false};
   }
  
   {
     auto S = std::make_unique<VariableDef>(Name, Loc, VarType);
     auto res = Context::instance().insertVariable( std::move(S) );
-    return res.get();
+    return {res.get(), true};
   }
 }
 
@@ -187,6 +187,16 @@ Analyzer::insertCastOp(
 {
   auto Loc = FromExpr->getLoc();
   auto E = std::make_unique<CastExprAST>(Loc, std::move(FromExpr), ToType);
+  return E;
+}
+
+std::unique_ptr<CastExprAST>
+Analyzer::insertCastOp(
+    NodeAST* FromExpr,
+    const VariableType & ToType )
+{
+  auto Loc = FromExpr->getLoc();
+  auto E = std::make_unique<CastExprAST>(Loc, FromExpr, ToType);
   return E;
 }
 
@@ -238,6 +248,7 @@ void Analyzer::visit(ValueExprAST& e)
 void Analyzer::visit(VarAccessExprAST& e)
 {
   const auto & Name = e.getName();
+
   auto VarDef = getVariable(Identifier{Name, e.getLoc()});
   auto VarType = VarDef->getType();
 
@@ -251,6 +262,7 @@ void Analyzer::visit(VarAccessExprAST& e)
 void Analyzer::visit(ArrayAccessExprAST& e)
 {
   const auto & Name = e.getName();
+
   auto VarDef = getVariable(Identifier{Name, e.getLoc()});
   const auto & VarType = VarDef->getType();
 
@@ -264,9 +276,10 @@ void Analyzer::visit(ArrayAccessExprAST& e)
   if (IndexType != I64Type_)
     THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
         << "evaluate to an integer.", Loc );
+  
+  TypeResult_ = VarType.getIndexedType();
 
   // result
-  TypeResult_ = VarType.getIndexType();
   e.setType(TypeResult_);
   e.setVariableDef(VarDef);
 }
@@ -456,7 +469,6 @@ void Analyzer::visit(CallExprAST& e)
     e.setTopLevelTask();
   }
 
-
   if (FunRes->isVarArg()) {
     if (NumArgs < NumFixedArgs)
       THROW_NAME_ERROR("Variadic function '" << FunName
@@ -619,41 +631,87 @@ void Analyzer::visit(IfStmtAST& e)
 void Analyzer::visit(AssignStmtAST& e)
 {
   auto Loc = e.getLoc();
-  auto LeftLoc = e.getLeftExpr()->getLoc();
   
   // Assignment requires the LHS to be an identifier.
   // This assume we're building without RTTI because LLVM builds that way by
   // default.  If you build LLVM with RTTI this can be changed to a
   // dynamic_cast for automatic error checking.
-  auto LeftExpr = e.getLeftExpr();
-  auto LHSE = dynamic_cast<VarAccessExprAST*>(LeftExpr);
+  
+  auto NumLeft = e.getNumLeftExprs();
+  auto NumRight = e.getNumRightExprs();
+
+  if ( (NumLeft != NumRight) && (NumRight != 1) )
+      THROW_NAME_ERROR("Number of expressions on left- and right-hand sides "
+        << "must match.", Loc);
+
+  //------------------------------------
+  // First figure out if it has a prescribed type
+    
+  auto LHSE = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr(0));
   if (!LHSE)
-    THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
+    THROW_NAME_ERROR("destination of '=' must be a variable", LHSE->getLoc());
 
+  VariableType VarType;
+  if (LHSE->hasTypeId())
+    VarType = VariableType(getType(LHSE->getTypeId()));
 
-  auto Name = LHSE->getName();
-  auto LeftDef = getOrInsertVariable( Identifier{Name, LeftExpr->getLoc()} );
-  auto LeftType = runExprVisitor(*e.getLeftExpr());
+  //------------------------------------
+  // Loop over variables
+  for (unsigned il=0, ir=0; il<NumLeft; il++) {
 
-  DestinationType_ = LeftType;
-  auto RightType = runExprVisitor(*e.getRightExpr());
+    auto LeftExpr = e.getLeftExpr(il);
+    auto LeftLoc = LeftExpr->getLoc();
+    auto LHSE = dynamic_cast<VarAccessExprAST*>(LeftExpr);
+    if (!LHSE)
+      THROW_NAME_ERROR("destination of '=' must be a variable", LeftLoc);
+    
+    auto RightExpr = e.getRightExpr(ir);
 
+    auto VarId = LHSE->getVarId();
+    VariableDef* LeftDef = nullptr;
+    bool WasInserted = false;
+    if (VarType) {
+      LeftDef = insertVariable(VarId, VarType);
+      WasInserted = true;
+    }
+    else {
+      auto DefPair = getOrInsertVariable(VarId);
+      LeftDef = DefPair.first;
+      WasInserted = DefPair.second;
+    }
 
+    auto LeftType = runExprVisitor(*LHSE);
+    DestinationType_ = LeftType;
+    auto RightType = runExprVisitor(*RightExpr);
+    
+    if (!LeftType) {
+      LeftType.setBaseType( RightType.getBaseType() );
+      if (!WasInserted)
+        THROW_NAME_ERROR("Redeclaration of '" << VarId.getName()
+            << "' is not allowed.", VarId.getLoc());
+    }
 
-  if (!LeftType) {
-    LeftType = RightType;
-    LHSE->setType(LeftType);
-    LeftDef->getType() = RightType;
-  }
+    if (WasInserted) {
+      LeftType.setAttributes( RightType.getAttributes() );
+      LHSE->setType(LeftType);
+      LeftDef->getType() = LeftType;
+    }
   
-  checkIsAssignable( LeftType, RightType, Loc );
+    checkIsAssignable( LeftType, RightType, Loc );
 
-  if (RightType.getBaseType() != LeftType.getBaseType()) {
-    checkIsCastable(RightType, LeftType, Loc);
-    e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), LeftType) );
-  }
+    if (RightType.getBaseType() != LeftType.getBaseType()) {
+      checkIsCastable(RightType, LeftType, Loc);
+      if (NumLeft==NumRight)
+        e.setRightExpr( ir, insertCastOp(std::move(e.moveRightExpr(ir)), LeftType) );
+      else
+        e.addCast(il, insertCastOp(RightExpr, LeftType));
+    }
+
+    if (NumRight>1) ir++;
+
+  } // for
   
-  TypeResult_ = LeftType;
+  TypeResult_ = VariableType();
 }
 
 //==============================================================================
@@ -718,6 +776,7 @@ void Analyzer::visit(PartitionStmtAST& e)
 }
 
 //==============================================================================
+#if 0
 void Analyzer::visit(VarDeclAST& e)
 {
   // check if there is a specified type, if there is, get it
@@ -873,6 +932,7 @@ void Analyzer::visit(FieldDeclAST& e)
 
   TypeResult_ = VarType;
 }
+#endif
 
 //==============================================================================
 void Analyzer::visit(PrototypeAST& e)

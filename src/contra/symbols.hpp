@@ -115,10 +115,14 @@ public:
   {}
 
   //virtual ~VariableType() = default;
+  
+  auto getAttributes() const { return Attrs_; }
+  void setAttributes(unsigned Attrs) { Attrs_ = Attrs; }
 
   TypeDef* getBaseType() const { return Type_; }
+  void setBaseType(TypeDef* Type) { Type_ = Type; }
 
-  VariableType getIndexType() const {
+  VariableType getIndexedType() const {
     auto Attrs = Attrs_ & (~Array) & (~Range) & (~Field);
     return VariableType(Type_, Attrs);
   }
@@ -428,6 +432,15 @@ public:
   }
     
   auto getLevel() const { return Level_; }
+
+  bool has(const std::string & Name) {
+    auto it = LookupTable_.find(Name);
+    if (it == LookupTable_.end())  {
+      if (Parent_) return Parent_->find(Name);
+      else return false;
+    }
+    return true;
+  }
 
 };
 

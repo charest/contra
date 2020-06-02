@@ -230,10 +230,8 @@ void Vizualizer::visit(AssignStmtAST& e)
   auto my_ind = ind_;
   std::string Op = "=";
   labelNode(my_ind, makeLabel(e.getClassName(), Op));
-  createLink(my_ind, "Left" );
-  runVisitor(*e.getLeftExpr());
-  createLink(my_ind, "Right" );
-  runVisitor(*e.getRightExpr());
+  dumpBlock(e.getLeftExprs(), my_ind, "Left" );
+  dumpBlock(e.getRightExprs(), my_ind, "Right" );
 }
 
 //==============================================================================
@@ -245,7 +243,7 @@ void Vizualizer::visit(PartitionStmtAST& e)
   runVisitor(*e.getColorExpr());
 }
 
-
+#if 0
 //==============================================================================
 void Vizualizer::visit(VarDeclAST& e)
 {
@@ -296,6 +294,7 @@ void Vizualizer::visit(FieldDeclAST& e)
   createLink(ind_, "Init");
   runVisitor(*e.getInitExpr());
 }
+#endif
 
 //==============================================================================
 void Vizualizer::visit(PrototypeAST& e)

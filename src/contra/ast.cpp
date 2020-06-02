@@ -3,6 +3,10 @@
 namespace contra {
 
 //==============================================================================
+void ExprListAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
 template<>
 std::string ValueExprAST::getVal() const
 { return Val_; }
@@ -92,12 +96,12 @@ void PartitionStmtAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
-void VarDeclAST::accept(AstVisiter& visiter)
-{ visiter.visit(*this); }
+//void VarDeclAST::accept(AstVisiter& visiter)
+//{ visiter.visit(*this); }
 
 //==============================================================================
-void FieldDeclAST::accept(AstVisiter& visiter)
-{ visiter.visit(*this); }
+//void FieldDeclAST::accept(AstVisiter& visiter)
+//{ visiter.visit(*this); }
 
 //==============================================================================
 void PrototypeAST::accept(AstVisiter& visiter)

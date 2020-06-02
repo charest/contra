@@ -1,43 +1,29 @@
-function main() 
+fn main() {
 
-  var a : [i64] = 1
-  print("Should be 1, a=%i\n", a[0])
-  a[0] = 2
-  print("Now should be 2, a=%i\n", a[0])
+  # arrays can be declared multiple ways.  the [val; len] syntax
+  # allows you to specify arrays of length `len` initialized with
+  # all the entries set to `val`
+  d = [1; 2]
+  print("d=[%d, %d]\n", d[0], d[1])
 
-end
+  # you can also set the individual elements directly.  Note that the
+  # type determined by promoting all entries to some common type.  Here
+  # they are all promoted to reals.
+  e = [1, 2, 3.]
+  print("e=[%f, %f, %f]\n", e[0], e[1], e[2])
 
-main()
-function main() 
+  # You can override the array element type by prefixing the declaration
+  # with a type
+  i64 f = [1, 2, 3.]
+  print("f=[%d, %d, %d]\n", f[0], f[1], f[2])
 
-  var a : [i64; 2] = 1
-  print("Should be 1, a=%d\n", a[0])
-  print("Should also be 1, a=%d\n", a[1])
+  # Note that multiple arrays can be declared at once, and the lenght
+  # does not have to be a constant literal.
+  n = 3
+  g, h = [1; n]
+  print("g=[%d, %d, %d]\n", g[1], g[1], g[2])
+  print("h=[%d, %d, %d]\n", h[0], h[1], h[2])
 
-  var i : i64 = 3
-  var b : [f64; i] = 2
-  print("Should be 2., a=%f\n", b[0])
-  print("Should also be 2., a=%f\n", b[2])
-
-
-end
-
-main()
-function main() 
-
-  var a : [i64] = [1; 2]
-  print("Should be 1, res=%d\n", a[0])
-  print("Should be 1, res=%d\n", a[1])
-
-  var b : [f64] = [1, 2, 3.]
-  print("Should be 1., res=%f\n", b[0])
-  print("Should be 3., res=%f\n", b[2])
-
-  var n = 3
-  var c, d : [i64] = [1; n]
-  print("Should be 1, res=%d\n", c[0])
-  print("Should be 1, res=%d\n", d[2])
-
-end
+}
 
 main()

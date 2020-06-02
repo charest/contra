@@ -96,8 +96,8 @@ private:
   void visit(AssignStmtAST&) override;
   void visit(PartitionStmtAST&) override;
 
-  void visit(VarDeclAST&) override;
-  void visit(FieldDeclAST&) override;
+  //void visit(VarDeclAST&) override;
+  //void visit(FieldDeclAST&) override;
   void visit(PrototypeAST&) override;
 
   void visit(FunctionAST&) override;
@@ -110,7 +110,7 @@ private:
   // variable interface
   VariableDef* getVariable(const Identifier & Id);
   VariableDef* insertVariable(const Identifier & Id, const VariableType & VarType);
-  VariableDef* getOrInsertVariable(
+  std::pair<VariableDef*, bool> getOrInsertVariable(
       const Identifier & Id,
       const VariableType & VarType = VariableType());
 
@@ -141,6 +141,9 @@ private:
 
   std::unique_ptr<CastExprAST> insertCastOp(
       std::unique_ptr<NodeAST> FromExpr,
+      const VariableType & ToType );
+  std::unique_ptr<CastExprAST> insertCastOp(
+      NodeAST* FromExpr,
       const VariableType & ToType );
 
   VariableType promote(

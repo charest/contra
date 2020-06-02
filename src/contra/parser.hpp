@@ -2,6 +2,7 @@
 #define PARSER_HPP
 
 #include "ast.hpp"
+#include "context.hpp"
 #include "lexer.hpp"
 #include "precedence.hpp"
 #include "token.hpp"
@@ -22,11 +23,6 @@ class Parser {
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
   int CurTok_ = tok_eof;
-  int NextTok_ = tok_eof;
-
-  SourceLocation CurLoc_;
-  LocationRange IdentifierLoc_;
-  std::string IdentifierStr_;
 
   /// BinopPrecedence - This holds the precedence for each binary operator that is
   /// defined.
@@ -36,12 +32,12 @@ public:
 
   Parser(std::shared_ptr<BinopPrecedence> Precedence) :
     BinopPrecedence_(Precedence)
-  { getNextToken(); }
+  {}
 
   Parser(std::shared_ptr<BinopPrecedence> Precedence,
       const std::string & filename ) :
     TheLex_(filename), BinopPrecedence_(Precedence)
-  { getNextToken(); }
+  {}
 
   /// get the current token
   int getCurTok() const { return CurTok_; }
@@ -50,13 +46,7 @@ public:
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
   int getNextToken() {
-    // save state
-    CurTok_ = NextTok_;
-    CurLoc_ = TheLex_.getCurLoc();
-    IdentifierLoc_ = TheLex_.getIdentifierLoc();
-    IdentifierStr_ = TheLex_.getIdentifierStr();
-    // advance
-    NextTok_ = TheLex_.gettok();
+    CurTok_ = TheLex_.gettok();
     return CurTok_;
   }
 
@@ -73,9 +63,18 @@ public:
   bool isTokOperator() const
   { return BinopPrecedence_->count(CurTok_); }
 
-  const auto & getCurLoc() const { return CurLoc_; }
-  const auto & getIdentifierLoc() const { return IdentifierLoc_; }
-  const auto & getIdentifierStr() const { return IdentifierStr_; }
+  bool isType(const std::string & Name) const
+  { return Context::instance().isType(Name); }
+
+  const auto & getCurLoc() const { return TheLex_.getCurLoc(); }
+  auto getIdentifierLoc() const { return TheLex_.getIdentifierLoc(); }
+  const auto & getIdentifierStr() const { return TheLex_.getIdentifierStr(); }
+
+  auto getIdentifier() const
+  { return Identifier(getIdentifierStr(), getIdentifierLoc()); }
+
+  auto getLocationRange(const SourceLocation & From) const
+  { return LocationRange(From, getCurLoc()); }
   
   // print out current line
   std::ostream & barf(std::ostream& out, const LocationRange & Loc)

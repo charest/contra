@@ -90,6 +90,7 @@ public:
   bool isGlobalScope() const { return CurrentScope_->Level == 0; }
 
   // type interface
+  auto isType(const std::string & Name) { return TypeTable_.has(Name); }
   auto getType(const std::string & Name) { return TypeTable_.find(Name); }
 
   // Variable interface

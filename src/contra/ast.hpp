@@ -51,6 +51,7 @@ public:
 
   virtual void setFuture(bool=true) {}
   virtual bool isFuture() const { return false; }
+
 };
 
 // some useful types
@@ -86,6 +87,38 @@ public:
   virtual bool isFuture() const { return Type_.isFuture(); }
 
 };
+
+//==============================================================================
+/// ValueExprAST - Expression class for numeric literals like "1.0".
+//==============================================================================
+class ExprListAST : public ExprAST {
+
+protected:
+
+  ASTBlock Exprs_;
+
+public:
+  ExprListAST(
+      const LocationRange & Loc,
+      ASTBlock Exprs) :
+    ExprAST(Loc),
+    Exprs_(std::move(Exprs))
+  {}
+
+  void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "ExprListAST"; }
+  
+  const auto & getExprs() const { return Exprs_; }
+  auto moveExprs() { return std::move(Exprs_); }
+  
+  auto size() const {return Exprs_.size();}
+  
+  auto getExpr(unsigned i) {return Exprs_[i].get();}
+  
+};
+
 
 //==============================================================================
 /// ValueExprAST - Expression class for numeric literals like "1.0".
@@ -133,7 +166,8 @@ public:
 class VarAccessExprAST : public ExprAST {
 protected:
 
-  std::string Name_;
+  Identifier Id_;
+  std::unique_ptr<Identifier> TypeId_;
   VariableDef* VarDef_ = nullptr;
 
   // Note: Derived member VarType_ might differ from VarDef->getType().
@@ -144,9 +178,11 @@ public:
 
   VarAccessExprAST(
       const LocationRange & Loc,
-      const std::string &Name) :
+      const  Identifier &Id,
+      std::unique_ptr<Identifier> TypeId = nullptr) :
     ExprAST(Loc),
-    Name_(Name)
+    Id_(Id),
+    TypeId_(std::move(TypeId))
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -154,10 +190,14 @@ public:
   virtual std::string getClassName() const override
   { return "VarAccessExprAST"; };
 
-  const std::string &getName() const { return Name_; }
+  const std::string &getName() const { return Id_.getName(); }
+  const Identifier & getVarId() const { return Id_; }
   
   void setVariableDef(VariableDef* VarDef) { VarDef_=VarDef; }
   VariableDef* getVariableDef() const { return VarDef_; }
+
+  auto hasTypeId() const { return static_cast<bool>(TypeId_); }
+  const auto & getTypeId() const { return *TypeId_; }
 };
 
 //==============================================================================
@@ -171,9 +211,10 @@ protected:
 public:
   ArrayAccessExprAST(
       const LocationRange & Loc,
-      const std::string &Name, 
-      std::unique_ptr<NodeAST> IndexExpr) :
-    VarAccessExprAST(Loc, Name),
+      const Identifier &Id, 
+      std::unique_ptr<NodeAST> IndexExpr,
+      std::unique_ptr<Identifier> TypeId = nullptr) :
+    VarAccessExprAST(Loc, Id, std::move(TypeId)),
     IndexExpr_(std::move(IndexExpr))
   {}
   
@@ -199,12 +240,16 @@ public:
 
   ArrayExprAST(
       const LocationRange & Loc,
-      ASTBlock Vals,
+      std::unique_ptr<NodeAST> ValsExpr,
       std::unique_ptr<NodeAST> Size) :
     ExprAST(Loc),
-    ValExprs_(std::move(Vals)),
     SizeExpr_(std::move(Size))
-  {}
+  {
+    if (auto ExprList = dynamic_cast<ExprListAST*>(ValsExpr.get()))
+      ValExprs_ = std::move(ExprList->moveExprs());
+    else
+      ValExprs_.emplace_back( std::move(ValsExpr) );
+  }
   
   virtual void accept(AstVisiter& visiter) override;
   
@@ -264,6 +309,7 @@ class CastExprAST : public ExprAST {
 protected:
 
   std::unique_ptr<NodeAST> FromExpr_;
+  NodeAST* FromExprPtr_ = nullptr;
   Identifier TypeId_;
 
 
@@ -274,11 +320,34 @@ public:
       Identifier TypeId) :
     ExprAST(Loc),
     FromExpr_(std::move(FromExpr)),
+    FromExprPtr_(FromExpr_.get()),
     TypeId_(TypeId)
   {}
 
-  CastExprAST(const LocationRange & Loc, std::unique_ptr<NodeAST> FromExpr,
-      const VariableType & Type) : ExprAST(Loc, Type), FromExpr_(std::move(FromExpr))
+  CastExprAST(
+      const LocationRange & Loc,
+      NodeAST* FromExpr,
+      Identifier TypeId) :
+    ExprAST(Loc),
+    FromExprPtr_(FromExpr),
+    TypeId_(TypeId)
+  {}
+
+  CastExprAST(
+      const LocationRange & Loc,
+      std::unique_ptr<NodeAST> FromExpr,
+      const VariableType & Type) : 
+    ExprAST(Loc, Type),
+    FromExpr_(std::move(FromExpr)),
+    FromExprPtr_(FromExpr_.get())
+  {}
+
+  CastExprAST(
+      const LocationRange & Loc,
+      NodeAST* FromExpr,
+      const VariableType & Type) : 
+    ExprAST(Loc, Type),
+    FromExprPtr_(FromExpr)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -287,7 +356,7 @@ public:
   { return "CastExprAST"; };
 
   const auto & getTypeId() const { return TypeId_; }
-  auto getFromExpr() const { return FromExpr_.get(); }
+  auto getFromExpr() const { return FromExprPtr_; }
   
 };
 
@@ -363,7 +432,7 @@ public:
 class CallExprAST : public ExprAST {
 protected:
   
-  std::string Callee_;
+  Identifier CalleeId_;
   ASTBlock ArgExprs_;
   bool IsTopTask_ = false;
   std::vector<VariableType> ArgTypes_;
@@ -374,14 +443,18 @@ public:
 
   CallExprAST(
       const LocationRange & Loc,
-      const std::string &Callee,
-      ASTBlock Args) :
+      const Identifier & CalleeId,
+      std::unique_ptr<NodeAST> ArgsExpr) :
     ExprAST(Loc),
-    Callee_(Callee),
-    ArgExprs_(std::move(Args))
-  {}
+    CalleeId_(CalleeId)
+  {
+    if (auto ExprList = dynamic_cast<ExprListAST*>(ArgsExpr.get()))
+      ArgExprs_ = std::move(ExprList->moveExprs());
+    else if (ArgsExpr)
+      ArgExprs_.emplace_back( std::move(ArgsExpr) );
+  }
 
-  const std::string & getName() const { return Callee_; }
+  const std::string & getName() const { return CalleeId_.getName(); }
 
   void setTopLevelTask(bool TopTask = true) { IsTopTask_ = TopTask; }
   bool isTopLevelTask() { return IsTopTask_; }
@@ -396,7 +469,9 @@ public:
   auto getArgExpr(int i) const { return ArgExprs_[i].get(); }
   
   auto moveArgExpr(int i) { return std::move(ArgExprs_[i]); }
-  auto setArgExpr(int i, std::unique_ptr<NodeAST> Expr) { ArgExprs_[i] = std::move(Expr); }
+  
+  auto setArgExpr(int i, std::unique_ptr<NodeAST> Expr)
+  { ArgExprs_[i] = std::move(Expr); }
 
   const auto & getArgType(int i) { return ArgTypes_[i]; }
   void setArgTypes(const std::vector<VariableType> & ArgTypes)
@@ -678,35 +753,61 @@ public:
 class AssignStmtAST : public StmtAST {
 protected:
 
-  std::unique_ptr<NodeAST> LeftExpr_;
-  std::unique_ptr<NodeAST> RightExpr_;
+  ASTBlock LeftExprs_;
+  ASTBlock RightExprs_;
+
+  std::map<unsigned, std::unique_ptr<NodeAST>> CastExprs_;
 
 public:
   AssignStmtAST(
       const LocationRange & Loc,
-      std::unique_ptr<NodeAST> lhs,
-      std::unique_ptr<NodeAST> rhs) :
-    StmtAST(Loc),
-    LeftExpr_(std::move(lhs)),
-    RightExpr_(std::move(rhs))
-  {}
+      std::unique_ptr<NodeAST> LeftExprs,
+      std::unique_ptr<NodeAST> RightExprs) :
+    StmtAST(Loc)
+  {
+    if (auto ExprList = dynamic_cast<ExprListAST*>(LeftExprs.get()))
+      LeftExprs_ = std::move(ExprList->moveExprs());
+    else
+      LeftExprs_.emplace_back( std::move(LeftExprs) );
+
+    if (auto ExprList = dynamic_cast<ExprListAST*>(RightExprs.get()))
+      RightExprs_ = std::move(ExprList->moveExprs());
+    else
+      RightExprs_.emplace_back( std::move(RightExprs) );
+  }
 
   virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "AssignStmtAST"; };
 
-  auto getLeftExpr() const { return LeftExpr_.get(); }
-  auto moveLeftExpr() { return std::move(LeftExpr_); }
-  auto setLeftExpr(std::unique_ptr<NodeAST> Expr) { LeftExpr_ = std::move(Expr); }
+  auto getNumLeftExprs() const { return LeftExprs_.size(); }
+  const auto & getLeftExprs() const { return LeftExprs_; }
+  auto getLeftExpr(unsigned i) const { return LeftExprs_[i].get(); }
+  auto moveLeftExpr(unsigned i) { return std::move(LeftExprs_[i]); }
+  auto setLeftExpr(unsigned i, std::unique_ptr<NodeAST> Expr)
+  { LeftExprs_[i] = std::move(Expr); }
 
-  auto getRightExpr() const { return RightExpr_.get(); }
-  auto moveRightExpr() { return std::move(RightExpr_); }
-  auto setRightExpr(std::unique_ptr<NodeAST> Expr) { RightExpr_ = std::move(Expr); }
+  auto getNumRightExprs() const { return RightExprs_.size(); }
+  const auto & getRightExprs() const { return RightExprs_; }
+  auto getRightExpr(unsigned i) const { return RightExprs_[i].get(); }
+  auto moveRightExpr(unsigned i) { return std::move(RightExprs_[i]); }
+  auto setRightExpr(unsigned i, std::unique_ptr<NodeAST> Expr)
+  { RightExprs_[i] = std::move(Expr); }
+
+  void addCast(unsigned i, std::unique_ptr<NodeAST> CastExpr)
+  { CastExprs_[i] = std::move(CastExpr); }
+
+  NodeAST* getCast(unsigned i) const 
+  {
+    auto it = CastExprs_.find(i);
+    if (it == CastExprs_.end()) return nullptr;
+    return it->second.get();
+  }
 };
 
 
-
+#if 0
 //==============================================================================
 /// VarDefExprAST - Expression class for var/in
 //==============================================================================
@@ -825,7 +926,7 @@ public:
   
   bool isFuture(unsigned i) const { return VarDefs_[i]->getType().isFuture(); }
 };
-
+#endif
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function,

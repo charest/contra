@@ -21,7 +21,7 @@ public:
   BinopPrecedence() {
     // Install standard binary operators.
     // 1 is lowest precedence.
-    Precedence_[tok_asgmt] = 2;
+    //Precedence_[tok_asgmt] = 2;
     Precedence_[tok_eq] = 5;
     Precedence_[tok_ne] = 5;
     Precedence_[tok_lt] = 10;

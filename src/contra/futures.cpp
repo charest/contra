@@ -40,22 +40,35 @@ void FutureIdentifier::postVisit(CallExprAST& e)
 //==============================================================================
 void FutureIdentifier::visit(AssignStmtAST& e)
 {
-  e.getRightExpr()->accept(*this);
+  auto NumLeft = e.getNumLeftExprs();
+  auto NumRight = e.getNumRightExprs();
+  
+  for (unsigned il=0, ir=0; il<NumLeft; il++) {
 
-  auto IsFuture = e.getRightExpr()->isFuture();
-  if (IsFuture)
-    e.getLeftExpr()->setFuture();
+    auto RightExpr = e.getRightExpr(ir);
+    auto LeftExpr = e.getLeftExpr(il);
 
-  auto RightVarAST = dynamic_cast<VarAccessExprAST*>(e.getRightExpr());
-  auto LeftVarAST = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr());
+    RightExpr->accept(*this);
 
-  if (LeftVarAST) {
-    auto LeftVarDef = LeftVarAST->getVariableDef();
-    if (IsFuture) LeftVarDef->getType().setFuture(); 
-    if (RightVarAST) addFlow(LeftVarDef, RightVarAST->getVariableDef());
-  }
+    auto IsFuture = RightExpr->isFuture();
+    if (IsFuture)
+      LeftExpr->setFuture();
+
+    auto RightVarAST = dynamic_cast<VarAccessExprAST*>(RightExpr);
+    auto LeftVarAST = dynamic_cast<VarAccessExprAST*>(LeftExpr);
+
+    if (LeftVarAST) {
+      auto LeftVarDef = LeftVarAST->getVariableDef();
+      if (IsFuture) LeftVarDef->getType().setFuture(); 
+      if (RightVarAST) addFlow(LeftVarDef, RightVarAST->getVariableDef());
+    }
+      
+    if (NumRight>1) ir++;
+
+  } // for
 }
 
+#if 0
 //==============================================================================
 void FutureIdentifier::visit(VarDeclAST& e)
 {
@@ -74,6 +87,6 @@ void FutureIdentifier::visit(VarDeclAST& e)
 //==============================================================================
 void FutureIdentifier::visit(FieldDeclAST& e)
 { visit( static_cast<VarDeclAST&>(e) ); }
-
+#endif
 
 }
