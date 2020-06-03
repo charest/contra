@@ -89,6 +89,7 @@ private:
   void visit(UnaryExprAST&) override;
   void visit(BinaryExprAST&) override;
   void visit(CallExprAST&) override;
+  void visit(ExprListAST&) override;
 
   void visit(ForStmtAST&) override;
   void visit(ForeachStmtAST&) override;
@@ -118,7 +119,7 @@ private:
   FunctionDef* insertFunction(
       const Identifier & Id,
       const VariableTypeList & ArgTypes,
-      const VariableType & RetType);
+      const VariableType & RetTypes);
   
   FunctionDef* getFunction(const std::string &, const LocationRange &);
   FunctionDef* getFunction(const Identifier & Id);

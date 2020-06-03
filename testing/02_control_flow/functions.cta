@@ -1,0 +1,72 @@
+# this is an empty function
+fn empty() {}
+
+# this is how it is called
+empty()
+
+# this is a function with an argument
+fn argument( i64 x ) {
+
+  print("I'm inside a function!!\n")
+  print("Argument x = %d\n", x)
+
+  # this is a local variable
+  y = 1 + x
+  print("y = 1 + x = %d\n", y)
+
+}
+
+# this is how you pass an argument to a function
+argument(1)
+
+# functions on one line do not need begin and end braces
+fn change_scalar(i64 x) x = 1
+
+# this is how you pass an array
+fn change_array( i64 y[] ) {
+  print("y is originaly all 0, y=[%d, %d]\n", y[0], y[1])
+  y[0] = 1
+  y[1] = 1
+}
+
+# functions can call other functions
+fn test_args() {
+
+  # scalars are passed by default
+  x = 0
+  change_scalar(x)
+  print("x is still 0, x=%d\n", x)
+  
+  # arrays are passed by reference
+  y = [0; 2]
+  change_array(y)
+  print("y should now be all 1, y=[%d, %d]\n", y[0], y[1])
+
+}
+
+test_args()
+
+# functions can return values
+fn return_one() return 1
+print("print one, %d\n", return_one())
+
+# If the last statement is an expression, you do not need to add return keyword.
+# You can also specify the return type.
+fn f64 return_two() 2
+print("print two, %f\n", return_two())
+
+# Functions can also return multiple values
+fn return_two_values() 1, 2
+
+# You can also override the return value type
+fn i64,f64 return_two_values_with_types() 1, 2
+
+fn test_returns() {
+  a, b = return_two_values()
+  print("a=%d, b=%d\n", a, b)
+  
+  c, d = return_two_values_with_types()
+  print("c=%d, d=%f\n", c, d)
+}
+
+test_returns()

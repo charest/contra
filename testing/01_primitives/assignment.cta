@@ -1,18 +1,18 @@
-function main() 
+fn main() {
 
   # scalars
-  var a = 1
-  var b = 1.0
-  var c : i64 = 0.
-  var d : f64 = 0
+  a = 1
+  b = 1.0
+  i64 c = 0.
+  f64 d = 0
   c = b
   d = a
   print("c is %d\n", c) 
   print("d is %f\n", d) 
 
   # arrays
-  var e : [i64] = [1, 2, 3.]
-  var f : [f64] = [1, 2, 3.]
+  i64 e = [1, 2, 3.]
+  f64 f = [1, 2, 3.]
 
   e = [4., 5, 6., 7] 
   f = [4., 5, 6., 7] 
@@ -26,8 +26,8 @@ function main()
   print("e={%d, %d, %d, %d, %d}\n", e[0], e[1], e[2], e[3], e[4])
   print("f={%f, %f, %f, %f, %f}\n", f[0], f[1], f[2], f[3], f[4])
 
-  var g = [0; 6]
-  var h = [0.; 6]
+  g = [0; 6]
+  h = [0.; 6]
   e = g
   f = h
 
@@ -35,6 +35,6 @@ function main()
   print("f={%f, %f, %f, %f, %f, %f}\n", f[0], f[1], f[2], f[3], f[4], f[5])
 
 
-end
+}
 
 main()

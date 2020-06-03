@@ -1,0 +1,10 @@
+I'm inside a function!!
+Argument x = 1
+y = 1 + x = 2
+x is still 0, x=0
+y is originaly all 0, y=[0, 0]
+y should now be all 1, y=[1, 1]
+print one, 1
+print two, 2.000000
+a=1, b=2
+c=1, d=2.000000

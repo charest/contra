@@ -756,7 +756,7 @@ protected:
   ASTBlock LeftExprs_;
   ASTBlock RightExprs_;
 
-  std::map<unsigned, std::unique_ptr<NodeAST>> CastExprs_;
+  std::map<unsigned, VariableType> CastTypes_;
 
 public:
   AssignStmtAST(
@@ -795,14 +795,14 @@ public:
   auto setRightExpr(unsigned i, std::unique_ptr<NodeAST> Expr)
   { RightExprs_[i] = std::move(Expr); }
 
-  void addCast(unsigned i, std::unique_ptr<NodeAST> CastExpr)
-  { CastExprs_[i] = std::move(CastExpr); }
+  void addCast(unsigned i, const VariableType & ToType)
+  { CastTypes_[i] = ToType; }
 
-  NodeAST* getCast(unsigned i) const 
+  const VariableType* getCast(unsigned i) const 
   {
-    auto it = CastExprs_.find(i);
-    if (it == CastExprs_.end()) return nullptr;
-    return it->second.get();
+    auto it = CastTypes_.find(i);
+    if (it == CastTypes_.end()) return nullptr;
+    return &it->second;
   }
 };
 
@@ -937,7 +937,7 @@ class PrototypeAST : public NodeAST {
 protected:
 
   Identifier Id_;
-  std::unique_ptr<Identifier> ReturnTypeId_;
+  std::vector<Identifier> ReturnTypeIds_;
   bool IsOperator_ = false;
   unsigned Precedence_ = 0;  // Precedence if a binary op.
   
@@ -961,12 +961,17 @@ public:
     std::vector<Identifier> && Args,
     std::vector<Identifier> && ArgTypes,
     std::vector<bool> && ArgIsArray,
-    std::unique_ptr<Identifier> Return,
+    std::vector<Identifier> ReturnIds,
     bool IsOperator = false,
-    unsigned Prec = 0)
-      : NodeAST(Id.getLoc()), Id_(Id), ReturnTypeId_(std::move(Return)),
-        IsOperator_(IsOperator), Precedence_(Prec), ArgIds_(std::move(Args)),
-        ArgTypeIds_(std::move(ArgTypes)), ArgIsArray_(std::move(ArgIsArray))
+    unsigned Prec = 0) :
+      NodeAST(Id.getLoc()),
+      Id_(Id),
+      ReturnTypeIds_(std::move(ReturnIds)),
+      IsOperator_(IsOperator),
+      Precedence_(Prec),
+      ArgIds_(std::move(Args)),
+      ArgTypeIds_(std::move(ArgTypes)),
+      ArgIsArray_(std::move(ArgIsArray))
   {}
 
   
@@ -992,10 +997,12 @@ public:
   auto getLoc() const { return Id_.getLoc(); }
 
   const auto & getReturnType() const { return ReturnType_; }
-  void setReturnType(const VariableType & ReturnType) { ReturnType_ = ReturnType; }
+  void setReturnType(const VariableType & ReturnType)
+  { ReturnType_ = ReturnType; }
 
-  auto hasReturn() const { return static_cast<bool>(ReturnTypeId_); }
-  const auto & getReturnTypeId() const { return *ReturnTypeId_; }
+  auto hasReturn() const { return !ReturnTypeIds_.empty(); }
+  auto hasMultipleReturn() const { return (ReturnTypeIds_.size()>1); }
+  const auto & getReturnTypeIds() const { return ReturnTypeIds_; }
 
   auto getNumArgs() const { return ArgIds_.size(); } 
   const auto & getArgTypeId(int i) const { return ArgTypeIds_[i]; }
@@ -1035,7 +1042,7 @@ public:
     BodyExprs_(std::move(Body)),
     IsTask_(IsTask),
     Name_(Name)
-  {}
+  { checkReturn(); }
 
   FunctionAST(
       std::unique_ptr<PrototypeAST> Proto,
@@ -1048,7 +1055,7 @@ public:
     ReturnExpr_(std::move(Return)),
     IsTask_(IsTask),
     Name_(ProtoExpr_->getName())
-  {}
+  { checkReturn(); }
 
   FunctionAST(
       std::unique_ptr<PrototypeAST> Proto,
@@ -1058,7 +1065,16 @@ public:
     ReturnExpr_(std::move(Return)),
     IsTopExpression_(true),
     Name_(ProtoExpr_->getName())
-  {}
+  { checkReturn(); }
+
+  void checkReturn() {
+    if (!ReturnExpr_ && BodyExprs_.size()) {
+      if (dynamic_cast<ExprAST*>(BodyExprs_.back().get())) {
+        ReturnExpr_ = std::move(BodyExprs_.back());
+        BodyExprs_.pop_back();
+      }
+    }
+  }
 
   auto isTopLevelExpression() const { return IsTopExpression_; }
   auto isTask() const { return IsTask_; }

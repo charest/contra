@@ -166,6 +166,28 @@ JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
 void CodeGen::removeJIT( JIT::VModuleKey H )
 { TheJIT_.removeModule(H); }
 
+//==============================================================================
+// Cast utility
+//==============================================================================
+Value* CodeGen::createCast(Value* FromVal, Type* ToType)
+{
+  auto FromType = FromVal->getType();
+  auto TheBlock = Builder_.GetInsertBlock();
+
+  if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
+    return CastInst::Create(Instruction::FPToSI, FromVal,
+        llvmType<int_t>(TheContext_), "cast", TheBlock);
+  }
+  else if (FromType->isIntegerTy() && ToType->isFloatingPointTy()) {
+    return CastInst::Create(Instruction::SIToFP, FromVal,
+        llvmType<real_t>(TheContext_), "cast", TheBlock);
+  }
+  else {
+    return FromVal;
+  }
+
+}
+  
 
 ////////////////////////////////////////////////////////////////////////////////
 // Scope Interface
@@ -369,6 +391,22 @@ VariableAlloca * CodeGen::createArray(
   
   return insertVariable(VarName, {ArrayA, ElementType, SizeExpr});
 }
+
+void CodeGen::createArray(
+    Value* ArrayA,
+    Value * SizeV,
+    Type * ElementT)
+{
+  Function *F; 
+  F = TheModule_->getFunction("allocate");
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
+
+
+  auto DataSize = getTypeSize<int_t>(ElementT);
+  std::vector<Value*> ArgVs = {SizeV, DataSize, ArrayA};
+  Builder_.CreateCall(F, ArgVs);
+}
+ 
  
 //==============================================================================
 // Initialize Array
@@ -679,19 +717,19 @@ VariableAlloca * CodeGen::createRange(
 //==============================================================================
 // Get the function
 //==============================================================================
-Function *CodeGen::getFunction(std::string Name) {
+std::pair<Function*, bool> CodeGen::getFunction(std::string Name) {
   // First, see if the function has already been added to the current module.
   if (auto F = TheModule_->getFunction(Name))
-    return F;
+    return {F,false};
   
   // see if this is an available intrinsic, try installing it first
   if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
-    return F;
+    return {F,false};
 
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
   auto fit = FunctionTable_.find(Name);
-  return runFuncVisitor(*fit->second);
+  return {runFuncVisitor(*fit->second), fit->second->getReturnType().isStruct()};
 }
 
 //==============================================================================
@@ -852,7 +890,8 @@ void CodeGen::visit(ArrayExprAST &e)
     SizeExpr = llvmValue<int_t>(TheContext_, e.getNumVals());
   }
 
-  auto ArrayE = createArray(TheFunction, "__tmp", VarT, SizeExpr );
+  auto ArrayN = getTempName();
+  auto ArrayE = createArray(TheFunction, ArrayN, VarT, SizeExpr );
   auto ArrayA = ArrayE->getAlloca();
 
   if (e.hasSize()) 
@@ -861,7 +900,7 @@ void CodeGen::visit(ArrayExprAST &e)
     initArray(TheFunction, ArrayA, InitVals, VarT);
 
   auto Ty = ArrayA->getType()->getPointerElementType();
-  ValueResult_ =  Builder_.CreateLoad(Ty, ArrayA, "__tmp");
+  ValueResult_ =  Builder_.CreateLoad(Ty, ArrayA, ArrayN);
 }
 
 //==============================================================================
@@ -883,29 +922,40 @@ void CodeGen::visit(RangeExprAST &e)
   ValueResult_ =  Builder_.CreateLoad(Ty, RangeA, "__tmp");
 }
   
-  
 //==============================================================================
 // CastExprAST - Expression class for casts.
 //==============================================================================
 void CodeGen::visit(CastExprAST &e)
 {
-  auto FromVal = runExprVisitor(*e.getFromExpr());
-  auto FromType = ValueResult_->getType();
+  auto ToType = e.getType();
+  auto ToT = getLLVMType(ToType);
+  auto FromV = runExprVisitor(*e.getFromExpr());
 
-  auto ToType = getLLVMType(e.getType());
+  if (ToType.isStruct()) {
+    auto TheFunction = Builder_.GetInsertBlock()->getParent();
+    auto ToA = createEntryBlockAlloca(TheFunction, ToT);
 
-  auto TheBlock = Builder_.GetInsertBlock();
-
-  if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
-    ValueResult_ = CastInst::Create(Instruction::FPToSI, FromVal,
-        llvmType<int_t>(TheContext_), "cast", TheBlock);
-  }
-  else if (FromType->isIntegerTy() && ToType->isFloatingPointTy()) {
-    ValueResult_ = CastInst::Create(Instruction::SIToFP, FromVal,
-        llvmType<real_t>(TheContext_), "cast", TheBlock);
+    const auto & ToMembers = ToType.getMembers();
+    auto NumElem = ToMembers.size();
+  
+    std::vector<Value*> IndicesC = {
+      ConstantInt::get(TheContext_, APInt(32, 0, true)),
+      ConstantInt::get(TheContext_, APInt(32, 0, true))
+    };
+  
+    for (unsigned i=0; i<NumElem; ++i) {
+      auto StructT = cast<StructType>(ToT);
+      auto MemberT = StructT->getElementType(i);
+      Value* MemberV = Builder_.CreateExtractValue(FromV, i);
+      MemberV = createCast(MemberV, MemberT);
+      IndicesC[1] = ConstantInt::get(TheContext_, APInt(32, i, true));
+      auto MemberGEP = Builder_.CreateGEP(ToT, ToA, IndicesC);
+      Builder_.CreateStore(MemberV, MemberGEP);
+    }
+    ValueResult_ = Builder_.CreateLoad(ToT, ToA);
   }
   else {
-    ValueResult_ = FromVal;
+    ValueResult_ = createCast(FromV, ToT);
   }
 
 }
@@ -933,7 +983,7 @@ void CodeGen::visit(UnaryExprAST & e) {
     }
   }
 
-  auto F = getFunction(std::string("unary") + e.getOperand());
+  auto F = getFunction(std::string("unary") + e.getOperand()).first;
   ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
 }
 
@@ -1026,7 +1076,7 @@ void CodeGen::visit(BinaryExprAST& e) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = getFunction(std::string("binary") + e.getOperand());
+  auto F = getFunction(std::string("binary") + e.getOperand()).first;
 
   Value *Ops[] = { L, R };
   ValueResult_ = Builder_.CreateCall(F, Ops, "binop");
@@ -1064,7 +1114,8 @@ void CodeGen::visit(CallExprAST &e) {
     return;
   }
 
-  auto CalleeF = getFunction(Name);
+  auto FunPair = getFunction(Name);
+  auto CalleeF = FunPair.first;
   auto IsTask = Tasker_->isTask(Name);
     
   std::vector<Value *> ArgVs;
@@ -1113,7 +1164,36 @@ void CodeGen::visit(CallExprAST &e) {
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
   }
 
+  IsPacked_ = FunPair.second;
+
 }
+
+//==============================================================================
+// expression list
+//==============================================================================
+void CodeGen::visit(ExprListAST & e) {
+
+  auto StructT = getLLVMType(e.getType());
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto StructA = createEntryBlockAlloca(TheFunction, StructT, "struct.a");
+    
+  std::vector<Value*> IndicesC = {
+    ConstantInt::get(TheContext_, APInt(32, 0, true)),
+    ConstantInt::get(TheContext_, APInt(32, 0, true))
+  };
+  
+  unsigned i = 0;
+  for (const auto & Expr : e.getExprs()) {
+    IndicesC[1] = ConstantInt::get(TheContext_, APInt(32, i, true));
+    auto MemberV = runExprVisitor(*Expr);
+    auto MemberGEP = Builder_.CreateGEP(StructT, StructA, IndicesC, "struct.i");
+    Builder_.CreateStore(MemberV, MemberGEP);
+    i++;
+  }
+
+  ValueResult_ = Builder_.CreateLoad(StructT, StructA, "struct.v");
+}
+
 
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
@@ -1414,9 +1494,25 @@ void CodeGen::visit(AssignStmtAST & e)
 {
   auto NumLeft = e.getNumLeftExprs();
   auto NumRight = e.getNumRightExprs();
+ 
+  // get all right 
+  std::vector<Value*> RightVs;
+  for (const auto & Expr : e.getRightExprs())
+    RightVs.emplace_back( runExprVisitor(*Expr) );
+
+  if (IsPacked_) {
+    auto StructV = RightVs.front();
+    auto StructT = cast<StructType>(StructV->getType());
+    NumRight = StructT->getNumElements();
+    RightVs.clear();
+    for (unsigned i=0; i<NumRight; ++i)
+      RightVs.emplace_back( Builder_.CreateExtractValue(StructV, i) );
+  }
+
+  auto RightIt = RightVs.begin();
 
   // Loop over variables
-  for (unsigned il=0, ir=0; il<NumLeft; il++) {
+  for (unsigned il=0; il<NumLeft; il++) {
 
     // Assignment requires the LHS to be an identifier.
     // This assume we're building without RTTI because LLVM builds that way by
@@ -1426,12 +1522,9 @@ void CodeGen::visit(AssignStmtAST & e)
     auto LHSE = dynamic_cast<VarAccessExprAST*>(LeftExpr);
     
     // Codegen the RHS.
-    auto RightExpr = e.getRightExpr(ir);
-    Value* VariableV = nullptr;
-    if (auto CastExpr = e.getCast(il))
-      VariableV = runExprVisitor(*CastExpr);
-    else
-      VariableV = runExprVisitor(*RightExpr);
+    Value* VariableV = *RightIt;
+    if (auto CastType = e.getCast(il))
+      VariableV = createCast(VariableV, getLLVMType(*CastType));
 
     // Look up the name.
     auto VarT = getLLVMType(LHSE->getType());
@@ -1462,16 +1555,11 @@ void CodeGen::visit(AssignStmtAST & e)
     //---------------------------------------------------------------------------
     // array = ?
     else if (isArray(VariableA)) {
-      // array = [val0, val1, ..., valn ]
-      if (dynamic_cast<ArrayExprAST*>(RightExpr)) {
-        if (!VarInserted) destroyArray(VariableA);
-        Builder_.CreateStore(VariableV, VariableA);
-        eraseVariable("__tmp");
+      if (VarInserted) {
+        auto SizeV = Builder_.CreateExtractValue(VariableV, 1);
+        createArray(VariableA, SizeV, VarE->getType() );
       }
-      // array = array
-      else if (isArray(VariableV)) {
-        copyArray(VariableV, VariableA);
-      }
+      copyArray(VariableV, VariableA);
     }
     //---------------------------------------------------------------------------
     // future = ?
@@ -1504,7 +1592,7 @@ void CodeGen::visit(AssignStmtAST & e)
       Builder_.CreateStore(VariableV, VariableA);
     }
 
-    if (NumRight>1) ir++;
+    if (NumRight>1) ++RightIt;
 
   } // for
 
@@ -1844,7 +1932,10 @@ void CodeGen::visit(PrototypeAST &e) {
   }
   
   Type* ReturnType = VoidType_;
-  if (e.getReturnType()) ReturnType = getLLVMType(e.getReturnType());
+  if (e.getReturnType()) {
+    ReturnType = getLLVMType(e.getReturnType());
+  }
+
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
   Function *F = Function::Create(FT, Function::ExternalLinkage, e.getName(), &getModule());
@@ -1890,7 +1981,7 @@ void CodeGen::visit(FunctionAST& e)
   // reference to it for use below.
   auto & P = insertFunction( std::move(e.moveProtoExpr()) );
   const auto & Name = P.getName();
-  auto TheFunction = getFunction(Name);
+  auto TheFunction = getFunction(Name).first;
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TheFunction);
@@ -1927,8 +2018,9 @@ void CodeGen::visit(FunctionAST& e)
   if (CreatedScope) popScope();
   
   // Finish off the function.
-  if (RetVal && !RetVal->getType()->isVoidTy() )
+  if (RetVal && !RetVal->getType()->isVoidTy() ) {
     Builder_.CreateRet(RetVal);
+  }
   else
     Builder_.CreateRetVoid();
   
@@ -1954,7 +2046,7 @@ void CodeGen::visit(TaskAST& e)
   // reference to it for use below.
   auto & P = insertFunction( std::move(e.moveProtoExpr()) );
   auto Name = P.getName();
-  auto TheFunction = getFunction(Name);
+  auto TheFunction = getFunction(Name).first;
   
   // insert the task 
   auto & TaskI = Tasker_->insertTask(Name);

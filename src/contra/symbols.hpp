@@ -74,7 +74,6 @@ public:
   virtual ~UserTypeDef() = default;
 
   virtual const LocationRange & getLoc() const { return Loc_; }
-
 };
 
 //==============================================================================
@@ -85,25 +84,27 @@ class VariableType {
 public:
 
   enum Attr : unsigned {
-    None   = (1u << 0),
-    Array  = (1u << 1),
-    Future = (1u << 2),
-    Range  = (1u << 3),
-    Field  = (1u << 4),
-    Partition = (1u << 5)
+    None   = 0,
+    Array  = (1u << 0),
+    Future = (1u << 1),
+    Range  = (1u << 2),
+    Field  = (1u << 3),
+    Partition = (1u << 4),
+    Struct = (1u << 5)
   };
 
 protected:
 
   TypeDef* Type_ = nullptr;
   unsigned Attrs_ = Attr::None;
+  std::vector<VariableType> Members_;
 
 public:
 
   VariableType() = default;
   
   VariableType(const VariableType & Type)
-    : Type_(Type.Type_), Attrs_(Type.Attrs_)
+    : Type_(Type.Type_), Attrs_(Type.Attrs_), Members_(Type.Members_)
   {}
   
   explicit VariableType(const VariableType & Type, unsigned Attrs)
@@ -114,7 +115,15 @@ public:
     : Type_(Type), Attrs_(Attrs)
   {}
 
+  VariableType(const std::vector<VariableType> & Members)
+    : Attrs_(Attr::Struct), Members_(Members)
+  {}
+  
+
   //virtual ~VariableType() = default;
+  
+  const auto & getMembers() const { return Members_; }
+  const auto & getMember(unsigned i) const { return Members_[i]; }
   
   auto getAttributes() const { return Attrs_; }
   void setAttributes(unsigned Attrs) { Attrs_ = Attrs; }
@@ -158,13 +167,28 @@ public:
     if (IsPartition) Attrs_ |= Attr::Partition;
     else Attrs_ &= ~Attr::Partition;
   }
+  
+  bool isStruct() const { return ((Attrs_ & Attr::Struct) == Attr::Struct); }
 
-  bool isNumber() const { return (!isArray() && !isRange() && Type_->isNumber()); }
+  bool isNumber() const { return (!isArray() && !isRange() && Type_ && Type_->isNumber()); }
   
   bool isIndexable() const { return (isArray() || isRange() || isField()); }
 
   bool isCastableTo(const VariableType &To) const
-  { return (isNumber() && To.isNumber()); }
+  { 
+    if (isStruct()) {
+      auto NumElem = Members_.size();
+      if (NumElem != To.Members_.size()) return false;
+      for (unsigned i=0; i<NumElem; ++i) {
+        auto IsCastable = Members_[i].isCastableTo(To.Members_[i]);
+        if (!IsCastable) return false;
+      }
+      return true;
+    }
+    else {
+      return (isNumber() && To.isNumber());
+    }
+  }
 
   bool isAssignableTo(const VariableType &LeftType) const
   {
@@ -174,27 +198,39 @@ public:
   }
 
   bool operator==(const VariableType & other)
-  { return !(*this == other); }
+  { 
+    return 
+      Type_ == other.Type_ &&
+      Attrs_ == other.Attrs_ &&
+      (Members_.size() == other.Members_.size()) &&
+      std::equal(Members_.begin(), Members_.end(), other.Members_.begin());
+  }
 
   bool operator!=(const VariableType & other)
-  { return Type_ != other.Type_ || Attrs_ != other.Attrs_; }
+  { return !(*this == other); }
   
-  operator bool() const { return Type_; }
+  operator bool() const { return Type_ || (!Members_.empty()); }
 
   friend std::ostream &operator<<( std::ostream &out, const VariableType &obj )
   {
+    if (obj.isFuture()) out << "(F)";
+    if (obj.isField()) out << "(Fld)";
+    if (obj.isArray()) out << "[";
+    if (obj.isRange()) out << "{";
     if (obj.Type_) {
-      if (obj.isFuture()) out << "(F)";
-      if (obj.isField()) out << "(Fld)";
-      if (obj.isArray()) out << "[";
-      if (obj.isRange()) out << "{";
       out << obj.Type_->getName();
-      if (obj.isArray()) out << "]";
-      if (obj.isRange()) out << "}";
+    }
+    else if (!obj.Members_.empty()) {
+      out << "< ";
+      for (const auto & M : obj.Members_)
+        out << M << " ";
+      out << ">";
     }
     else {
       out << "undef";
     }
+    if (obj.isArray()) out << "]";
+    if (obj.isRange()) out << "}";
     return out;
   }
 
@@ -223,8 +259,6 @@ inline VariableType setField(const VariableType& Ty, bool IsField)
   NewTy.setField(IsField);
   return NewTy;
 }
-
-
 
 //==============================================================================
 // The variable symbol
@@ -285,16 +319,24 @@ protected:
 
 public:
   
-  FunctionDef(const std::string & Name, const VariableType & ReturnType,
-      const VariableTypeList & ArgTypes, bool IsVarArg = false)
-    : Name_(Name), ArgTypes_(ArgTypes), ReturnType_(ReturnType),
-      IsVarArg_(IsVarArg), Attrs_(Attr::None)
+  FunctionDef(
+      const std::string & Name,
+      const VariableType & ReturnType,
+      const VariableTypeList & ArgTypes,
+      bool IsVarArg = false)
+    : 
+      Name_(Name),
+      ArgTypes_(ArgTypes),
+      ReturnType_(ReturnType),
+      IsVarArg_(IsVarArg),
+      Attrs_(Attr::None)
   {}
 
   //virtual ~FunctionTypeDef() = default;
 
   const auto & getName() const { return Name_; }
   const auto & getReturnType() const { return ReturnType_; }
+  void setReturnType(const VariableType & ReturnType) { ReturnType_=ReturnType; }
   const auto & getArgTypes() const { return ArgTypes_; }
   const auto & getArgType(int i) const { return ArgTypes_[i]; }
   auto getNumArgs() const { return ArgTypes_.size(); }
@@ -315,13 +357,19 @@ class BuiltInFunction : public FunctionDef {
 
 public:
 
-  BuiltInFunction(const std::string & Name, const VariableType & ReturnType, 
-      const VariableTypeList & ArgTypes, bool IsVarArg = false) :
+  BuiltInFunction(
+      const std::string & Name,
+      const VariableType & ReturnType, 
+      const VariableTypeList & ArgTypes,
+      bool IsVarArg = false) :
     FunctionDef(Name, ReturnType, ArgTypes, IsVarArg)
   {}
   
-  BuiltInFunction(const std::string & Name, const VariableType & ReturnType, 
-      const VariableType & ArgType, bool IsVarArg = false) :
+  BuiltInFunction(
+      const std::string & Name,
+      const VariableType & ReturnType, 
+      const VariableType & ArgType,
+      bool IsVarArg = false) :
     FunctionDef(Name, ReturnType, VariableTypeList{ArgType}, IsVarArg)
   {}
   

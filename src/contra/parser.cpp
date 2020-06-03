@@ -763,6 +763,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
 std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   std::string FnName;
+  auto BeginLoc = getCurLoc();
 
   auto FnLoc = getIdentifierLoc();
 
@@ -820,6 +821,32 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     break;
   }
   
+  std::vector<Identifier> ReturnTypes;
+
+  // know it has specified arguments
+  if (CurTok_ == ',' || CurTok_ == tok_identifier) {
+    ReturnTypes.emplace_back(FnName, FnLoc);
+    while (CurTok_ == ',') {
+      getNextToken(); // eat ,
+      if (CurTok_ != tok_identifier)
+        THROW_SYNTAX_ERROR(
+            "Expected identifier in return type specification.",
+            getLocationRange(BeginLoc));
+      ReturnTypes.emplace_back(getIdentifierStr(), getIdentifierLoc());
+      getNextToken(); // eat identifier
+    }
+      
+    if (CurTok_ != tok_identifier) {
+        THROW_SYNTAX_ERROR(
+            "Expected function name specification.",
+            getLocationRange(BeginLoc));
+    }
+    FnName = getIdentifierStr();
+    FnLoc = getIdentifierLoc();
+    getNextToken();
+  }
+
+  
   if (CurTok_ != '(')
     THROW_SYNTAX_ERROR(
         "Expected '(' in prototype",
@@ -835,41 +862,43 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
     bool IsArray = false;
 
-    auto Loc = getIdentifierLoc();
-    auto Name = getIdentifierStr();
-    Args.emplace_back( Name, Loc );
+    auto BeginLoc = getCurLoc();
+
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR(
+          "Identifier expected n prototype for function '" << FnName << "'",
+          getLocationRange(BeginLoc));
+
+    auto TypeLoc = getIdentifierLoc();
+    auto TypeName = getIdentifierStr();
+    ArgTypes.emplace_back( TypeName, TypeLoc );
+
     getNextToken(); // eat identifier
     
-    if (CurTok_ != ':') 
+    if (CurTok_ != tok_identifier)
       THROW_SYNTAX_ERROR(
-          "Variable '" << Name << "' needs a type specifier",
-          getIdentifierLoc());
-    getNextToken(); // eat ":"
+          "Mising type or variable name in prototype for function '" 
+          << FnName << "'",
+          getLocationRange(BeginLoc));
+    auto VarName = getIdentifierStr();
+    auto VarLoc = getIdentifierLoc();
+    
+    Args.emplace_back( VarName, VarLoc );
+    
+    getNextToken(); // eat identifier
     
     if (CurTok_ == '[') {
       IsArray = true;
+      auto BeginLoc = getCurLoc();
       getNextToken(); // eat the '['.
+      if (CurTok_ != ']')
+        THROW_SYNTAX_ERROR(
+            "Expected ']'",
+            getLocationRange(BeginLoc));
+      getNextToken(); // eat the ']'
     }
     ArgIsArray.push_back( IsArray );
    
-    if (CurTok_ != tok_identifier)
-      THROW_SYNTAX_ERROR(
-          "Variable '" << Name << "' requires a type in prototype"
-          << " for function '" << FnName << "'",
-          getIdentifierLoc());
-    auto VarType = getIdentifierStr();
-    ArgTypes.emplace_back( VarType, getIdentifierLoc() );
-    getNextToken(); // eat vartype
-    
-    if (IsArray) {
-      if (CurTok_ != ']') 
-        THROW_SYNTAX_ERROR(
-            "Array declaration expected ']' instead of '"
-          << Tokens::getName(CurTok_) << "'",
-          getIdentifierLoc());
-      getNextToken(); // eat ]
-    }
-
     if (CurTok_ == ',') getNextToken(); // eat ','
   }
 
@@ -888,33 +917,12 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
         << Kind << " expected, but got " << Args.size(),
         getIdentifierLoc());
 
-  std::unique_ptr<Identifier> ReturnType;
-  if (CurTok_ == '-') {
-    getNextToken(); // eat -
-    if (CurTok_ != '>')
-      THROW_SYNTAX_ERROR(
-          "Expected '>' after '-' for return statements",
-          getIdentifierLoc());
-    getNextToken(); // eat >
-
-    if (CurTok_ != tok_identifier)
-      THROW_SYNTAX_ERROR(
-          "Return type requires an identifier in prototype"
-          << " for function '" << FnName << "'",
-          getIdentifierLoc());
-    ReturnType = std::make_unique<Identifier>(
-        getIdentifierStr(),
-        getIdentifierLoc());
-    getNextToken(); // eat vartype
-  }
-
-
   return std::make_unique<PrototypeAST>(
       Identifier{FnName, FnLoc},
       std::move(Args),
       std::move(ArgTypes),
       std::move(ArgIsArray),
-      std::move(ReturnType),
+      std::move(ReturnTypes),
       Kind != 0,
       BinaryPrecedence);
 }

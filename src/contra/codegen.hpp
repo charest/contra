@@ -47,6 +47,7 @@ class CodeGen : public RecursiveAstVisiter {
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
   Value* CurrentRange_ = nullptr;
+  bool IsPacked_ = false;
 
   // symbol tables
   std::map<std::string, Type*> TypeTable_;
@@ -67,6 +68,9 @@ class CodeGen : public RecursiveAstVisiter {
   // command line arguments
   int Argc_ = 0;
   char ** Argv_ = nullptr;
+
+  // temp counter
+  std::size_t TmpCounter_ = 0;
 
 public:
   
@@ -145,6 +149,7 @@ private:
   Value* runExprVisitor(T&e)
   {
     ValueResult_ = nullptr;
+    IsPacked_ = false;
     e.accept(*this);
     return ValueResult_;
   }
@@ -164,6 +169,8 @@ private:
   void visit(UnaryExprAST&) override;
   void visit(BinaryExprAST&) override;
   void visit(CallExprAST&) override;
+  void visit(ExprListAST&) override;
+
   void visit(ForStmtAST&) override;
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;
@@ -200,6 +207,12 @@ private:
     if (Ty.isField()) { std::cout << "field" << std::endl; abort(); }
     if (Ty.isFuture()) { std::cout << "future" << std::endl; abort(); }
     if (Ty.isPartition()) return Tasker_->getPartitionType();
+    if (Ty.isStruct()) {
+      std::vector<llvm::Type*> Members;
+      for (const auto & M : Ty.getMembers())
+        Members.emplace_back( getLLVMType(M) );
+      return llvm::StructType::create(Members, "struct.t");
+    }
     return TypeTable_.at(Ty.getBaseType()->getName());
   }
   
@@ -216,6 +229,14 @@ private:
   template<typename T>
   Value* getTypeSize(Type* ElementType)
   { return utils::getTypeSize<T>(Builder_, ElementType); }
+
+  Value* createCast(Value* FromVal, Type* ToType);
+
+  std::string getTempName() {
+    auto Name = "__tmp" + std::to_string(TmpCounter_);
+    TmpCounter_++;
+    return Name;
+  }
 
   //============================================================================
   // Variable interface
@@ -266,6 +287,11 @@ private:
       Function *TheFunction,
       const std::string &VarName,
       Type* ElementType);
+  
+  void createArray(
+      Value* ArrayA,
+      Value * SizeV,
+      Type* ElementT);
 
   // Initializes a bunch of arrays with a value
   void initArrays(
@@ -334,7 +360,7 @@ public:
   PrototypeAST & insertFunction(std::unique_ptr<PrototypeAST> Proto);
 
 private:
-  Function *getFunction(std::string Name); 
+  std::pair<Function*,bool> getFunction(std::string Name); 
   
   //============================================================================
   // Future interface

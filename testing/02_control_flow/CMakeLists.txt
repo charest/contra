@@ -1,4 +1,4 @@
-foreach(_test assign)
+foreach(_test functions if)
   create_test(
     NAME test_${_test}
     COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta

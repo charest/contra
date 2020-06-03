@@ -506,6 +506,18 @@ void Analyzer::visit(CallExprAST& e)
 }
 
 //==============================================================================
+void Analyzer::visit(ExprListAST& e)
+{
+  std::vector<VariableType> Types;
+  for (const auto & Expr : e.getExprs()) 
+  { Types.emplace_back( runExprVisitor(*Expr) );  }
+
+  VariableType StructType(Types);
+  TypeResult_ = StructType;
+  e.setType(TypeResult_);
+}
+
+//==============================================================================
 void Analyzer::visitFor(ForStmtAST&e)
 {
   //----------------------------------------------------------------------------
@@ -655,6 +667,7 @@ void Analyzer::visit(AssignStmtAST& e)
   if (LHSE->hasTypeId())
     VarType = VariableType(getType(LHSE->getTypeId()));
 
+
   //------------------------------------
   // Loop over variables
   for (unsigned il=0, ir=0; il<NumLeft; il++) {
@@ -683,6 +696,9 @@ void Analyzer::visit(AssignStmtAST& e)
     auto LeftType = runExprVisitor(*LHSE);
     DestinationType_ = LeftType;
     auto RightType = runExprVisitor(*RightExpr);
+  
+    if (RightType.isStruct())
+      RightType = RightType.getMember(il);
     
     if (!LeftType) {
       LeftType.setBaseType( RightType.getBaseType() );
@@ -704,7 +720,7 @@ void Analyzer::visit(AssignStmtAST& e)
       if (NumLeft==NumRight)
         e.setRightExpr( ir, insertCastOp(std::move(e.moveRightExpr(ir)), LeftType) );
       else
-        e.addCast(il, insertCastOp(RightExpr, LeftType));
+        e.addCast(il, LeftType);
     }
 
     if (NumRight>1) ir++;
@@ -952,9 +968,22 @@ void Analyzer::visit(PrototypeAST& e)
 
   e.setArgTypes(ArgTypes);
 
-  auto RetType = VoidType_;
-  if (e.hasReturn())
-    RetType = VariableType( getType(e.getReturnTypeId()) );
+  VariableType RetType = VoidType_;
+
+  const auto & ReturnTypeIds = e.getReturnTypeIds();
+  auto NumRet = ReturnTypeIds.size();
+  if (NumRet) {
+    std::vector<VariableType> RetTypes = {};
+    for ( const auto & Id : e.getReturnTypeIds() )
+      RetTypes.emplace_back( VariableType( getType(Id) ) );
+    if (NumRet == 1) {
+      RetType = RetTypes.front();
+    }
+    else {
+      RetType = VariableType(RetTypes);   
+    }
+  }
+  
   e.setReturnType(RetType);
 
   insertFunction(e.getId(), ArgTypes, RetType);
@@ -999,17 +1028,22 @@ void Analyzer::visit(FunctionAST& e)
     BinopPrecedence_->operator[](ProtoExpr.getOperatorName()) = ProtoExpr.getBinaryPrecedence();
 
   // Record the function arguments in the NamedValues map.
-  for (unsigned i=0; i<NumArgs; ++i)
+  for (unsigned i=0; i<NumArgs; ++i) {
     insertVariable(ProtoExpr.getArgId(i), ArgTypes[i]);
+  }
   
   for ( const auto & B : e.getBodyExprs() ) runStmtVisitor(*B);
   
   if (e.getReturnExpr()) {
-    DestinationType_ = ProtoExpr.hasReturn() ? FunDef->getReturnType() : VariableType{};
+    DestinationType_ = ProtoExpr.hasReturn() ?
+      FunDef->getReturnType() : VariableType{};
     auto RetType = runExprVisitor(*e.getReturnExpr());
     auto DeclRetType = FunDef->getReturnType();
-    if (!ProtoExpr.hasReturn() || ProtoExpr.isAnonExpr())
+    
+    if (!ProtoExpr.hasReturn() || ProtoExpr.isAnonExpr()) {
       ProtoExpr.setReturnType(RetType);
+      FunDef->setReturnType(RetType);
+    }
     else if (RetType != DeclRetType) {
       if (!RetType.isCastableTo(DeclRetType))
         THROW_NAME_ERROR("Function return type does not match prototype for '"
