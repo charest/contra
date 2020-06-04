@@ -177,19 +177,26 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
     // condition.
     auto Cond = parseExpression();
     Conds.emplace_back( IfLoc, std::move(Cond) );
-
-    if (CurTok_ != tok_then)
-      THROW_SYNTAX_ERROR("Expected 'then' after 'if'", IfLoc);
-    getNextToken(); // eat the then
-
+      
     // make a new block
     auto Then = createBlock(BBlocks);
-
-    // then
-    while (CurTok_ != tok_end && CurTok_ != tok_elif && CurTok_ != tok_else) {
+  
+    //------------------------------------
+    // Multi-liner
+    if (CurTok_ == '{') {
+      getNextToken(); // eat {
+      while (CurTok_ != '}') {
+        auto E = parseExpression();
+        Then->emplace_back( std::move(E) );
+        if (CurTok_ == tok_sep) getNextToken();
+      }
+      getNextToken(); // eat }
+    }
+    //------------------------------------
+    // One-liner
+    else {
       auto E = parseExpression();
       Then->emplace_back( std::move(E) );
-      if (CurTok_ == tok_sep) getNextToken();
     }
 
   }
@@ -206,17 +213,25 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
     auto Cond = parseExpression();
     Conds.emplace_back( ElifLoc, std::move(Cond) );
   
-    if (CurTok_ != tok_then)
-      THROW_SYNTAX_ERROR("Expected 'then' after 'elif'", ElifLoc);
-    getNextToken(); // eat the then
-  
     // make a new block
     auto Then = createBlock(BBlocks);
 
-    while (CurTok_ != tok_end && CurTok_ != tok_elif && CurTok_ != tok_else) {
+    //------------------------------------
+    // Multi-liner
+    if (CurTok_ == '{') {
+      getNextToken(); // eat {
+      while (CurTok_ != '}') {
+        auto E = parseExpression();
+        Then->emplace_back( std::move(E) );
+        if (CurTok_ == tok_sep) getNextToken();
+      }
+      getNextToken(); // eat }
+    }
+    //------------------------------------
+    // One-liner
+    else {
       auto E = parseExpression();
       Then->emplace_back( std::move(E) );
-      if (CurTok_ == tok_sep) getNextToken();
     }
 
   }
@@ -232,15 +247,25 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
     // make a new block
     auto Else = createBlock(BBlocks);
 
-    while (CurTok_ != tok_end) {
+    //------------------------------------
+    // Multi-liner
+    if (CurTok_ == '{') {
+      getNextToken(); // eat {
+      while (CurTok_ != '}') {
+        auto E = parseExpression();
+        Else->emplace_back( std::move(E) );
+        if (CurTok_ == tok_sep) getNextToken();
+      }
+      getNextToken(); // eat }
+    }
+    //------------------------------------
+    // One-liner
+    else {
       auto E = parseExpression();
       Else->emplace_back( std::move(E) );
-      if (CurTok_ == tok_sep) getNextToken();
     }
 
   }
-   
-  getNextToken(); // eat end
   
   //---------------------------------------------------------------------------
   // Construct If Else Then tree
@@ -252,6 +277,7 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
 // forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseForExpr() {
+  auto BeginLoc = getCurLoc();
   auto ForLoc = getIdentifierLoc();
   
   bool IsForEach = CurTok_ == tok_foreach;
@@ -264,51 +290,43 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
   auto IdentLoc = getIdentifierLoc();
   getNextToken(); // eat identifier.
 
-  if (CurTok_ != tok_in)
-    THROW_SYNTAX_ERROR("Expected 'in' after 'for'", getIdentifierLoc());
-  getNextToken(); // eat in
+  if (CurTok_ != tok_asgmt)
+    THROW_SYNTAX_ERROR(
+        "Expected '=' after 'for'",
+        getLocationRange(BeginLoc));
+  getNextToken(); // eat =
 
-  auto StartLoc = getCurLoc();
   auto Start = parseExpression();
 
-  ForStmtAST::LoopType Loop;
-  if (CurTok_ == tok_to) {
-    Loop = ForStmtAST::LoopType::To;
-  }
-  else if (CurTok_ == tok_until) {
-    Loop = ForStmtAST::LoopType::Until;
-  }
-  else if (CurTok_ == tok_do ) {
-    Loop = ForStmtAST::LoopType::Range;
-  }
-  else
-    THROW_SYNTAX_ERROR(
-        "Expected 'to' after for start value in 'for' loop", 
-        LocationRange(StartLoc, getCurLoc()));
-
-  getNextToken(); // eat to/do
-
   std::unique_ptr<NodeAST> End, Step;
-  if ( Loop != ForStmtAST::LoopType::Range ) {
+  if (CurTok_ == ':') {
+    getNextToken(); // eat :
     End = parseExpression();
-
-    // The step value is optional.
-    if (CurTok_ == tok_by) {
-      getNextToken();
+    if (CurTok_ == ':') {
+      getNextToken(); // eat :
       Step = parseExpression();
     }
-
-    if (CurTok_ != tok_do)
-      THROW_SYNTAX_ERROR("Expected 'do' after 'for'", getIdentifierLoc());
-    getNextToken(); // eat 'do'.
   }
   
   // add statements
   ASTBlock Body;
-  while (CurTok_ != tok_end) {
+
+  //------------------------------------
+  // Multi-liner
+  if (CurTok_ == '{') {
+    getNextToken(); // eat {
+    while (CurTok_ != '}') {
+      auto E = parseExpression();
+      Body.emplace_back( std::move(E) );
+      if (CurTok_ == tok_sep) getNextToken();
+    }
+    getNextToken(); // eat }
+  }
+  //------------------------------------
+  // One-liner
+  else {
     auto E = parseExpression();
     Body.emplace_back( std::move(E) );
-    if (CurTok_ == tok_sep) getNextToken();
   }
   
   // make a for loop
@@ -316,14 +334,11 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
   std::unique_ptr<NodeAST> F;
   if (IsForEach)
     F = std::make_unique<ForeachStmtAST>(ForLoc, Id, std::move(Start),
-      std::move(End), std::move(Step), std::move(Body), Loop);
+      std::move(End), std::move(Step), std::move(Body));
   else
     F = std::make_unique<ForStmtAST>(ForLoc, Id, std::move(Start),
-      std::move(End), std::move(Step), std::move(Body), Loop);
+      std::move(End), std::move(Step), std::move(Body));
 
-  
-  // eat end
-  getNextToken();
 
   return F;
 }
@@ -350,8 +365,6 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parseParenExpr();
   case '[':
     return parseArrayExpr();
-  case '{':
-    return parseRangeExpr();
   case tok_if:
     return parseIfExpr();
   case tok_for:

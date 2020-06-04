@@ -1,0 +1,18 @@
+inside
+also inside - first line
+also inside - second line
+y = 1
+Inside if
+z = 1
+
+y = 1
+Inside if
+z = -1
+
+y = 2
+Inside else if
+z = -1
+
+y = 3
+Inside else
+z = -1

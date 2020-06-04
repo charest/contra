@@ -1334,10 +1334,6 @@ void CodeGen::visit(ForStmtAST& e) {
   }
   else {
     EndV = runStmtVisitor(*e.getEndExpr());
-    if (e.getLoopType() == ForStmtAST::LoopType::Until) {
-      Value *OneC = llvmValue<int_t>(TheContext_, 1);
-      EndV = Builder_.CreateSub(EndV, OneC, "loopsub");
-    }
   }
 
   EndV = Builder_.CreateICmpSLE(CurV, EndV, "loopcond");
@@ -1422,10 +1418,6 @@ void CodeGen::visit(ForeachStmtAST& e)
     // regular
     else {
       auto EndV = runStmtVisitor(*e.getEndExpr());
-      if (e.getLoopType() == ForStmtAST::LoopType::Until) {
-        Value *OneC = llvmValue<int_t>(TheContext_, 1);
-        EndV = Builder_.CreateSub(EndV, OneC, "loopsub");
-      }
       const auto & VarN = e.getVarName();
       RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
     }
@@ -1683,10 +1675,6 @@ void CodeGen::visit(PartitionStmtAST & e)
       // regular
       else {
         auto EndV = runStmtVisitor(*ForeachExpr->getEndExpr());
-        if (ForeachExpr->getLoopType() == ForStmtAST::LoopType::Until) {
-          Value *OneC = llvmValue<int_t>(TheContext_, 1);
-          EndV = Builder_.CreateSub(EndV, OneC, "loopsub");
-        }
         const auto & VarN = ForeachExpr->getVarName();
         auto ParentFunction = Builder_.GetInsertBlock()->getParent();
         RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);

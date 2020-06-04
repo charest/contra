@@ -181,7 +181,7 @@ void Vizualizer::visit(ForStmtAST& e)
 {
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
-  if (e.getLoopType() == ForStmtAST::LoopType::Range) {
+  if (!e.hasEnd()) {
     createLink(my_ind, "Range");
     runVisitor(*e.getStartExpr());
   }

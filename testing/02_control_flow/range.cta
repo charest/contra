@@ -1,11 +1,10 @@
-function top_level()
+fn top_level() {
   
-  var num_parts = 4
-  var is = {0 .. num_parts}
-  for i in is do 
+  num_parts = 4
+  is = 0 : num_parts
+  for i = is 
     print("Loop with counter %i\n", i)
-  end
 
-end
+}
 
 top_level()

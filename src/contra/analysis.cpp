@@ -522,7 +522,7 @@ void Analyzer::visitFor(ForStmtAST&e)
 {
   //----------------------------------------------------------------------------
   // Range for
-  if (e.getLoopType() == ForStmtAST::LoopType::Range) {
+  if (!e.hasEnd()) {
     DestinationType_ = RangeType_;
     auto RangeType = runExprVisitor(*e.getStartExpr());
     if (RangeType != RangeType_)

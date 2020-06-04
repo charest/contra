@@ -537,18 +537,11 @@ public:
 //==============================================================================
 class ForStmtAST : public StmtAST {
 
-public:
-
-  enum class LoopType {
-    To, Until, Range
-  };
-
 protected:
 
   Identifier VarId_;
   std::unique_ptr<NodeAST> StartExpr_, EndExpr_, StepExpr_;
   ASTBlock BodyExprs_;
-  LoopType Loop_;
 
 public:
 
@@ -557,15 +550,13 @@ public:
       std::unique_ptr<NodeAST> Start,
       std::unique_ptr<NodeAST> End,
       std::unique_ptr<NodeAST> Step,
-      ASTBlock Body,
-      LoopType Loop = LoopType::To) :
+      ASTBlock Body) :
     StmtAST(Loc),
     VarId_(VarId),
     StartExpr_(std::move(Start)),
     EndExpr_(std::move(End)),
     StepExpr_(std::move(Step)),
-    BodyExprs_(std::move(Body)),
-    Loop_(Loop)
+    BodyExprs_(std::move(Body))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
@@ -577,8 +568,6 @@ public:
 
   const auto & getVarId() const { return VarId_; }
 
-  auto getLoopType() const { return Loop_; }
-  
   const auto & getBodyExprs() const { return BodyExprs_; }
 
   auto getStartExpr() const { return StartExpr_.get(); }
@@ -609,16 +598,14 @@ public:
       std::unique_ptr<NodeAST> Start,
       std::unique_ptr<NodeAST> End,
       std::unique_ptr<NodeAST> Step,
-      ASTBlock Body,
-      LoopType Loop = LoopType::To) :
+      ASTBlock Body) :
     ForStmtAST(
         Loc,
         VarId,
         std::move(Start),
         std::move(End),
         std::move(Step),
-        std::move(Body),
-        Loop)
+        std::move(Body))
   {}
   
   virtual void accept(AstVisiter& visiter) override;
