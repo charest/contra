@@ -95,6 +95,7 @@ public:
       llvm::Value*,
       bool = true) = 0;
 
+  virtual llvm::Type* getFutureType() const = 0;
   virtual bool isFuture(llvm::Value*) const = 0;
 
   virtual llvm::AllocaInst* createFuture(

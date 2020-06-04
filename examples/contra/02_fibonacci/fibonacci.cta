@@ -1,51 +1,42 @@
-task sum( f1 : i64, f2 : i64) -> i64
-  return f1 + f2
-end
+#tsk sum( i64 f1, i64 f2) f1 + f2
 
-task fibonacci(fib_num : i64) -> i64
+tsk i64 fibonacci(i64 fib_num) {
   
-  var res = 0
+  res = 0
 
-  if (fib_num == 0) then
-    res = 0
-  elif (fib_num == 1) then
-    res = 1
-  else
-    var fib1 = fib_num-1
-    var f1 = fibonacci(fib1)
+  #if (fib_num == 0)
+  #  res = 0
+  #elif (fib_num == 1)
+  #  res = 1
+  #else {
+  #  fib1 = fib_num-1
+  #  f1 = fibonacci(fib1)
 
-    var fib2 = fib_num-2
-    var f2 = fibonacci(fib2)
+  #  fib2 = fib_num-2
+  #  f2 = fibonacci(fib2)
 
-    res = sum(f1, f2)
-  end
+  #  res = sum(f1, f2)
+  #}
 
-  return res
+  res
 
-end
+}
 
-task print_result(i : i64, result : i64)
-  print("Fibonacci(%d) = %d\n", i, result)
-end
+#tsk print_result(i64 i, i64 result) 
+#  print("Fibonacci(%d) = %d\n", i, result)
 
 
-task top_level()
+tsk top_level() {
   
-  var num_fibonacci = 7
+  num_fibonacci = 7
   print("Computing the first %d Fibonacci numbers...\n", num_fibonacci)
 
-  #var fib_results = [0; num_fibonacci]
-  
-  
-  for i in 0 until num_fibonacci do
-    #fib_results[i] = fibonacci(i)
-    print_result(i, fibonacci(i))
-  end
+  for i = 0 : num_fibonacci-1 {
+    x = fibonacci(i)
+    print("%d\n", x)
+    #print_result(i, fibonacci(i))
+  }
 
-  #for i in 0 until num_fibonacci do
-  #  print("Fibonacci(%d) = %d\n", i, fib_results[i])
-  #end
-
-end
+}
 
 top_level()

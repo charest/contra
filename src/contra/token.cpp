@@ -43,7 +43,7 @@ void Tokens::setup() {
     { tok_part, "partition" },
     { tok_range, ".." },
     { tok_return, "return" },
-    { tok_task, "task" },
+    { tok_task, "tsk" },
     { tok_true, "true" },
     { tok_then, "then" },
     { tok_to, "to" },

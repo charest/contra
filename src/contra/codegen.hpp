@@ -205,7 +205,7 @@ private:
     if (Ty.isArray()) return ArrayType_;
     if (Ty.isRange()) return Tasker_->getRangeType();
     if (Ty.isField()) { std::cout << "field" << std::endl; abort(); }
-    if (Ty.isFuture()) { std::cout << "future" << std::endl; abort(); }
+    if (Ty.isFuture()) { abort(); return Tasker_->getFutureType(); }
     if (Ty.isPartition()) return Tasker_->getPartitionType();
     if (Ty.isStruct()) {
       std::vector<llvm::Type*> Members;

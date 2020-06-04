@@ -1505,12 +1505,15 @@ void CodeGen::visit(AssignStmtAST & e)
       VariableV = createCast(VariableV, getLLVMType(*CastType));
 
     // Look up the name.
+    std::cout << LHSE->getType() << " vs "; std::cout << std::flush;  (*RightIt)->getType()->print(outs());
+    outs() << "\n";
     auto VarT = getLLVMType(LHSE->getType());
     const auto & VarN = LHSE->getName();
     auto VarPair = getOrCreateVariable(VarN, LHSE->getType());
     auto VarE = VarPair.first;
     auto VarInserted = VarPair.second; 
     Value* VariableA = VarE->getAlloca();
+    outs() << "alloca "; VariableA->getType()->print(outs()); outs() <<"\n";
 
     //---------------------------------------------------------------------------
     // array[i] = scalar

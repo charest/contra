@@ -139,6 +139,9 @@ public:
       llvm::Value*,
       bool) override;
   
+  virtual llvm::Type* getFutureType() const
+  { return FutureType_; }
+
   virtual bool isFuture(llvm::Value*) const override;
   virtual llvm::AllocaInst* createFuture(
       llvm::Module &,

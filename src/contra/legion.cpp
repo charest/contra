@@ -1942,7 +1942,8 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   
   //----------------------------------------------------------------------------
   // Have return value
-  if (ResultV) {
+  bool HasNonVoidResult = ResultV && !ResultV->getType()->isVoidTy();
+  if (HasNonVoidResult) {
     
     auto TheFunction = Builder_.GetInsertBlock()->getParent();
 
@@ -2010,7 +2011,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   
   //----------------------------------------------------------------------------
   // Free memory
-  if (ResultV) {
+  if (HasNonVoidResult) {
     auto RetvalT = RetvalV->getType();
     RetvalV = Builder_.CreateLoad(RetvalT, RetvalA);
     auto TmpA = Builder_.CreateAlloca(VoidPtrType_, nullptr); // not needed but InsertAtEnd doesnt work
