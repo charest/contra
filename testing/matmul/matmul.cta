@@ -1,18 +1,16 @@
-function top_level()
+fn top_level() {
   
-  var num = 1024
-  var num_points = num*num
+  num = 1024
+  num_points = num*num
 
-  var matrix1 = [1.; num_points]
-  var matrix2 = [1.; num_points]
-  var matrix3 = [0.; num_points]
+  matrix1 = [1.; num_points]
+  matrix2 = [1.; num_points]
+  matrix3 = [0.; num_points]
 
-  for n in 1 to 100 do
-    for j in 0 until num_points do
+  for n = 1 : 100
+    for j = 0 : num_points-1
       matrix3[j] = matrix1[j] * matrix2[j]
-    end
-  end
 
-end
+}
 
 top_level()

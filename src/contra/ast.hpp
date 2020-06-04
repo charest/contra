@@ -274,7 +274,7 @@ public:
 class RangeExprAST : public ExprAST {
 protected:
 
-  std::unique_ptr<NodeAST> StartExpr_, EndExpr_;
+  std::unique_ptr<NodeAST> StartExpr_, EndExpr_, StepExpr_;
 
 public:
 
@@ -286,6 +286,19 @@ public:
     StartExpr_(std::move(Start)),
     EndExpr_(std::move(End))
   {}
+  
+  RangeExprAST(
+      const LocationRange & Loc,
+      ASTBlock Exprs) :
+    ExprAST(Loc)
+  {
+    if (Exprs.size()>0)
+      StartExpr_ = std::move(Exprs[0]);
+    if (Exprs.size()>1)
+      EndExpr_ = std::move(Exprs[1]);
+    if (Exprs.size()>2)
+      StepExpr_ = std::move(Exprs[2]);
+  }
   
   virtual void accept(AstVisiter& visiter) override;
   
@@ -299,6 +312,11 @@ public:
   auto getEndExpr() const { return EndExpr_.get(); }
   auto moveEndExpr() { return std::move(EndExpr_); }
   auto setEndExpr(std::unique_ptr<NodeAST> Expr) { EndExpr_ = std::move(Expr); }
+
+  auto hasStepExpr() const { return static_cast<bool>(StepExpr_); }
+  auto getStepExpr() const { return StepExpr_.get(); }
+  auto moveStepExpr() { return std::move(StepExpr_); }
+  auto setStepExpr(std::unique_ptr<NodeAST> Expr) { StepExpr_ = std::move(Expr); }
 
 };
 
@@ -540,7 +558,7 @@ class ForStmtAST : public StmtAST {
 protected:
 
   Identifier VarId_;
-  std::unique_ptr<NodeAST> StartExpr_, EndExpr_, StepExpr_;
+  std::unique_ptr<NodeAST> StartExpr_;
   ASTBlock BodyExprs_;
 
 public:
@@ -548,14 +566,10 @@ public:
   ForStmtAST(const LocationRange & Loc,
       const Identifier &VarId,
       std::unique_ptr<NodeAST> Start,
-      std::unique_ptr<NodeAST> End,
-      std::unique_ptr<NodeAST> Step,
       ASTBlock Body) :
     StmtAST(Loc),
     VarId_(VarId),
     StartExpr_(std::move(Start)),
-    EndExpr_(std::move(End)),
-    StepExpr_(std::move(Step)),
     BodyExprs_(std::move(Body))
   {}
   
@@ -571,12 +585,6 @@ public:
   const auto & getBodyExprs() const { return BodyExprs_; }
 
   auto getStartExpr() const { return StartExpr_.get(); }
-
-  auto hasEnd() const { return static_cast<bool>(EndExpr_); }
-  auto getEndExpr() const { return EndExpr_.get(); }
-
-  auto hasStep() const { return static_cast<bool>(StepExpr_); }
-  auto getStepExpr() const { return StepExpr_.get(); }
 };
 
 //==============================================================================
@@ -596,15 +604,11 @@ public:
       const LocationRange & Loc,
       const Identifier &VarId,
       std::unique_ptr<NodeAST> Start,
-      std::unique_ptr<NodeAST> End,
-      std::unique_ptr<NodeAST> Step,
       ASTBlock Body) :
     ForStmtAST(
         Loc,
         VarId,
         std::move(Start),
-        std::move(End),
-        std::move(Step),
         std::move(Body))
   {}
   

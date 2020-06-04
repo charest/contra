@@ -4,35 +4,32 @@ print("Hello Again!\n")
 
 print("Printing the number %f\n", 1)
 
-function empty()
-end
+fn empty() {}
 
 # This is the main function
-function main(x : f64) 
+fn main(f64 x) {
 
   print("I'm inside a function!!\n")
   print("Argument x = %f\n", x)
 
   # this is a local variable
-  var y = 1 + x
+  y = 1 + x
   print("y = 1 + x = %f\n", y)
   
   # this is an if statement
-  var z = 0
-  if x < -2 then
+  z = 0
+  if x < -2
     z = x
-  elif x < 0 then
+  elif x < 0
     z = - x
   else
     z = y
-  end
   print("z = %f\n", z)
     
   # this is a for loop
-  for i in 1 to 2 do
+  for i = 1:2
     print("For loop with counter = %d\n", i)
-  end
-end
+}
 
 empty()
 main(-3.)

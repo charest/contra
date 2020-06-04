@@ -178,6 +178,7 @@ public:
       llvm::Function*,
       const std::string &,
       llvm::Value*,
+      llvm::Value*,
       llvm::Value*) override;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,

@@ -128,6 +128,7 @@ public:
       llvm::Function*,
       const std::string &,
       llvm::Value*,
+      llvm::Value*,
       llvm::Value*) = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,

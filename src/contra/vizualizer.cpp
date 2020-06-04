@@ -181,20 +181,8 @@ void Vizualizer::visit(ForStmtAST& e)
 {
   auto my_ind = ind_;
   labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
-  if (!e.hasEnd()) {
-    createLink(my_ind, "Range");
-    runVisitor(*e.getStartExpr());
-  }
-  else {
-    createLink(my_ind, "Start");
-    runVisitor(*e.getStartExpr());
-    createLink(my_ind, "End");
-    runVisitor(*e.getEndExpr());
-    if (e.hasStep()) {
-      createLink(my_ind, "Step");
-      runVisitor(*e.getStepExpr());
-    }
-  } // loop type
+  createLink(my_ind, "Range");
+  runVisitor(*e.getStartExpr());
   dumpBlock(e.getBodyExprs(), my_ind, "Body");
 }
 

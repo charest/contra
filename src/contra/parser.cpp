@@ -298,16 +298,6 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
 
   auto Start = parseExpression();
 
-  std::unique_ptr<NodeAST> End, Step;
-  if (CurTok_ == ':') {
-    getNextToken(); // eat :
-    End = parseExpression();
-    if (CurTok_ == ':') {
-      getNextToken(); // eat :
-      Step = parseExpression();
-    }
-  }
-  
   // add statements
   ASTBlock Body;
 
@@ -333,11 +323,17 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
   auto Id = Identifier{IdName, IdentLoc};
   std::unique_ptr<NodeAST> F;
   if (IsForEach)
-    F = std::make_unique<ForeachStmtAST>(ForLoc, Id, std::move(Start),
-      std::move(End), std::move(Step), std::move(Body));
+    F = std::make_unique<ForeachStmtAST>(
+        ForLoc,
+        Id,
+        std::move(Start),
+      std::move(Body));
   else
-    F = std::make_unique<ForStmtAST>(ForLoc, Id, std::move(Start),
-      std::move(End), std::move(Step), std::move(Body));
+    F = std::make_unique<ForStmtAST>(
+        ForLoc,
+        Id,
+        std::move(Start),
+        std::move(Body));
 
 
   return F;
@@ -443,6 +439,23 @@ std::unique_ptr<NodeAST> Parser::parseExpression() {
       Exprs.emplace_back( std::move(LHS) );
     }
     LHS = std::make_unique<ExprListAST>(
+        getLocationRange(BeginLoc),
+        std::move(Exprs));
+  }
+  else if (CurTok_ == ':') {
+    ASTBlock Exprs;
+    Exprs.emplace_back( std::move(LHS) );
+    while (CurTok_ == ':') {
+      getNextToken(); // eat :
+      std::unique_ptr<NodeAST> LHS = parseUnary();
+      LHS = parseBinOpRHS(0, std::move(LHS));
+      Exprs.emplace_back( std::move(LHS) );
+    }
+    if (Exprs.size() > 3 || Exprs.size() < 2)
+      THROW_SYNTAX_ERROR(
+          "Only 'begin':'end':['step'] specification supported for ranges." ,
+          getLocationRange(BeginLoc));
+    LHS = std::make_unique<RangeExprAST>(
         getLocationRange(BeginLoc),
         std::move(Exprs));
   }

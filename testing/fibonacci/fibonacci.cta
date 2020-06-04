@@ -1,39 +1,38 @@
-function sum( f1 : i64, f2 : i64) -> i64
-  return f1 + f2
-end
+fn sum( i64 f1, i64 f2)
+  f1 + f2
 
-function fibonacci(fib_num : i64) -> i64
+fn i64 fibonacci(i64 fib_num) {
   
-  var res = 0
+  res = 0
 
-  if (fib_num == 0) then
+  if (fib_num == 0)
     res = 0
-  elif (fib_num == 1) then
+  elif (fib_num == 1)
     res = 1
-  else
-    var fib1 = fib_num-1
-    var f1 = fibonacci(fib1)
+  else {
+    fib1 = fib_num-1
+    f1 = fibonacci(fib1)
 
-    var fib2 = fib_num-2
-    var f2 = fibonacci(fib2)
+    fib2 = fib_num-2
+    f2 = fibonacci(fib2)
 
     res = sum(f1, f2)
-  end
+  }
 
-  return res
+  res
 
-end
+}
 
-function main()
+fn main() {
   
-  var num_fibonacci = 7
+  num_fibonacci = 7
   print("Computing the first %d Fibonacci numbers...\n", num_fibonacci)
 
-  for i in 0 until num_fibonacci do
-    var fib = fibonacci(i)
+  for i = 0 : num_fibonacci-1 {
+    fib = fibonacci(i)
     print("Fibonacci(%d) = %d\n", i, fib)
-  end
+  }
 
-end
+}
 
 main()

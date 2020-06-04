@@ -699,11 +699,18 @@ VariableAlloca * CodeGen::createRange(
     const std::string &VarName,
     Value* StartV,
     Value* EndV,
+    Value* StepV,
     bool IsTask)
 {
   AllocaInst* RangeA;
 
-  RangeA = Tasker_->createRange(*TheModule_, TheFunction, VarName, StartV, EndV);
+  RangeA = Tasker_->createRange(
+      *TheModule_,
+      TheFunction,
+      VarName,
+      StartV,
+      EndV,
+      StepV);
 
   auto RangeT = RangeA->getAllocatedType();
   auto it = VariableTable_.front().emplace(VarName, VariableAlloca{RangeA, RangeT});
@@ -913,9 +920,12 @@ void CodeGen::visit(RangeExprAST &e)
   // the llvm variable type
   auto StartV = runExprVisitor(*e.getStartExpr());
   auto EndV = runExprVisitor(*e.getEndExpr());
+  Value* StepV = nullptr;
+  if (e.hasStepExpr()) StepV = runExprVisitor(*e.getStepExpr());
+
 
   auto IsTask = e.getParentFunctionDef()->isTask();
-  auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, IsTask );
+  auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, StepV, IsTask );
   auto RangeA = RangeE->getAlloca();
 
   auto Ty = RangeA->getType()->getPointerElementType();
@@ -1300,14 +1310,14 @@ void CodeGen::visit(ForStmtAST& e) {
   
   // Emit the start code first, without 'variable' in scope.
   Value* StartV = runStmtVisitor(*e.getStartExpr());
-  Value* EndA = nullptr;
+  Value* EndA = createEntryBlockAlloca(TheFunction, VarT, VarN+"end");
+  Value* StepA = createEntryBlockAlloca(TheFunction, VarT, VarN+"step");
   if (Tasker_->isRange(StartV)) {
-    auto SizeV = Tasker_->getRangeSize(*TheModule_, StartV);
-    auto OneC = llvmValue<int_t>(TheContext_, 1);
-    auto EndV = Builder_.CreateSub(SizeV, OneC);
-    EndA = createEntryBlockAlloca(TheFunction, VarT, VarN+"end");
+    auto EndV = Builder_.CreateExtractValue(StartV, 1);
     Builder_.CreateStore(EndV, EndA);
-    StartV = llvmValue<int_t>(TheContext_, 0);
+    auto StepV = Builder_.CreateExtractValue(StartV, 2);
+    Builder_.CreateStore(StepV, StepA);
+    StartV = Builder_.CreateExtractValue(StartV, 0);
   }
   Builder_.CreateStore(StartV, VarA);
 
@@ -1327,16 +1337,8 @@ void CodeGen::visit(ForStmtAST& e) {
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
 
-  Value* EndV = nullptr;
-  
-  if (EndA) {
-    EndV = Builder_.CreateLoad(VarT, EndA);
-  }
-  else {
-    EndV = runStmtVisitor(*e.getEndExpr());
-  }
-
-  EndV = Builder_.CreateICmpSLE(CurV, EndV, "loopcond");
+  Value* EndV = Builder_.CreateLoad(VarT, EndA);
+  EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
 
 
   // Insert the conditional branch into the end of LoopEndBB.
@@ -1363,16 +1365,7 @@ void CodeGen::visit(ForStmtAST& e) {
   
 
   // Emit the step value.
-  Value *StepV = nullptr;
-  if (e.hasStep()) {
-    StepV = runStmtVisitor(*e.getStepExpr());
-    if (StepV->getType()->isFloatingPointTy())
-      THROW_IMPLEMENTED_ERROR("Cast required for step value");
-  } else {
-    // If not specified, use 1.0.
-    StepV = llvmValue<int_t>(TheContext_, 1);
-  }
-
+  Value* StepV = Builder_.CreateLoad(VarT, StepA);
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
@@ -1412,15 +1405,8 @@ void CodeGen::visit(ForeachStmtAST& e)
     Value* StartV = runStmtVisitor(*e.getStartExpr());
     
     // range
-    if (Tasker_->isRange(StartV)) {
+    if (Tasker_->isRange(StartV))
       RangeV = StartV;
-    }
-    // regular
-    else {
-      auto EndV = runStmtVisitor(*e.getEndExpr());
-      const auto & VarN = e.getVarName();
-      RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
-    }
     auto PreviousRange = CurrentRange_;
     CurrentRange_ = RangeV;
 
@@ -1671,13 +1657,6 @@ void CodeGen::visit(PartitionStmtAST & e)
       // range
       if (Tasker_->isRange(StartV)) {
         RangeV = StartV;
-      }
-      // regular
-      else {
-        auto EndV = runStmtVisitor(*ForeachExpr->getEndExpr());
-        const auto & VarN = ForeachExpr->getVarName();
-        auto ParentFunction = Builder_.GetInsertBlock()->getParent();
-        RangeV = Tasker_->createRange(*TheModule_, ParentFunction, VarN, StartV, EndV);
       }
       Tasker_->launch(
           *TheModule_,

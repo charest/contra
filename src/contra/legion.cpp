@@ -30,6 +30,7 @@ extern "C" {
 struct contra_legion_index_space_t {
   int_t start;
   int_t end;
+  int_t step;
   legion_index_space_t index_space;
 };
 
@@ -423,6 +424,7 @@ void contra_legion_index_space_create(
 {
   is->start = start;
   is->end = end+1;
+  is->step = 1;
 
   int_t size = end - start + 1;
 
@@ -438,6 +440,7 @@ void contra_legion_index_space_create_from_size(
 {
   is->start = 0;
   is->end = size;
+  is->step = 1;
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
 }
 
@@ -1099,7 +1102,7 @@ StructType * LegionTasker::createAccessorDataType(LLVMContext & TheContext)
 StructType * LegionTasker::createIndexSpaceDataType(LLVMContext & TheContext)
 {
   auto IntT = llvmType<int_t>(TheContext_);
-  std::vector<Type*> members = { IntT, IntT, IndexSpaceType_ };
+  std::vector<Type*> members = { IntT, IntT, IntT, IndexSpaceType_ };
   auto NewType = StructType::create( TheContext, members, "contra_legion_index_space_t" );
   return NewType;
 }
@@ -2686,7 +2689,8 @@ AllocaInst* LegionTasker::createRange(
     Function* TheFunction,
     const std::string & Name,
     Value* StartV,
-    Value* EndV)
+    Value* EndV,
+    Value* StepV)
 {
   auto IndexSpaceA = createEntryBlockAlloca(TheFunction, IndexSpaceDataType_, "index");
 
@@ -2710,6 +2714,8 @@ AllocaInst* LegionTasker::createRange(
     auto OneC = llvmValue<int_t>(TheContext_, 1);
     EndV = Builder_.CreateAdd(EndV, OneC);
     storeStructMember(EndV, IndexSpaceA, 1, "end");
+    if (!StepV) StepV = OneC;
+    storeStructMember(StepV, IndexSpaceA, 2, "step");
   }
 
   
@@ -2744,8 +2750,10 @@ AllocaInst* LegionTasker::createRange(
   }
   else { 
     auto ZeroC = llvmValue<int_t>(TheContext_, 0);
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
     storeStructMember(ZeroC, IndexSpaceA, 0, "start");
     storeStructMember(ValueV, IndexSpaceA, 1, "end");
+    storeStructMember(OneC, IndexSpaceA, 2, "step");
   }
 
   
@@ -2789,8 +2797,10 @@ AllocaInst* LegionTasker::createRange(
     auto SumV = Builder_.CreateCall(FunF, ValueA);
     
     auto ZeroC = llvmValue<int_t>(TheContext_, 0);
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
     storeStructMember(ZeroC, IndexSpaceA, 0, "start");
     storeStructMember(SumV, IndexSpaceA, 1, "end");
+    storeStructMember(OneC, IndexSpaceA, 2, "step");
   }
 
   

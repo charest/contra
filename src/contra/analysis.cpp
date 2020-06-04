@@ -336,7 +336,7 @@ void Analyzer::visit(RangeExprAST& e)
   auto EndType = runExprVisitor(*e.getEndExpr());
 
   const auto & Loc = e.getLoc();
-  if (DestinationType_ && DestinationType_ != I64Type_)
+  if (DestinationType_ && strip(DestinationType_) != I64Type_)
     THROW_NAME_ERROR( "Only integer types supported for range expressions.", Loc );
 
   if (StartType != I64Type_) {
@@ -520,41 +520,12 @@ void Analyzer::visit(ExprListAST& e)
 //==============================================================================
 void Analyzer::visitFor(ForStmtAST&e)
 {
-  //----------------------------------------------------------------------------
   // Range for
-  if (!e.hasEnd()) {
-    DestinationType_ = RangeType_;
-    auto RangeType = runExprVisitor(*e.getStartExpr());
-    if (RangeType != RangeType_)
-      THROW_NAME_ERROR( "Range-based for loops must iterate over a range expression.",
-          e.getStartExpr()->getLoc() );
-  }
-  //----------------------------------------------------------------------------
-  // Regular for
-  else {
-
-    DestinationType_ = I64Type_;
-    auto StartType = runExprVisitor(*e.getStartExpr());
-    if (StartType != I64Type_ )
-      THROW_NAME_ERROR( "For loop start expression must result in an integer type.",
-          e.getStartExpr()->getLoc() );
-
-    DestinationType_ = I64Type_;
-    auto EndType = runExprVisitor(*e.getEndExpr());
-    if (EndType != I64Type_ )
-      THROW_NAME_ERROR( "For loop end expression must result in an integer type.",
-          e.getEndExpr()->getLoc() );
-
-    if (e.hasStep()) {
-      DestinationType_ = I64Type_;
-      auto StepType = runExprVisitor(*e.getStepExpr());
-      if (StepType != I64Type_ )
-        THROW_NAME_ERROR( "For loop step expression must result in an integer type.",
-            e.getStepExpr()->getLoc() );
-    }
-  }
-  //----------------------------------------------------------------------------
-
+  DestinationType_ = RangeType_;
+  auto RangeType = runExprVisitor(*e.getStartExpr());
+  if (RangeType != RangeType_)
+    THROW_NAME_ERROR( "Range-based for loops must iterate over a range expression.",
+        e.getStartExpr()->getLoc() );
 }
 
 //==============================================================================

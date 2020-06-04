@@ -112,8 +112,6 @@ public:
   virtual void visit(ForStmtAST&e) {
     if (preVisit(e)) { return; }
     e.getStartExpr()->accept(*this);
-    if (e.hasEnd()) e.getEndExpr()->accept(*this);
-    if (e.hasStep()) e.getStepExpr()->accept(*this);
     visitBlock(e.getBodyExprs());
     postVisit(e);
   }
@@ -123,8 +121,6 @@ public:
   virtual void visit(ForeachStmtAST&e) {
     if (preVisit(e)) { return; }
     e.getStartExpr()->accept(*this);
-    if (e.hasEnd()) e.getEndExpr()->accept(*this);
-    if (e.hasStep()) e.getStepExpr()->accept(*this);
     visitBlock(e.getBodyExprs());
     postVisit(e);
   }
