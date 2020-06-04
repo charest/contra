@@ -76,9 +76,12 @@ protected:
     llvm::AllocaInst* ContextAlloca = nullptr;
     llvm::AllocaInst* RuntimeAlloca = nullptr;
     llvm::AllocaInst* PartInfoAlloca = nullptr;
+    bool IsIndex = false;
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;
+
+  unsigned TraceId_ = 0;
 
   enum class ArgType : char {
     None = 0,
@@ -250,6 +253,9 @@ public:
 
   virtual llvm::Value* makePoint(std::intmax_t) const override;
   virtual llvm::Value* makePoint(llvm::Value*) const override;
+  
+  virtual void pushTrace(llvm::Module &) override;
+  virtual void popTrace(llvm::Module &) override;
 
   virtual ~LegionTasker() = default;
 
@@ -258,13 +264,15 @@ protected:
   auto & getCurrentTask() { return TaskAllocas_.front(); }
   const auto & getCurrentTask() const { return TaskAllocas_.front(); }
 
-  auto & startTask() { 
+  auto & startTask(bool IsIndex = false) { 
     TaskAllocas_.push_front({});
-    return getCurrentTask();
+    auto & NewTask = getCurrentTask();
+    NewTask.IsIndex = IsIndex;
+    return NewTask;
   }
   void finishTask() { TaskAllocas_.pop_front(); }
 
-  auto isInsideTask() { return !TaskAllocas_.empty(); }
+  auto isInsideTask() const { return !TaskAllocas_.empty(); }
 
   llvm::StructType* createOpaqueType(const std::string &, llvm::LLVMContext &);
   llvm::StructType* createTaskConfigOptionsType(llvm::LLVMContext &);

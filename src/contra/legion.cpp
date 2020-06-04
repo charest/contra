@@ -1535,7 +1535,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   Builder_.SetInsertPoint(BB);
 
   // create the context
-  auto & LegionE = startTask();
+  auto & LegionE = startTask(IsIndex);
   auto & ContextA = LegionE.ContextAlloca;
   auto & RuntimeA = LegionE.RuntimeAlloca;
   ContextA = createEntryBlockAlloca(WrapperF, ContextType_, "context.alloca");
@@ -3097,5 +3097,54 @@ Value* LegionTasker::makePoint(Value* ValV) const
   return PointA; 
 }
 
+//==============================================================================
+// Start/stop a trace
+//==============================================================================
+void LegionTasker::pushTrace(Module & TheModule)
+{
+  if (!isInsideTask()) return;
+  
+  const auto & LegionE = getCurrentTask();
+  if (LegionE.IsIndex) return;
+
+  TraceId_++;
+
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  auto RuntimeV = load(RuntimeA, TheModule, "runtime");
+  auto ContextV = load(ContextA, TheModule, "context");
+
+  auto FalseV = Constant::getNullValue(BoolType_);
+  auto TraceV = llvmValue<legion_trace_id_t>(TheContext_, TraceId_);
+  std::vector<Value*> FunArgVs = { RuntimeV, ContextV, TraceV, FalseV };
+  
+  auto FunArgTs = llvmTypes(FunArgVs);
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("legion_runtime_begin_trace", FunT);
+  
+  Builder_.CreateCall(FunF, FunArgVs);
+}
+
+void LegionTasker::popTrace(Module & TheModule)
+{
+  if (!isInsideTask()) return;
+  
+  const auto & LegionE = getCurrentTask();
+  if (LegionE.IsIndex) return;
+
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+  auto RuntimeV = load(RuntimeA, TheModule, "runtime");
+  auto ContextV = load(ContextA, TheModule, "context");
+
+  auto TraceV = llvmValue<legion_trace_id_t>(TheContext_, TraceId_);
+  std::vector<Value*> FunArgVs = { RuntimeV, ContextV, TraceV };
+  
+  auto FunArgTs = llvmTypes(FunArgVs);
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("legion_runtime_end_trace", FunT);
+  
+  Builder_.CreateCall(FunF, FunArgVs);
+}
 
 }

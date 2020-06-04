@@ -45,9 +45,9 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
     "./contra",
     "-ll:gsize", "0",
     "-ll:csize", "2048",
-    "-ll:cpu", "4"//,
-    //"-lg:prof", "1",
-    //"-lg:prof_logfile", "prof_%.gz"
+    "-ll:cpu", "4",
+    "-lg:prof", "1",
+    "-lg:prof_logfile", "prof_%.gz"
   };
 
 
@@ -1382,7 +1382,9 @@ void CodeGen::visit(ForStmtAST& e) {
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
   createScope();
+  Tasker_->pushTrace(*TheModule_);
   for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  Tasker_->popTrace(*TheModule_);
   popScope();
 
 
@@ -2188,8 +2190,8 @@ void CodeGen::visit(IndexTaskAST& e)
   
 	// register it
   auto & TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
-  //if (TaskN == "__main_loop3__" || TaskN == "__main_loop4__")
-  //  TaskI.setLeaf(); // HACK
+  if (TaskN == "__main_loop3__" || TaskN == "__main_loop4__")
+    TaskI.setLeaf(); // HACK
  	verifyFunction(*Wrapper.TheFunction);
 
 	FunctionResult_ = Wrapper.TheFunction;

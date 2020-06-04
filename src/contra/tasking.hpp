@@ -189,6 +189,9 @@ public:
   virtual llvm::Type* getPointType() const = 0;
   virtual llvm::Value* makePoint(std::intmax_t) const = 0;
   virtual llvm::Value* makePoint(llvm::Value*) const = 0;
+  
+  virtual void pushTrace(llvm::Module &) {}
+  virtual void popTrace(llvm::Module &) {}
 
   // registration
   void preregisterTasks(llvm::Module &);
