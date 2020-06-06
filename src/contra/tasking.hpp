@@ -111,10 +111,18 @@ public:
   virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
   virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
 
+  virtual llvm::Type* getFieldType() const = 0;
   virtual bool isField(llvm::Value*) const = 0;
   virtual llvm::AllocaInst* createField(
       llvm::Module &,
       llvm::Function*,
+      const std::string &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) = 0;
+  virtual void createField(
+      llvm::Module &,
+      llvm::Value*, 
       const std::string &,
       llvm::Type*,
       llvm::Value*,

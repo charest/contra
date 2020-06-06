@@ -36,6 +36,10 @@ void RangeExprAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
+void FieldDeclExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
 void CastExprAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 

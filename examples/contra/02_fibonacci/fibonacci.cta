@@ -1,29 +1,29 @@
-#tsk sum( i64 f1, i64 f2) f1 + f2
+tsk sum( i64 f1, i64 f2) f1 + f2
 
 tsk i64 fibonacci(i64 fib_num) {
   
   res = 0
 
-  #if (fib_num == 0)
-  #  res = 0
-  #elif (fib_num == 1)
-  #  res = 1
-  #else {
-  #  fib1 = fib_num-1
-  #  f1 = fibonacci(fib1)
+  if (fib_num == 0)
+    res = 0
+  elif (fib_num == 1)
+    res = 1
+  else {
+    fib1 = fib_num-1
+    f1 = fibonacci(fib1)
 
-  #  fib2 = fib_num-2
-  #  f2 = fibonacci(fib2)
+    fib2 = fib_num-2
+    f2 = fibonacci(fib2)
 
-  #  res = sum(f1, f2)
-  #}
+    res = sum(f1, f2)
+  }
 
   res
 
 }
 
-#tsk print_result(i64 i, i64 result) 
-#  print("Fibonacci(%d) = %d\n", i, result)
+tsk print_result(i64 i, i64 result) 
+  print("Fibonacci(%d) = %d\n", i, result)
 
 
 tsk top_level() {
@@ -32,9 +32,8 @@ tsk top_level() {
   print("Computing the first %d Fibonacci numbers...\n", num_fibonacci)
 
   for i = 0 : num_fibonacci-1 {
-    x = fibonacci(i)
-    print("%d\n", x)
-    #print_result(i, fibonacci(i))
+    fibonacci(i)
+    print_result(i, fibonacci(i))
   }
 
 }

@@ -1,29 +1,27 @@
-task top_level()
+tsk top_level() {
   
-  var num_points = 4
-  var num_parts = 2
-  var parts = {0 .. num_parts-1}
-  var points = {0 .. num_points-1}
+  num_points = 4
+  num_parts = 2
+  parts = 0 : num_parts-1
+  points = 0 : num_points-1
 
-  var myid : over(points) = -1
+  myid[points] = -1
 
-  foreach i in parts do 
-    for j in points do
+  foreach i = parts {
+    for j = 0:length(points)-1 {
       print("Loop with parition %d and local id %d\n", i, j)
       myid[j] = j
-    end
-  end
+    }
+  }
   
-  foreach i in parts do 
-    for j in points do
+  foreach i = parts {
+    for j = 0:length(points)-1
       print("Loop with parition %d and local id %d\n", i, myid[j])
-    end
-  end
+  }
   
-  foreach i in points do 
+  foreach i = points 
     print("Loop with counter %d and myid is now %d\n", i, myid)
-  end
 
-end
+}
 
 top_level()

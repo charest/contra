@@ -1,38 +1,37 @@
-task top_level()
+tsk top_level() {
   
-  var num_points = 4
-  var num_cells = 8
-  var num_parts = 2
-  var parts = {0 .. num_parts-1}
-  var points = {0 .. num_points-1}
-  var cells = {0 .. num_cells-1}
+  num_points = 4
+  num_cells = 8
+  num_parts = 2
+  parts = 0 : num_parts-1
+  points = 0 : num_points-1
+  cells = 0 : num_cells-1
 
-  var sizes = [6, 2]
+  sizes = [6, 2]
 
-  var point_id : over(points) = -1
-  var cell_id : over(cells) = -1
+  point_id {points} = -1
+  cell_id {cells} = -1
 
-  foreach i in parts do
+  foreach i = parts {
 
-    partition cells by sizes
+    #partition cells by sizes
     
-    for j in points do
+    for j = points {
       print("Point loop with parition %d and local id %d\n", i, j)
       point_id[j] = j
-    end
+    }
     
-    for j in cells do
+    for j = cells {
       print("Cell loop with parition %d and local id %d\n", i, j)
       cell_id[j] = j
-    end
-  end
+    }
+  }
   
-  foreach i in parts do
-    for j in cells do
+  foreach i = parts {
+    for j = cells
       print("Cell loop with parition %d and cell_id[%d]=%d\n", i, j, cell_id[j])
-    end
-  end
+  }
 
-end
+}
 
 top_level()

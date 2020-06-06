@@ -45,9 +45,9 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
     "./contra",
     "-ll:gsize", "0",
     "-ll:csize", "2048",
-    "-ll:cpu", "2",
-    "-lg:prof", "1",
-    "-lg:prof_logfile", "prof_%.gz"
+    //"-ll:cpu", "2",
+    //"-lg:prof", "1",
+    //"-lg:prof_logfile", "prof_%.gz"
   };
 
   Argc_ = Args.size();
@@ -834,11 +834,7 @@ void CodeGen::visit(VarAccessExprAST& e)
   auto VarT = VarA->getType();
   VarT = VarT->getPointerElementType();
   
-  auto Ty = e.getType();
-  if (Tasker_->isFuture(VarA) && !Ty.isFuture()) {
-    ValueResult_ = loadFuture(VarE->getType(), VarA);
-  }
-  else if (Tasker_->isAccessor(VarA)) {
+  if (Tasker_->isAccessor(VarA)) {
     ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA);
   }
   else {
@@ -852,10 +848,10 @@ void CodeGen::visit(VarAccessExprAST& e)
 void CodeGen::visit(ArrayAccessExprAST& e)
 {
 
-  auto Name = e.getName();
+  const auto & Name = e.getName();
 
   // Look this variable up in the function.
-  auto VarE = getVariable(e.getName());
+  auto VarE = getVariable(Name);
   auto VarA = VarE->getAlloca();
   
   // Load the value.
@@ -924,12 +920,13 @@ void CodeGen::visit(RangeExprAST &e)
   if (e.hasStepExpr()) StepV = runExprVisitor(*e.getStepExpr());
 
 
+  auto RangeN = getTempName();
   auto IsTask = e.getParentFunctionDef()->isTask();
-  auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, StepV, IsTask );
+  auto RangeE = createRange(TheFunction, RangeN, StartV, EndV, StepV, IsTask );
   auto RangeA = RangeE->getAlloca();
 
   auto Ty = RangeA->getType()->getPointerElementType();
-  ValueResult_ =  Builder_.CreateLoad(Ty, RangeA, "__tmp");
+  ValueResult_ =  Builder_.CreateLoad(Ty, RangeA, RangeN);
 }
   
 //==============================================================================
@@ -1505,15 +1502,12 @@ void CodeGen::visit(AssignStmtAST & e)
       VariableV = createCast(VariableV, getLLVMType(*CastType));
 
     // Look up the name.
-    std::cout << LHSE->getType() << " vs "; std::cout << std::flush;  (*RightIt)->getType()->print(outs());
-    outs() << "\n";
-    auto VarT = getLLVMType(LHSE->getType());
+    const auto & VarType = LHSE->getType();
     const auto & VarN = LHSE->getName();
-    auto VarPair = getOrCreateVariable(VarN, LHSE->getType());
+    auto VarPair = getOrCreateVariable(VarN, VarType);
     auto VarE = VarPair.first;
     auto VarInserted = VarPair.second; 
     Value* VariableA = VarE->getAlloca();
-    outs() << "alloca "; VariableA->getType()->print(outs()); outs() <<"\n";
 
     //---------------------------------------------------------------------------
     // array[i] = scalar
@@ -1528,6 +1522,13 @@ void CodeGen::visit(AssignStmtAST & e)
         auto FieldVarA = FieldVarE->getAlloca();
         auto PointVarV = Tasker_->makePoint(VariableV); 
         Tasker_->storeAccessor(*TheModule_, PointVarV, FieldVarA, IndexV);
+      }
+      else if (Tasker_->isField(VariableA)) {
+        auto VarT = getLLVMType(strip(VarType));
+        if (Tasker_->isFuture(VariableV)) {
+          VariableV = loadFuture(VarT, VariableV);
+        }
+        Tasker_->createField(*TheModule_, VariableA, VarN, VarT, IndexV, VariableV);
       }
       else {
         storeArrayValue(VariableV, VariableA, IndexV, VarN);
@@ -1570,6 +1571,7 @@ void CodeGen::visit(AssignStmtAST & e)
     //---------------------------------------------------------------------------
     // scalar = scalar
     else {
+      if (Tasker_->isRange(VariableV)) VarE->setOwner(false);
       Builder_.CreateStore(VariableV, VariableA);
     }
 
@@ -1978,7 +1980,8 @@ void CodeGen::visit(FunctionAST& e)
     
     // Store the initial value into the alloca.
     Builder_.CreateStore(&Arg, Alloca);
-  
+ 
+    ArgIdx++;
   }
  
   // codegen the function body
@@ -2039,6 +2042,7 @@ void CodeGen::visit(TaskAST& e)
   auto RetVal = codegenFunctionBody(e);
   
   if (RetVal && Tasker_->isFuture(RetVal)) {
+    std::cout << "getting future in " << Name  << std::endl;
     auto RetT = getLLVMType( P.getReturnType() );
     RetVal = loadFuture(RetT, RetVal);
   }

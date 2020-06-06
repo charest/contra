@@ -797,6 +797,32 @@ public:
   }
 };
 
+//==============================================================================
+/// VarDefExprAST - Expression class for var/in
+//==============================================================================
+class FieldDeclExprAST : public VarAccessExprAST {
+
+  std::unique_ptr<NodeAST> IndexExpr_;
+
+public:
+
+  FieldDeclExprAST(
+      const LocationRange & Loc,
+      const Identifier & VarId, 
+      std::unique_ptr<NodeAST> IndexExpr,
+      std::unique_ptr<Identifier> VarTypeId) :
+    VarAccessExprAST(Loc, VarId, std::move(VarTypeId)),
+    IndexExpr_(std::move(IndexExpr))
+  {}
+  
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "FieldDeclAST"; };
+
+  auto getIndexExpr() const { return IndexExpr_.get(); }
+
+};
 
 #if 0
 //==============================================================================
@@ -1029,11 +1055,12 @@ public:
   FunctionAST(
       const std::string & Name,
       ASTBlock Body,
-      bool IsTask = false) :
+      bool IsTask = false,
+      bool MoveReturn = true) :
     BodyExprs_(std::move(Body)),
     IsTask_(IsTask),
     Name_(Name)
-  { checkReturn(); }
+  { if (MoveReturn) checkReturn(); }
 
   FunctionAST(
       std::unique_ptr<PrototypeAST> Proto,
@@ -1134,7 +1161,7 @@ public:
       const std::string & LoopVar,
       const std::vector<VariableDef*>& Vars,
       const std::map<std::string, VariableType>& VarOverrides) :
-    FunctionAST(Name, std::move(Body), true),
+    FunctionAST(Name, std::move(Body), true, false),
     LoopVarName_(LoopVar),
     Vars_(Vars),
     VarOverrides_(VarOverrides)

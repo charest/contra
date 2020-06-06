@@ -163,10 +163,20 @@ public:
       llvm::Value*,
       llvm::Value*) override;
   
+  virtual llvm::Type* getFieldType() const override
+  { return FieldDataType_; }
+
   virtual bool isField(llvm::Value*) const override;
   virtual llvm::AllocaInst* createField(
       llvm::Module &,
       llvm::Function*,
+      const std::string &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual void createField(
+      llvm::Module &,
+      llvm::Value*, 
       const std::string &,
       llvm::Type*,
       llvm::Value*,
@@ -329,6 +339,8 @@ protected:
       llvm::AllocaInst*&);
 
   llvm::AllocaInst* createPartitionInfo(llvm::Module&);
+  void pushPartitionInfo(llvm::Module&, llvm::AllocaInst*);
+  void popPartitionInfo(llvm::Module&, llvm::AllocaInst*);
   void destroyPartitionInfo(llvm::Module&);
 };
 

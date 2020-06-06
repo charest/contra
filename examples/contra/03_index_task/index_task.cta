@@ -1,25 +1,21 @@
-function index_task(id : i64, ilocal : i64, iglobal : i64, arr : [i64])
+fn index_task(i64 id, i64 ilocal, i64 iglobal, i64 arr[])
   
   print("Hello world from task %d, with local arg %d, and global arg %d and %d!\n",
-		id, ilocal, iglobal, arr[id])
-
-end
+    id, ilocal, iglobal, arr[id])
 
 
-task top_level()
+tsk top_level() {
   
-  var num_points = 10
+  num_points = 10
   print("Running hello world redux for %d points...\n", num_points)
 
-  var arr = [0; num_points]
-  for i in 0 until num_points do
+  arr = [0; num_points]
+  for i = 0 : num_points-1
     arr[i] = i
-  end
 
-  foreach i in 0 until num_points do
+  foreach i = 0:num_points-1
     index_task(i, i+10, num_points, arr)
-  end
 
-end
+}
 
 top_level()

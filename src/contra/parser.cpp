@@ -122,30 +122,7 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
           std::move(IndexExpr),
           std::move(VarTypeId));
     }
-#if 0
-    //----------------------------------
-    // field
-    else if (CurTok_ == '{') {
-      auto FieldLoc = getCurLoc();
-      getNextToken(); // eat {
-      if (CurTok_ != tok_identifier)
-        THROW_SYNTAX_ERROR(
-            "Expected identifier in field declaration.",
-            getIdentifierLoc());
-      auto IndexExpr = std::move(parseExpression());
-      getNextToken(); // eat identifier
-      if (CurTok_ != '}')
-        THROW_SYNTAX_ERROR(
-            "Expected '}'  in field declaration.",
-            getLocationRange(FieldLoc));
-      getNextToken(); // eat }
-      return std::make_unique<FieldDeclExprAST>(
-          getLocationRange(BeginLoc),
-          Id,
-          std::move(IndexExpr),
-          VarTypeId);
-    }
-#endif
+    
     //----------------------------------
     // scalar
     else {

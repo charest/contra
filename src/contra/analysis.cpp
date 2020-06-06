@@ -264,18 +264,22 @@ void Analyzer::visit(ArrayAccessExprAST& e)
   const auto & Name = e.getName();
 
   auto VarDef = getVariable(Identifier{Name, e.getLoc()});
-  const auto & VarType = VarDef->getType();
+  auto & VarType = VarDef->getType();
 
   // array index
   auto Loc = e.getIndexExpr()->getLoc();
   
+  auto IndexType = runExprVisitor(*e.getIndexExpr());
+  if (IndexType.isRange()) {
+    VarType.setField();
+  }
+  else if (IndexType != I64Type_)
+    THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
+        << "evaluate to an integer.", Loc );
+  
   if (!VarType.isIndexable())
     THROW_NAME_ERROR( "Cannot index scalar using '[]' operator", Loc);
   
-  auto IndexType = runExprVisitor(*e.getIndexExpr());
-  if (IndexType != I64Type_)
-    THROW_NAME_ERROR( "Array index for variable '" << Name << "' must "
-        << "evaluate to an integer.", Loc );
   
   TypeResult_ = VarType.getIndexedType();
 
@@ -670,7 +674,7 @@ void Analyzer::visit(AssignStmtAST& e)
   
     if (RightType.isStruct())
       RightType = RightType.getMember(il);
-    
+
     if (!LeftType) {
       LeftType.setBaseType( RightType.getBaseType() );
       if (!WasInserted)
@@ -680,10 +684,11 @@ void Analyzer::visit(AssignStmtAST& e)
 
     if (WasInserted) {
       LeftType.setAttributes( RightType.getAttributes() );
+      LeftType.setField( LeftDef->getType().isField() );
       LHSE->setType(LeftType);
       LeftDef->getType() = LeftType;
     }
-  
+
     checkIsAssignable( LeftType, RightType, Loc );
 
     if (RightType.getBaseType() != LeftType.getBaseType()) {

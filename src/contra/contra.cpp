@@ -65,7 +65,7 @@ std::vector<std::unique_ptr<FunctionAST>>
   
   // identify futures
   FutureIdentifier TheFut;
-  //for ( const auto & FnAST : Fs )  TheFut.runVisitor(*FnAST);
+  for ( const auto & FnAST : Fs )  TheFut.runVisitor(*FnAST);
   
   return Fs;
 }
