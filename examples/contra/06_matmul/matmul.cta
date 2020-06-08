@@ -1,24 +1,20 @@
-task top_level()
+tsk top_level() {
   
-  var num = 1024
-  var num_parts = 4
-  var num_points = num*num
+  num = 1024
+  num_parts = 4
+  num_points = num*num
 
-  var parts = {0 .. num_parts-1}
-  var points = {0 .. num_points-1}
+  parts = 0 : num_parts-1
+  points = 0 : num_points-1
 
-  var matrix1 : over(points) = 1.
-  var matrix2 : over(points) = 1.
-  var matrix3 : over(points) = 0.
+  matrix1[points], matrix2[points], matrix3[points] = 1., 1., 0.
 
-  foreach i in parts do
-    for n in 1 to 100 do
-      for j in points do
+  foreach i = parts {
+    for n = 1:100
+      for j = 0:length(points)-1
         matrix3[j] = matrix1[j] * matrix2[j]
-      end
-    end
-  end
+  }
 
-end
+}
 
 top_level()
