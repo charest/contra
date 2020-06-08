@@ -14,7 +14,7 @@ class Context {
 
   using TypeTable = SymbolTable<TypeDef>;
   using VariableTable = SymbolTable<VariableDef>;
-  using FunctionTable = SymbolTable<FunctionDef>;
+  using FunctionTable = LookupTable< std::vector<std::unique_ptr<FunctionDef>> >;
 
   struct NestedData {
 
@@ -114,8 +114,18 @@ public:
   // function interface
   void eraseFunction(const std::string & Name) { return FunctionTable_.erase(Name); }
   auto getFunction(const std::string & Name) { return FunctionTable_.find(Name); }
-  auto insertFunction(std::unique_ptr<FunctionDef> F)
-  { return FunctionTable_.insert(std::move(F)); }
+  std::pair<FunctionDef*, bool> insertFunction(std::unique_ptr<FunctionDef> F)
+  { 
+    auto & Entry = FunctionTable_[F->getName()];
+    // look for existing
+    for (const auto & Fs : Entry) {
+      if ( isSame(Fs.get(), F.get()) )
+        return {Fs.get(), false};
+    }
+    // otherwise insert
+    Entry.emplace_back(std::move(F));
+    return {Entry.back().get(), true};
+  }
 
 };
 

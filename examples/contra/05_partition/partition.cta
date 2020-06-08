@@ -9,27 +9,37 @@ tsk top_level() {
 
   sizes = [6, 2]
 
-  point_id {points} = -1
-  cell_id {cells} = -1
+  point_id[points], cell_id[cells] = -1
+
+  cells_part = partition(cells, sizes)
 
   foreach i = parts {
 
-    #partition cells by sizes
-    
-    for j = points {
-      print("Point loop with parition %d and local id %d\n", i, j)
+    use cells : cells_part
+    use cell_id : cells_part
+   
+    num_points = length(points)
+    num_cells = length(cells)
+
+    for j = 0:num_points-1 {
+      print("Point loop with partition %d and local id %d\n", i, j)
       point_id[j] = j
     }
     
-    for j = cells {
-      print("Cell loop with parition %d and local id %d\n", i, j)
+    for j = 0:num_cells-1 {
+      print("Cell loop with partition %d and local id %d\n", i, j)
       cell_id[j] = j
     }
   }
   
   foreach i = parts {
-    for j = cells
-      print("Cell loop with parition %d and cell_id[%d]=%d\n", i, j, cell_id[j])
+    for j = 0:length(cells)-1
+      print("Cell loop with partition %d and cell_id[%d]=%d\n", i, j, cell_id[j])
+  }
+  
+  foreach i = parts {
+    for j = 0:length(points)-1
+      print("Point loop with partition %d and point_id[%d]=%d\n", i, j, point_id[j])
   }
 
 }

@@ -246,17 +246,31 @@ using VariableTypeList = std::vector<VariableType>;
 inline VariableType strip(const VariableType& Ty)
 { return VariableType(Ty, VariableType::Attr::None); }
 
-inline VariableType setArray(const VariableType& Ty, bool IsArray)
+inline VariableType setArray(const VariableType& Ty, bool IsArray=true)
 {
   VariableType NewTy(Ty);
   NewTy.setArray(IsArray);
   return NewTy;
 }
 
-inline VariableType setField(const VariableType& Ty, bool IsField)
+inline VariableType setRange(const VariableType& Ty, bool IsRange=true)
+{
+  VariableType NewTy(Ty);
+  NewTy.setRange(IsRange);
+  return NewTy;
+}
+
+inline VariableType setField(const VariableType& Ty, bool IsField=true)
 {
   VariableType NewTy(Ty);
   NewTy.setField(IsField);
+  return NewTy;
+}
+
+inline VariableType setPartition(const VariableType& Ty, bool IsPartition=true)
+{
+  VariableType NewTy(Ty);
+  NewTy.setPartition(IsPartition);
   return NewTy;
 }
 
@@ -406,6 +420,16 @@ public:
   {}
 };
 
+inline bool isSame(const FunctionDef* a, const FunctionDef* b) {
+  if (a->getNumArgs() != b->getNumArgs()) return false;
+  if (a->isVarArg() != b->isVarArg()) return false;
+  for (unsigned i=0; i<a->getNumArgs(); ++i) {
+    if (a->getArgType(i) != b->getArgType(i))
+      return false;
+  }
+  return true;
+}
+
 //==============================================================================
 // The symbol table
 //==============================================================================
@@ -491,6 +515,72 @@ public:
   }
 
 };
+
+//==============================================================================
+// The symbol table
+//==============================================================================
+template<typename T>
+class LookupTable {
+
+  std::map<std::string, T> LookupTable_;
+
+public:
+
+  class InsertResult {
+    T* Pointer_;
+    bool IsInserted_;
+  public:
+    InsertResult(T* Pointer, bool IsInerted)
+      : Pointer_(Pointer), IsInserted_(IsInerted) {}
+    auto get() const { return Pointer_; }
+    auto isInserted() const { return IsInserted_; }
+  };
+  
+  class FindResult {
+    T* Pointer_;
+    bool IsFound_;
+  public:
+    FindResult(T* Pointer, bool IsFound)
+      : Pointer_(Pointer), IsFound_(IsFound) {}
+    auto get() const { return Pointer_; }
+    auto isFound() const { return IsFound_; }
+    operator bool() { return IsFound_; }
+  };
+
+  auto & operator[](const std::string & Name) {
+    return LookupTable_[Name]; 
+  }
+
+  InsertResult insert(const std::string & Name, T && Lookup) {
+    // search first
+    auto it = find(Name);
+    if (it) return {&it, false};
+    // otherwise insert
+    auto res = LookupTable_.emplace(Name, std::move(Lookup));
+    return {&res.first->second, res.second};
+  }
+
+  FindResult find(const std::string & Name) {
+    auto it = LookupTable_.find(Name);
+    if (it == LookupTable_.end())  {
+      return {nullptr, false};
+    }
+    return {&it->second, true};
+  }
+
+  void erase(const std::string & Name) {
+    auto it = LookupTable_.find(Name);
+    if (it != LookupTable_.end()) 
+      LookupTable_.erase(it);
+  }
+    
+  bool has(const std::string & Name) {
+    auto it = LookupTable_.find(Name);
+    return (it != LookupTable_.end());
+  }
+
+};
+
 
 } // namespace
 

@@ -33,9 +33,8 @@ private:
   VariableType BoolType_ = VariableType(Context::instance().getBoolType());
   VariableType VoidType_ = VariableType(Context::instance().getVoidType());
 
-  VariableType RangeType_ = VariableType(
-      Context::instance().getInt64Type(),
-      VariableType::Attr::Range);
+  VariableType RangeType_ = setRange(I64Type_);
+  VariableType PartitionType_ = setPartition(I64Type_);
   
   bool HaveTopLevelTask_ = false;
   bool TrackVariableAccess_ = true;
@@ -122,6 +121,7 @@ private:
       const VariableType & RetTypes);
   
   FunctionDef* getFunction(const std::string &, const LocationRange &);
+  
   FunctionDef* getFunction(const Identifier & Id);
  
 public:

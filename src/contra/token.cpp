@@ -28,29 +28,18 @@ void Tokens::setup() {
   // add keywords here
   std::map<int, std::string> Keywords = {
     { tok_binary, "binary" },
-    { tok_by, "by" },
-    { tok_do, "do" },
     { tok_elif, "elif" },
     { tok_else, "else" },
-    { tok_end, "end" },
     { tok_false, "false" },
     { tok_for, "for" },
     { tok_foreach, "foreach" },
     { tok_function, "fn" },
     { tok_if, "if" },
-    { tok_in, "in" },
-    { tok_over, "over" },
-    { tok_part, "partition" },
-    { tok_range, ".." },
     { tok_return, "return" },
     { tok_task, "tsk" },
     { tok_true, "true" },
-    { tok_then, "then" },
-    { tok_to, "to" },
     { tok_unary, "unary" },
     { tok_use, "use" },
-    { tok_until, "until" },
-    { tok_where, "where" },
   };
 
   // create keyword list

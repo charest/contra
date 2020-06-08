@@ -256,6 +256,8 @@ public:
   virtual bool isPartition(llvm::Type*) const;
   virtual bool isPartition(llvm::Value*) const;
   
+  virtual void destroyPartition(llvm::Module &, llvm::Value*) override;
+  
   virtual llvm::Type* getPartitionType() const
   { return IndexPartitionType_; }
   

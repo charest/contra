@@ -652,36 +652,20 @@ class PartitionStmtAST : public StmtAST {
 protected:
 
   Identifier RangeId_;
-  Identifier ColorId_;
-  std::unique_ptr<NodeAST> ColorExpr_;
-  ASTBlock BodyExprs_;
-  std::vector<VariableDef*> AccessedVariables_;
+  std::unique_ptr<NodeAST> PartExpr_;
 
   VariableDef* Var_;
 
   std::string TaskName_;
-  bool HasBody_ = false;
 
 public:
   PartitionStmtAST(
       const LocationRange & Loc,
       const Identifier & RangeId,
-      std::unique_ptr<NodeAST> ColorExpr,
-      ASTBlock BodyExprs) :
+      std::unique_ptr<NodeAST> PartExpr) :
     StmtAST(Loc),
     RangeId_(RangeId),
-    ColorExpr_(std::move(ColorExpr)),
-    BodyExprs_(std::move(BodyExprs)),
-    HasBody_(!BodyExprs_.empty())
-  {}
-  
-  PartitionStmtAST(
-      const LocationRange & Loc,
-      const Identifier & RangeId,
-      const Identifier &  ColorId) :
-    StmtAST(Loc),
-    RangeId_(RangeId),
-    ColorId_(std::move(ColorId))
+    PartExpr_(std::move(PartExpr))
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -692,45 +676,7 @@ public:
   const auto & getVarName() const { return RangeId_.getName(); }
   const auto & getVarId() const { return RangeId_; }
 
-  auto getColorExpr() const { return ColorExpr_.get(); }
-
-  const auto & getColorName() const { return ColorId_.getName(); }
-  const auto & getColorId() const { return ColorId_; }
-  
-  bool hasBodyExprs() const { return HasBody_; }
-  const auto & getBodyExprs() const { return BodyExprs_; }
-  auto getBodyExpr(unsigned i) const { return BodyExprs_[i].get(); }
-  
-  void setAccessedVariables(const std::vector<VariableDef*> & VarDefs)
-  { AccessedVariables_ = VarDefs; }
-  
-  void eraseAccessedVariable(const std::string & VarN)
-  {
-    auto it = std::find_if(
-        AccessedVariables_.begin(),
-        AccessedVariables_.end(), 
-        [&](auto Def) { return Def->getName() == VarN; });
-    if (it != AccessedVariables_.end())
-      AccessedVariables_.erase(it);
-  }
-  
-  void eraseAccessedVariable(VariableDef* VarD)
-  {
-    auto it = std::find(
-        AccessedVariables_.begin(),
-        AccessedVariables_.end(),
-        VarD);
-    if (it != AccessedVariables_.end())
-      AccessedVariables_.erase(it);
-  }
-
-  const auto & getAccessedVariables()
-  { return AccessedVariables_; }
-  
-  const std::string &getTaskName() const { return TaskName_; }
-  void setTaskName(const std::string& Name) { TaskName_ = Name; }
-
-  auto moveBodyExprs() { return std::move(BodyExprs_); }
+  auto getPartExpr() const { return PartExpr_.get(); }
 
   auto getVarDef() const { return Var_; }
   void setVarDef(VariableDef* Var) { Var_ = Var; }

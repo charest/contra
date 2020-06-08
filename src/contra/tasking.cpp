@@ -238,6 +238,16 @@ void AbstractTasker::destroyAccessors(
 }
 
 //==============================================================================
+void AbstractTasker::destroyPartitions(
+    Module & TheModule,
+    const std::vector<Value*> & Parts)
+{
+  for (auto Part : Parts )
+    destroyPartition(TheModule, Part);
+}
+
+
+//==============================================================================
 void AbstractTasker::preregisterTasks(Module & TheModule)
 {
   for (const auto & task_pair : TaskTable_ )

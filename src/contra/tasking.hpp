@@ -195,6 +195,10 @@ public:
       bool) = 0;
   
   virtual llvm::Type* getPartitionType() const = 0;
+  virtual bool isPartition(llvm::Type*) const = 0;
+  virtual bool isPartition(llvm::Value*) const = 0;
+  
+  virtual void destroyPartition(llvm::Module &, llvm::Value*) = 0;
   
   virtual llvm::Type* getPointType() const = 0;
   virtual llvm::Value* makePoint(std::intmax_t) const = 0;
@@ -233,6 +237,9 @@ public:
   
   // accessor interface
   void destroyAccessors(llvm::Module &, const std::vector<llvm::Value*> &);
+
+  // partition interface
+  void destroyPartitions(llvm::Module &, const std::vector<llvm::Value*> &);
 
 
 protected:

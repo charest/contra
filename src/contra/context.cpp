@@ -5,7 +5,7 @@
 namespace contra {
 
 //==============================================================================
-Context::Context() : TypeTable_(0,"Global"), FunctionTable_(0, "Global")
+Context::Context() : TypeTable_(0,"Global")
 {
   // add builtins
   I64Type_ =

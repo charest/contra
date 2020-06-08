@@ -17,11 +17,13 @@ Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
 {
   auto & ctx = Context::instance();
 
-  std::vector< std::tuple<std::string, VariableType, VariableType> > fun = {
-    {I64Type_.getBaseType()->getName(), I64Type_, F64Type_},
-    {F64Type_.getBaseType()->getName(), F64Type_, I64Type_},
-    {"length", I64Type_, RangeType_}
-  };
+  std::vector< std::tuple<std::string, VariableType, std::vector<VariableType>> >
+    fun = {
+      {I64Type_.getBaseType()->getName(), I64Type_, {F64Type_}},
+      {F64Type_.getBaseType()->getName(), F64Type_, {I64Type_}},
+      {"length", I64Type_, {RangeType_}},
+      {"partition", setPartition(I64Type_), {RangeType_, setArray(I64Type_)}}
+    };
 
   for (const auto & f : fun) {
     auto Sy = std::make_unique<BuiltInFunction>(
@@ -66,12 +68,15 @@ FunctionDef* Analyzer::getFunction(
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
   auto FP = Context::instance().getFunction(Name);
-  if (FP) return FP.get();
+  if (FP) {
+    if (FP.get()->size()>1) THROW_NAME_ERROR("Too many functions to choose from.", Loc);
+    return FP.get()->front().get();
+  }
   
   // see if this is an available intrinsic, try installing it first
   if (auto F = librt::RunTimeLib::tryInstall(Name)) {
     auto res = Context::instance().insertFunction(std::move(F));
-    return res.get();
+    return res.first;
   }
   
   THROW_NAME_ERROR("No valid prototype for '" << Name << "'.", Loc);
@@ -93,10 +98,7 @@ FunctionDef* Analyzer::insertFunction(
   const auto & Name = Id.getName();
   auto Sy = std::make_unique<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
   auto res = Context::instance().insertFunction( std::move(Sy) );
-  if (!res.isInserted())
-    THROW_NAME_ERROR("Prototype already exists for '" << Name << "'.",
-      Id.getLoc());
-  return res.get();
+  return res.first;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -576,7 +578,6 @@ void Analyzer::visit(ForeachStmtAST& e)
   for (unsigned i=0; i<NumParts; ++i) {
     auto Expr = dynamic_cast<PartitionStmtAST*>(BodyExprs[i].get());
     runStmtVisitor(*Expr);
-    Expr->eraseAccessedVariable(VarD);
   }
   popScope();
 
@@ -710,61 +711,22 @@ void Analyzer::visit(AssignStmtAST& e)
 void Analyzer::visit(PartitionStmtAST& e)
 {
 
-  TrackVariableAccess_ = false; // temporarily disable
-
   const auto & RangeId = e.getVarId();
   auto RangeDef = getVariable(RangeId);
   if (!RangeDef->getType().isRange() && !RangeDef->getType().isField())
     THROW_NAME_ERROR("Identifier '" << RangeId.getName()
         << "' is not a valid range or field.", RangeId.getLoc());
 
-  auto ColorExpr = e.getColorExpr();
-  if (ColorExpr) {
-    auto ColorType = runExprVisitor(*ColorExpr);
-    if ( ColorType != I64Type_ && !ColorType.isArray() && !ColorType.isRange() &&
-        !ColorType.isPartition())
-      THROW_NAME_ERROR("Acceptable types for partitioning are integers, arrays, and ranges.",
-          ColorExpr->getLoc());
-  }
-  else {
-    const auto & ColorId = e.getColorId();
-    auto ColorDef = getVariable(ColorId);
-    auto ColorType = ColorDef->getType();
-    if (!ColorType.isPartition())
-      THROW_NAME_ERROR("Only partitions expected in 'use' statement.",
-          ColorExpr->getLoc());
-  }
+  auto PartExpr = e.getPartExpr();
+  auto PartType = runExprVisitor(*PartExpr);
+  if ( PartType != I64Type_ && !PartType.isPartition())
+      THROW_NAME_ERROR(
+          "Only partitions expected in 'use' statement.",
+          PartExpr->getLoc());
 
-  TrackVariableAccess_ = true; // turn back on
-  
-  createScope();
-
-  for (const auto & Expr : e.getBodyExprs()) runStmtVisitor(*Expr);
-  
-  auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
-  
-  auto it = std::find(AccessedVars.begin(), AccessedVars.end(), RangeDef);
-  if (it != AccessedVars.end()) AccessedVars.erase(it);
-
-#if 0
-  for (auto V : AccessedVars) {
-    if (V->getType().isRange()) {
-      THROW_NAME_ERROR("The range '" << V->getName() << "' is not allowed "
-          << " inside the partition declaration for '" << RangeId.getName()
-          << "'.", ColorExpr->getLoc());
-    }
-  }
-#endif
-  
-  e.setAccessedVariables(AccessedVars);
   e.setVarDef(RangeDef);
 
-  popScope();
-
-
-  TypeResult_ = RangeDef->getType();
-  TypeResult_.setRange(false);
-  TypeResult_.setPartition();
+  TypeResult_ = PartType;
 }
 
 //==============================================================================

@@ -261,9 +261,9 @@ void contra_legion_index_space_partition(
     contra_legion_partitions_t ** parts,
     legion_index_partition_t * part)
 {
-  auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
+  //auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
  
-  *index_part = legion_index_partition_create_equal(
+  *part = legion_index_partition_create_equal(
       *runtime,
       *ctx,
       is->index_space,
@@ -271,7 +271,7 @@ void contra_legion_index_space_partition(
       /* granularity */ 1,
       /*color*/ AUTO_GENERATE_ID );
   
-  *part = *index_part;
+  //*part = *index_part;
 }
 
 //==============================================================================
@@ -287,9 +287,9 @@ void contra_legion_index_space_partition_from_size(
 {
   legion_index_space_t color_space = legion_index_space_create(*runtime, *ctx, size);
 
-  auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
+  //auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
   
-  *index_part = legion_index_partition_create_equal(
+  *part = legion_index_partition_create_equal(
       *runtime,
       *ctx,
       is->index_space,
@@ -299,7 +299,7 @@ void contra_legion_index_space_partition_from_size(
 
   legion_index_space_destroy(*runtime, *ctx, color_space);
 
-  *part = *index_part;
+  //*part = *index_part;
 }
 
 //==============================================================================
@@ -330,7 +330,7 @@ void contra_legion_index_space_partition_from_array(
     offset += ptr[i];
   }
 
-  auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
+  //auto index_part = (*parts)->createIndexPartition(runtime, ctx, is->index_space.id);
 
   //------------------------------------
   // if the sizes are differeint 
@@ -347,7 +347,7 @@ void contra_legion_index_space_partition_from_array(
     legion_index_space_t expanded_space =
       legion_index_space_create(*runtime, *ctx, expanded_size);
     
-    *index_part = legion_index_partition_create_coloring(
+    *part = legion_index_partition_create_coloring(
         *runtime,
         *ctx,
         expanded_space,
@@ -367,7 +367,7 @@ void contra_legion_index_space_partition_from_array(
   // Naive partitioning
   else {
   
-    *index_part = legion_index_partition_create_coloring(
+    *part = legion_index_partition_create_coloring(
         *runtime,
         *ctx,
         is->index_space,
@@ -381,7 +381,7 @@ void contra_legion_index_space_partition_from_array(
   // destroy coloring
   legion_coloring_destroy(coloring);
 
-  *part = *index_part;
+  //*part = *index_part;
 }
 
 //==============================================================================
@@ -858,6 +858,19 @@ void contra_legion_accessor_destroy(
 {
   legion_accessor_array_1d_destroy(acc->accessor);
 }
+
+//==============================================================================
+/// Partition destruction
+//==============================================================================
+void contra_legion_partition_destroy(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    legion_index_partition_t * part)
+{
+  legion_index_partition_destroy(*runtime, *ctx, *part);
+}
+
+
 
 
 //==============================================================================
@@ -1790,7 +1803,6 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
       auto vit = VarOverrides.find(ArgN);
       auto ForceIndex = (vit != VarOverrides.end() && vit->second.isPartition());
       if (isRange(TaskArgAs[i])) {
-        std::cout << ArgN << " is range" << std::endl;
         Builder_.CreateCall(SplitRangeF, {RuntimeA, ContextA, TaskA, TaskArgAs[i]});
       }
       else if (ForceIndex || isPartition(TaskArgAs[i])) {
@@ -3229,6 +3241,26 @@ bool LegionTasker::isPartition(Value* PartA) const
   auto PartT = PartA->getType();
   if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
   return isPartition(PartT);
+}
+
+//==============================================================================
+// destroey an accessor
+//==============================================================================
+void LegionTasker::destroyPartition(
+    Module &TheModule,
+    Value* PartitionA)
+{
+  const auto & LegionE = getCurrentTask();
+  const auto & ContextA = LegionE.ContextAlloca;
+  const auto & RuntimeA = LegionE.RuntimeAlloca;
+
+  std::vector<Value*> FunArgVs = {RuntimeA, ContextA, PartitionA};
+  auto FunArgTs = llvmTypes(FunArgVs);
+    
+  auto FunT = FunctionType::get(VoidType_, FunArgTs, false);
+  auto FunF = TheModule.getOrInsertFunction("contra_legion_partition_destroy", FunT);
+    
+  Builder_.CreateCall(FunF, FunArgVs);
 }
 
 //==============================================================================

@@ -20,30 +20,19 @@ enum Token {
 
   // control
   tok_if,
-  tok_then,
   tok_elif,
   tok_else,
 
   // loops
   tok_for,
   tok_foreach,
-  tok_in,
-  tok_do,
-  tok_to,
-  tok_by,
-  tok_until,
   tok_range,
 
-  tok_part,
-  tok_where,
   tok_use,
 
   // operators
   tok_binary,
   tok_unary,
-
-  // variables
-  tok_over,
 
   // numbers / strings
   tok_true,

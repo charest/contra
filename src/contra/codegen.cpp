@@ -199,6 +199,7 @@ void CodeGen::popScope()
   std::vector<Value*> Fields;
   std::vector<Value*> Ranges;
   std::vector<Value*> Accessors;
+  std::vector<Value*> Partitions;
 
   for ( const auto & entry_pair : VariableTable_.front() ) {
     auto VarE = entry_pair.second;
@@ -214,6 +215,8 @@ void CodeGen::popScope()
       Ranges.emplace_back(Alloca);
     else if (Tasker_->isAccessor(Alloca))
       Accessors.emplace_back(Alloca);
+    else if (Tasker_->isPartition(Alloca))
+      Partitions.emplace_back(Alloca);
   }
   VariableTable_.pop_front();
 
@@ -221,6 +224,7 @@ void CodeGen::popScope()
   Tasker_->destroyFutures(*TheModule_, Futures);
   Tasker_->destroyFields(*TheModule_, Fields);
   Tasker_->destroyAccessors(*TheModule_, Accessors); 
+  Tasker_->destroyPartitions(*TheModule_, Partitions);
   Tasker_->destroyRanges(*TheModule_, Ranges);
 }
 
@@ -1120,6 +1124,20 @@ void CodeGen::visit(CallExprAST &e) {
       ValueResult_ = Tasker_->getRangeSize(*TheModule_, ArgV);
     return;
   }
+  else if (Name == "partition") {
+    auto RangeV = runExprVisitor(*e.getArgExpr(0));
+    auto ColorV = runExprVisitor(*e.getArgExpr(1));
+    auto TheFunction = Builder_.GetInsertBlock()->getParent();
+    auto PartA = Tasker_->partition(
+        *TheModule_,
+        TheFunction,
+        RangeV,
+        I64Type_,
+        ColorV,
+        true );
+    ValueResult_ = Builder_.CreateLoad(PartA->getAllocatedType(), PartA);
+    return;
+  }
 
   auto FunPair = getFunction(Name);
   auto CalleeF = FunPair.first;
@@ -1415,16 +1433,12 @@ void CodeGen::visit(ForeachStmtAST& e)
       auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
       auto VarD = Node->getVarDef();
       const auto VarN = Node->getVarName();
+      auto VarA = runStmtVisitor(*Node->getPartExpr());
       if (!VarD->getType().isField()) {
-        auto VarA = runStmtVisitor(*Stmt);
         Partitions.emplace( VarN, VarA );
       }
       else {
-        auto ColorExpr = dynamic_cast<const VarAccessExprAST*>(Node->getColorExpr());
-        const auto & ColorVarN = ColorExpr->getName();
-        auto ColorVarE = getVariable(ColorVarN);
-        auto ColorVarA = ColorVarE->getAlloca();
-        Fields.emplace(VarN, ColorVarA) ;
+        Fields.emplace(VarN, VarA);
       }
     }
 
@@ -1583,7 +1597,8 @@ void CodeGen::visit(AssignStmtAST & e)
   return;
 
 }
-  
+
+#if 0 
 //==============================================================================
 // Partitionting
 //==============================================================================
@@ -1681,6 +1696,7 @@ void CodeGen::visit(PartitionStmtAST & e)
   }
 
 }
+#endif
 
 #if 0
 //==============================================================================
@@ -2042,7 +2058,6 @@ void CodeGen::visit(TaskAST& e)
   auto RetVal = codegenFunctionBody(e);
   
   if (RetVal && Tasker_->isFuture(RetVal)) {
-    std::cout << "getting future in " << Name  << std::endl;
     auto RetT = getLLVMType( P.getReturnType() );
     RetVal = loadFuture(RetT, RetVal);
   }
