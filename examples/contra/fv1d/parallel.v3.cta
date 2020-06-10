@@ -44,11 +44,11 @@ fn compute_flux(
 ###############################################################################
 # This is the main function
 ###############################################################################
-task main() {
+tsk main() {
 
   # input parameters
-  num_parts = 2
-  num_cells = 100000
+  num_parts = 3
+  num_cells = 100*3
   num_ghost = 1
   f64 xleft = 0
   f64 xright = 1
@@ -75,8 +75,8 @@ task main() {
   num_points = num_cells + 1
  
   parts = 0 : num_parts-1
-  cells = 0 : tot_cells-1
-  points = 0 : tot_points-1
+  cells = 0 : num_cells-1
+  points = 0 : num_points-1
 
   # size the cell index space
   cell_sizes = [0; num_parts]
@@ -105,64 +105,74 @@ task main() {
   for i = 1 : num_parts-2
     cell_sizes_with_ghost[i] = cell_sizes[i] + 2*num_ghost
   cell_sizes_with_ghost[num_parts-1] = cell_sizes[num_parts-1] + num_ghost
+
+  # count the number of owned + ghost cells/points
+  tot_cells, tot_points = 0
+  for i = 0 : num_parts-1 {
+    tot_points = tot_points + point_sizes[i]
+    tot_cells = tot_cells + cell_sizes_with_ghost[i]
+  }
   
   # determine the cell starting id for each rank
   cnt = 0
   cell_offsets = [0; num_parts+1]
   for i = 0 : num_parts-1 {
-    cnt += cell_sizes[i]
+    cnt = cnt + cell_sizes[i]
     cell_offsets[i+1] = cnt - num_ghost
   }
   
   #============================================================================
   # distributed fields
   
-  vertices{points} = 0.
-  centroids{cells} = 0.
-  deltax{cells} = 0.
+  vertices[points], centroids[cells], deltax[cells] = 0.
 
   #============================================================================
   # geometry
   
   f64 length = xright - xleft
-  ileft = num_ghost
-  iright = tot_points - 1 - num_ghost
   
   #-------------------------------------
   # Points
   
   # compute the vertices
   foreach i = parts {
-  
-    local_points = length(points)
-    
-    for j = local_points {
+    for j = 0:len(points)-1 {
       k = points[j]
-      vertices[j] = xleft + spacing(k-ileft, num_cells) * length
+      vertices[j] = xleft + spacing(k, num_cells) * length
     }
-
   }
     
   #-------------------------------------
   # Cells
 
-  cells_disjoint_part = partition(cells, cell_sizes)
+  # disjoint partition is easy
+  cells_disjoint_part = part(cells, cell_sizes)
+  
+  # create an overlapping partition for points
+  points_expanded = 0:tot_points-1
+  points_expanded_part = part(points_expanded, point_sizes)
 
-  points_part = partition(
+  point_ids[points_expanded] = -1
+
+  foreach i = parts {
+    use points_expanded, point_ids : points_expanded_part
+    for j = 0:len(points_expanded)-1 {
+      point_ids[j] = point_offsets[i] + j
+    }
+  }
+
+  points_part = part(
     points,
-    point_sizes,
-    (i, j){ point_offsets[i] + j }
+    points_expanded_part,
+    point_ids
   )
-
 
   # now compute the cell centroids
   foreach i = parts {
-    cells     & cells_disjoint_part
-    centroids & cells_disjoint_part
-    deltax    & cells_disjoint_part
-    vertices  & points_part
+    use cells, centroids, deltax : cells_disjoint_part
+    use vertices  : points_part
 
-    for j = cells {
+    for j = 0:len(cells)-1 {
       centroids[j] = (vertices[j] + vertices[j+1]) / 2
       deltax[j] = vertices[j+1] - vertices[j]
     }
@@ -171,20 +181,16 @@ task main() {
   #============================================================================
   # initalize the solution
 
-  density {cells} = 0.
-  velocity{cells} = 0.
-  pressure{cells} = 0.
-  energy  {cells} = 0.
+  density [cells], 
+  velocity[cells],
+  pressure[cells],
+  energy  [cells] = 0.
   
-  foreach i in parts do
-    cells     & cells_disjoint_part
-    centroids & cells_disjoint_part
-    density   & cells_disjoint_part
-    pressure  & cells_disjoint_part
-    velocity  & cells_disjoint_part
-    energy    & cells_disjoint_part
+  foreach i = parts {
+    use cells, centroids : cells_disjoint_part
+    use density, pressure, velocity, energy : cells_disjoint_part
 
-    for j = cells {
+    for j = 0:len(cells)-1 {
       if centroids[j] < 0.5 {
         density[j] = dl
         pressure[j] = pl
@@ -217,16 +223,28 @@ task main() {
   #============================================================================
   # advance solution
       
-  dmassdt{cells} = 0.
-  dmomdt {cells} = 0.
-  denerdt{cells} = 0.
+  # create an overlapping parition for cells
+  cells_expanded = 0:tot_cells-1
+  cells_expanded_part = part(cells_expanded, cell_sizes_with_ghost)
 
-  cells_overlap_part = partition(
+  cell_ids[cells_expanded] = -1
+
+  foreach i = parts {
+    use cells_expanded, cell_ids : cells_expanded_part
+    for j = 0:len(cells_expanded)-1 
+      cell_ids[j] = cell_offsets[i] + j
+  }
+
+  cells_overlap_part = part(
     cells,
-    cell_sizes_with_ghost,
-    (i,j){ cell_offsets[i] + j }
+    cells_expanded_part,
+    cell_ids
   )
+  
+  # fields for residuals
+  dmassdt[cells], dmomdt[cells], denerdt[cells] = 0.
 
+  # start iteration
   time = 0.
 
   for n = 1 : max_its {
@@ -260,33 +278,37 @@ task main() {
     # Compute residual
     foreach i = parts {
     
-      cells & cells_disjoint_part for cells
-    
-      density  & cells_overlap_part
-      pressure & cells_overlap_part
-      velocity & cells_overlap_part
-      energy   & cells_overlap_part
-      
-      dmassdt & cells_overlap_part
-      dmomdt  & cells_overlap_part
-      denerdt & cells_overlap_part
+      use cells : cells_disjoint_part
+      use dmassdt, dmomdt, denerdt : cells_disjoint_part
+      use density, pressure, velocity, energy  : cells_overlap_part
  
       # zero residuals
-      local_cells = length(cells)
+      local_cells = len(cells)
       for j = 0 : local_cells-1 {
         dmassdt[j] = 0
         dmomdt [j] = 0
         denerdt[j] = 0
       }
       
-      # determine the left index for overlapping partition
-      offset = if (i!=0) num_ghost else 0
-
+      # dont update the solution in the cell bordering the boundary
+      if (i==0) local_cells = local_cells - 1
+      if (i==num_parts-1) local_cells = local_cells - 1
+      
+      # Determine the left and right indices for each partition.
+      # The overlapping partition is offset from the disjoint one.
+      jleft = 0
+      offset = 1
+      if (i>0) {
+        offset = 1 + num_ghost
+        jleft = -num_ghost
+      }
+      jright = jleft + local_cells
+      
       # compute rhs
-      for j = cells {
+      for j = jleft : jright {
 
         k = j + offset
-      
+
         mass, mom, ener = compute_flux(
           gamma,
           density[k-1],
@@ -298,18 +320,19 @@ task main() {
           velocity[k],
           energy[k] )
 
-        if j > 0 {
-          dmassdt[j-1] = dmassdt[j-1] + mass
-          dmomdt [j-1] = dmomdt [j-1] + mom
-          denerdt[j-1] = denerdt[j-1] + ener
+
+        if j > jleft {
+          dmassdt[j] = dmassdt[j] + mass
+          dmomdt [j] = dmomdt [j] + mom
+          denerdt[j] = denerdt[j] + ener
         }
 
         if j < jright {
-          dmassdt[j] = dmassdt[j] - mass
-          dmomdt [j] = dmomdt [j] - mom
-          denerdt[j] = denerdt[j] - ener
+          dmassdt[j+1] = dmassdt[j+1] - mass
+          dmomdt [j+1] = dmomdt [j+1] - mom
+          denerdt[j+1] = denerdt[j+1] - ener
         }
-  
+      
       } # flux
 
     } # parts
@@ -318,19 +341,12 @@ task main() {
     # Apply update
     foreach i = parts {
     
-      cells & cells_disjoint_part for cells
-    
-      density  & cells_disjoint_part
-      pressure & cells_disjoint_part
-      velocity & cells_disjoint_part
-      energy   & cells_disjoint_part
-      
-      dmassdt & cells_disjoint_part
-      dmomdt  & cells_disjoint_part
-      denerdt & cells_disjoint_part
+      use cells, deltax : cells_disjoint_part
+      use density, pressure, velocity, energy  : cells_disjoint_part
+      use dmassdt, dmomdt, denerdt : cells_disjoint_part
    
       # apply the update
-      for j = cells { 
+      for j = 0 : len(cells)-1 { 
         factor = deltat / deltax[j]
         # density update
         old_density = density[j]
@@ -346,7 +362,7 @@ task main() {
 
     } # parts
 
-    time += deltat
+    time = time + deltat
 
     print("Step %5d, Time %e\n", n, time)
 
@@ -366,7 +382,7 @@ task main() {
   }
 
 
-end
+}
 
 
 ###############################################################################

@@ -226,7 +226,7 @@ void Vizualizer::visit(AssignStmtAST& e)
 void Vizualizer::visit(PartitionStmtAST& e)
 {
   auto my_ind = ind_;
-  labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName()));
+  labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName(0)));
   createLink(my_ind, "Color" );
   runVisitor(*e.getPartExpr());
 }

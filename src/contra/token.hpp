@@ -47,12 +47,17 @@ enum Token {
   tok_end,
   tok_return,
   tok_task,
+  tok_lambda = '@',
 
   // special binary
   tok_eq,
   tok_ne,
   tok_le,
   tok_ge,
+  tok_asgmt_add,
+  tok_asgmt_sub,
+  tok_asgmt_mul,
+  tok_asgmt_div,
   
   // file seperators
   tok_eof = -1,

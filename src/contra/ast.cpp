@@ -123,4 +123,8 @@ void TaskAST::accept(AstVisiter& visiter)
 void IndexTaskAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
+//==============================================================================
+void LambdaExprAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
 } // namespace

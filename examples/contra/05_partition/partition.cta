@@ -11,15 +11,15 @@ tsk top_level() {
 
   point_id[points], cell_id[cells] = -1
 
-  cells_part = partition(cells, sizes)
+  cells_part = part(cells, sizes)
 
   foreach i = parts {
 
     use cells : cells_part
     use cell_id : cells_part
    
-    num_points = length(points)
-    num_cells = length(cells)
+    num_points = len(points)
+    num_cells = len(cells)
 
     for j = 0:num_points-1 {
       print("Point loop with partition %d and local id %d\n", i, j)
@@ -33,12 +33,12 @@ tsk top_level() {
   }
   
   foreach i = parts {
-    for j = 0:length(cells)-1
+    for j = 0:len(cells)-1
       print("Cell loop with partition %d and cell_id[%d]=%d\n", i, j, cell_id[j])
   }
   
   foreach i = parts {
-    for j = 0:length(points)-1
+    for j = 0:len(points)-1
       print("Point loop with partition %d and point_id[%d]=%d\n", i, j, point_id[j])
   }
 

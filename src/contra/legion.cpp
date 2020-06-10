@@ -101,9 +101,7 @@ struct contra_legion_partitions_t {
   using LogicalPartitionMap = 
     std::unordered_map< LogicalPartitionKey, LogicalPartitionVal, LogicalPartitionHash >;
   
-  std::forward_list< LogicalPartitionMap > LogicalPartitions;
-
-  std::unordered_map< legion_index_space_id_t, legion_index_space_id_t > IndexSpaces;
+  LogicalPartitionMap LogicalPartitions;
 
   auto createIndexPartition(
       legion_runtime_t *rt,
@@ -156,14 +154,6 @@ struct contra_legion_partitions_t {
     return nullptr;
   }
 
-  legion_index_space_id_t getIndexSpace(legion_index_space_id_t id)
-  {
-    auto parent = id;
-    auto it = IndexSpaces.find(id);
-    if (it != IndexSpaces.end()) parent = it->second;
-    return parent;
-  }
-  
   auto createLogicalPartition(
       legion_runtime_t *rt,
       legion_context_t *ctx,
@@ -172,15 +162,13 @@ struct contra_legion_partitions_t {
   {
     // found 
     LogicalPartitionDeleter Deleter(rt, ctx);
-    for (auto & Scope : LogicalPartitions) {
-      auto it = Scope.find(std::make_pair(fid,pid));
-      if (it != Scope.end()) {
-        it->second = LogicalPartitionVal(new legion_logical_partition_t, Deleter);
-        return it->second.get();
-      }
+    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
+    if (it != LogicalPartitions.end()) {
+      it->second = LogicalPartitionVal(new legion_logical_partition_t, Deleter);
+      return it->second.get();
     }
     // not found
-    auto res = LogicalPartitions.front().emplace(
+    auto res = LogicalPartitions.emplace(
         std::make_pair(fid, pid),
         LogicalPartitionVal(new legion_logical_partition_t, Deleter) );
     return res.first->second.get();
@@ -194,15 +182,13 @@ struct contra_legion_partitions_t {
       legion_index_partition_id_t pid)
   {
     // found
-    for (const auto & Scope : LogicalPartitions) {
-      auto it = Scope.find(std::make_pair(fid,pid));
-      if (it!=Scope.end()) {
-        return std::make_pair(it->second.get(), true);
-      }
+    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
+    if (it!=LogicalPartitions.end()) {
+      return std::make_pair(it->second.get(), true);
     }
     // not found
     LogicalPartitionDeleter Deleter(rt, ctx);
-    auto res = LogicalPartitions.front().emplace(
+    auto res = LogicalPartitions.emplace(
         std::make_pair(fid, pid),
         LogicalPartitionVal(new legion_logical_partition_t, Deleter) );
     return std::make_pair(res.first->second.get(), false);
@@ -213,23 +199,19 @@ struct contra_legion_partitions_t {
       legion_field_id_t fid,
       legion_index_partition_id_t pid)
   { 
-    for (const auto & Scope : LogicalPartitions) {
-      auto it = Scope.find(std::make_pair(fid,pid));
-      if (it!=Scope.end()) return it->second.get();
-    }
+    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
+    if (it!=LogicalPartitions.end()) return it->second.get();
     return nullptr;
   }
 
   void push() 
   {
     IndexPartitions.push_front({});
-    LogicalPartitions.push_front({});
   }
 
   void pop()
   {
     IndexPartitions.pop_front();
-    LogicalPartitions.pop_front();
   }
 
 };
@@ -356,8 +338,6 @@ void contra_legion_index_space_partition_from_array(
         /*part color*/ AUTO_GENERATE_ID );
 
 
-    (*parts)->IndexSpaces[expanded_space.id] = is->index_space.id;
-
     // clean up
     //legion_index_space_destroy(*runtime, *ctx, expanded_space);
   
@@ -392,20 +372,18 @@ void contra_legion_index_space_partition_from_field(
     legion_context_t * ctx,
     contra_legion_field_t *field,
     contra_legion_index_space_t * is,
+    legion_index_partition_t * index_part,
     contra_legion_partitions_t ** parts,
     legion_index_partition_t * part)
 {
  
-  auto parent = (*parts)->getIndexSpace(field->index_space.id);
-  auto index_part = (*parts)->getIndexPartition(parent);
-
   auto logical_part = (*parts)->getLogicalPartition(field->field_id, index_part->id);
 
   legion_index_space_t color_space = legion_index_partition_get_color_space(
       *runtime,
       *index_part);
-  
-  legion_index_partition_destroy(*runtime, *ctx, *index_part);
+
+  //legion_index_partition_destroy(*runtime, *ctx, *index_part);
     
   // partition with results
   *index_part = legion_index_partition_create_by_image(
@@ -553,6 +531,7 @@ void contra_legion_field_create_from_partition(
 
   is.start = rect.lo.x[0];
   is.end = rect.hi.x[0] + 1;
+  is.step = 1;
 
   contra_legion_field_create(runtime, ctx, name, data_size, init, &is, fld);
 }
@@ -618,10 +597,8 @@ void contra_legion_index_add_region_requirement(
   }
   else {
   
-    auto parent = (*parts)->getIndexSpace(field->index_space.id);
-
     // index partition 
-    auto res = (*parts)->getOrCreateIndexPartition(runtime, ctx, parent);
+    auto res = (*parts)->getOrCreateIndexPartition(runtime, ctx, field->index_space.id);
     index_part = res.first;
 
     if (!res.second) {
@@ -756,6 +733,7 @@ void contra_legion_split_range(
   is->index_space = new_is;
   is->start = rect.lo.x[0];
   is->end = rect.hi.x[0] + 1;
+  is->step = 1;
 
   legion_index_partition_destroy(*runtime, *ctx, index_part);
   legion_index_space_destroy(*runtime, *ctx, cs);
@@ -788,6 +766,7 @@ void contra_legion_range_from_index_partition(
 
   is->start = rect.lo.x[0];
   is->end = rect.hi.x[0] + 1;
+  is->step = 1;
 }
 
 //==============================================================================
@@ -2935,6 +2914,7 @@ AllocaInst* LegionTasker::partition(
     Module & TheModule,
     Function* TheFunction,
     Value* IndexSpaceA,
+    Value* IndexPartitionA,
     Value* ValueA)
 {
   auto & LegionE = getCurrentTask();
@@ -2969,11 +2949,14 @@ AllocaInst* LegionTasker::partition(
   }
   //------------------------------------
   else if (isField(ValueA)) {
+    ValueA = getAsAlloca(Builder_, TheFunction, ValueA);
+    IndexPartitionA = getAsAlloca(Builder_, TheFunction, IndexPartitionA);
     std::vector<Value*> FunArgVs = {
       RuntimeA,
       ContextA,
       ValueA,
       IndexSpaceA,
+      IndexPartitionA,
       PartInfoA,
       IndexPartA};
     auto FunArgTs = llvmTypes(FunArgVs);

@@ -244,6 +244,7 @@ public:
       llvm::Module &,
       llvm::Function*,
       llvm::Value*,
+      llvm::Value*,
       llvm::Value*) override;
   virtual llvm::AllocaInst* partition(
       llvm::Module &,

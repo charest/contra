@@ -347,6 +347,8 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parsePartitionExpr();
   case tok_string_literal:
     return parseStringExpr();
+  case tok_lambda:
+    return parseLambda();
   default:
     THROW_SYNTAX_ERROR("Unknown token '" <<  Tokens::getName(CurTok_)
         << "' when expecting an expression", getIdentifierLoc());
@@ -575,17 +577,22 @@ std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
   auto UseLoc = getIdentifierLoc();
   getNextToken();  // eat the use
     
-  auto RangeLoc = getIdentifierLoc();
-  if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Expected an identifier after keyword 'use'.", RangeLoc);
-  auto RangeName = getIdentifierStr();
-  getNextToken(); // eat identifier.
+  std::vector<Identifier> RangeIds;
+
+  while (CurTok_ != ':') {
+    auto RangeLoc = getIdentifierLoc();
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Expected an identifier after keyword 'use'.", RangeLoc);
+    RangeIds.emplace_back( getIdentifierStr(), RangeLoc );
+    getNextToken(); // eat identifier.
+    if (CurTok_ == ',') getNextToken(); // eat ,
+  }
 
   auto ColonLoc = getCurLoc();
   if (CurTok_ != ':')
     THROW_SYNTAX_ERROR(
         "Expected ':'.",
-        getLocationRange(RangeLoc.getBegin()));
+        getIdentifierLoc());
   getNextToken(); // eat ":".
 
   auto PartLoc = getIdentifierLoc();
@@ -597,7 +604,7 @@ std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
 
   return std::make_unique<PartitionStmtAST>(
       getLocationRange(BeginLoc),
-      Identifier{RangeName, RangeLoc},
+      RangeIds,
       std::move(PartExpr));
 }
 
@@ -664,6 +671,127 @@ std::unique_ptr<NodeAST> Parser::parseRangeExpr()
         std::move(EndExpr));
 }
 
+//==============================================================================
+// Toplevel function parser
+//==============================================================================
+std::unique_ptr<NodeAST> Parser::parseLambda() {
+
+  auto FnLoc = getIdentifierLoc();
+  getNextToken(); // eat 'lambda'
+  
+  //---------------------------------------------------------------------------
+  if (CurTok_ != '(')
+    THROW_SYNTAX_ERROR(
+        "Expected '(' in prototype",
+        getIdentifierLoc());
+
+  getNextToken(); // eat "("
+
+  std::vector<Identifier> Args;
+  std::vector<Identifier> ArgTypes;
+  std::vector<bool> ArgIsArray;
+
+  while (CurTok_ == tok_identifier) {
+
+    bool IsArray = false;
+
+    auto BeginLoc = getCurLoc();
+
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR(
+          "Identifier expected in prototype for lambda function.",
+          getLocationRange(BeginLoc));
+
+    auto TypeLoc = getIdentifierLoc();
+    auto TypeName = getIdentifierStr();
+    ArgTypes.emplace_back( TypeName, TypeLoc );
+
+    getNextToken(); // eat identifier
+    
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR(
+          "Mising type or variable name in prototype for lambda function.",
+          getLocationRange(BeginLoc));
+    auto VarName = getIdentifierStr();
+    auto VarLoc = getIdentifierLoc();
+    
+    Args.emplace_back( VarName, VarLoc );
+    
+    getNextToken(); // eat identifier
+    
+    if (CurTok_ == '[') {
+      IsArray = true;
+      auto BeginLoc = getCurLoc();
+      getNextToken(); // eat the '['.
+      if (CurTok_ != ']')
+        THROW_SYNTAX_ERROR(
+            "Expected ']'",
+            getLocationRange(BeginLoc));
+      getNextToken(); // eat the ']'
+    }
+    ArgIsArray.push_back( IsArray );
+   
+    if (CurTok_ == ',') getNextToken(); // eat ','
+  }
+
+  if (CurTok_ != ')')
+    THROW_SYNTAX_ERROR(
+        "Expected ')' in prototype",
+        getIdentifierLoc());
+
+  // success.
+  getNextToken(); // eat ')'.
+
+  auto Proto = std::make_unique<PrototypeAST>(
+      Identifier{"__anonymous_function__", FnLoc},
+      std::move(Args),
+      std::move(ArgTypes),
+      std::move(ArgIsArray));
+
+  //---------------------------------------------------------------------------
+
+  ASTBlock Body;
+  std::unique_ptr<NodeAST> Return;
+
+  //------------------------------------
+  // Multi-liner
+  if (CurTok_ == '{') {
+    getNextToken(); // eat {
+    while (CurTok_ != '}') {
+      if (CurTok_ == tok_return) {
+        getNextToken(); // eat return
+        Return = parseExpression();
+        break;
+      }
+      auto E = parseExpression();
+      Body.emplace_back( std::move(E) );
+      if (CurTok_ == tok_sep) getNextToken();
+    }
+    if (CurTok_ != '}')
+      THROW_SYNTAX_ERROR(
+          "Only one return statement allowed for a function.",
+          getIdentifierLoc() );
+    getNextToken(); // eat }
+  }
+  //------------------------------------
+  // One-liner
+  else {
+    if (CurTok_ == tok_return) {
+      getNextToken(); // eat return
+      Return = parseExpression();
+    }
+    else {
+      auto E = parseExpression();
+      Body.emplace_back( std::move(E) );
+    }
+  }
+
+  
+  return std::make_unique<LambdaExprAST>(
+      std::move(Proto),
+      std::move(Body),
+      std::move(Return));
+}
 
 //==============================================================================
 // Toplevel function parser

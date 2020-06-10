@@ -21,8 +21,9 @@ Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
     fun = {
       {I64Type_.getBaseType()->getName(), I64Type_, {F64Type_}},
       {F64Type_.getBaseType()->getName(), F64Type_, {I64Type_}},
-      {"length", I64Type_, {RangeType_}},
-      {"partition", setPartition(I64Type_), {RangeType_, setArray(I64Type_)}}
+      {"len", I64Type_, {RangeType_}},
+      {"part", setPartition(I64Type_), {RangeType_, setArray(I64Type_)}},
+      {"part", setPartition(I64Type_), {RangeType_, setPartition(I64Type_), setLambda(I64Type_)}},
     };
 
   for (const auto & f : fun) {
@@ -62,14 +63,23 @@ void Analyzer::removeFunction(const std::string & Name)
 //==============================================================================
 FunctionDef* Analyzer::getFunction(
     const std::string & Name,
-    const LocationRange & Loc)
+    const LocationRange & Loc,
+    int NumArgs = -1)
 {
   
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
   auto FP = Context::instance().getFunction(Name);
   if (FP) {
-    if (FP.get()->size()>1) THROW_NAME_ERROR("Too many functions to choose from.", Loc);
+    if (FP.get()->size()>1) {
+      if (NumArgs>-1) {
+        for (const auto & F : *FP.get()) {
+          if (F.get()->getNumArgs() == static_cast<unsigned>(NumArgs))
+            return F.get();
+        }
+      }
+      THROW_NAME_ERROR("Too many functions to choose from.", Loc);
+    }
     return FP.get()->front().get();
   }
   
@@ -456,7 +466,7 @@ void Analyzer::visit(BinaryExprAST& e)
 void Analyzer::visit(CallExprAST& e)
 {
   const auto & FunName = e.getName();
-  auto FunRes = getFunction(FunName, e.getLoc());
+  auto FunRes = getFunction(FunName, e.getLoc(), e.getNumArgs());
   e.setFunctionDef(FunRes);
   
   int NumArgs = e.getNumArgs();
@@ -711,11 +721,16 @@ void Analyzer::visit(AssignStmtAST& e)
 void Analyzer::visit(PartitionStmtAST& e)
 {
 
-  const auto & RangeId = e.getVarId();
-  auto RangeDef = getVariable(RangeId);
-  if (!RangeDef->getType().isRange() && !RangeDef->getType().isField())
-    THROW_NAME_ERROR("Identifier '" << RangeId.getName()
-        << "' is not a valid range or field.", RangeId.getLoc());
+  auto NumRanges = e.getNumVars();
+
+  for (unsigned i=0; i<NumRanges; ++i) {
+    const auto & RangeId = e.getVarId(i);
+    auto RangeDef = getVariable(RangeId);
+    if (!RangeDef->getType().isRange() && !RangeDef->getType().isField())
+      THROW_NAME_ERROR("Identifier '" << RangeId.getName()
+          << "' is not a valid range or field.", RangeId.getLoc());
+    e.setVarDef(i, RangeDef);
+  }
 
   auto PartExpr = e.getPartExpr();
   auto PartType = runExprVisitor(*PartExpr);
@@ -723,8 +738,6 @@ void Analyzer::visit(PartitionStmtAST& e)
       THROW_NAME_ERROR(
           "Only partitions expected in 'use' statement.",
           PartExpr->getLoc());
-
-  e.setVarDef(RangeDef);
 
   TypeResult_ = PartType;
 }
@@ -1005,5 +1018,67 @@ void Analyzer::visit(TaskAST& e)
 //==============================================================================
 void Analyzer::visit(IndexTaskAST& e)
 {}
+
+//==============================================================================
+void Analyzer::visit(LambdaExprAST& e)
+{
+  createScope();
+
+  auto & ProtoExpr = *e.getProtoExpr();
+  const auto & FnId = ProtoExpr.getId();
+  auto FnName = FnId.getName();
+  auto Loc = FnId.getLoc();
+
+  runProtoVisitor(ProtoExpr);
+  auto FunDef = getFunction(FnId);
+  if (!FunDef)  
+    THROW_NAME_ERROR("No valid prototype for function '" << FnName << "'", Loc);
+
+  e.setFunctionDef(FunDef);
+
+  auto NumArgIds = ProtoExpr.getNumArgs();
+  const auto & ArgTypes = FunDef->getArgTypes();
+  auto NumArgs = ArgTypes.size();
+  
+  if (NumArgs != NumArgIds)
+    THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
+        << "', does not match definition.  Expected " << NumArgIds
+        << " but got " << NumArgs, Loc);
+ 
+  // Record the function arguments in the NamedValues map.
+  for (unsigned i=0; i<NumArgs; ++i) {
+    insertVariable(ProtoExpr.getArgId(i), ArgTypes[i]);
+  }
+  
+  for ( const auto & B : e.getBodyExprs() ) runStmtVisitor(*B);
+  
+  if (e.getReturnExpr()) {
+    DestinationType_ = ProtoExpr.hasReturn() ?
+      FunDef->getReturnType() : VariableType{};
+    auto RetType = runExprVisitor(*e.getReturnExpr());
+    auto DeclRetType = FunDef->getReturnType();
+    
+    if (!ProtoExpr.hasReturn() || ProtoExpr.isAnonExpr()) {
+      ProtoExpr.setReturnType(RetType);
+      FunDef->setReturnType(RetType);
+    }
+    else if (RetType != DeclRetType) {
+      if (!RetType.isCastableTo(DeclRetType))
+        THROW_NAME_ERROR("Function return type does not match prototype for '"
+            << FnName << "'.  The type '" << RetType << "' cannot be "
+            << "converted to the type '" << DeclRetType << "'.",
+            e.getReturnExpr()->getLoc());
+      e.setReturnExpr(insertCastOp(std::move(e.moveReturnExpr()), DeclRetType) );
+    }
+  }
+
+  popScope();
+
+  auto RetType = ProtoExpr.getReturnType();
+  e.setType(RetType);
+  TypeResult_ = RetType;
+  
+}
+
 
 }

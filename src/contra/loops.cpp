@@ -15,15 +15,17 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
 
   for (unsigned i=0; i<e.getNumPartitions(); ++i) {
     auto PartExpr = dynamic_cast<PartitionStmtAST*>(e.getBodyExpr(i));
-    const auto & PartVarName = PartExpr->getVarName();
-
-    if (PartExpr->getVarDef()->getType().isField()) {
-      FieldPartitions.emplace_back( PartExpr );
+    
+    auto NumVars = PartExpr->getNumVars();
+    for (unsigned i=0; i<NumVars; ++i) {
+      const auto & PartVarName = PartExpr->getVarName(i);
+      if (PartExpr->getVarDef(i)->getType().isField()) {
+        FieldPartitions.emplace_back( PartExpr );
+      }
+      else {
+        PartitionNs.emplace(PartVarName);
+      }
     }
-    else {
-      PartitionNs.emplace(PartVarName);
-    }
-
   }
 
   std::map<std::string, VariableType> VarOverride;

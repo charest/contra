@@ -11,7 +11,7 @@ tsk top_level() {
 
   foreach i = parts {
     for n = 1:100
-      for j = 0:length(points)-1
+      for j = 0:len(points)-1
         matrix3[j] = matrix1[j] * matrix2[j]
   }
 

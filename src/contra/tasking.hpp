@@ -185,6 +185,7 @@ public:
       llvm::Module &,
       llvm::Function*,
       llvm::Value*,
+      llvm::Value*,
       llvm::Value*) = 0;
   virtual llvm::AllocaInst* partition(
       llvm::Module &,

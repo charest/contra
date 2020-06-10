@@ -28,6 +28,7 @@ class PrototypeAST;
 class FunctionAST;
 class TaskAST;
 class IndexTaskAST;
+class LambdaExprAST;
 
 class AstVisiter {
 public:
@@ -58,6 +59,8 @@ public:
   virtual void visit(FunctionAST&) = 0;
   virtual void visit(TaskAST&) = 0;
   virtual void visit(IndexTaskAST&) = 0;
+  
+  virtual void visit(LambdaExprAST&) = 0;
 };
 
 }

@@ -104,6 +104,8 @@ private:
   void visit(TaskAST&) override;
   void visit(IndexTaskAST&) override;
   
+  void visit(LambdaExprAST&) override;
+  
   // base type interface
   TypeDef* getType(const Identifier & Id);
 
@@ -120,7 +122,7 @@ private:
       const VariableTypeList & ArgTypes,
       const VariableType & RetTypes);
   
-  FunctionDef* getFunction(const std::string &, const LocationRange &);
+  FunctionDef* getFunction(const std::string &, const LocationRange &, int);
   
   FunctionDef* getFunction(const Identifier & Id);
  

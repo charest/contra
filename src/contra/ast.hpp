@@ -651,35 +651,37 @@ public:
 class PartitionStmtAST : public StmtAST {
 protected:
 
-  Identifier RangeId_;
+  std::vector<Identifier> RangeIds_;
   std::unique_ptr<NodeAST> PartExpr_;
 
-  VariableDef* Var_;
+  std::vector<VariableDef*> VarDefs_;
 
   std::string TaskName_;
 
 public:
   PartitionStmtAST(
       const LocationRange & Loc,
-      const Identifier & RangeId,
+      const std::vector<Identifier> & RangeIds,
       std::unique_ptr<NodeAST> PartExpr) :
     StmtAST(Loc),
-    RangeId_(RangeId),
-    PartExpr_(std::move(PartExpr))
+    RangeIds_(RangeIds),
+    PartExpr_(std::move(PartExpr)),
+    VarDefs_(RangeIds.size(), nullptr)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
   
   virtual std::string getClassName() const override
   { return "PartitionStmtAST"; };
-
-  const auto & getVarName() const { return RangeId_.getName(); }
-  const auto & getVarId() const { return RangeId_; }
-
+  
   auto getPartExpr() const { return PartExpr_.get(); }
 
-  auto getVarDef() const { return Var_; }
-  void setVarDef(VariableDef* Var) { Var_ = Var; }
+  auto getNumVars() const { return RangeIds_.size(); }
+  const auto & getVarName(unsigned i) const { return RangeIds_[i].getName(); }
+  const auto & getVarId(unsigned i) const { return RangeIds_[i]; }
+
+  auto getVarDef(unsigned i) const { return VarDefs_[i]; }
+  void setVarDef(unsigned i, VariableDef* Var) { VarDefs_[i] = Var; }
 };
 
 
@@ -924,7 +926,7 @@ public:
     std::vector<Identifier> && Args,
     std::vector<Identifier> && ArgTypes,
     std::vector<bool> && ArgIsArray,
-    std::vector<Identifier> ReturnIds,
+    std::vector<Identifier> ReturnIds = {},
     bool IsOperator = false,
     unsigned Prec = 0) :
       NodeAST(Id.getLoc()),
@@ -1128,6 +1130,64 @@ public:
 
   const auto & getVarOverrides() const { return VarOverrides_; }
 
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/// LambdaAST - This class represents a function definition itself.
+////////////////////////////////////////////////////////////////////////////////
+class LambdaExprAST : public ExprAST {
+protected:
+
+  std::unique_ptr<PrototypeAST> ProtoExpr_;
+  ASTBlock BodyExprs_;
+  std::unique_ptr<NodeAST> ReturnExpr_;
+  std::string Name_;
+
+  FunctionDef* FunctionDef_ = nullptr;
+
+public:
+  
+  LambdaExprAST(
+      std::unique_ptr<PrototypeAST> Proto,
+      ASTBlock Body, 
+      std::unique_ptr<NodeAST> Return) :
+    ExprAST(Proto->getLoc()),
+    ProtoExpr_(std::move(Proto)),
+    BodyExprs_(std::move(Body)),
+    ReturnExpr_(std::move(Return)),
+    Name_(ProtoExpr_->getName())
+  { checkReturn(); }
+
+  void checkReturn() {
+    if (!ReturnExpr_ && BodyExprs_.size()) {
+      if (dynamic_cast<ExprAST*>(BodyExprs_.back().get())) {
+        ReturnExpr_ = std::move(BodyExprs_.back());
+        BodyExprs_.pop_back();
+      }
+    }
+  }
+
+  const std::string &getName() const { return Name_; }
+  
+  virtual void accept(AstVisiter& visiter) override;
+
+  virtual std::string getClassName() const override
+  { return "LambdaExprAST"; };
+
+  bool hasReturn() const { return static_cast<bool>(ReturnExpr_); }
+  auto getReturnExpr() const { return ReturnExpr_.get(); }
+  
+  auto moveReturnExpr() { return std::move(ReturnExpr_); }
+  auto setReturnExpr(std::unique_ptr<NodeAST> Expr) { ReturnExpr_ = std::move(Expr); }
+  
+  auto getProtoExpr() const { return ProtoExpr_.get(); }
+  auto moveProtoExpr() { return std::move(ProtoExpr_); }
+  
+  auto getNumBodyExprs() const { return BodyExprs_.size(); }
+  const auto & getBodyExprs() const { return BodyExprs_; }
+
+  auto getFunctionDef() const { return FunctionDef_; }
+  void setFunctionDef(FunctionDef* F) { FunctionDef_ = F; }
 };
 
 } // namespace

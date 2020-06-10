@@ -8,14 +8,14 @@ tsk top_level() {
   myid[points] = -1
 
   foreach i = parts {
-    for j = 0:length(points)-1 {
+    for j = 0:len(points)-1 {
       print("Loop with parition %d and local id %d\n", i, j)
       myid[j] = j
     }
   }
   
   foreach i = parts {
-    for j = 0:length(points)-1
+    for j = 0:len(points)-1
       print("Loop with parition %d and local id %d\n", i, myid[j])
   }
   

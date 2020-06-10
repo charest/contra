@@ -1100,6 +1100,7 @@ void CodeGen::visit(CallExprAST &e) {
 
   // Look up the name in the global module table.
   auto Name = e.getName();
+  auto NumArgs = e.getNumArgs();
 
   // check if its a cast
   if (isLLVMType(Name)) {
@@ -1117,25 +1118,37 @@ void CodeGen::visit(CallExprAST &e) {
     }
     return;
   }
-  else if (Name == "length") {
+  else if (Name == "len") {
     auto ArgV = runExprVisitor(*e.getArgExpr(0));
     ValueResult_ = nullptr;
     if (Tasker_->isRange(ArgV))
       ValueResult_ = Tasker_->getRangeSize(*TheModule_, ArgV);
     return;
   }
-  else if (Name == "partition") {
+  else if (Name == "part") {
     auto RangeV = runExprVisitor(*e.getArgExpr(0));
     auto ColorV = runExprVisitor(*e.getArgExpr(1));
     auto TheFunction = Builder_.GetInsertBlock()->getParent();
-    auto PartA = Tasker_->partition(
+    if (NumArgs == 2) {
+      auto PartA = Tasker_->partition(
+          *TheModule_,
+          TheFunction,
+          RangeV,
+          I64Type_,
+          ColorV,
+          true );
+      ValueResult_ = Builder_.CreateLoad(PartA->getAllocatedType(), PartA);
+    }
+    else if (NumArgs == 3) {
+      auto FieldV = runExprVisitor(*e.getArgExpr(2));
+      auto PartA = Tasker_->partition(
         *TheModule_,
         TheFunction,
         RangeV,
-        I64Type_,
         ColorV,
-        true );
-    ValueResult_ = Builder_.CreateLoad(PartA->getAllocatedType(), PartA);
+        FieldV);
+      ValueResult_ = Builder_.CreateLoad(PartA->getAllocatedType(), PartA);
+    }
     return;
   }
 
@@ -1431,14 +1444,17 @@ void CodeGen::visit(ForeachStmtAST& e)
     std::map<std::string, Value*> Fields;
     for (auto & Stmt : e.getBodyExprs()) {
       auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
-      auto VarD = Node->getVarDef();
-      const auto VarN = Node->getVarName();
       auto VarA = runStmtVisitor(*Node->getPartExpr());
-      if (!VarD->getType().isField()) {
-        Partitions.emplace( VarN, VarA );
-      }
-      else {
-        Fields.emplace(VarN, VarA);
+      auto NumVars = Node->getNumVars();
+      for (unsigned i=0; i<NumVars; ++i) {
+        auto VarD = Node->getVarDef(i);
+        const auto VarN = Node->getVarName(i);
+        if (!VarD->getType().isField()) {
+          Partitions.emplace( VarN, VarA );
+        }
+        else {
+          Fields.emplace(VarN, VarA);
+        }
       }
     }
 
