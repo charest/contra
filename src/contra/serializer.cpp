@@ -7,11 +7,10 @@ namespace contra {
 using namespace utils;
 using namespace llvm;
 
-Serializer::Serializer(
-    llvm::IRBuilder<> & TheBuilder,
-    llvm::LLVMContext & TheContext) :
-  Builder_(TheBuilder),
-  TheContext_(TheContext),
+Serializer::Serializer(Builder & TheBuilder) :
+  TheBuilder_(TheBuilder),
+  Builder_(TheBuilder.getBuilder()),
+  TheContext_(TheBuilder.getContext()),
   SizeType_(llvmType<size_t>(TheContext_))
 {}
 
@@ -19,13 +18,24 @@ Value* Serializer::getSize(Value* Val, Type* ResultT)
 {
   auto ValT = Val->getType();
   if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
-  return utils::getTypeSize(Builder_, ValT, ResultT );
+  return TheBuilder_.getTypeSize(ValT, ResultT );
+}
+
+Value* Serializer::offsetPointer(Value* Ptr, Value* Offset)
+{
+  Value* OffsetV = Offset;
+  if (Offset->getType()->isPointerTy()) {
+    auto OffsetT = Offset->getType()->getPointerElementType();
+    OffsetV = Builder_.CreateLoad(OffsetT, Offset);
+  }
+  auto PtrV = TheBuilder_.getAsValue(Ptr);
+  return Builder_.CreateGEP(PtrV, OffsetV);
 }
 
 Value* Serializer::serialize(Value* SrcA, Value* TgtPtrV, Value* OffsetA)
 {
   auto OffsetTgtPtrV = TgtPtrV;
-  if (OffsetA) OffsetTgtPtrV = offsetPointer(Builder_, TgtPtrV, OffsetA);
+  if (OffsetA) OffsetTgtPtrV = offsetPointer(TgtPtrV, OffsetA);
   auto SizeV = getSize(SrcA, SizeType_);
   Builder_.CreateMemCpy(OffsetTgtPtrV, 1, SrcA, 1, SizeV); 
   return SizeV;
@@ -34,7 +44,7 @@ Value* Serializer::serialize(Value* SrcA, Value* TgtPtrV, Value* OffsetA)
 Value* Serializer::deserialize(AllocaInst* TgtA, Value* SrcA, Value* OffsetA)
 {
   auto OffsetSrc = SrcA;
-  if (OffsetA) OffsetSrc = offsetPointer(Builder_, SrcA, OffsetA);
+  if (OffsetA) OffsetSrc = offsetPointer(SrcA, OffsetA);
   auto SizeV = getSize(TgtA, SizeType_);
   Builder_.CreateMemCpy(TgtA, 1, OffsetSrc, 1, SizeV);
   return SizeV;

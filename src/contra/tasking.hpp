@@ -4,6 +4,8 @@
 #include "serializer.hpp"
 #include "taskinfo.hpp"
 
+#include "utils/builder.hpp"
+
 #include <iostream>
 #include <set>
 #include <string>
@@ -25,6 +27,8 @@ class AbstractTasker {
 
 protected:
 
+  utils::Builder & TheBuilder_;
+
   llvm::IRBuilder<> & Builder_;
   llvm::LLVMContext & TheContext_;
 
@@ -33,12 +37,11 @@ protected:
 
 public:
   
-  AbstractTasker(
-      llvm::IRBuilder<> & TheBuilder,
-      llvm::LLVMContext & TheContext) :
-    Builder_(TheBuilder),
-    TheContext_(TheContext),
-    DefaultSerializer_(TheBuilder, TheContext)
+  AbstractTasker(utils::Builder & TheBuilder) :
+    TheBuilder_(TheBuilder),
+    Builder_(TheBuilder.getBuilder()),
+    TheContext_(TheBuilder.getContext()),
+    DefaultSerializer_(TheBuilder)
   {}
   
   virtual ~AbstractTasker() = default;
@@ -100,7 +103,6 @@ public:
 
   virtual llvm::AllocaInst* createFuture(
       llvm::Module &,
-      llvm::Function*,
       const std::string &) = 0;
 
   virtual llvm::Value* loadFuture(
@@ -115,7 +117,6 @@ public:
   virtual bool isField(llvm::Value*) const = 0;
   virtual llvm::AllocaInst* createField(
       llvm::Module &,
-      llvm::Function*,
       const std::string &,
       llvm::Type*,
       llvm::Value*,
@@ -134,19 +135,16 @@ public:
   virtual llvm::Type* getRangeType() const = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Function*,
       const std::string &,
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Function*,
       llvm::Value*,
       const std::string & = "") = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Function*,
       llvm::Type*,
       llvm::Value*,
       const std::string & = "") = 0;
@@ -183,13 +181,11 @@ public:
   
   virtual llvm::AllocaInst* partition(
       llvm::Module &,
-      llvm::Function*,
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) = 0;
   virtual llvm::AllocaInst* partition(
       llvm::Module &,
-      llvm::Function*,
       llvm::Value*,
       llvm::Type*,
       llvm::Value*,
@@ -201,10 +197,6 @@ public:
   
   virtual void destroyPartition(llvm::Module &, llvm::Value*) = 0;
   
-  virtual llvm::Type* getPointType() const = 0;
-  virtual llvm::Value* makePoint(std::intmax_t) const = 0;
-  virtual llvm::Value* makePoint(llvm::Value*) const = 0;
-
   // registration
   void preregisterTasks(llvm::Module &);
   void postregisterTasks(llvm::Module &);
@@ -255,40 +247,8 @@ protected:
   llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;
   void store(llvm::Value*, llvm::Value *) const;
 
-  llvm::Value* offsetPointer(
-      llvm::AllocaInst* PointerA,
-      llvm::AllocaInst* OffsetA,
-      const std::string & Name = "");
-    
-  void increment(
-      llvm::Value* OffsetA,
-      llvm::Value* IncrV,
-      const std::string & Name = "");
-   
-  void memCopy(
-      llvm::Value* SrcGEP,
-      llvm::AllocaInst* TgtA,
-      llvm::Value* SizeV, 
-      const std::string & Name = "");
-
-  llvm::Value* accessStructMember(
-      llvm::AllocaInst* StructA,
-      int i,
-      const std::string & Name = "");
-  
-  llvm::Value* loadStructMember(
-      llvm::AllocaInst* StructA,
-      int i,
-      const std::string & Name = "");
-  
-  void storeStructMember(
-      llvm::Value* ValueV,
-      llvm::AllocaInst* StructA,
-      int i,
-      const std::string & Name = "");
-
   // Serializer
-  llvm::Value* getSize(llvm::Value*, llvm::Type*);
+  llvm::Value* getSerializedSize(llvm::Value*, llvm::Type*);
   llvm::Value* serialize(llvm::Value*, llvm::Value*, llvm::Value* = nullptr);
   llvm::Value* deserialize(llvm::AllocaInst*, llvm::Value*, llvm::Value* = nullptr);
 

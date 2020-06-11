@@ -12,8 +12,6 @@
 #include "librt/librt.hpp"
 #include "librt/dopevector.hpp"
 
-#include "utils/llvm_utils.hpp"
-
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/LinkAllPasses.h"
@@ -39,7 +37,9 @@ namespace contra {
 //==============================================================================
 // Constructor
 //==============================================================================
-CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
+CodeGen::CodeGen (bool debug = false) :
+  TheContext_(TheBuilder_.getContext()),
+  Builder_(TheBuilder_.getBuilder())
 {
   std::vector<std::string> Args = {
     "./contra",
@@ -62,21 +62,18 @@ CodeGen::CodeGen (bool debug = false) : Builder_(TheContext_)
 
   librt::RunTimeLib::setup(TheContext_);
   
-  Tasker_ = std::make_unique<LegionTasker>(Builder_, TheContext_);
+  Tasker_ = std::make_unique<LegionTasker>(TheBuilder_);
 
   I64Type_  = llvmType<int_t>(TheContext_);
   F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
   ArrayType_ = librt::DopeVector::DopeVectorType;
   AccessorType_ = Tasker_->getAccessorType();
-  PointType_ = Tasker_->getPointType();
 
   auto & C = Context::instance();
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
   TypeTable_.emplace( C.getFloat64Type()->getName(),  F64Type_);
   TypeTable_.emplace( C.getVoidType()->getName(), VoidType_);
-
-  TypeTable_.emplace( "point", PointType_ );
 
   VariableTable_.push_front({});
 
@@ -166,28 +163,6 @@ JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
 void CodeGen::removeJIT( JIT::VModuleKey H )
 { TheJIT_.removeModule(H); }
 
-//==============================================================================
-// Cast utility
-//==============================================================================
-Value* CodeGen::createCast(Value* FromVal, Type* ToType)
-{
-  auto FromType = FromVal->getType();
-  auto TheBlock = Builder_.GetInsertBlock();
-
-  if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
-    return CastInst::Create(Instruction::FPToSI, FromVal,
-        llvmType<int_t>(TheContext_), "cast", TheBlock);
-  }
-  else if (FromType->isIntegerTy() && ToType->isFloatingPointTy()) {
-    return CastInst::Create(Instruction::SIToFP, FromVal,
-        llvmType<real_t>(TheContext_), "cast", TheBlock);
-  }
-  else {
-    return FromVal;
-  }
-
-}
-  
 
 ////////////////////////////////////////////////////////////////////////////////
 // Scope Interface
@@ -233,32 +208,6 @@ void CodeGen::popScope()
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-// Delete a variable
-//==============================================================================
-void CodeGen::eraseVariable(const std::string & VarN )
-{
-  auto & CurrTab = VariableTable_.front();
-  CurrTab.erase(VarN);
-}
-
-
-//==============================================================================
-// Move a variable
-//==============================================================================
-VariableAlloca * CodeGen::moveVariable(
-    const std::string & From,
-    const std::string & To)
-{
-  auto & CurrTab = VariableTable_.front();
-  auto it = CurrTab.find(From);
-  auto Var = it->second;
-  CurrTab.erase(it);  
-  auto new_it = CurrTab.emplace(To, Var);
-  
-  return &new_it.first->second;
-}
-    
-//==============================================================================
 // Get a variable
 //==============================================================================
 VariableAlloca * CodeGen::getVariable(const std::string & VarName)
@@ -280,7 +229,7 @@ VariableAlloca * CodeGen::createVariable(
     Type* VarType)
 {
   Value* NewVar;
-  NewVar = createEntryBlockAlloca(TheFunction, VarType, VarName);
+  NewVar = TheBuilder_.createEntryBlockAlloca(VarType, VarName);
   return insertVariable(VarName, VariableAlloca{NewVar, VarType});
 }
         
@@ -297,17 +246,16 @@ std::pair<VariableAlloca*, bool> CodeGen::getOrCreateVariable(
     if (it != ST.end()) return {&it->second, false};
   }
 
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
   AllocaInst* NewVar = nullptr;
   Type* VarT = nullptr;
 
   if (VarType.isArray()) {
     VarT = getLLVMType(VarType.getIndexedType());
-    NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
+    NewVar = TheBuilder_.createEntryBlockAlloca(ArrayType_, VarName);
   }
   else {
     VarT = getLLVMType(VarType);
-    NewVar = createEntryBlockAlloca(TheFunction, VarT, VarName);
+    NewVar = TheBuilder_.createEntryBlockAlloca(VarT, VarName);
   }
   
   auto VarE = insertVariable(VarName, VariableAlloca{NewVar, VarT});
@@ -360,12 +308,11 @@ bool CodeGen::isArray(Value* V)
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createArray(
-    Function *TheFunction,
     const std::string &VarName,
     Type* ElementT)
 {
   Value* NewVar;
-  NewVar = createEntryBlockAlloca(TheFunction, ArrayType_, VarName);
+  NewVar = TheBuilder_.createEntryBlockAlloca(ArrayType_, VarName);
   auto it = VariableTable_.front().emplace(VarName, VariableAlloca{NewVar, ElementT});
   return &it.first->second;
 }
@@ -376,7 +323,6 @@ VariableAlloca * CodeGen::createArray(
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createArray(
-    Function *TheFunction,
     const std::string &VarName,
     Type * ElementType,
     Value * SizeExpr)
@@ -387,8 +333,9 @@ VariableAlloca * CodeGen::createArray(
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
-  auto DataSize = getTypeSize<int_t>(ElementType);
-  auto ArrayA = createEntryBlockAlloca(TheFunction, ArrayType_, VarName+"vec");
+  SizeExpr = TheBuilder_.getAsValue(SizeExpr);
+  auto DataSize = TheBuilder_.getTypeSize<int_t>(ElementType);
+  auto ArrayA = TheBuilder_.createEntryBlockAlloca(ArrayType_, VarName+"vec");
 
   std::vector<Value*> ArgVs = {SizeExpr, DataSize, ArrayA};
   Builder_.CreateCall(F, ArgVs);
@@ -406,7 +353,7 @@ void CodeGen::createArray(
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
-  auto DataSize = getTypeSize<int_t>(ElementT);
+  auto DataSize = TheBuilder_.getTypeSize<int_t>(ElementT);
   std::vector<Value*> ArgVs = {SizeV, DataSize, ArrayA};
   Builder_.CreateCall(F, ArgVs);
 }
@@ -424,11 +371,10 @@ void CodeGen::initArrays(
 {
   
   // create allocas to the pointers
-  auto ElementPtrT = ElementT->getPointerTo();
-  auto ArrayPtrAs = createArrayPointerAllocas(TheFunction, ArrayAs, ElementT);
+  auto ArrayPtrAs = createArrayPointerAllocas(ArrayAs, ElementT);
 
   // create a loop
-  auto Alloca = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
+  auto Alloca = TheBuilder_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
   Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
@@ -437,22 +383,20 @@ void CodeGen::initArrays(
   auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
-  auto CurVar = Builder_.CreateLoad(llvmType<int_t>(TheContext_), Alloca);
+  auto CurVar = TheBuilder_.load(Alloca);
+  SizeV = TheBuilder_.getAsValue(SizeV);
   auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeV, "initcond");
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
 
   // store value
-  for ( auto ArrayPtrA : ArrayPtrAs) {
-    auto ArrayPtrV = Builder_.CreateLoad(ElementPtrT, ArrayPtrA, "ptr"); 
-    auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, CurVar, "offset");
-    Builder_.CreateStore(InitV, ArrayGEP);
-  }
+  InitV = TheBuilder_.getAsValue(InitV);
+  for ( auto ArrayPtrA : ArrayPtrAs)
+    insertArrayValue(ArrayPtrA, ElementT, CurVar, InitV);
 
   // increment loop
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
-  auto NextVar = Builder_.CreateAdd(CurVar, StepVal, "nextvar");
-  Builder_.CreateStore(NextVar, Alloca);
+  TheBuilder_.increment(Alloca, StepVal);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(AfterBB);
 }
@@ -467,31 +411,12 @@ void CodeGen::initArray(
     Type* ElementT )
 {
   auto NumVals = InitVs.size();
-  auto TheBlock = Builder_.GetInsertBlock();
   
   // create allocas to the pointers
-  auto ElementPtrT = ElementT->getPointerTo();
-  auto ArrayPtrA = createArrayPointerAlloca(TheFunction, ArrayA, ElementT);
-  
+  auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
   for (std::size_t i=0; i<NumVals; ++i) {
     auto IndexV = llvmValue<int_t>(TheContext_, i);
-    auto ArrayPtrV = Builder_.CreateLoad(ElementPtrT, ArrayPtrA, "ptr");
-    auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, IndexV, "offset");
-    auto InitV = InitVs[i];
-    auto InitT = InitV->getType();
-    if ( InitT->isFloatingPointTy() && ElementT->isIntegerTy() ) {
-      auto Cast = CastInst::Create(Instruction::FPToSI, InitV,
-          llvmType<int_t>(TheContext_), "cast", TheBlock);
-      InitV = Cast;
-    }
-    else if ( InitT->isIntegerTy() && ElementT->isFloatingPointTy() ) {
-      auto Cast = CastInst::Create(Instruction::SIToFP, InitV,
-          llvmType<real_t>(TheContext_), "cast", TheBlock);
-      InitV = Cast;
-    }
-    else if (InitT!=ElementT)
-      THROW_CONTRA_ERROR("Unknown cast operation");
-    Builder_.CreateStore(InitV, ArrayGEP);
+    insertArrayValue(ArrayPtrA, ElementT, IndexV, InitVs[i]);
   }
 }
 
@@ -506,11 +431,10 @@ void CodeGen::copyArrays(
     Type * ElementT)
 {
   // create allocas to the pointers
-  auto ElementPtrT = ElementT->getPointerTo();
-  auto SrcArrayPtrA = createArrayPointerAlloca(TheFunction, SrcArrayA, ElementT);
-  auto TgtArrayPtrAs = createArrayPointerAllocas(TheFunction, TgtArrayAs, ElementT);
+  auto SrcArrayPtrA = createArrayPointerAlloca(SrcArrayA, ElementT);
+  auto TgtArrayPtrAs = createArrayPointerAllocas(TgtArrayAs, ElementT);
 
-  auto CounterA = createEntryBlockAlloca(TheFunction, llvmType<int_t>(TheContext_), "__i");
+  auto CounterA = TheBuilder_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
   Value * StartV = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartV, CounterA);
   
@@ -524,19 +448,13 @@ void CodeGen::copyArrays(
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
     
-  auto SrcArrayPtrV = Builder_.CreateLoad(ElementPtrT, SrcArrayPtrA, "srcptr"); 
-  auto SrcGEP = Builder_.CreateGEP(SrcArrayPtrV, CounterV, "srcoffset");
-  auto SrcV = Builder_.CreateLoad(ElementT, SrcGEP, "srcval");
+  auto SrcV = extractArrayValue(SrcArrayPtrA, ElementT, CounterV);
 
-  for ( auto TgtArrayPtrA :  TgtArrayPtrAs ) {
-    auto TgtArrayPtrV = Builder_.CreateLoad(ElementPtrT, TgtArrayPtrA, "tgtptr"); 
-    auto TgtGEP = Builder_.CreateGEP(TgtArrayPtrV, CounterV, "tgtoffset");
-    Builder_.CreateStore(SrcV, TgtGEP);
-  }
+  for ( auto TgtArrayPtrA :  TgtArrayPtrAs )
+    insertArrayValue( TgtArrayPtrA, ElementT, CounterV, SrcV);
 
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
-  auto NextVar = Builder_.CreateAdd(CounterV, StepVal, "nextvar");
-  Builder_.CreateStore(NextVar, CounterA);
+  TheBuilder_.increment(CounterA, StepVal);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(AfterBB);
 }
@@ -549,50 +467,22 @@ void CodeGen::copyArray(Value* SrcArrayV, Value* TgtArrayA)
   auto F = TheModule_->getFunction("copy");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "copy");
 
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto ArrayT = TgtArrayA->getType()->getPointerElementType();
-  auto SrcArrayA = createEntryBlockAlloca(TheFunction, ArrayT);
-  Builder_.CreateStore(SrcArrayV, SrcArrayA);
+  auto SrcArrayA = TheBuilder_.getAsAlloca(SrcArrayV);
 
   std::vector<Value*> Args = {SrcArrayA, TgtArrayA};
   Builder_.CreateCall(F, Args);
 }
 
 //==============================================================================
-/// Load an array pointer from the dopevecter
-//==============================================================================
-Value* CodeGen::loadArrayPointer(
-    Value* ArrayAlloca,
-    Type * ElementType,
-    const std::string &VarName)
-{
-  std::vector<Value*> MemberIndices(2);
-  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-  MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-
-  auto ResType = ArrayAlloca->getType()->getPointerElementType();
-  auto GEPInst = Builder_.CreateGEP(ResType, ArrayAlloca, MemberIndices,
-      VarName+"vec.ptr");
-  auto LoadedInst = Builder_.CreateLoad(GEPInst->getType()->getPointerElementType(),
-      GEPInst, VarName+"vec.val");
-
-  auto TheBlock = Builder_.GetInsertBlock();
-  auto PtrType = ElementType->getPointerTo();
-  Value* Cast = CastInst::Create(CastInst::BitCast, LoadedInst, PtrType, "casttmp", TheBlock);
-  return Cast;
-}
-
-//==============================================================================
 // Load an arrayarray into an alloca
 //==============================================================================
 Value* CodeGen::createArrayPointerAlloca(
-    Function *TheFunction,
     Value* ArrayA,
     Type* ElementT )
 {
   auto ElementPtrT = ElementT->getPointerTo();
-  auto ArrayV = loadArrayPointer(ArrayA, ElementT);
-  auto ArrayPtrA = createEntryBlockAlloca(TheFunction, ElementPtrT);
+  auto ArrayV = getArrayPointer(ArrayA, ElementT);
+  auto ArrayPtrA = TheBuilder_.createEntryBlockAlloca(ElementPtrT);
   Builder_.CreateStore(ArrayV, ArrayPtrA);
   return ArrayPtrA;
 }
@@ -602,13 +492,12 @@ Value* CodeGen::createArrayPointerAlloca(
 // Load a bunch of arrays into allocas
 //==============================================================================
 std::vector<Value*> CodeGen::createArrayPointerAllocas(
-    Function *TheFunction,
     const std::vector<Value*> & ArrayAs,
     Type* ElementT )
 {
   std::vector<Value*> ArrayPtrAs;
   for ( auto ArrayA : ArrayAs) {
-    auto ArrayPtrA = createArrayPointerAlloca(TheFunction, ArrayA, ElementT);
+    auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
     ArrayPtrAs.emplace_back(ArrayPtrA);
   }
 
@@ -616,49 +505,70 @@ std::vector<Value*> CodeGen::createArrayPointerAllocas(
 }
 
 //==============================================================================
+/// Load an array pointer from the dopevecter
+//==============================================================================
+Value* CodeGen::getArrayPointer(
+    Value* ArrayA,
+    Type * ElementT)
+{
+  auto PtrV = TheBuilder_.extractValue(ArrayA, 0);
+  auto PtrT = ElementT->getPointerTo();
+  Value* CastV = TheBuilder_.createBitCast(PtrV, PtrT);
+  return CastV;
+}
+
+//==============================================================================
+// Get a pointer to an element in an array
+//==============================================================================
+Value* CodeGen::getArrayElementPointer(
+    Value* ArrayA,
+    Type* ElementT,
+    Value* IndexV)
+{
+  auto ArrayPtrV = getArrayPointer(ArrayA, ElementT);
+  IndexV = TheBuilder_.getAsValue(IndexV);
+  return Builder_.CreateGEP(ArrayPtrV, IndexV);
+}
+
+//==============================================================================
 // Load an array value
 //==============================================================================
-Value* CodeGen::getArraySize(Value* ArrayA, const std::string & Name)
-{
-  std::vector<Value*> MemberIndices(2);
-  MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-  MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 1, true));
-
-  auto ArrayT = ArrayA->getType()->getPointerElementType();
-  auto ArrayGEP = Builder_.CreateGEP(ArrayT, ArrayA, MemberIndices, Name+".size");
-  auto SizeV = Builder_.CreateLoad(ArrayGEP->getType()->getPointerElementType(),
-      ArrayGEP, Name+".size");
-  return SizeV;
-}
+Value* CodeGen::getArraySize(Value* ArrayA)
+{ return TheBuilder_.extractValue(ArrayA, 1); }
   
 
 //==============================================================================
 // Load an array value
 //==============================================================================
-Value* CodeGen::loadArrayValue(
+Value* CodeGen::extractArrayValue(
     Value* ArrayA,
-    Value* IndexV,
     Type* ElementT,
-    const std::string & Name)
+    Value* IndexV)
 {
-  auto ArrayPtrV = loadArrayPointer(ArrayA, ElementT, Name);
-  auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, IndexV, Name+".offset");
-  return Builder_.CreateLoad(ElementT, ArrayGEP, Name+".i");
+  Value* ArrayGEP = nullptr;
+  if (isArray(ArrayA))
+    ArrayGEP = getArrayElementPointer(ArrayA, ElementT, IndexV);
+  else
+    ArrayGEP = TheBuilder_.offsetPointer(ArrayA, IndexV);
+  return TheBuilder_.load(ArrayGEP);
 }
 
 //==============================================================================
 // Store array value
 //==============================================================================
-void CodeGen::storeArrayValue(
-    Value* ValueV,
+void CodeGen::insertArrayValue(
     Value* ArrayA,
+    Type* ElementT,
     Value* IndexV,
-    const std::string & Name)
+    Value* ValueV)
 {
-  auto ElementT = ValueV->getType();
-  auto ArrayPtrV = loadArrayPointer(ArrayA, ElementT, Name);
-  auto ArrayGEP = Builder_.CreateGEP(ArrayPtrV, IndexV, Name+".offset");
-  Builder_.CreateStore(ValueV, ArrayGEP);
+  ValueV = TheBuilder_.getAsValue(ValueV);
+  Value* ArrayPtr = nullptr;
+  if (isArray(ArrayA))
+    ArrayPtr = getArrayElementPointer(ArrayA, ElementT, IndexV);
+  else
+    ArrayPtr = TheBuilder_.offsetPointer(ArrayA, IndexV);
+  Builder_.CreateStore(ValueV, ArrayPtr);
 }
   
   
@@ -699,7 +609,6 @@ void CodeGen::destroyArrays(const std::vector<Value*> & Arrays)
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createRange(
-    Function *TheFunction,
     const std::string &VarName,
     Value* StartV,
     Value* EndV,
@@ -710,7 +619,6 @@ VariableAlloca * CodeGen::createRange(
 
   RangeA = Tasker_->createRange(
       *TheModule_,
-      TheFunction,
       VarName,
       StartV,
       EndV,
@@ -762,22 +670,9 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
 //==============================================================================
 Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto FutureA = getAsAlloca(Builder_, TheFunction, FutureV);
-  return Tasker_->loadFuture(*TheModule_, FutureA, VariableT);
+  return Tasker_->loadFuture(*TheModule_, FutureV, VariableT);
 }
 
-//==============================================================================
-// Create a future alloca
-//==============================================================================
-VariableAlloca * CodeGen::createFuture(
-    Function *TheFunction,
-    const std::string &VarName,
-    Type* VarType)
-{
-  auto FutureA = Tasker_->createFuture(*TheModule_, TheFunction, VarName);
-  return insertVariable(VarName, FutureA, VarType);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Field Interface
@@ -793,8 +688,7 @@ VariableAlloca * CodeGen::createField(
     Value* SizeVal,
     Value* InitVal)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto FieldA = Tasker_->createField(*TheModule_, TheFunction, VarName, VarType, 
+  auto FieldA = Tasker_->createField(*TheModule_, VarName, VarType, 
       SizeVal, InitVal);
   return insertVariable(VarName, FieldA, VarType);
 }
@@ -835,14 +729,11 @@ void CodeGen::visit(VarAccessExprAST& e)
   Value * VarA = VarE->getAlloca();
   
   // Load the value.
-  auto VarT = VarA->getType();
-  VarT = VarT->getPointerElementType();
-  
   if (Tasker_->isAccessor(VarA)) {
     ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA);
   }
   else {
-    ValueResult_ = Builder_.CreateLoad(VarT, VarA, "val."+Name);
+    ValueResult_ = VarA;
   }
 }
 
@@ -868,7 +759,7 @@ void CodeGen::visit(ArrayAccessExprAST& e)
     ValueResult_ = Tasker_->loadRangeValue(*TheModule_, VarE->getType(), VarA, IndexV);
   }
   else {
-    ValueResult_ = loadArrayValue(VarA, IndexV, VarE->getType(), Name);
+    ValueResult_ = extractArrayValue(VarA, VarE->getType(), IndexV);
   }
 }
 
@@ -898,7 +789,7 @@ void CodeGen::visit(ArrayExprAST &e)
   }
 
   auto ArrayN = getTempName();
-  auto ArrayE = createArray(TheFunction, ArrayN, VarT, SizeExpr );
+  auto ArrayE = createArray(ArrayN, VarT, SizeExpr );
   auto ArrayA = ArrayE->getAlloca();
 
   if (e.hasSize()) 
@@ -906,8 +797,7 @@ void CodeGen::visit(ArrayExprAST &e)
   else
     initArray(TheFunction, ArrayA, InitVals, VarT);
 
-  auto Ty = ArrayA->getType()->getPointerElementType();
-  ValueResult_ =  Builder_.CreateLoad(Ty, ArrayA, ArrayN);
+  ValueResult_ =  TheBuilder_.load(ArrayA, ArrayN);
 }
 
 //==============================================================================
@@ -915,8 +805,6 @@ void CodeGen::visit(ArrayExprAST &e)
 //==============================================================================
 void CodeGen::visit(RangeExprAST &e)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
   // the llvm variable type
   auto StartV = runExprVisitor(*e.getStartExpr());
   auto EndV = runExprVisitor(*e.getEndExpr());
@@ -926,11 +814,10 @@ void CodeGen::visit(RangeExprAST &e)
 
   auto RangeN = getTempName();
   auto IsTask = e.getParentFunctionDef()->isTask();
-  auto RangeE = createRange(TheFunction, RangeN, StartV, EndV, StepV, IsTask );
+  auto RangeE = createRange(RangeN, StartV, EndV, StepV, IsTask );
   auto RangeA = RangeE->getAlloca();
 
-  auto Ty = RangeA->getType()->getPointerElementType();
-  ValueResult_ =  Builder_.CreateLoad(Ty, RangeA, RangeN);
+  ValueResult_ =  TheBuilder_.load(RangeA, RangeN);
 }
   
 //==============================================================================
@@ -943,30 +830,23 @@ void CodeGen::visit(CastExprAST &e)
   auto FromV = runExprVisitor(*e.getFromExpr());
 
   if (ToType.isStruct()) {
-    auto TheFunction = Builder_.GetInsertBlock()->getParent();
-    auto ToA = createEntryBlockAlloca(TheFunction, ToT);
+    auto ToA = TheBuilder_.createEntryBlockAlloca(ToT);
 
     const auto & ToMembers = ToType.getMembers();
     auto NumElem = ToMembers.size();
   
-    std::vector<Value*> IndicesC = {
-      ConstantInt::get(TheContext_, APInt(32, 0, true)),
-      ConstantInt::get(TheContext_, APInt(32, 0, true))
-    };
-  
     for (unsigned i=0; i<NumElem; ++i) {
       auto StructT = cast<StructType>(ToT);
       auto MemberT = StructT->getElementType(i);
-      Value* MemberV = Builder_.CreateExtractValue(FromV, i);
-      MemberV = createCast(MemberV, MemberT);
-      IndicesC[1] = ConstantInt::get(TheContext_, APInt(32, i, true));
-      auto MemberGEP = Builder_.CreateGEP(ToT, ToA, IndicesC);
-      Builder_.CreateStore(MemberV, MemberGEP);
+      Value* MemberV = TheBuilder_.extractValue(FromV, i);
+      MemberV = TheBuilder_.createCast(MemberV, MemberT);
+      TheBuilder_.insertValue(ToA, MemberV, i); 
     }
-    ValueResult_ = Builder_.CreateLoad(ToT, ToA);
+    ValueResult_ = TheBuilder_.load(ToA);
   }
   else {
-    ValueResult_ = createCast(FromV, ToT);
+    FromV = TheBuilder_.getAsValue(FromV);
+    ValueResult_ = TheBuilder_.createCast(FromV, ToT);
   }
 
 }
@@ -975,7 +855,7 @@ void CodeGen::visit(CastExprAST &e)
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 void CodeGen::visit(UnaryExprAST & e) {
-  auto OperandV = runExprVisitor(*e.getOpExpr()); 
+  auto OperandV = TheBuilder_.getAsValue( runExprVisitor(*e.getOpExpr()) );
   
   if (OperandV->getType()->isFloatingPointTy()) {
   
@@ -1003,8 +883,8 @@ void CodeGen::visit(UnaryExprAST & e) {
 //==============================================================================
 void CodeGen::visit(BinaryExprAST& e) {
   
-  Value *L = runExprVisitor(*e.getLeftExpr());
-  Value *R = runExprVisitor(*e.getRightExpr());
+  Value *L = TheBuilder_.getAsValue( runExprVisitor(*e.getLeftExpr()) );
+  Value *R = TheBuilder_.getAsValue( runExprVisitor(*e.getRightExpr()) );
 
   auto l_is_real = L->getType()->isFloatingPointTy();
   auto r_is_real = R->getType()->isFloatingPointTy();
@@ -1102,52 +982,42 @@ void CodeGen::visit(CallExprAST &e) {
   auto Name = e.getName();
   auto NumArgs = e.getNumArgs();
 
+  // helpers to get arguments
+  auto getArgValue = [&](auto i) { 
+    auto Arg = runExprVisitor(*e.getArgExpr(i));
+    return TheBuilder_.getAsValue(Arg);
+  };
+  auto getArg = [&](auto i)
+  { return runExprVisitor(*e.getArgExpr(i)); };
+
   // check if its a cast
   if (isLLVMType(Name)) {
-    auto TheBlock = Builder_.GetInsertBlock();
-    auto ArgV = runExprVisitor(*e.getArgExpr(0));
     auto ToT = getLLVMType(Name);
-    ValueResult_ = nullptr;
-    if (ToT == I64Type_) {
-      ValueResult_ = CastInst::Create(Instruction::FPToSI, ArgV,
-          llvmType<int_t>(TheContext_), "cast", TheBlock);
-    }
-    else if (ToT == F64Type_) {
-      ValueResult_ = CastInst::Create(Instruction::SIToFP, ArgV,
-          llvmType<real_t>(TheContext_), "cast", TheBlock);
-    }
+    ValueResult_ = TheBuilder_.createCast(getArgValue(0), ToT);
     return;
   }
   else if (Name == "len") {
-    auto ArgV = runExprVisitor(*e.getArgExpr(0));
     ValueResult_ = nullptr;
-    if (Tasker_->isRange(ArgV))
-      ValueResult_ = Tasker_->getRangeSize(*TheModule_, ArgV);
+    auto Arg = getArg(0);
+    if (Tasker_->isRange(Arg))
+      ValueResult_ = Tasker_->getRangeSize(*TheModule_, Arg);
     return;
   }
   else if (Name == "part") {
-    auto RangeV = runExprVisitor(*e.getArgExpr(0));
-    auto ColorV = runExprVisitor(*e.getArgExpr(1));
-    auto TheFunction = Builder_.GetInsertBlock()->getParent();
     if (NumArgs == 2) {
-      auto PartA = Tasker_->partition(
+      ValueResult_ = Tasker_->partition(
           *TheModule_,
-          TheFunction,
-          RangeV,
+          getArg(0),
           I64Type_,
-          ColorV,
+          getArg(1),
           true );
-      ValueResult_ = Builder_.CreateLoad(PartA->getAllocatedType(), PartA);
     }
     else if (NumArgs == 3) {
-      auto FieldV = runExprVisitor(*e.getArgExpr(2));
-      auto PartA = Tasker_->partition(
+      ValueResult_ = Tasker_->partition(
         *TheModule_,
-        TheFunction,
-        RangeV,
-        ColorV,
-        FieldV);
-      ValueResult_ = Builder_.CreateLoad(PartA->getAllocatedType(), PartA);
+        getArg(0),
+        getArg(1),
+        getArg(2));
     }
     return;
   }
@@ -1158,12 +1028,12 @@ void CodeGen::visit(CallExprAST &e) {
     
   std::vector<Value *> ArgVs;
   for (unsigned i = 0; i<e.getNumArgs(); ++i) {
-    auto ArgV = runExprVisitor(*e.getArgExpr(i));
-    if (!IsTask && Tasker_->isFuture(ArgV)) {
+    Value* Arg = getArg(i);
+    if (!IsTask && Tasker_->isFuture(Arg)) {
       auto ArgT = getLLVMType( e.getArgType(i) );
-      ArgV = loadFuture(ArgT, ArgV);
+      Arg = loadFuture(ArgT, Arg);
     }
-    ArgVs.push_back(ArgV);
+    ArgVs.push_back(Arg);
   }
 
   //----------------------------------------------------------------------------
@@ -1199,6 +1069,7 @@ void CodeGen::visit(CallExprAST &e) {
   //----------------------------------------------------------------------------
   else {
     std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
+    for (auto & A : ArgVs) A = TheBuilder_.getAsValue(A);
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
   }
 
@@ -1212,24 +1083,16 @@ void CodeGen::visit(CallExprAST &e) {
 void CodeGen::visit(ExprListAST & e) {
 
   auto StructT = getLLVMType(e.getType());
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto StructA = createEntryBlockAlloca(TheFunction, StructT, "struct.a");
+  auto StructA = TheBuilder_.createEntryBlockAlloca(StructT, "struct.a");
     
-  std::vector<Value*> IndicesC = {
-    ConstantInt::get(TheContext_, APInt(32, 0, true)),
-    ConstantInt::get(TheContext_, APInt(32, 0, true))
-  };
-  
   unsigned i = 0;
   for (const auto & Expr : e.getExprs()) {
-    IndicesC[1] = ConstantInt::get(TheContext_, APInt(32, i, true));
     auto MemberV = runExprVisitor(*Expr);
-    auto MemberGEP = Builder_.CreateGEP(StructT, StructA, IndicesC, "struct.i");
-    Builder_.CreateStore(MemberV, MemberGEP);
+    TheBuilder_.insertValue(StructA, MemberV, i);
     i++;
   }
 
-  ValueResult_ = Builder_.CreateLoad(StructT, StructA, "struct.v");
+  ValueResult_ = StructA;
 }
 
 
@@ -1338,14 +1201,14 @@ void CodeGen::visit(ForStmtAST& e) {
   
   // Emit the start code first, without 'variable' in scope.
   Value* StartV = runStmtVisitor(*e.getStartExpr());
-  Value* EndA = createEntryBlockAlloca(TheFunction, VarT, VarN+"end");
-  Value* StepA = createEntryBlockAlloca(TheFunction, VarT, VarN+"step");
+  Value* EndA = TheBuilder_.createEntryBlockAlloca(VarT, VarN+"end");
+  Value* StepA = TheBuilder_.createEntryBlockAlloca(VarT, VarN+"step");
   if (Tasker_->isRange(StartV)) {
-    auto EndV = Builder_.CreateExtractValue(StartV, 1);
+    auto EndV = TheBuilder_.extractValue(StartV, 1);
     Builder_.CreateStore(EndV, EndA);
-    auto StepV = Builder_.CreateExtractValue(StartV, 2);
+    auto StepV = TheBuilder_.extractValue(StartV, 2);
     Builder_.CreateStore(StepV, StepA);
-    StartV = Builder_.CreateExtractValue(StartV, 0);
+    StartV = TheBuilder_.extractValue(StartV, 0);
   }
   Builder_.CreateStore(StartV, VarA);
 
@@ -1360,12 +1223,11 @@ void CodeGen::visit(ForStmtAST& e) {
   Builder_.SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurV = Builder_.CreateLoad(VarT, VarA);
+  Value *CurV = TheBuilder_.load(VarA);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-
-  Value* EndV = Builder_.CreateLoad(VarT, EndA);
+  Value* EndV = TheBuilder_.load(EndA);
   EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
 
 
@@ -1392,14 +1254,9 @@ void CodeGen::visit(ForStmtAST& e) {
   Builder_.SetInsertPoint(IncrBB);
   
 
-  // Emit the step value.
-  Value* StepV = Builder_.CreateLoad(VarT, StepA);
-
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
-  CurV = Builder_.CreateLoad(VarT, VarA);
-  Value *NextV = Builder_.CreateAdd(CurV, StepV, "nextvar");
-  Builder_.CreateStore(NextV, VarA);
+  TheBuilder_.increment( TheBuilder_.getAsAlloca(VarA), StepA);
 
   // Insert the conditional branch into the end of LoopEndBB.
   Builder_.CreateBr(BeforeBB);
@@ -1424,8 +1281,6 @@ void CodeGen::visit(ForeachStmtAST& e)
   }
   //---------------------------------------------------------------------------
   else {
-    auto ParentFunction = Builder_.GetInsertBlock()->getParent();
-  
     createScope();
 
     Value* RangeV = nullptr;
@@ -1511,7 +1366,7 @@ void CodeGen::visit(AssignStmtAST & e)
     NumRight = StructT->getNumElements();
     RightVs.clear();
     for (unsigned i=0; i<NumRight; ++i)
-      RightVs.emplace_back( Builder_.CreateExtractValue(StructV, i) );
+      RightVs.emplace_back( TheBuilder_.extractValue(StructV, i) );
   }
 
   auto RightIt = RightVs.begin();
@@ -1529,7 +1384,7 @@ void CodeGen::visit(AssignStmtAST & e)
     // Codegen the RHS.
     Value* VariableV = *RightIt;
     if (auto CastType = e.getCast(il))
-      VariableV = createCast(VariableV, getLLVMType(*CastType));
+      VariableV = TheBuilder_.createCast(VariableV, getLLVMType(*CastType));
 
     // Look up the name.
     const auto & VarType = LHSE->getType();
@@ -1547,12 +1402,6 @@ void CodeGen::visit(AssignStmtAST & e)
       if (Tasker_->isAccessor(VariableA)) {
         Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
       }
-      else if (Tasker_->isRange(VariableA)) {
-        auto FieldVarE = getVariable("__"+VarN+"_field__");
-        auto FieldVarA = FieldVarE->getAlloca();
-        auto PointVarV = Tasker_->makePoint(VariableV); 
-        Tasker_->storeAccessor(*TheModule_, PointVarV, FieldVarA, IndexV);
-      }
       else if (Tasker_->isField(VariableA)) {
         auto VarT = getLLVMType(strip(VarType));
         if (Tasker_->isFuture(VariableV)) {
@@ -1561,14 +1410,14 @@ void CodeGen::visit(AssignStmtAST & e)
         Tasker_->createField(*TheModule_, VariableA, VarN, VarT, IndexV, VariableV);
       }
       else {
-        storeArrayValue(VariableV, VariableA, IndexV, VarN);
+        insertArrayValue(VariableA, VarE->getType(), IndexV, VariableV);
       }
     }
     //---------------------------------------------------------------------------
     // array = ?
     else if (isArray(VariableA)) {
       if (VarInserted) {
-        auto SizeV = Builder_.CreateExtractValue(VariableV, 1);
+        auto SizeV = TheBuilder_.extractValue(VariableV, 1);
         createArray(VariableA, SizeV, VarE->getType() );
       }
       copyArray(VariableV, VariableA);
@@ -1602,6 +1451,7 @@ void CodeGen::visit(AssignStmtAST & e)
     // scalar = scalar
     else {
       if (Tasker_->isRange(VariableV)) VarE->setOwner(false);
+      VariableV = TheBuilder_.getAsValue(VariableV);
       Builder_.CreateStore(VariableV, VariableA);
     }
 
@@ -1613,311 +1463,6 @@ void CodeGen::visit(AssignStmtAST & e)
   return;
 
 }
-
-#if 0 
-//==============================================================================
-// Partitionting
-//==============================================================================
-void CodeGen::visit(PartitionStmtAST & e)
-{
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  //auto IsTask = e.getParentFunctionDef()->isTask();
-  //auto RangeE = createRange(TheFunction, "__tmp", StartV, EndV, IsTask );
-  //auto RangeA = RangeE->getAlloca();
-  
-  // SPECIAL CASE
-  auto ColorExpr = e.getColorExpr();
-  if (!ColorExpr) {
-    
-    const auto & VarN = e.getColorName();
-    auto VarE = getVariable(VarN);
-    ValueResult_ = VarE->getAlloca();
-    return;
-  }
-    
-  auto ColorV = runExprVisitor(*ColorExpr);
-
-  const auto & VarN = e.getVarName();
-  auto VarE = getVariable(VarN);
-  Value * VarA = VarE->getAlloca();
-
-  auto HasBody = e.hasBodyExprs();
-    
-  // initial partition
-  if (isArray(ColorV)) {
-    ValueResult_ = Tasker_->partition(
-        *TheModule_,
-        TheFunction,
-        VarA,
-        I64Type_,
-        ColorV,
-        !HasBody );
-  }
-  else {
-    ValueResult_ = Tasker_->partition(*TheModule_, TheFunction, VarA, ColorV );
-  }
- 
-  //------------------------------------
-  // With 'where' specifier
-  if (HasBody) {
-    Value* InitV = Tasker_->makePoint(-1);
-    auto FieldE = createField("__"+VarN+"_field__", PointType_, ValueResult_, InitV);
-    
-    std::vector<Value*> TaskArgAs;
-    for ( const auto & VarD : e.getAccessedVariables() ) {
-      const auto & Name = VarD->getName();
-      auto VarE = getVariable(Name);
-      TaskArgAs.emplace_back( VarE->getAlloca() );
-    }
-    TaskArgAs.emplace_back(ValueResult_);
-    TaskArgAs.emplace_back(FieldE->getAlloca());
-    
-    const auto & TaskN = e.getTaskName();
-    auto TaskI = Tasker_->getTask(TaskN);
-
-    if (CurrentRange_) {
-
-      Tasker_->launch(
-          *TheModule_,
-          TaskN,
-          TaskI.getId(),
-          TaskArgAs,
-          std::vector<Value*>(TaskArgAs.size(), nullptr),
-          CurrentRange_,
-          false);
-    }
-    else {
-      auto ForeachExpr = dynamic_cast<ForeachStmtAST*>(e.getBodyExpr(0));
-      Value* RangeV = nullptr;
-      Value* StartV = runStmtVisitor(*ForeachExpr->getStartExpr());
-      // range
-      if (Tasker_->isRange(StartV)) {
-        RangeV = StartV;
-      }
-      Tasker_->launch(
-          *TheModule_,
-          TaskN,
-          TaskI.getId(),
-          TaskArgAs,
-          std::vector<Value*>(TaskArgAs.size(), nullptr),
-          RangeV,
-          false);
-    }
-    
-    ValueResult_ = Tasker_->partition(
-        *TheModule_,
-        TheFunction,
-        VarA,
-        FieldE->getAlloca());
-  }
-
-}
-#endif
-
-#if 0
-//==============================================================================
-// VarDefExprAST - Expression class for var/in
-//==============================================================================
-void CodeGen::visit(VarDeclAST & e) {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-
-  // Emit the initializer before adding the variable to scope, this prevents
-  // the initializer from referencing the variable itself, and permits stuff
-  // like this:
-  //  var a = 1 in
-  //    var a = a in ...   # refers to outer 'a'.
-
-  auto NumVars = e.getNumVars();
-  
-  //---------------------------------------------------------------------------
-  // Range with range on right hand side
-  if (e.isRange()) {
-
-    auto RangeExpr = dynamic_cast<RangeExprAST*>(e.getInitExpr());
-    auto StartV = runExprVisitor(*RangeExpr->getStartExpr());
-    auto EndV = runExprVisitor(*RangeExpr->getEndExpr());
-
-    // Register all variables and emit their initializer.
-    auto IsTask = e.getParentFunctionDef()->isTask();
-    for (unsigned i=0; i<NumVars; ++i) {
-      const auto & VarN = e.getVarName(i);
-      createRange(TheFunction, VarN, StartV, EndV, IsTask);
-    }
-    ValueResult_ = nullptr;
-    return;
-  }
-  //---------------------------------------------------------------------------
-  
-
-  // Emit initializer first
-  auto InitVal = runExprVisitor(*e.getInitExpr());
-  bool InitIsFuture = Tasker_->isFuture(InitVal);
-
-  //---------------------------------------------------------------------------
-  // Arrays
-  if (e.isArray()) {
- 
-    //----------------------------------
-    // Array already on right hand side
-    if (dynamic_cast<ArrayExprAST*>(e.getInitExpr())) {
-
-      // transfer to first
-      const auto & VarN = e.getVarName(0);
-      auto VarE = moveVariable("__tmp", VarN);
-      auto Alloca = VarE->getAlloca();
-
-      //auto SizeExpr = getArraySize(Alloca, VarName);
-      auto SizeExpr = VarE->getSize();
-  
-      // Register all variables and emit their initializer.
-      std::vector<Value*> ArrayAllocas;
-      for (unsigned i=1; i<NumVars; ++i) {
-        const auto & VarN = e.getVarName(i);
-        auto VarType = setArray(e.getVarType(i), false);
-        auto VarT = getLLVMType( VarType );
-        auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
-        ArrayAllocas.emplace_back( ArrayE->getAlloca() ); 
-      }
-
-      copyArrays(TheFunction, Alloca, ArrayAllocas, SizeExpr, VarE->getType() );
-    }
-    //----------------------------------
-    // Array variable on righ hand side
-    else if (auto ArrayExpr = dynamic_cast<VarAccessExprAST*>(e.getInitExpr()))
-    {
-      const auto & InitVarN = ArrayExpr->getName();
-      auto InitVarE = getVariable(InitVarN);
-      auto InitVarA = InitVarE->getAlloca();
-      
-      std::vector<Value*> Indices = { 
-        ConstantInt::get(TheContext_, APInt(32, 0, true)),
-        ConstantInt::get(TheContext_, APInt(32, 1, true)),
-      };
-      auto SizeGEP = Builder_.CreateGEP(InitVarA, Indices);
-      auto SizeV = Builder_.CreateLoad(I64Type_, SizeGEP);
-
-      // Register all variables and emit their initializer.
-      std::vector<Value*> ArrayAs;
-      for (unsigned i=0; i<NumVars; ++i) {
-        const auto & VarN = e.getVarName(i);
-        auto VarType = setArray(e.getVarType(i), false);
-        auto VarT = getLLVMType( VarType );
-        auto ArrayE = createArray(TheFunction, VarN, VarT, SizeV);
-        ArrayAs.emplace_back( ArrayE->getAlloca() ); 
-      }
-      
-      copyArrays(TheFunction, InitVarA, ArrayAs, SizeV, InitVarE->getType() );
-    }
-
-    //----------------------------------
-    // Array with Scalar Initializer
-    else {
-
-      // create a size expr
-      Value* SizeExpr = nullptr;
-      if (e.hasSize())
-        SizeExpr = runExprVisitor(*e.getSizeExpr());
-      // otherwise scalar
-      else
-        SizeExpr = llvmValue<int_t>(TheContext_, 1);
- 
-      // Register all variables and emit their initializer.
-      std::vector<Value*> ArrayAllocas;
-      for (unsigned i=0; i<NumVars; ++i) {
-        const auto & VarN = e.getVarName(i);
-        auto VarType = setArray(e.getVarType(i), false);
-        auto VarT = getLLVMType( VarType );
-        auto ArrayE = createArray(TheFunction, VarN, VarT, SizeExpr);
-        ArrayAllocas.emplace_back(ArrayE->getAlloca());
-      }
-
-      auto VarType = setArray(e.getVarType(0), false);
-      auto VarT = getLLVMType( VarType );
-      initArrays(TheFunction, ArrayAllocas, InitVal, SizeExpr, VarT);
-    }
-
-  }
-  //---------------------------------------------------------------------------
-  // Partition variable
-  else if (e.isPartition()) {
-    for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
-      const auto & VarN = e.getVarName(VarIdx);
-      auto Ty = e.getVarType(VarIdx);
-      auto VarT = getLLVMType(Ty);
-      auto VarE = createVariable(TheFunction, VarN, VarT);
-      auto Alloca = VarE->getAlloca();
-      if (isa<AllocaInst>(InitVal)) 
-        VarE->setAlloca(InitVal);
-      else
-        Builder_.CreateStore(InitVal, Alloca);
-    }
-  }
-  //---------------------------------------------------------------------------
-  // Scalar variable
-  else {
-
-    // Register all variables and emit their initializer.
-    for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
-      const auto & VarN = e.getVarName(VarIdx);
-      auto Ty = strip(e.getVarType(VarIdx));
-      auto VarT = getLLVMType(Ty);
-      if (Ty.isFuture() || InitIsFuture || e.isFuture(VarIdx)) {
-        auto VarE = createFuture(TheFunction, VarN, VarT);
-        auto FutureA = VarE->getAlloca();
-        if (InitIsFuture)
-          Tasker_->copyFuture(*TheModule_, InitVal, FutureA);
-        else
-          Tasker_->toFuture(*TheModule_, InitVal, FutureA);
-      }
-      else {
-        auto VarE = createVariable(TheFunction, VarN, VarT);
-        auto Alloca = VarE->getAlloca();
-        Builder_.CreateStore(InitVal, Alloca);
-      }
-    }
-  
-  } // end var type
-  //---------------------------------------------------------------------------
-
-  ValueResult_ = InitVal;
-}
-
-//==============================================================================
-// FieldDeclAST - This represents a field declaration
-//==============================================================================
-void CodeGen::visit(FieldDeclAST& e)
-{
-  // Emit the initializer before adding the variable to scope, this prevents
-  // the initializer from referencing the variable itself, and permits stuff
-  // like this:
-  //  var a = 1 in
-  //    var a = a in ...   # refers to outer 'a'.
-
-  // Emit initializer first
-  auto InitV = runExprVisitor(*e.getInitExpr());
-
-  // if its a future, load it
-  bool InitIsFuture = Tasker_->isFuture(InitV);
-  if (InitIsFuture) {
-    const auto & Ty = e.getVarType(0);
-    auto InitT = getLLVMType(Ty);
-    InitV = loadFuture(InitT, InitV);
-  }
-
-  // Register all variables and emit their initializer.
-  auto PartsV = runExprVisitor(*e.getPartExpr());
-  auto NumVars = e.getNumVars();
-
-  for (unsigned VarIdx=0; VarIdx<NumVars; VarIdx++) {
-    const auto & VarN = e.getVarName(VarIdx);
-    auto Ty = strip(e.getVarType(VarIdx));
-    auto VarT = getLLVMType(Ty);
-    createField(VarN, VarT, PartsV, InitV);
-  }
-
-  ValueResult_ = InitV;
-}
-#endif
 
 //==============================================================================
 /// PrototypeAST - This class represents the "prototype" for a function.
@@ -1965,7 +1510,10 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 
   // Finish off the function.
   Value* RetVal = nullptr;
-  if ( e.getReturnExpr() ) RetVal = runStmtVisitor(*e.getReturnExpr());
+  if ( e.getReturnExpr() ) {
+    RetVal = runStmtVisitor(*e.getReturnExpr());
+    if (RetVal) RetVal = TheBuilder_.getAsValue(RetVal);
+  }
 
   return RetVal;
 }
@@ -2003,7 +1551,7 @@ void CodeGen::visit(FunctionAST& e)
     // Create an alloca for this variable.
     VariableAlloca* VarE;
     if (ArgType.isArray()) {
-      VarE = createArray(TheFunction, Arg.getName(), LLType);
+      VarE = createArray(Arg.getName(), LLType);
     }
     else
       VarE = createVariable(TheFunction, Arg.getName(), LLType);

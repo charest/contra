@@ -88,9 +88,7 @@ protected:
 
 public:
  
-  LegionTasker(
-      llvm::IRBuilder<> & TheBuilder,
-      llvm::LLVMContext & TheContext);
+  LegionTasker(utils::Builder & TheBuilder);
 
   virtual PreambleResult taskPreamble(
       llvm::Module &,
@@ -145,7 +143,6 @@ public:
   virtual bool isFuture(llvm::Value*) const override;
   virtual llvm::AllocaInst* createFuture(
       llvm::Module &,
-      llvm::Function*,
       const std::string &) override;
   virtual llvm::Value* loadFuture(
       llvm::Module &,
@@ -169,7 +166,6 @@ public:
   virtual bool isField(llvm::Value*) const override;
   virtual llvm::AllocaInst* createField(
       llvm::Module &,
-      llvm::Function*,
       const std::string &,
       llvm::Type*,
       llvm::Value*,
@@ -188,19 +184,16 @@ public:
   virtual bool isRange(llvm::Value*) const override;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Function*,
       const std::string &,
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) override;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Function*,
       llvm::Value*,
       const std::string &) override;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Function*,
       llvm::Type*,
       llvm::Value*,
       const std::string &) override;
@@ -242,13 +235,11 @@ public:
   
   virtual llvm::AllocaInst* partition(
       llvm::Module &,
-      llvm::Function*,
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) override;
   virtual llvm::AllocaInst* partition(
       llvm::Module &,
-      llvm::Function*,
       llvm::Value*,
       llvm::Type*,
       llvm::Value*,
@@ -262,12 +253,6 @@ public:
   virtual llvm::Type* getPartitionType() const
   { return IndexPartitionType_; }
   
-  virtual llvm::Type* getPointType() const override
-  { return Point1dType_; }
-
-  virtual llvm::Value* makePoint(std::intmax_t) const override;
-  virtual llvm::Value* makePoint(llvm::Value*) const override;
-
   virtual ~LegionTasker() = default;
 
 protected:

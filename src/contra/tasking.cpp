@@ -15,8 +15,7 @@ Type* AbstractTasker::reduceStruct(
   auto NumElem = StructT->getNumElements();
   auto ElementTs = StructT->elements();
   if (NumElem == 1) return ElementTs[0];
-  auto DL = std::make_unique<DataLayout>(&TheModule);
-  auto BitWidth = DL->getTypeAllocSizeInBits(StructT);
+  auto BitWidth = TheBuilder_.getTypeSize(TheModule, StructT);
   return IntegerType::get(TheContext_, BitWidth);
 }
 
@@ -28,8 +27,7 @@ Type* AbstractTasker::reduceArray(
   auto NumElem = ArrayT->getNumElements();
   auto ElementT = ArrayT->getElementType();
   if (NumElem == 1) return ElementT;
-  auto DL = std::make_unique<DataLayout>(&TheModule);
-  auto BitWidth = DL->getTypeAllocSizeInBits(ArrayT);
+  auto BitWidth = TheBuilder_.getTypeSize(TheModule, ArrayT);
   return IntegerType::get(TheContext_, BitWidth);
 }
 
@@ -38,11 +36,8 @@ Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
 {
   auto T = V->getType();
   if (auto StrucT = dyn_cast<StructType>(T)) {
-    auto TheBlock = Builder_.GetInsertBlock();
     auto NewT = reduceStruct(StrucT, TheModule);
-    std::string Str = StrucT->hasName() ? StrucT->getName().str()+".cast" : "casttmp";
-    auto Cast = CastInst::Create(CastInst::BitCast, V, NewT, Str, TheBlock);
-    return Cast;
+    return TheBuilder_.createBitCast(V, NewT);
   }
   else {
     return V;
@@ -67,17 +62,13 @@ Value* AbstractTasker::load(
   auto AllocaT = Alloca->getType();
   auto BaseT = AllocaT->getPointerElementType();
   if (auto StructT = dyn_cast<StructType>(BaseT)) {
-    auto TheBlock = Builder_.GetInsertBlock();
     auto ReducedT = reduceStruct(StructT, TheModule);
-    auto Cast = CastInst::Create(CastInst::BitCast, Alloca,
-      ReducedT->getPointerTo(), Str+"alloca.cast", TheBlock);
+    auto Cast = TheBuilder_.createBitCast(Alloca, ReducedT->getPointerTo());
     return Builder_.CreateLoad(ReducedT, Cast, Str);
   }
   else if (auto ArrayT = dyn_cast<ArrayType>(BaseT)) {
-    auto TheBlock = Builder_.GetInsertBlock();
     auto ReducedT = reduceArray(ArrayT, TheModule);
-    auto Cast = CastInst::Create(CastInst::BitCast, Alloca,
-      ReducedT->getPointerTo(), Str+"alloca.cast", TheBlock);
+    auto Cast = TheBuilder_.createBitCast(Alloca, ReducedT->getPointerTo());
     return Builder_.CreateLoad(ReducedT, Cast, Str);
   }
   else {
@@ -100,74 +91,7 @@ void AbstractTasker::store(Value* Val, Value * Alloca) const
     Builder_.CreateStore(Val, Alloca);
   }
 }
-//==============================================================================
-Value* AbstractTasker::offsetPointer(
-    AllocaInst* PointerA,
-    AllocaInst* OffsetA,
-    const std::string & Name)
-{
-  return utils::offsetPointer(Builder_, PointerA, OffsetA, Name);
-}
-  
-//==============================================================================
-void AbstractTasker::increment(
-    Value* OffsetA,
-    Value* IncrV,
-    const std::string & Name)
-{
-  return utils::increment(Builder_, OffsetA, IncrV, Name);
-}
- 
-//==============================================================================
-void AbstractTasker::memCopy(
-    Value* SrcGEP,
-    AllocaInst* TgtA,
-    Value* SizeV, 
-    const std::string & Name)
-{
-  std::string Str = Name.empty() ? "" : Name + ".";
-  auto TgtPtrT = TgtA->getType();
-  auto TheBlock = Builder_.GetInsertBlock();
-  auto SrcPtrC = CastInst::Create(CastInst::BitCast, SrcGEP, TgtPtrT, "casttmp", TheBlock);
-  Builder_.CreateMemCpy(TgtA, 1, SrcPtrC, 1, SizeV); 
-}
 
-//==============================================================================
-Value* AbstractTasker::accessStructMember(
-    AllocaInst* StructA,
-    int i,
-    const std::string & Name)
-{
-  std::vector<Value*> MemberIndices = {
-     ConstantInt::get(TheContext_, APInt(32, 0, true)),
-     ConstantInt::get(TheContext_, APInt(32, i, true))
-  };
-  auto StructT = StructA->getAllocatedType();
-  return Builder_.CreateGEP(StructT, StructA, MemberIndices, Name);
-}
-
-//==============================================================================
-Value* AbstractTasker::loadStructMember(
-    AllocaInst* StructA,
-    int i,
-    const std::string & Name)
-{
-  auto ValueGEP = accessStructMember(StructA, i, Name);
-  auto ValueT = ValueGEP->getType()->getPointerElementType();
-  return Builder_.CreateLoad(ValueT, ValueGEP, Name);
-}
-
-//==============================================================================
-void AbstractTasker::storeStructMember(
-    Value* ValueV,
-    AllocaInst* StructA,
-    int i,
-    const std::string & Name)
-{
-  auto ValueGEP = accessStructMember(StructA, i, Name);
-  Builder_.CreateStore(ValueV, ValueGEP );
-}
-  
 //==============================================================================
 Value* AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 { 
@@ -262,7 +186,7 @@ void AbstractTasker::postregisterTasks(Module & TheModule)
 }
  
 //==============================================================================
-Value* AbstractTasker::getSize(Value* Val, Type* ResultT)
+Value* AbstractTasker::getSerializedSize(Value* Val, Type* ResultT)
 {
   auto ValT = Val->getType();
   if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();

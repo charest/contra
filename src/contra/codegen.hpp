@@ -8,6 +8,7 @@
 #include "variable.hpp"
 
 #include "utils/llvm_utils.hpp"
+#include "utils/builder.hpp"
 
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Function.h"
@@ -35,11 +36,13 @@ class CodeGen : public RecursiveAstVisiter {
   using VariableTable = std::map<std::string, VariableAlloca>;
   
   // LLVM builder types  
-  llvm::LLVMContext TheContext_;
-  llvm::IRBuilder<> Builder_;
+  utils::Builder TheBuilder_;
+  
+  llvm::LLVMContext & TheContext_;
+  llvm::IRBuilder<> & Builder_;
   std::unique_ptr<llvm::Module> TheModule_;
   std::unique_ptr<llvm::ExecutionEngine> TheEngine_;
-  
+
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
   JIT TheJIT_;
 
@@ -60,7 +63,6 @@ class CodeGen : public RecursiveAstVisiter {
   Type* VoidType_ = nullptr;
   Type* ArrayType_ = nullptr;
   Type* AccessorType_ = nullptr;
-  Type* PointType_ = nullptr;
 
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
@@ -89,9 +91,9 @@ public:
   //============================================================================
 
   // some accessors
-  llvm::IRBuilder<> & getBuilder() { return Builder_; }
-  llvm::LLVMContext & getContext() { return TheContext_; }
-  llvm::Module & getModule() { return *TheModule_; }
+  auto & getBuilder() { return Builder_; }
+  auto & getContext() { return TheContext_; }
+  auto & getModule() { return *TheModule_; }
   
   //============================================================================
   // Optimization / Module interface
@@ -223,12 +225,6 @@ private:
   { return TypeTable_.count(Name); }
     
 
-  template<typename T>
-  Value* getTypeSize(Type* ElementType)
-  { return utils::getTypeSize<T>(Builder_, ElementType); }
-
-  Value* createCast(Value* FromVal, Type* ToType);
-
   std::string getTempName() {
     auto Name = "__tmp" + std::to_string(TmpCounter_);
     TmpCounter_++;
@@ -248,12 +244,6 @@ private:
       const VariableType &);
   
   VariableAlloca * getVariable(const std::string & VarName);
-
-  void eraseVariable(const std::string &);
-
-  VariableAlloca * moveVariable(
-      const std::string & From,
-      const std::string & To);
 
   VariableAlloca * insertVariable(
       const std::string &VarName,
@@ -275,13 +265,11 @@ private:
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
   VariableAlloca * createArray(
-      Function *TheFunction,
       const std::string &VarName,
       Type* PtrType,
       Value * SizeExpr );
   
   VariableAlloca * createArray(
-      Function *TheFunction,
       const std::string &VarName,
       Type* ElementType);
   
@@ -320,30 +308,29 @@ private:
   void destroyArrays(const std::vector<Value*> &);
 
   // load an array value
-  Value* loadArrayValue(Value*, Value*, Type*, const std::string &);
+  Value* extractArrayValue(Value*, Type*, Value*);
 
   // store an array value
-  void storeArrayValue(Value*, Value*, Value*, const std::string &);
+  void insertArrayValue(Value*, Type*, Value*, Value*);
 
   // Load an array
-  Value* loadArrayPointer(Value*, Type*, const std::string & = "");
+  Value* getArrayPointer(Value*, Type*);
+  Value* getArrayElementPointer(Value*, Type*, Value*);
   
-  Value* createArrayPointerAlloca(Function *, Value*, Type*);
+  Value* createArrayPointerAlloca(Value*, Type*);
 
   std::vector<Value*> createArrayPointerAllocas(
-      Function *,
       const std::vector<Value*> &,
       Type*);
 
   // get an arrays size
-  Value* getArraySize(Value*, const std::string &);
+  Value* getArraySize(Value*);
   
   //============================================================================
   // Range interface
   //============================================================================
 
   VariableAlloca * createRange(
-      Function *TheFunction,
       const std::string &VarName,
       Value* StartV,
       Value* EndV,
@@ -365,11 +352,6 @@ private:
   //============================================================================
   llvm::Value* loadFuture(llvm::Type*, llvm::Value*);
   
-  VariableAlloca * createFuture(
-      Function *TheFunction,
-      const std::string &VarName,
-      Type* VarType);
-
   VariableAlloca * createField(
       const std::string &,
       Type*,

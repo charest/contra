@@ -1,7 +1,7 @@
 #ifndef CONTRA_SERIALIZER_HPP
 #define CONTRA_SERIALIZER_HPP
 
-#include "llvm/IR/IRBuilder.h"
+#include "utils/builder.hpp"
 
 #include <string>
 
@@ -12,6 +12,8 @@ namespace contra {
 //==============================================================================
 class Serializer {
   
+  utils::Builder & TheBuilder_;
+  
   llvm::IRBuilder<> & Builder_;
   llvm::LLVMContext & TheContext_;
 
@@ -19,11 +21,11 @@ class Serializer {
 
 public:
 
-  Serializer(
-      llvm::IRBuilder<> & TheBuilder,
-      llvm::LLVMContext & TheContext);
+  Serializer(utils::Builder & TheBuilder);
 
   llvm::Value* getSize(llvm::Value*, llvm::Type*);
+  llvm::Value* offsetPointer(llvm::Value*, llvm::Value*);
+
   llvm::Value* serialize(llvm::Value*, llvm::Value*, llvm::Value*);
   llvm::Value* deserialize(llvm::AllocaInst*, llvm::Value*, llvm::Value*);
 

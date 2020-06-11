@@ -92,7 +92,7 @@ auto llvmValue( llvm::LLVMContext & TheContext, T Val )
 template<typename T>
 llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
 {
-  auto Size = Ty->  getIntegerBitWidth();
+  auto Size = Ty->getIntegerBitWidth();
   auto IsSigned = std::is_signed<T>::value;
   return llvm::Constant::getIntegerValue(Ty, llvm::APInt(Size, Val, IsSigned));
 
@@ -111,71 +111,27 @@ llvm::Constant* llvmString(
     llvm::Module &TheModule,
     const std::string & Str);
 
+//============================================================================
+llvm::Constant* llvmArray(
+    llvm::LLVMContext & TheContext,
+    llvm::Module &TheModule,
+    const std::vector<llvm::Constant*> & ValsC,
+    const std::vector<llvm::Constant*> & GEPIndices = {});
 
-//============================================================================  
-// create a temporary builder
-llvm::IRBuilder<> createBuilder(llvm::Function *TheFunction);
-
-//============================================================================  
-// create an entry block alloca
-llvm::AllocaInst* createEntryBlockAlloca(
-  llvm::Function *TheFunction,
-  llvm::Type* Ty,
-  const std::string & Name = "");
-
-//============================================================================  
-// get a types size
-llvm::Value* getTypeSize(
-    llvm::IRBuilder<> & Builder,
-    llvm::Type* ElementType,
-    llvm::Type* ResultType );
-
-template<typename T>
-llvm::Value* getTypeSize(
-    llvm::IRBuilder<> & Builder,
-    llvm::Type* ElementType)
+template<typename T, typename U = T>
+llvm::Constant* llvmArray(
+    llvm::LLVMContext & TheContext,
+    llvm::Module &TheModule,
+    const std::vector<T> & Vals,
+    const std::vector<llvm::Constant*> & GEPIndices = {})
 {
-  auto & TheContext = Builder.getContext();
-  return getTypeSize(Builder, ElementType, llvmType<T>(TheContext));
+  using namespace llvm;
+  std::vector<Constant*> ValsC;
+  for (auto V : Vals)
+    ValsC.emplace_back( llvmValue<U>(TheContext, V) );
+
+  return llvmArray(TheContext, TheModule, ValsC, GEPIndices);
 }
-
-//============================================================================  
-// copy value into alloca if necessary
-llvm::AllocaInst* getAsAlloca(
-    llvm::IRBuilder<> &,
-    llvm::Function*,
-    llvm::Type*,
-    llvm::Value*);
-
-llvm::AllocaInst* getAsAlloca(
-    llvm::IRBuilder<> &,
-    llvm::Function*,
-    llvm::Value*);
-
-//============================================================================  
-// load value if necessary
-llvm::Value* getAsValue(
-    llvm::IRBuilder<> &,
-    llvm::Type*,
-    llvm::Value*);
-
-llvm::Value* getAsValue(
-    llvm::IRBuilder<> &,
-    llvm::Value*);
-
-//============================================================================  
-void increment(
-    llvm::IRBuilder<> &,
-    llvm::Value* OffsetA,
-    llvm::Value* IncrV,
-    const std::string & Name = "");
-
-//============================================================================  
-llvm::Value* offsetPointer(
-    llvm::IRBuilder<> &,
-    llvm::Value* PointerA,
-    llvm::Value* OffsetA,
-    const std::string & Name = "");
 
 } // namespace
 
