@@ -47,7 +47,6 @@ enum Token {
   tok_end,
   tok_return,
   tok_task,
-  tok_lambda = '@',
 
   // special binary
   tok_eq,

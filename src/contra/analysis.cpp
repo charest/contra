@@ -23,7 +23,7 @@ Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
       {F64Type_.getBaseType()->getName(), F64Type_, {I64Type_}},
       {"len", I64Type_, {RangeType_}},
       {"part", setPartition(I64Type_), {RangeType_, setArray(I64Type_)}},
-      {"part", setPartition(I64Type_), {RangeType_, setPartition(I64Type_), setLambda(I64Type_)}},
+      {"part", setPartition(I64Type_), {RangeType_, setPartition(I64Type_), setField(I64Type_)}},
     };
 
   for (const auto & f : fun) {
@@ -1018,67 +1018,5 @@ void Analyzer::visit(TaskAST& e)
 //==============================================================================
 void Analyzer::visit(IndexTaskAST& e)
 {}
-
-//==============================================================================
-void Analyzer::visit(LambdaExprAST& e)
-{
-  createScope();
-
-  auto & ProtoExpr = *e.getProtoExpr();
-  const auto & FnId = ProtoExpr.getId();
-  auto FnName = FnId.getName();
-  auto Loc = FnId.getLoc();
-
-  runProtoVisitor(ProtoExpr);
-  auto FunDef = getFunction(FnId);
-  if (!FunDef)  
-    THROW_NAME_ERROR("No valid prototype for function '" << FnName << "'", Loc);
-
-  e.setFunctionDef(FunDef);
-
-  auto NumArgIds = ProtoExpr.getNumArgs();
-  const auto & ArgTypes = FunDef->getArgTypes();
-  auto NumArgs = ArgTypes.size();
-  
-  if (NumArgs != NumArgIds)
-    THROW_NAME_ERROR("Numer of arguments in prototype for function '" << FnName
-        << "', does not match definition.  Expected " << NumArgIds
-        << " but got " << NumArgs, Loc);
- 
-  // Record the function arguments in the NamedValues map.
-  for (unsigned i=0; i<NumArgs; ++i) {
-    insertVariable(ProtoExpr.getArgId(i), ArgTypes[i]);
-  }
-  
-  for ( const auto & B : e.getBodyExprs() ) runStmtVisitor(*B);
-  
-  if (e.getReturnExpr()) {
-    DestinationType_ = ProtoExpr.hasReturn() ?
-      FunDef->getReturnType() : VariableType{};
-    auto RetType = runExprVisitor(*e.getReturnExpr());
-    auto DeclRetType = FunDef->getReturnType();
-    
-    if (!ProtoExpr.hasReturn() || ProtoExpr.isAnonExpr()) {
-      ProtoExpr.setReturnType(RetType);
-      FunDef->setReturnType(RetType);
-    }
-    else if (RetType != DeclRetType) {
-      if (!RetType.isCastableTo(DeclRetType))
-        THROW_NAME_ERROR("Function return type does not match prototype for '"
-            << FnName << "'.  The type '" << RetType << "' cannot be "
-            << "converted to the type '" << DeclRetType << "'.",
-            e.getReturnExpr()->getLoc());
-      e.setReturnExpr(insertCastOp(std::move(e.moveReturnExpr()), DeclRetType) );
-    }
-  }
-
-  popScope();
-
-  auto RetType = ProtoExpr.getReturnType();
-  e.setType(RetType);
-  TypeResult_ = RetType;
-  
-}
-
 
 }

@@ -142,7 +142,6 @@ public:
 
   /// Top level function parser 
   std::unique_ptr<FunctionAST> parseFunction();
-  std::unique_ptr<NodeAST> parseLambda();
   
   /// prototype
   std::unique_ptr<PrototypeAST> parsePrototype();

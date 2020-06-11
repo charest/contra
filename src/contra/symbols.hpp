@@ -91,7 +91,6 @@ public:
     Field  = (1u << 3),
     Partition = (1u << 4),
     Struct = (1u << 5),
-    Lambda = (1u << 6),
   };
 
 protected:
@@ -170,12 +169,6 @@ public:
   }
   
   bool isStruct() const { return ((Attrs_ & Attr::Struct) == Attr::Struct); }
-  
-  bool isLambda() const { return ((Attrs_ & Attr::Lambda) == Attr::Lambda); }
-  void setLambda(bool IsLambda=true) {
-    if (IsLambda) Attrs_ |= Attr::Lambda;
-    else Attrs_ &= ~Attr::Lambda;
-  }
 
   bool isNumber() const { return (!isArray() && !isRange() && Type_ && Type_->isNumber()); }
   
@@ -278,13 +271,6 @@ inline VariableType setPartition(const VariableType& Ty, bool IsPartition=true)
 {
   VariableType NewTy(Ty);
   NewTy.setPartition(IsPartition);
-  return NewTy;
-}
-
-inline VariableType setLambda(const VariableType& Ty, bool IsLambda=true)
-{
-  VariableType NewTy(Ty);
-  NewTy.setLambda(IsLambda);
   return NewTy;
 }
 

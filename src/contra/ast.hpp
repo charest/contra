@@ -1132,64 +1132,6 @@ public:
 
 };
 
-////////////////////////////////////////////////////////////////////////////////
-/// LambdaAST - This class represents a function definition itself.
-////////////////////////////////////////////////////////////////////////////////
-class LambdaExprAST : public ExprAST {
-protected:
-
-  std::unique_ptr<PrototypeAST> ProtoExpr_;
-  ASTBlock BodyExprs_;
-  std::unique_ptr<NodeAST> ReturnExpr_;
-  std::string Name_;
-
-  FunctionDef* FunctionDef_ = nullptr;
-
-public:
-  
-  LambdaExprAST(
-      std::unique_ptr<PrototypeAST> Proto,
-      ASTBlock Body, 
-      std::unique_ptr<NodeAST> Return) :
-    ExprAST(Proto->getLoc()),
-    ProtoExpr_(std::move(Proto)),
-    BodyExprs_(std::move(Body)),
-    ReturnExpr_(std::move(Return)),
-    Name_(ProtoExpr_->getName())
-  { checkReturn(); }
-
-  void checkReturn() {
-    if (!ReturnExpr_ && BodyExprs_.size()) {
-      if (dynamic_cast<ExprAST*>(BodyExprs_.back().get())) {
-        ReturnExpr_ = std::move(BodyExprs_.back());
-        BodyExprs_.pop_back();
-      }
-    }
-  }
-
-  const std::string &getName() const { return Name_; }
-  
-  virtual void accept(AstVisiter& visiter) override;
-
-  virtual std::string getClassName() const override
-  { return "LambdaExprAST"; };
-
-  bool hasReturn() const { return static_cast<bool>(ReturnExpr_); }
-  auto getReturnExpr() const { return ReturnExpr_.get(); }
-  
-  auto moveReturnExpr() { return std::move(ReturnExpr_); }
-  auto setReturnExpr(std::unique_ptr<NodeAST> Expr) { ReturnExpr_ = std::move(Expr); }
-  
-  auto getProtoExpr() const { return ProtoExpr_.get(); }
-  auto moveProtoExpr() { return std::move(ProtoExpr_); }
-  
-  auto getNumBodyExprs() const { return BodyExprs_.size(); }
-  const auto & getBodyExprs() const { return BodyExprs_; }
-
-  auto getFunctionDef() const { return FunctionDef_; }
-  void setFunctionDef(FunctionDef* F) { FunctionDef_ = F; }
-};
-
 } // namespace
 
 #endif // CONTRA_AST_HPP

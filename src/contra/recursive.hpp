@@ -192,15 +192,6 @@ public:
     if (e.hasReturn()) e.getReturnExpr()->accept(*this);
     postVisit(e);
   } 
-
-  virtual bool preVisit(LambdaExprAST&) { return false; }
-  virtual void postVisit(LambdaExprAST&) {}
-  virtual void visit(LambdaExprAST&e) {
-    if (preVisit(e)) { return; }
-    visitBlock(e.getBodyExprs());
-    if (e.hasReturn()) e.getReturnExpr()->accept(*this);
-    postVisit(e);
-  }
 };
 
 }

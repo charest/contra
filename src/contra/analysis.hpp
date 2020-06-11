@@ -104,8 +104,6 @@ private:
   void visit(TaskAST&) override;
   void visit(IndexTaskAST&) override;
   
-  void visit(LambdaExprAST&) override;
-  
   // base type interface
   TypeDef* getType(const Identifier & Id);
 
