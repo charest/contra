@@ -339,8 +339,7 @@ void contra_legion_index_space_partition_from_array(
 
 
     // clean up
-    //legion_index_space_destroy(*runtime, *ctx, expanded_space);
-  
+    legion_index_space_destroy(*runtime, *ctx, expanded_space);
 
   }
   //------------------------------------
@@ -399,9 +398,6 @@ void contra_legion_index_space_partition_from_field(
       /* mapper_id */ 0,
       /* mapping_tag_id */ 0);
   
-  // old one is no longer any use
-  legion_index_space_destroy(*runtime, *ctx, field->index_space);
-
   *part = *index_part;
 }
 
@@ -518,7 +514,6 @@ void contra_legion_field_create_from_partition(
     legion_index_partition_t * index_part,
     contra_legion_field_t * fld)
 {
-  abort();
   contra_legion_index_space_t is;
 
   is.index_space = 
