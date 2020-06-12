@@ -612,8 +612,7 @@ VariableAlloca * CodeGen::createRange(
     const std::string &VarName,
     Value* StartV,
     Value* EndV,
-    Value* StepV,
-    bool IsTask)
+    Value* StepV)
 {
   AllocaInst* RangeA;
 
@@ -813,8 +812,7 @@ void CodeGen::visit(RangeExprAST &e)
 
 
   auto RangeN = getTempName();
-  auto IsTask = e.getParentFunctionDef()->isTask();
-  auto RangeE = createRange(RangeN, StartV, EndV, StepV, IsTask );
+  auto RangeE = createRange(RangeN, StartV, EndV, StepV);
   auto RangeA = RangeE->getAlloca();
 
   ValueResult_ =  TheHelper_.load(RangeA, RangeN);

@@ -960,7 +960,6 @@ void Analyzer::visit(FunctionAST& e)
   if (!FunDef)  
     THROW_NAME_ERROR("No valid prototype for function '" << FnName << "'", Loc);
 
-  ParentFunction_ = FunDef;
   e.setFunctionDef(FunDef);
 
   auto NumArgIds = ProtoExpr.getNumArgs();

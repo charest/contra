@@ -334,8 +334,7 @@ private:
       const std::string &VarName,
       Value* StartV,
       Value* EndV,
-      Value* StepV,
-      bool IsTask);
+      Value* StepV);
 
   //============================================================================
   // Function interface

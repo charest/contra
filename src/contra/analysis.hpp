@@ -40,7 +40,6 @@ private:
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
-  FunctionDef*  ParentFunction_;
 
 public:
 
@@ -50,10 +49,7 @@ public:
 
   // visitor interface
   void runFuncVisitor(FunctionAST&e)
-  {
-    ParentFunction_ = nullptr;
-    e.accept(*this);
-  }
+  { e.accept(*this); }
 
 private:
   
@@ -62,7 +58,6 @@ private:
 
   auto runExprVisitor(NodeAST &e)
   {
-    e.setParentFunctionDef(ParentFunction_);
     TypeResult_ = VariableType{};
     e.accept(*this);
     return TypeResult_;

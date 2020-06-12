@@ -28,8 +28,6 @@ class NodeAST {
   
   LocationRange Loc_;
 
-  FunctionDef* ParentFunction_ = nullptr;
-
 public:
 
 	NodeAST() = default;
@@ -43,11 +41,6 @@ public:
   virtual std::string getClassName() const = 0;
   
   const auto & getLoc() const { return Loc_; }
-
-  void setParentFunctionDef(FunctionDef* FunDef)
-  { ParentFunction_ = FunDef; }
-
-  FunctionDef* getParentFunctionDef() { return ParentFunction_; }
 
   virtual void setFuture(bool=true) {}
   virtual bool isFuture() const { return false; }
