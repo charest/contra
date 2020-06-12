@@ -68,25 +68,4 @@ void FutureIdentifier::visit(AssignStmtAST& e)
   } // for
 }
 
-#if 0
-//==============================================================================
-void FutureIdentifier::visit(VarDeclAST& e)
-{
-  e.getInitExpr()->accept(*this);
-  auto AreFutures = e.getInitExpr()->isFuture();
-  
-  auto InitVarAST = dynamic_cast<VarAccessExprAST*>(e.getInitExpr());
-
-  auto NumVars = e.getNumVars();
-  for (unsigned i=0; i<NumVars; ++i) {
-    if (AreFutures) e.getVarType(i).setFuture();
-    if (InitVarAST) addFlow(e.getVariableDef(i), InitVarAST->getVariableDef());
-  }
-}
-
-//==============================================================================
-void FutureIdentifier::visit(FieldDeclAST& e)
-{ visit( static_cast<VarDeclAST&>(e) ); }
-#endif
-
-}
+} // namespace
