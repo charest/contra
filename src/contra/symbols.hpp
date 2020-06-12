@@ -274,6 +274,13 @@ inline VariableType setPartition(const VariableType& Ty, bool IsPartition=true)
   return NewTy;
 }
 
+inline VariableType setFuture(const VariableType& Ty, bool IsFuture=true)
+{
+  VariableType NewTy(Ty);
+  NewTy.setFuture(IsFuture);
+  return NewTy;
+}
+
 //==============================================================================
 // The variable symbol
 //==============================================================================

@@ -178,29 +178,10 @@ void CodeGen::popScope()
 
   for ( const auto & entry_pair : VariableTable_.front() ) {
     auto VarE = entry_pair.second;
-    auto Alloca = VarE.getAlloca();
-    if (!VarE.isOwner()) continue;
-    if (isArray(Alloca)) 
-      Arrays.emplace_back(Alloca);
-    else if (Tasker_->isFuture(Alloca))
-      Futures.emplace_back(Alloca);
-    else if (Tasker_->isField(Alloca))
-      Fields.emplace_back(Alloca);
-    else if (Tasker_->isRange(Alloca))
-      Ranges.emplace_back(Alloca);
-    else if (Tasker_->isAccessor(Alloca))
-      Accessors.emplace_back(Alloca);
-    else if (Tasker_->isPartition(Alloca))
-      Partitions.emplace_back(Alloca);
+    destroyVariable(VarE);
   }
   VariableTable_.pop_front();
 
-  destroyArrays(Arrays); 
-  Tasker_->destroyFutures(*TheModule_, Futures);
-  Tasker_->destroyFields(*TheModule_, Fields);
-  Tasker_->destroyAccessors(*TheModule_, Accessors); 
-  Tasker_->destroyPartitions(*TheModule_, Partitions);
-  Tasker_->destroyRanges(*TheModule_, Ranges);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,7 +249,7 @@ std::pair<VariableAlloca*, bool> CodeGen::getOrCreateVariable(
 //==============================================================================
 VariableAlloca * CodeGen::insertVariable(
     const std::string &VarName,
-    VariableAlloca VarE)
+    const VariableAlloca & VarE)
 { 
   auto it = VariableTable_.front().emplace(VarName, VarE);
   return &it.first->second;
@@ -284,6 +265,38 @@ VariableAlloca * CodeGen::insertVariable(
 { 
   VariableAlloca VarE(VarAlloca, VarType);
   return insertVariable(VarName, VarE);
+}
+
+//==============================================================================
+// Destroy a variable
+//==============================================================================
+void CodeGen::destroyVariable(const VariableAlloca & VarE) {
+  if (!VarE.isOwner()) return;
+
+  auto Alloca = VarE.getAlloca();
+  if (isArray(Alloca))
+    destroyArray(Alloca); 
+  else if (Tasker_->isFuture(Alloca))
+    Tasker_->destroyFuture(*TheModule_, Alloca);
+  else if (Tasker_->isField(Alloca))
+    Tasker_->destroyField(*TheModule_, Alloca);
+  else if (Tasker_->isRange(Alloca))
+    Tasker_->destroyRange(*TheModule_, Alloca);
+  else if (Tasker_->isAccessor(Alloca))
+    Tasker_->destroyAccessor(*TheModule_, Alloca);
+  else if (Tasker_->isPartition(Alloca))
+    Tasker_->destroyPartition(*TheModule_, Alloca);
+}
+
+//==============================================================================
+// Delete a variable
+//==============================================================================
+void CodeGen::eraseVariable(const std::string & VarN )
+{
+  for ( auto & ST : VariableTable_ ) {
+    auto it = ST.find(VarN);
+    if (it != ST.end()) ST.erase(it);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -538,32 +551,6 @@ void CodeGen::destroyArrays(const std::vector<Value*> & Arrays)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Range Interface
-////////////////////////////////////////////////////////////////////////////////
-
-
-//==============================================================================
-/// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
-/// the function.  This is used for mutable variables etc.
-//==============================================================================
-VariableAlloca * CodeGen::createRange(
-    const std::string &VarName,
-    Value* StartV,
-    Value* EndV,
-    Value* StepV)
-{
-  auto RangeA = Tasker_->createRange(
-      *TheModule_,
-      VarName,
-      StartV,
-      EndV,
-      StepV);
-
-  auto RangeT = RangeA->getAllocatedType();
-  return insertVariable(VarName, RangeA, RangeT);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Function Interface
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -593,25 +580,6 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
   auto & P = FunctionTable_[Proto->getName()];
   P = std::move(Proto);
   return *P;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Field Interface
-////////////////////////////////////////////////////////////////////////////////
-
-
-//==============================================================================
-// Create a future alloca
-//==============================================================================
-VariableAlloca * CodeGen::createField(
-    const std::string &VarName,
-    Type* VarType,
-    Value* SizeVal,
-    Value* InitVal)
-{
-  auto FieldA = Tasker_->createField(*TheModule_, VarName, VarType, 
-      SizeVal, InitVal);
-  return insertVariable(VarName, FieldA, VarType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -709,7 +677,7 @@ void CodeGen::visit(ArrayExprAST &e)
     SizeExpr = llvmValue<int_t>(TheContext_, e.getNumVals());
   }
 
-  auto ArrayN = getTempName();
+  auto ArrayN = e.getName();
   auto ArrayE = createArray(ArrayN, VarT, SizeExpr );
   auto ArrayA = ArrayE->getAlloca();
 
@@ -718,7 +686,7 @@ void CodeGen::visit(ArrayExprAST &e)
   else
     initArray(TheFunction, ArrayA, InitVals, VarT);
 
-  ValueResult_ =  TheHelper_.load(ArrayA, ArrayN);
+  ValueResult_ = ArrayA;
 }
 
 //==============================================================================
@@ -733,11 +701,19 @@ void CodeGen::visit(RangeExprAST &e)
   if (e.hasStepExpr()) StepV = runExprVisitor(*e.getStepExpr());
 
 
-  auto RangeN = getTempName();
-  auto RangeE = createRange(RangeN, StartV, EndV, StepV);
-  auto RangeA = RangeE->getAlloca();
+  auto RangeN = e.getName();
 
-  ValueResult_ =  TheHelper_.load(RangeA, RangeN);
+  auto RangeA = Tasker_->createRange(
+      *TheModule_,
+      RangeN,
+      StartV,
+      EndV,
+      StepV);
+
+  auto RangeT = RangeA->getAllocatedType();
+  insertVariable(RangeN, RangeA, RangeT);
+
+  ValueResult_ = RangeA;
 }
   
 //==============================================================================
@@ -762,7 +738,7 @@ void CodeGen::visit(CastExprAST &e)
       MemberV = TheHelper_.createCast(MemberV, MemberT);
       TheHelper_.insertValue(ToA, MemberV, i); 
     }
-    ValueResult_ = TheHelper_.load(ToA);
+    ValueResult_ = ToA;
   }
   else {
     FromV = TheHelper_.getAsValue(FromV);
@@ -1265,6 +1241,246 @@ void CodeGen::visit(ForeachStmtAST& e)
 }
 
 //==============================================================================
+// Assignment - Many to one
+//==============================================================================
+void CodeGen::assignManyToOne(
+    AssignStmtAST & e,
+    const RightExprTuple & RightTuple)
+{
+  auto NumLeft = e.getNumLeftExprs();
+    
+  auto Right = std::get<0>(RightTuple);
+  const auto & RightType = std::get<1>(RightTuple);
+  auto RightExpr = std::get<2>(RightTuple);
+
+  // Loop over variables
+  for (unsigned i=0; i<NumLeft; i++) {
+
+    auto RightV = Right;
+
+    // Assignment requires the LHS to be an identifier.
+    // This assume we're building without RTTI because LLVM builds that way by
+    // default.  If you build LLVM with RTTI this can be changed to a
+    // dynamic_cast for automatic error checking.
+    auto LeftExpr = dynamic_cast<VarAccessExprAST*>( e.getLeftExpr(i) );
+    if (!LeftExpr)
+      THROW_CONTRA_ERROR("Left-hand-side of expression is not a variable access.");
+    
+    // Codegen the RHS.
+    if (auto CastType = e.getCast(i))
+      RightV = TheHelper_.createCast(RightV, getLLVMType(*CastType));
+
+    // Look up the name.
+    const auto & VarType = LeftExpr->getType();
+    const auto & VarN = LeftExpr->getName();
+    auto VarPair = getOrCreateVariable(VarN, VarType);
+    auto VarE = VarPair.first;
+    auto VarInserted = VarPair.second; 
+    Value* VarA = VarE->getAlloca();
+    
+    // if the left side is not a future, then make sure the right side is loaded
+    if (!Tasker_->isFuture(VarA) && Tasker_->isFuture(RightV)) {
+      auto RightT = getLLVMType( setFuture(RightType, false) ); 
+      Right = Tasker_->loadFuture(*TheModule_, RightV, RightT);
+      RightV = Right;
+    }
+
+    //---------------------------------------------------------------------------
+    // array[i] = scalar
+    if (auto LeftAssignExpr = dynamic_cast<ArrayAccessExprAST*>(LeftExpr)) {
+      auto IndexV = runExprVisitor(*LeftAssignExpr->getIndexExpr());
+      if (Tasker_->isAccessor(VarA))
+        Tasker_->storeAccessor(*TheModule_, RightV, VarA, IndexV);
+      else if (Tasker_->isField(VarA)) {
+        auto ElementT = getLLVMType(setField(VarType, false));
+        Tasker_->createField(*TheModule_, VarA, VarN, ElementT, IndexV, RightV);
+      }
+      else
+        insertArrayValue(VarA, VarE->getType(), IndexV, RightV);
+    }
+    //---------------------------------------------------------------------------
+    // array = ?
+    else if (isArray(VarA)) {
+      // steal the alloca
+      auto ArrayExpr = dynamic_cast<ArrayExprAST*>(RightExpr);
+      if (i==0 && ArrayExpr) {
+        if (!VarInserted) destroyVariable(*VarE);
+        VarE->setAlloca(Right, true);
+        eraseVariable(ArrayExpr->getName());
+      }
+      // otherwise, just copy it
+      else {
+        if (VarInserted) {
+          auto SizeV = TheHelper_.extractValue(RightV, 1);
+          allocateArray(VarA, SizeV, VarE->getType() );
+        }
+        copyArray(RightV, VarA);
+        VarE->setOwner(true);
+      }
+    }
+    //---------------------------------------------------------------------------
+    // future = ?
+    else if (Tasker_->isFuture(VarA)) {
+      // future = future
+      if (Tasker_->isFuture(RightV))
+        Tasker_->copyFuture(*TheModule_, RightV, VarA);
+      // future = value
+      else
+        Tasker_->toFuture(*TheModule_, RightV, VarA);
+    }
+    //---------------------------------------------------------------------------
+    // Field = value
+    else if (Tasker_->isAccessor(VarA)) {
+      Tasker_->storeAccessor(*TheModule_, RightV, VarA);
+    }
+    //---------------------------------------------------------------------------
+    // Range = ?
+    else if (Tasker_->isRange(VarA)) {
+      // steal the alloca
+      auto RangeExpr = dynamic_cast<RangeExprAST*>(RightExpr);
+      if (i==0 && RangeExpr) {
+        if (!VarInserted) destroyVariable(*VarE);
+        VarE->setAlloca(Right, true);
+        eraseVariable(RangeExpr->getName());
+      }
+      // otherwise, just copy it
+      else {
+        RightV = TheHelper_.getAsValue(RightV);
+        Builder_.CreateStore(RightV, VarA);
+        VarE->setOwner(false);
+      }
+    }
+    //---------------------------------------------------------------------------
+    // scalar = scalar
+    else {
+      RightV = TheHelper_.getAsValue(RightV);
+      Builder_.CreateStore(RightV, VarA);
+    }
+
+  } // for
+
+}
+
+
+//==============================================================================
+// Assignment - Many to Many
+//==============================================================================
+void CodeGen::assignManyToMany(
+    AssignStmtAST & e,
+    const std::vector<RightExprTuple> & RightTuples)
+{
+  auto NumLeft = e.getNumLeftExprs();
+  auto NumRight = e.getNumRightExprs();
+
+  // Loop over variables
+  for (unsigned i=0; i<NumLeft; i++) {
+  
+    auto RightV = std::get<0>(RightTuples[i]);
+    const auto & RightType = std::get<1>(RightTuples[i]);
+    auto RightExpr = std::get<2>(RightTuples[i]);
+
+
+    // Assignment requires the LHS to be an identifier.
+    // This assume we're building without RTTI because LLVM builds that way by
+    // default.  If you build LLVM with RTTI this can be changed to a
+    // dynamic_cast for automatic error checking.
+    auto LeftExpr = dynamic_cast<VarAccessExprAST*>( e.getLeftExpr(i) );
+    if (!LeftExpr)
+      THROW_CONTRA_ERROR("Left-hand-side of expression is not a variable access.");
+    
+    // Codegen the RHS.
+    if (auto CastType = e.getCast(i))
+      RightV = TheHelper_.createCast(RightV, getLLVMType(*CastType));
+
+    // Look up the name.
+    const auto & VarType = LeftExpr->getType();
+    const auto & VarN =   LeftExpr->getName();
+    auto VarPair = getOrCreateVariable(VarN, VarType);
+    auto VarE = VarPair.first;
+    auto VarInserted = VarPair.second; 
+    Value* VarA = VarE->getAlloca();
+    
+    // if the left side is not a future, then make sure the right side is loaded
+    if (!Tasker_->isFuture(VarA) && Tasker_->isFuture(RightV)) {
+      auto RightT = getLLVMType( setFuture(RightType, false) ); 
+      RightV = Tasker_->loadFuture(*TheModule_, RightV, RightT);
+    }
+
+    //---------------------------------------------------------------------------
+    // array[i] = scalar
+    if (auto LeftAssignExpr = dynamic_cast<ArrayAccessExprAST*>(LeftExpr)) {
+      auto IndexV = runExprVisitor(*LeftAssignExpr->getIndexExpr());
+      if (Tasker_->isAccessor(VarA))
+        Tasker_->storeAccessor(*TheModule_, RightV, VarA, IndexV);
+      else if (Tasker_->isField(VarA)) {
+        auto ElementT = getLLVMType(setField(VarType, false));
+        Tasker_->createField(*TheModule_, VarA, VarN, ElementT, IndexV, RightV);
+      }
+      else
+        insertArrayValue(VarA, VarE->getType(), IndexV, RightV);
+    }
+    //---------------------------------------------------------------------------
+    // array = ?
+    else if (isArray(VarA)) {
+      // steal the alloca
+      auto ArrayExpr = dynamic_cast<ArrayExprAST*>(RightExpr);
+      if (auto ArrayExpr = dynamic_cast<ArrayExprAST*>(RightExpr)) {
+        if (!VarInserted) destroyVariable(*VarE);
+        VarE->setAlloca(RightV, true);
+        eraseVariable(ArrayExpr->getName());
+      }
+      else {
+        if (VarInserted) {
+          auto SizeV = TheHelper_.extractValue(RightV, 1);
+          allocateArray(VarA, SizeV, VarE->getType() );
+        }
+        copyArray(RightV, VarA);
+        VarE->setOwner(true);
+      }
+    }
+    //---------------------------------------------------------------------------
+    // future = ?
+    else if (Tasker_->isFuture(VarA)) {
+      // future = future
+      if (Tasker_->isFuture(RightV))
+        Tasker_->copyFuture(*TheModule_, RightV, VarA);
+      // future = value
+      else
+        Tasker_->toFuture(*TheModule_, RightV, VarA);
+    }
+    //---------------------------------------------------------------------------
+    // Field = value
+    else if (Tasker_->isAccessor(VarA)) {
+      Tasker_->storeAccessor(*TheModule_, RightV, VarA);
+    }
+    //---------------------------------------------------------------------------
+    // Range = ?
+    else if (Tasker_->isRange(VarA)) {
+      // steal the alloca
+      if (auto RangeExpr = dynamic_cast<RangeExprAST*>(RightExpr)) {
+        if (!VarInserted) destroyVariable(*VarE);
+        VarE->setAlloca(RightV, true);
+        eraseVariable(RangeExpr->getName());
+      }
+      // otherwise, just copy it
+      else {
+        RightV = TheHelper_.getAsValue(RightV);
+        Builder_.CreateStore(RightV, VarA);
+        VarE->setOwner(false);
+      }
+    }
+    //---------------------------------------------------------------------------
+    // scalar = scalar
+    else {
+      RightV = TheHelper_.getAsValue(RightV);
+      Builder_.CreateStore(RightV, VarA);
+    }
+
+  } // for
+
+}
+
+//==============================================================================
 // Assignment
 //==============================================================================
 void CodeGen::visit(AssignStmtAST & e)
@@ -1273,108 +1489,34 @@ void CodeGen::visit(AssignStmtAST & e)
   auto NumRight = e.getNumRightExprs();
  
   // get all right 
-  std::vector<Value*> RightVs;
-  for (const auto & Expr : e.getRightExprs())
-    RightVs.emplace_back( runExprVisitor(*Expr) );
-
-  if (IsPacked_) {
-    auto StructV = RightVs.front();
-    auto StructT = cast<StructType>(StructV->getType());
-    NumRight = StructT->getNumElements();
-    RightVs.clear();
-    for (unsigned i=0; i<NumRight; ++i)
-      RightVs.emplace_back( TheHelper_.extractValue(StructV, i) );
+  std::vector<RightExprTuple> RightTuples;
+  for (const auto & Node : e.getRightExprs()) {
+    auto Expr = static_cast<ExprAST*>(Node.get());
+    if (!Expr)
+      THROW_CONTRA_ERROR("Right-hand-side of expression is not am assignment.");
+    RightTuples.emplace_back( runExprVisitor(*Expr), Expr->getType(), Expr );
   }
 
-  auto RightIt = RightVs.begin();
-
-  // Loop over variables
-  for (unsigned il=0; il<NumLeft; il++) {
-
-    // Assignment requires the LHS to be an identifier.
-    // This assume we're building without RTTI because LLVM builds that way by
-    // default.  If you build LLVM with RTTI this can be changed to a
-    // dynamic_cast for automatic error checking.
-    auto LeftExpr = e.getLeftExpr(il);
-    auto LHSE = dynamic_cast<VarAccessExprAST*>(LeftExpr);
-    
-    // Codegen the RHS.
-    Value* VariableV = *RightIt;
-    if (auto CastType = e.getCast(il))
-      VariableV = TheHelper_.createCast(VariableV, getLLVMType(*CastType));
-
-    // Look up the name.
-    const auto & VarType = LHSE->getType();
-    const auto & VarN = LHSE->getName();
-    auto VarPair = getOrCreateVariable(VarN, VarType);
-    auto VarE = VarPair.first;
-    auto VarInserted = VarPair.second; 
-    Value* VariableA = VarE->getAlloca();
-
-    //---------------------------------------------------------------------------
-    // array[i] = scalar
-    if (auto LHSEA = dynamic_cast<ArrayAccessExprAST*>(LeftExpr)) {
-      auto IndexV = runExprVisitor(*LHSEA->getIndexExpr());
-  
-      if (Tasker_->isAccessor(VariableA)) {
-        Tasker_->storeAccessor(*TheModule_, VariableV, VariableA, IndexV);
-      }
-      else if (Tasker_->isField(VariableA)) {
-        auto VarT = getLLVMType(strip(VarType));
-        if (Tasker_->isFuture(VariableV)) {
-          VariableV = Tasker_->loadFuture(*TheModule_, VariableV, VarT);
-        }
-        Tasker_->createField(*TheModule_, VariableA, VarN, VarT, IndexV, VariableV);
-      }
-      else {
-        insertArrayValue(VariableA, VarE->getType(), IndexV, VariableV);
-      }
+  if (IsPacked_) {
+    auto StructV = std::get<0>(RightTuples.front());
+    auto VarType = std::get<1>(RightTuples.front());
+    auto Expr = std::get<2>(RightTuples.front());
+    auto StructT = cast<StructType>(StructV->getType());
+    NumRight = StructT->getNumElements();
+    RightTuples.clear();
+    for (unsigned i=0; i<NumRight; ++i) {
+      RightTuples.emplace_back( 
+          TheHelper_.extractValue(StructV, i),
+          VarType.getMember(i),
+          Expr
+      );
     }
-    //---------------------------------------------------------------------------
-    // array = ?
-    else if (isArray(VariableA)) {
-      if (VarInserted) {
-        auto SizeV = TheHelper_.extractValue(VariableV, 1);
-        allocateArray(VariableA, SizeV, VarE->getType() );
-      }
-      copyArray(VariableV, VariableA);
-    }
-    //---------------------------------------------------------------------------
-    // future = ?
-    else if (Tasker_->isFuture(VariableA)) {
-      //Tasker_->destroyFuture(*TheModule_, VariableA);
-      // future = future
-      if (Tasker_->isFuture(VariableV)) {
-        Tasker_->copyFuture(*TheModule_, VariableV, VariableA);
-      }
-      // future = value
-      else {
-        Tasker_->toFuture(*TheModule_, VariableV, VariableA);
-      }
-    }
-    //---------------------------------------------------------------------------
-    // Field = value
-    else if (Tasker_->isAccessor(VariableA)) {
-      Tasker_->storeAccessor(*TheModule_, VariableV, VariableA);
-    }
-    //---------------------------------------------------------------------------
-    // value = future
-    else if (Tasker_->isFuture(VariableV)) {
-      auto VariableT = VarE->getType();
-      VariableV = Tasker_->loadFuture(*TheModule_, VariableV, VariableT);
-      Builder_.CreateStore(VariableV, VariableA);
-    }
-    //---------------------------------------------------------------------------
-    // scalar = scalar
-    else {
-      if (Tasker_->isRange(VariableV)) VarE->setOwner(false);
-      VariableV = TheHelper_.getAsValue(VariableV);
-      Builder_.CreateStore(VariableV, VariableA);
-    }
+  }
 
-    if (NumRight>1) ++RightIt;
-
-  } // for
+  if ((NumLeft != NumRight) && (NumRight==1))
+    assignManyToOne(e, RightTuples.front());
+  else
+    assignManyToMany(e, RightTuples);
 
   ValueResult_ = nullptr;
   return;

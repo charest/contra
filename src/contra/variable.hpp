@@ -19,6 +19,11 @@ public:
     : Alloca_(Alloca), Type_(Type), Size_(Size) {}
   auto getAlloca() const { return Alloca_; }
   void setAlloca(llvm::Value* Alloca) { Alloca_ = Alloca; }
+  void setAlloca(llvm::Value* Alloca, bool IsOwner)
+  {
+    Alloca_ = Alloca;
+    IsOwner_ = IsOwner;
+  }
   auto getType() const { return Type_; }
   auto getSize() const { return Size_; }
   void setOwner(bool IsOwner=true) { IsOwner_=IsOwner; }

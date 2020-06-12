@@ -70,9 +70,6 @@ class CodeGen : public RecursiveAstVisiter {
   int Argc_ = 0;
   char ** Argv_ = nullptr;
 
-  // temp counter
-  std::size_t TmpCounter_ = 0;
-
 public:
   
   //============================================================================
@@ -182,8 +179,12 @@ private:
   void visit(IndexTaskAST&) override;
   
 
-  // visitor helper
+  // visitor helpers
   llvm::Value* codegenFunctionBody(FunctionAST& e);
+
+  using RightExprTuple = std::tuple<Value*, const VariableType &, ExprAST*>;
+  void assignManyToOne(AssignStmtAST &, const RightExprTuple &);
+  void assignManyToMany(AssignStmtAST &, const std::vector<RightExprTuple> &);
 
   //============================================================================
   // Scope interface
@@ -222,13 +223,6 @@ private:
 
   bool isLLVMType(const std::string & Name)
   { return TypeTable_.count(Name); }
-    
-
-  std::string getTempName() {
-    auto Name = "__tmp" + std::to_string(TmpCounter_);
-    TmpCounter_++;
-    return Name;
-  }
 
   //============================================================================
   // Variable interface
@@ -246,12 +240,15 @@ private:
 
   VariableAlloca * insertVariable(
       const std::string &VarName,
-      VariableAlloca VarEntry);
+      const VariableAlloca & VarEntry);
   
   VariableAlloca * insertVariable(
       const std::string &VarName,
       llvm::Value*,
       llvm::Type*);
+
+  void destroyVariable(const VariableAlloca &);
+  void eraseVariable(const std::string &);
 
   //============================================================================
   // Array interface
@@ -315,16 +312,6 @@ private:
   Value* getArraySize(Value*);
   
   //============================================================================
-  // Range interface
-  //============================================================================
-
-  VariableAlloca * createRange(
-      const std::string &VarName,
-      Value* StartV,
-      Value* EndV,
-      Value* StepV);
-
-  //============================================================================
   // Function interface
   //============================================================================
 
@@ -333,16 +320,6 @@ public:
 
 private:
   std::pair<Function*,bool> getFunction(std::string Name); 
-  
-  //============================================================================
-  // Field interface
-  //============================================================================
-  
-  VariableAlloca * createField(
-      const std::string &,
-      Type*,
-      Value*,
-      Value* = nullptr);
 };
 
 } // namespace

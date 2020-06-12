@@ -303,6 +303,9 @@ void Analyzer::visit(ArrayAccessExprAST& e)
 //==============================================================================
 void Analyzer::visit(ArrayExprAST& e)
 {
+
+  e.setName(getTempName());
+
   if (e.hasSize()) {
     auto SizeType = runExprVisitor(*e.getSizeExpr());
     if (SizeType != I64Type_)
@@ -347,6 +350,8 @@ void Analyzer::visit(ArrayExprAST& e)
 //==============================================================================
 void Analyzer::visit(RangeExprAST& e)
 {
+  e.setName(getTempName());
+
   // start
   auto StartType = runExprVisitor(*e.getStartExpr());
   auto EndType = runExprVisitor(*e.getEndExpr());

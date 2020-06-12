@@ -518,6 +518,7 @@ void contra_legion_field_create_from_partition(
     legion_index_partition_t * index_part,
     contra_legion_field_t * fld)
 {
+  abort();
   contra_legion_index_space_t is;
 
   is.index_space = 

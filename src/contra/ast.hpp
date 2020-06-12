@@ -225,6 +225,7 @@ protected:
 
   ASTBlock ValExprs_;
   std::unique_ptr<NodeAST> SizeExpr_;
+  std::string Name_;
 
 public:
 
@@ -246,6 +247,9 @@ public:
   virtual std::string getClassName() const override
   { return "ArrayExprAST"; };
 
+  void setName(const std::string & Name) { Name_ = Name; }
+  const auto & getName() const { return Name_; }
+
   bool hasSize() const { return static_cast<bool>(SizeExpr_); }
   auto getSizeExpr() const { return SizeExpr_.get(); }
 
@@ -265,6 +269,7 @@ class RangeExprAST : public ExprAST {
 protected:
 
   std::unique_ptr<NodeAST> StartExpr_, EndExpr_, StepExpr_;
+  std::string Name_;
 
 public:
 
@@ -294,6 +299,10 @@ public:
   
   virtual std::string getClassName() const override
   { return "RangeExprAST"; };
+  
+  void setName(const std::string & Name) { Name_ = Name; }
+  const auto & getName() const { return Name_; }
+
 
   auto getStartExpr() const { return StartExpr_.get(); }
   auto moveStartExpr() { return std::move(StartExpr_); }

@@ -40,6 +40,9 @@ private:
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;
+  
+  // temp counter
+  std::size_t TmpCounter_ = 0;
 
 public:
 
@@ -95,6 +98,13 @@ private:
   void visit(FunctionAST&) override;
   void visit(TaskAST&) override;
   void visit(IndexTaskAST&) override;
+    
+  // temporary name generator
+  std::string getTempName() {
+    auto Name = "__tmp" + std::to_string(TmpCounter_);
+    TmpCounter_++;
+    return Name;
+  }
   
   // base type interface
   TypeDef* getType(const Identifier & Id);
