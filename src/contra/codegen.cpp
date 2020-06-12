@@ -1096,17 +1096,42 @@ void CodeGen::visit(ForStmtAST& e) {
   auto VarA = VarE->getAlloca();
   
   // Emit the start code first, without 'variable' in scope.
-  Value* StartV = runStmtVisitor(*e.getStartExpr());
-  Value* EndA = TheHelper_.createEntryBlockAlloca(VarT, VarN+"end");
-  Value* StepA = TheHelper_.createEntryBlockAlloca(VarT, VarN+"step");
-  if (Tasker_->isRange(StartV)) {
-    auto EndV = TheHelper_.extractValue(StartV, 1);
+  auto EndA = TheHelper_.createEntryBlockAlloca(VarT, VarN+"end");
+  auto StepA = TheHelper_.createEntryBlockAlloca(VarT, VarN+"step");
+
+  auto StartExpr = e.getStartExpr();
+
+  //----------------------------------------------------------------------------
+  // Dont create range
+  if (auto RangeExpr = dynamic_cast<RangeExprAST*>(StartExpr)) {
+    auto StartV = runExprVisitor(*RangeExpr->getStartExpr());
+    StartV = TheHelper_.getAsValue(StartV);
+    Builder_.CreateStore(StartV, VarA);
+    auto EndV = runExprVisitor(*RangeExpr->getEndExpr());
+    EndV = TheHelper_.getAsValue(EndV);
+    auto OneC = llvmValue<int_t>(TheContext_, 1);
+    EndV = Builder_.CreateAdd(EndV, OneC);
     Builder_.CreateStore(EndV, EndA);
-    auto StepV = TheHelper_.extractValue(StartV, 2);
-    Builder_.CreateStore(StepV, StepA);
-    StartV = TheHelper_.extractValue(StartV, 0);
+    if (RangeExpr->hasStepExpr()) {
+      auto StepV = runExprVisitor(*RangeExpr->getStepExpr());
+      StepV = TheHelper_.getAsValue(StepV);
+      Builder_.CreateStore(StepV, StepA);
+    }
+    else {
+      Builder_.CreateStore(OneC, StepA);
+    }
   }
-  Builder_.CreateStore(StartV, VarA);
+  //----------------------------------------------------------------------------
+  // Use pre-existing range
+  else {
+    auto RangeV = runStmtVisitor(*e.getStartExpr());
+    auto StartV = TheHelper_.extractValue(RangeV, 0);
+    Builder_.CreateStore(StartV, VarA);
+    auto EndV = TheHelper_.extractValue(RangeV, 1);
+    Builder_.CreateStore(EndV, EndA);
+    auto StepV = TheHelper_.extractValue(RangeV, 2);
+    Builder_.CreateStore(StepV, StepA);
+  }
 
   // Make the new basic block for the loop header, inserting after current
   // block.
@@ -1152,7 +1177,7 @@ void CodeGen::visit(ForStmtAST& e) {
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
-  TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA);
+  TheHelper_.increment( TheHelper_.getAsAlloca(VarA), llvmValue<int_t>(TheContext_,1) );
 
   // Insert the conditional branch into the end of LoopEndBB.
   Builder_.CreateBr(BeforeBB);
@@ -1179,13 +1204,8 @@ void CodeGen::visit(ForeachStmtAST& e)
   else {
     createScope();
 
-    Value* RangeV = nullptr;
-
-    Value* StartV = runStmtVisitor(*e.getStartExpr());
+    Value* RangeV = runStmtVisitor(*e.getStartExpr());
     
-    // range
-    if (Tasker_->isRange(StartV))
-      RangeV = StartV;
 
     //----------------------------------
     // Partition Tasks
@@ -1370,7 +1390,6 @@ void CodeGen::assignManyToMany(
     const std::vector<RightExprTuple> & RightTuples)
 {
   auto NumLeft = e.getNumLeftExprs();
-  auto NumRight = e.getNumRightExprs();
 
   // Loop over variables
   for (unsigned i=0; i<NumLeft; i++) {
@@ -1423,7 +1442,6 @@ void CodeGen::assignManyToMany(
     // array = ?
     else if (isArray(VarA)) {
       // steal the alloca
-      auto ArrayExpr = dynamic_cast<ArrayExprAST*>(RightExpr);
       if (auto ArrayExpr = dynamic_cast<ArrayExprAST*>(RightExpr)) {
         if (!VarInserted) destroyVariable(*VarE);
         VarE->setAlloca(RightV, true);
@@ -1776,6 +1794,9 @@ void CodeGen::visit(IndexTaskAST& e)
   
 	// register it
   auto TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
+  //if (TaskN == "__main_loop3__" || TaskN == "__main_loop4__")
+  //  TaskI.setLeaf(); // HACK
+
  	verifyFunction(*Wrapper.TheFunction);
 
 	FunctionResult_ = Wrapper.TheFunction;

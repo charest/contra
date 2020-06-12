@@ -88,8 +88,8 @@ void Contra::handleFunction()
 		for (auto & FnAST : FnASTs) {
     	if (dumpDot()) TheViz_->runVisitor(*FnAST);
     	auto FnIR = TheCG_->runFuncVisitor(*FnAST);
-    	if (dumpIR()) FnIR->print(*IRFileStream_);
     	if (IsOptimized_) TheCG_->optimize(FnIR);
+    	if (dumpIR()) FnIR->print(*IRFileStream_);
     	if (!isCompiled()) TheCG_->doJIT();
 		}
 

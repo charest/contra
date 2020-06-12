@@ -394,6 +394,14 @@ public:
     FunctionDef(Name, ReturnType, VariableTypeList{ArgType}, IsVarArg)
   {}
   
+  BuiltInFunction(
+      const std::string & Name,
+      const VariableType & ReturnType, 
+      bool IsVarArg = false) :
+    FunctionDef(Name, ReturnType, VariableTypeList{}, IsVarArg)
+  {}
+  
+  
 };
 
 

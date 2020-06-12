@@ -76,6 +76,7 @@ protected:
     llvm::AllocaInst* ContextAlloca = nullptr;
     llvm::AllocaInst* RuntimeAlloca = nullptr;
     llvm::AllocaInst* PartInfoAlloca = nullptr;
+    llvm::AllocaInst* TimerAlloca = nullptr;
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;
@@ -322,6 +323,7 @@ protected:
 
   void createRegistrationArguments(
       llvm::Module&,
+      const TaskInfo & Task,
       llvm::AllocaInst*&,
       llvm::AllocaInst*&,
       llvm::AllocaInst*&);

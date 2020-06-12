@@ -16,6 +16,7 @@ class TaskInfo {
   llvm::Function * Function_ = nullptr;
   llvm::FunctionType * FunctionType_ = nullptr;
   bool IsTop_ = false;
+  bool IsLeaf_ = false;
 
 public:
 
@@ -39,6 +40,10 @@ public:
 
   bool isTop() const { return IsTop_; }
   void setTop(bool IsTop = true) { IsTop_ = IsTop; }
+
+  bool isLeaf() const { return IsLeaf_; }
+  void setLeaf(bool IsLeaf = true) { IsLeaf_ = IsLeaf; }
+
 };
 
 } // namespace
