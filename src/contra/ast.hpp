@@ -42,9 +42,6 @@ public:
   
   const auto & getLoc() const { return Loc_; }
 
-  virtual void setFuture(bool=true) {}
-  virtual bool isFuture() const { return false; }
-
 };
 
 // some useful types

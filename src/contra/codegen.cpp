@@ -313,8 +313,7 @@ VariableAlloca * CodeGen::createArray(
 {
   Value* NewVar;
   NewVar = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName);
-  auto it = VariableTable_.front().emplace(VarName, VariableAlloca{NewVar, ElementT});
-  return &it.first->second;
+  return insertVariable(VarName, NewVar, ElementT);
 }
 
 
@@ -328,22 +327,18 @@ VariableAlloca * CodeGen::createArray(
     Value * SizeExpr)
 {
 
-  Function *F; 
-  F = TheModule_->getFunction("allocate");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
-
-
   SizeExpr = TheHelper_.getAsValue(SizeExpr);
-  auto DataSize = TheHelper_.getTypeSize<int_t>(ElementType);
   auto ArrayA = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName+"vec");
 
-  std::vector<Value*> ArgVs = {SizeExpr, DataSize, ArrayA};
-  Builder_.CreateCall(F, ArgVs);
+  allocateArray(ArrayA, SizeExpr, ElementType);
   
   return insertVariable(VarName, {ArrayA, ElementType, SizeExpr});
 }
 
-void CodeGen::createArray(
+//==============================================================================
+// Allocate array
+//==============================================================================
+void CodeGen::allocateArray(
     Value* ArrayA,
     Value * SizeV,
     Type * ElementT)
@@ -362,16 +357,16 @@ void CodeGen::createArray(
 //==============================================================================
 // Initialize Array
 //==============================================================================
-void CodeGen::initArrays(
+void CodeGen::initArray(
     Function *TheFunction,
-    const std::vector<Value*> & ArrayAs,
+    Value* ArrayA,
     Value * InitV,
     Value * SizeV,
     Type * ElementT)
 {
   
   // create allocas to the pointers
-  auto ArrayPtrAs = createArrayPointerAllocas(ArrayAs, ElementT);
+  auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
 
   // create a loop
   auto Alloca = TheHelper_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
@@ -391,8 +386,7 @@ void CodeGen::initArrays(
 
   // store value
   InitV = TheHelper_.getAsValue(InitV);
-  for ( auto ArrayPtrA : ArrayPtrAs)
-    insertArrayValue(ArrayPtrA, ElementT, CurVar, InitV);
+  insertArrayValue(ArrayPtrA, ElementT, CurVar, InitV);
 
   // increment loop
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
@@ -423,45 +417,6 @@ void CodeGen::initArray(
 //==============================================================================
 // Copy Array
 //==============================================================================
-void CodeGen::copyArrays(
-    Function *TheFunction,
-    Value* SrcArrayA,
-    const std::vector<Value*> TgtArrayAs,
-    Value * NumElements,
-    Type * ElementT)
-{
-  // create allocas to the pointers
-  auto SrcArrayPtrA = createArrayPointerAlloca(SrcArrayA, ElementT);
-  auto TgtArrayPtrAs = createArrayPointerAllocas(TgtArrayAs, ElementT);
-
-  auto CounterA = TheHelper_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
-  Value * StartV = llvmValue<int_t>(TheContext_, 0);
-  Builder_.CreateStore(StartV, CounterA);
-  
-  auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
-  auto LoopBB =   BasicBlock::Create(TheContext_, "init", TheFunction);
-  auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(BeforeBB);
-  auto CounterV = Builder_.CreateLoad(llvmType<int_t>(TheContext_), CounterA);
-  auto EndCond = Builder_.CreateICmpSLT(CounterV, NumElements, "initcond");
-  Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
-  Builder_.SetInsertPoint(LoopBB);
-    
-  auto SrcV = extractArrayValue(SrcArrayPtrA, ElementT, CounterV);
-
-  for ( auto TgtArrayPtrA :  TgtArrayPtrAs )
-    insertArrayValue( TgtArrayPtrA, ElementT, CounterV, SrcV);
-
-  auto StepVal = llvmValue<int_t>(TheContext_, 1);
-  TheHelper_.increment(CounterA, StepVal);
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(AfterBB);
-}
-
-//==============================================================================
-// Copy Array
-//==============================================================================
 void CodeGen::copyArray(Value* SrcArrayV, Value* TgtArrayA)
 {
   auto F = TheModule_->getFunction("copy");
@@ -485,23 +440,6 @@ Value* CodeGen::createArrayPointerAlloca(
   auto ArrayPtrA = TheHelper_.createEntryBlockAlloca(ElementPtrT);
   Builder_.CreateStore(ArrayV, ArrayPtrA);
   return ArrayPtrA;
-}
-
-  
-//==============================================================================
-// Load a bunch of arrays into allocas
-//==============================================================================
-std::vector<Value*> CodeGen::createArrayPointerAllocas(
-    const std::vector<Value*> & ArrayAs,
-    Type* ElementT )
-{
-  std::vector<Value*> ArrayPtrAs;
-  for ( auto ArrayA : ArrayAs) {
-    auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
-    ArrayPtrAs.emplace_back(ArrayPtrA);
-  }
-
-  return ArrayPtrAs;
 }
 
 //==============================================================================
@@ -614,9 +552,7 @@ VariableAlloca * CodeGen::createRange(
     Value* EndV,
     Value* StepV)
 {
-  AllocaInst* RangeA;
-
-  RangeA = Tasker_->createRange(
+  auto RangeA = Tasker_->createRange(
       *TheModule_,
       VarName,
       StartV,
@@ -624,8 +560,7 @@ VariableAlloca * CodeGen::createRange(
       StepV);
 
   auto RangeT = RangeA->getAllocatedType();
-  auto it = VariableTable_.front().emplace(VarName, VariableAlloca{RangeA, RangeT});
-  return &it.first->second;
+  return insertVariable(VarName, RangeA, RangeT);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -659,19 +594,6 @@ PrototypeAST & CodeGen::insertFunction(std::unique_ptr<PrototypeAST> Proto)
   P = std::move(Proto);
   return *P;
 }
-    
-////////////////////////////////////////////////////////////////////////////////
-// Future Interface
-////////////////////////////////////////////////////////////////////////////////
-
-//==============================================================================
-// load the future
-//==============================================================================
-Value* CodeGen::loadFuture(Type* VariableT, Value* FutureV)
-{
-  return Tasker_->loadFuture(*TheModule_, FutureV, VariableT);
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Field Interface
@@ -792,7 +714,7 @@ void CodeGen::visit(ArrayExprAST &e)
   auto ArrayA = ArrayE->getAlloca();
 
   if (e.hasSize()) 
-    initArrays(TheFunction, {ArrayA}, InitVals[0], SizeExpr, VarT);
+    initArray(TheFunction, ArrayA, InitVals[0], SizeExpr, VarT);
   else
     initArray(TheFunction, ArrayA, InitVals, VarT);
 
@@ -1029,7 +951,7 @@ void CodeGen::visit(CallExprAST &e) {
     Value* Arg = getArg(i);
     if (!IsTask && Tasker_->isFuture(Arg)) {
       auto ArgT = getLLVMType( e.getArgType(i) );
-      Arg = loadFuture(ArgT, Arg);
+      Arg = Tasker_->loadFuture(*TheModule_, Arg, ArgT);
     }
     ArgVs.push_back(Arg);
   }
@@ -1059,7 +981,7 @@ void CodeGen::visit(CallExprAST &e) {
       auto Ty = e.getType();
       if (!Ty.isFuture()) {
         auto ResultT = getLLVMType(Ty);
-        FutureV = loadFuture(ResultT, FutureV);
+        FutureV = Tasker_->loadFuture(*TheModule_, FutureV, ResultT);
       }
       ValueResult_ = FutureV;
     }
@@ -1288,8 +1210,6 @@ void CodeGen::visit(ForeachStmtAST& e)
     // range
     if (Tasker_->isRange(StartV))
       RangeV = StartV;
-    auto PreviousRange = CurrentRange_;
-    CurrentRange_ = RangeV;
 
     //----------------------------------
     // Partition Tasks
@@ -1341,7 +1261,6 @@ void CodeGen::visit(ForeachStmtAST& e)
     popScope();
 	  ValueResult_ = UndefValue::get(VoidType_);
 
-    CurrentRange_ = PreviousRange;
   }
 }
 
@@ -1403,7 +1322,7 @@ void CodeGen::visit(AssignStmtAST & e)
       else if (Tasker_->isField(VariableA)) {
         auto VarT = getLLVMType(strip(VarType));
         if (Tasker_->isFuture(VariableV)) {
-          VariableV = loadFuture(VarT, VariableV);
+          VariableV = Tasker_->loadFuture(*TheModule_, VariableV, VarT);
         }
         Tasker_->createField(*TheModule_, VariableA, VarN, VarT, IndexV, VariableV);
       }
@@ -1416,7 +1335,7 @@ void CodeGen::visit(AssignStmtAST & e)
     else if (isArray(VariableA)) {
       if (VarInserted) {
         auto SizeV = TheHelper_.extractValue(VariableV, 1);
-        createArray(VariableA, SizeV, VarE->getType() );
+        allocateArray(VariableA, SizeV, VarE->getType() );
       }
       copyArray(VariableV, VariableA);
     }
@@ -1442,7 +1361,7 @@ void CodeGen::visit(AssignStmtAST & e)
     // value = future
     else if (Tasker_->isFuture(VariableV)) {
       auto VariableT = VarE->getType();
-      VariableV = loadFuture(VariableT, VariableV);
+      VariableV = Tasker_->loadFuture(*TheModule_, VariableV, VariableT);
       Builder_.CreateStore(VariableV, VariableA);
     }
     //---------------------------------------------------------------------------
@@ -1610,8 +1529,7 @@ void CodeGen::visit(TaskAST& e)
   for (auto &Arg : TheFunction->args()) {
     auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
     auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
-    auto NewEntry = VariableAlloca(Alloca, AllocaT);
-    auto VarE = insertVariable(Arg.getName(), NewEntry);
+    auto VarE = insertVariable(Arg.getName(), Alloca, AllocaT);
     VarE->setOwner(false);
   }
 
@@ -1621,7 +1539,7 @@ void CodeGen::visit(TaskAST& e)
   
   if (RetVal && Tasker_->isFuture(RetVal)) {
     auto RetT = getLLVMType( P.getReturnType() );
-    RetVal = loadFuture(RetT, RetVal);
+    RetVal = Tasker_->loadFuture(*TheModule_, RetVal, RetT);
   }
 
   // garbage collection

@@ -49,7 +49,6 @@ class CodeGen : public RecursiveAstVisiter {
   // visitor results
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
-  Value* CurrentRange_ = nullptr;
   bool IsPacked_ = false;
 
   // symbol tables
@@ -273,15 +272,15 @@ private:
       const std::string &VarName,
       Type* ElementType);
   
-  void createArray(
+  void allocateArray(
       Value* ArrayA,
       Value * SizeV,
       Type* ElementT);
 
   // Initializes a bunch of arrays with a value
-  void initArrays(
+  void initArray(
       Function *TheFunction, 
-      const std::vector<Value*> & VarList,
+      Value* Var,
       Value * InitVal,
       Value * SizeExpr,
       Type * ElementType );
@@ -294,13 +293,6 @@ private:
       Type * ElementType );
   
   // copies one array to another
-  void copyArrays(
-      Function *TheFunction, 
-      Value* Src,
-      const std::vector<Value*> Tgts,
-      Value * SizeExpr,
-      Type * ElementType);
-
   void copyArray(Value* Src, Value* Tgt);
 
   // destroy all arrays
@@ -318,10 +310,6 @@ private:
   Value* getArrayElementPointer(Value*, Type*, Value*);
   
   Value* createArrayPointerAlloca(Value*, Type*);
-
-  std::vector<Value*> createArrayPointerAllocas(
-      const std::vector<Value*> &,
-      Type*);
 
   // get an arrays size
   Value* getArraySize(Value*);
@@ -347,9 +335,8 @@ private:
   std::pair<Function*,bool> getFunction(std::string Name); 
   
   //============================================================================
-  // Future interface
+  // Field interface
   //============================================================================
-  llvm::Value* loadFuture(llvm::Type*, llvm::Value*);
   
   VariableAlloca * createField(
       const std::string &,

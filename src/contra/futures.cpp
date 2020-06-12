@@ -30,8 +30,8 @@ void FutureIdentifier::postVisit(CallExprAST& e)
 
   auto NumArgs = e.getNumArgs();
   for (unsigned i=0; i<NumArgs; ++i) {
-    auto ArgExpr = e.getArgExpr(i);
-    if (!IsTask) ArgExpr->setFuture(false);
+    auto ArgExpr = dynamic_cast<ExprAST*>(e.getArgExpr(i));
+    if (!IsTask && ArgExpr) ArgExpr->setFuture(false);
   }
 
   e.setFuture(IsTask);
@@ -46,12 +46,15 @@ void FutureIdentifier::visit(AssignStmtAST& e)
   for (unsigned il=0, ir=0; il<NumLeft; il++) {
 
     auto RightExpr = e.getRightExpr(ir);
-    auto LeftExpr = e.getLeftExpr(il);
+    auto LeftExpr = dynamic_cast<ExprAST*>(e.getLeftExpr(il));
 
     RightExpr->accept(*this);
 
-    auto IsFuture = RightExpr->isFuture();
-    if (IsFuture)
+    bool IsFuture = false;
+    if (auto RightAsExprAST = dynamic_cast<ExprAST*>(RightExpr))
+      IsFuture = RightAsExprAST->isFuture();
+
+    if (IsFuture && LeftExpr)
       LeftExpr->setFuture();
 
     auto RightVarAST = dynamic_cast<VarAccessExprAST*>(RightExpr);

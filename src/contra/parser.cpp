@@ -483,88 +483,6 @@ std::unique_ptr<NodeAST> Parser::parseUnary() {
       std::move(Operand));
 }
 
-#if 0
-//==============================================================================
-// varexpr ::= 'var' identifier ('=' expression)?
-//                    (',' identifier ('=' expression)?)* 'in' expression
-//==============================================================================
-std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
-
-
-  auto BeginVarLoc = getCurLoc();
-
-  // At least one variable name is required.
-  if (CurTok_ != tok_identifier)
-    THROW_SYNTAX_ERROR("Expected identifier after type", getIdentifierLoc());
-
-  while (true) {
-    
-    VarDeclAST::VariableInfo Var;
-
-    Var.Id = Identifier(getIdentifierStr(), getIdentifierLoc());
-    getNextToken();  // eat identifier.
-
-    //----------------------------------
-    // Array
-    if (CurTok_ == '[') {
-      VarAttr = VarDeclAST::AttrType::Array;
-      auto BeginLoc = getCurLoc();
-      getNextToken(); // eat [
-      if (CurTok_ != ']') Var.SizeExpr = std::move(parseExpression());
-      if (CurTok_ != ']')
-        THROW_SYNTAX_ERROR(
-            "Expected ']'  in array declaration.",
-            LocationRange(BeginLoc, getCurLoc()));
-      getNextToken(); // eat ]
-    }
-    //----------------------------------
-    // field
-    else if (CurTok_ == '{') {
-      VarAttr = VarDeclAST::AttrType::Field;
-      auto BeginLoc = getCurLoc();
-      getNextToken(); // eat {
-      if (CurTok_ != tok_identifier)
-        THROW_SYNTAX_ERROR(
-            "Expected identifier in field declaration.",
-            getIdentifierLoc());
-      Var.IndexExpr = std::move(parseExpression());
-      getNextToken(); // eat identifier
-      if (CurTok_ != '}')
-        THROW_SYNTAX_ERROR(
-            "Expected '}'  in field declaration.",
-            LocationRange(BeginLoc, getCurLoc()));
-      getNextToken(); // eat }
-    }
-
-    Vars.emplace_back(Var);
-
-   if (CurTok_ != ',') break;
-  }
-  
-  auto EndVarLoc = getCurLoc();
-  
-  // Read the optional initializer.
-  std::unique_ptr<NodeAST> Init;
-  if (CurTok_ == tok_asgmt) {
-    getNextToken(); // eat the '='.
-    Init = parseExpression();
-  }
-  else {
-    std::vector<std::string> Names;
-    for ( const auto & V : Vars ) Names.emplace_back(V.Id.getName());
-    THROW_SYNTAX_ERROR("Variable definition for '" << Names << "'"
-        << " has no initializer",
-        LocationRange(BeginVarLoc, EndVarLoc) );
-  }
-
-  return std::make_unique<VarDeclAST>(
-      TypeLoc,
-      Vars,
-      VarType,
-      std::move(Init));
-}
-#endif
-
 //==============================================================================
 // varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
@@ -572,7 +490,6 @@ std::unique_ptr<NodeAST> Parser::parseVarDefExpr() {
 std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
 
   auto BeginLoc = getCurLoc();
-  auto UseLoc = getIdentifierLoc();
   getNextToken();  // eat the use
     
   std::vector<Identifier> RangeIds;
@@ -593,7 +510,6 @@ std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
         getIdentifierLoc());
   getNextToken(); // eat ":".
 
-  auto PartLoc = getIdentifierLoc();
   if (CurTok_ != tok_identifier)
     THROW_SYNTAX_ERROR(
         "Expected identifier after ':'.",

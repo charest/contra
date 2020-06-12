@@ -90,8 +90,6 @@ private:
   void visit(AssignStmtAST&) override;
   void visit(PartitionStmtAST&) override;
 
-  //void visit(VarDeclAST&) override;
-  //void visit(FieldDeclAST&) override;
   void visit(PrototypeAST&) override;
 
   void visit(FunctionAST&) override;
@@ -117,10 +115,10 @@ private:
   FunctionDef* getFunction(const std::string &, const LocationRange &, int);
   
   FunctionDef* getFunction(const Identifier & Id);
- 
+
 public:
   void removeFunction(const std::string & Name);
-
+ 
 private:
 
   // type checking interface
