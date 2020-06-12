@@ -7,10 +7,10 @@ namespace contra {
 using namespace utils;
 using namespace llvm;
 
-Serializer::Serializer(Builder & TheBuilder) :
-  TheBuilder_(TheBuilder),
-  Builder_(TheBuilder.getBuilder()),
-  TheContext_(TheBuilder.getContext()),
+Serializer::Serializer(BuilderHelper & TheHelper) :
+  TheHelper_(TheHelper),
+  Builder_(TheHelper.getBuilder()),
+  TheContext_(TheHelper.getContext()),
   SizeType_(llvmType<size_t>(TheContext_))
 {}
 
@@ -18,7 +18,7 @@ Value* Serializer::getSize(Value* Val, Type* ResultT)
 {
   auto ValT = Val->getType();
   if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
-  return TheBuilder_.getTypeSize(ValT, ResultT );
+  return TheHelper_.getTypeSize(ValT, ResultT );
 }
 
 Value* Serializer::offsetPointer(Value* Ptr, Value* Offset)
@@ -28,7 +28,7 @@ Value* Serializer::offsetPointer(Value* Ptr, Value* Offset)
     auto OffsetT = Offset->getType()->getPointerElementType();
     OffsetV = Builder_.CreateLoad(OffsetT, Offset);
   }
-  auto PtrV = TheBuilder_.getAsValue(Ptr);
+  auto PtrV = TheHelper_.getAsValue(Ptr);
   return Builder_.CreateGEP(PtrV, OffsetV);
 }
 

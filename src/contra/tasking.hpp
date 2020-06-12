@@ -27,7 +27,7 @@ class AbstractTasker {
 
 protected:
 
-  utils::Builder & TheBuilder_;
+  utils::BuilderHelper & TheHelper_;
 
   llvm::IRBuilder<> & Builder_;
   llvm::LLVMContext & TheContext_;
@@ -37,11 +37,11 @@ protected:
 
 public:
   
-  AbstractTasker(utils::Builder & TheBuilder) :
-    TheBuilder_(TheBuilder),
-    Builder_(TheBuilder.getBuilder()),
-    TheContext_(TheBuilder.getContext()),
-    DefaultSerializer_(TheBuilder)
+  AbstractTasker(utils::BuilderHelper & TheHelper) :
+    TheHelper_(TheHelper),
+    Builder_(TheHelper.getBuilder()),
+    TheContext_(TheHelper.getContext()),
+    DefaultSerializer_(TheHelper)
   {}
   
   virtual ~AbstractTasker() = default;

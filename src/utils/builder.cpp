@@ -10,7 +10,7 @@ using namespace llvm;
 //==============================================================================
 // Cast utility
 //==============================================================================
-Value* Builder::createCast(Value* FromVal, Type* ToType)
+Value* BuilderHelper::createCast(Value* FromVal, Type* ToType)
 {
   auto FromType = FromVal->getType();
   auto TheBlock = Builder_.GetInsertBlock();
@@ -31,7 +31,7 @@ Value* Builder::createCast(Value* FromVal, Type* ToType)
 //==============================================================================
 // Cast utility
 //==============================================================================
-Value* Builder::createBitCast(Value* FromVal, Type* ToType)
+Value* BuilderHelper::createBitCast(Value* FromVal, Type* ToType)
 {
   auto TheBlock = Builder_.GetInsertBlock();
   return CastInst::Create(Instruction::BitCast, FromVal, ToType, "cast", TheBlock);
@@ -41,7 +41,7 @@ Value* Builder::createBitCast(Value* FromVal, Type* ToType)
 //==============================================================================
 // Extract values from allocas
 //==============================================================================
-Value* Builder::getAsValue(Value* ValueV)
+Value* BuilderHelper::getAsValue(Value* ValueV)
 {
   if (auto ValueA = dyn_cast<AllocaInst>(ValueV)) {
     auto ValueT = ValueA->getAllocatedType();
@@ -50,7 +50,7 @@ Value* Builder::getAsValue(Value* ValueV)
   return ValueV;
 }
 
-Value* Builder::getAsValue(Value* ValueV, Type* ValueT)
+Value* BuilderHelper::getAsValue(Value* ValueV, Type* ValueT)
 {
   if (auto ValueA = dyn_cast<AllocaInst>(ValueV)) {
     return Builder_.CreateLoad(ValueT, ValueA);
@@ -62,7 +62,7 @@ Value* Builder::getAsValue(Value* ValueV, Type* ValueT)
 //============================================================================  
 // copy value into alloca if necessary
 //============================================================================  
-AllocaInst* Builder::getAsAlloca(Value* ValueV)
+AllocaInst* BuilderHelper::getAsAlloca(Value* ValueV)
 {
   AllocaInst* ValueA = dyn_cast<AllocaInst>(ValueV);
   if (!ValueA) {
@@ -76,7 +76,7 @@ AllocaInst* Builder::getAsAlloca(Value* ValueV)
 //==============================================================================
 // Get pointer to struct member
 //==============================================================================
-Value* Builder::getElementPointer(AllocaInst* ValA, unsigned i)
+Value* BuilderHelper::getElementPointer(AllocaInst* ValA, unsigned i)
 {
   std::vector<Value*> MemberIndices = {
     ConstantInt::get(TheContext_, APInt(32, 0, true)),
@@ -90,7 +90,7 @@ Value* Builder::getElementPointer(AllocaInst* ValA, unsigned i)
 //==============================================================================
 // Get pointer to struct member
 //==============================================================================
-Value* Builder::offsetPointer(Value* Ptr, Value* Offset)
+Value* BuilderHelper::offsetPointer(Value* Ptr, Value* Offset)
 {
   auto OffsetV = getAsValue(Offset);
   auto PtrV = getAsValue(Ptr);
@@ -100,7 +100,7 @@ Value* Builder::offsetPointer(Value* Ptr, Value* Offset)
 //==============================================================================
 // extract a struct value
 //==============================================================================
-Value* Builder::extractValue(Value* Val, unsigned i) {
+Value* BuilderHelper::extractValue(Value* Val, unsigned i) {
   if (auto ValA = dyn_cast<AllocaInst>(Val)) {
     auto ValGEP = getElementPointer(ValA, i);
     auto MemberT = ValGEP->getType()->getPointerElementType();
@@ -114,7 +114,7 @@ Value* Builder::extractValue(Value* Val, unsigned i) {
 //==============================================================================
 // insert a struct value
 //==============================================================================
-void Builder::insertValue(Value* Val, Value* Member, unsigned i) {
+void BuilderHelper::insertValue(Value* Val, Value* Member, unsigned i) {
   if (auto ValA = dyn_cast<AllocaInst>(Val)) {
     auto ValGEP = getElementPointer(ValA, i);
     auto MemberV = getAsValue(Member);
@@ -130,7 +130,7 @@ void Builder::insertValue(Value* Val, Value* Member, unsigned i) {
 //==============================================================================
 // Get the base type of an alloca or value
 //==============================================================================
-Type* Builder::getAllocatedType(Value* Val)
+Type* BuilderHelper::getAllocatedType(Value* Val)
 {
   auto ValT = Val->getType();
   if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
@@ -140,7 +140,7 @@ Type* Builder::getAllocatedType(Value* Val)
 //==============================================================================
 // get the allocated size of a type
 //==============================================================================
-Value* Builder::getTypeSize(Type* ValT, Type* ResultT)
+Value* BuilderHelper::getTypeSize(Type* ValT, Type* ResultT)
 {
   auto TheBlock = Builder_.GetInsertBlock();
   auto PtrT = ValT->getPointerTo();
@@ -156,7 +156,7 @@ Value* Builder::getTypeSize(Type* ValT, Type* ResultT)
   return DataSize;
 }
 
-std::size_t Builder::getTypeSize(const Module & TheModule, Type* Ty)
+std::size_t BuilderHelper::getTypeSize(const Module & TheModule, Type* Ty)
 {
   auto DL = std::make_unique<DataLayout>(&TheModule);
   return DL->getTypeAllocSizeInBits(Ty);
@@ -165,7 +165,7 @@ std::size_t Builder::getTypeSize(const Module & TheModule, Type* Ty)
 //============================================================================  
 // Create an alloca
 //============================================================================  
-AllocaInst* Builder::createEntryBlockAlloca(
+AllocaInst* BuilderHelper::createEntryBlockAlloca(
     Type* Ty,
     const std::string & Name)
 {
@@ -173,7 +173,7 @@ AllocaInst* Builder::createEntryBlockAlloca(
   return createEntryBlockAlloca(TheFunction, Ty, Name);
 }
 
-AllocaInst* Builder::createEntryBlockAlloca(
+AllocaInst* BuilderHelper::createEntryBlockAlloca(
     Function* F,
     Type* Ty,
     const std::string & Name)
@@ -186,7 +186,7 @@ AllocaInst* Builder::createEntryBlockAlloca(
 //============================================================================  
 // load an alloca
 //============================================================================  
-Value* Builder::load(
+Value* BuilderHelper::load(
     AllocaInst* ValA,
     const std::string & Name)
 {
@@ -194,7 +194,7 @@ Value* Builder::load(
   return Builder_.CreateLoad(ValT, ValA, Name);
 }
 
-Value* Builder::load(
+Value* BuilderHelper::load(
     Value* ValA,
     const std::string & Name)
 {
@@ -206,7 +206,7 @@ Value* Builder::load(
 //============================================================================  
 // increment a counter
 //============================================================================  
-void Builder::increment(
+void BuilderHelper::increment(
     Value* OffsetA,
     Value* Incr,
     const std::string & Name)
@@ -221,7 +221,7 @@ void Builder::increment(
 //============================================================================  
 // Malloc
 //============================================================================  
-Instruction* Builder::createMalloc(
+Instruction* BuilderHelper::createMalloc(
     Type * Ty,
     Value* Size,
     const std::string & Name)
@@ -246,7 +246,7 @@ Instruction* Builder::createMalloc(
 //============================================================================  
 // Free
 //============================================================================  
-void Builder::createFree(
+void BuilderHelper::createFree(
     Value* Val,
     const std::string & Name)
 {
@@ -261,7 +261,7 @@ void Builder::createFree(
 //============================================================================  
 // Create a function
 //============================================================================  
-FunctionCallee Builder::createFunction(
+FunctionCallee BuilderHelper::createFunction(
     Module & TheModule,
     const std::string & Name,
     Type* ReturnT,
@@ -275,7 +275,7 @@ FunctionCallee Builder::createFunction(
 //============================================================================  
 // Call a function
 //============================================================================  
-CallInst* Builder::callFunction(
+CallInst* BuilderHelper::callFunction(
     Module & TheModule,
     const std::string & Name,
     Type* ReturnT,

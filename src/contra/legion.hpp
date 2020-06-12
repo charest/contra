@@ -88,7 +88,7 @@ protected:
 
 public:
  
-  LegionTasker(utils::Builder & TheBuilder);
+  LegionTasker(utils::BuilderHelper & TheHelper);
 
   virtual PreambleResult taskPreamble(
       llvm::Module &,

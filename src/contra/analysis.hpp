@@ -37,7 +37,6 @@ private:
   VariableType PartitionType_ = setPartition(I64Type_);
   
   bool HaveTopLevelTask_ = false;
-  bool TrackVariableAccess_ = true;
 
   VariableType  TypeResult_;
   VariableType  DestinationType_;

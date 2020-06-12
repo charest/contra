@@ -36,7 +36,7 @@ class CodeGen : public RecursiveAstVisiter {
   using VariableTable = std::map<std::string, VariableAlloca>;
   
   // LLVM builder types  
-  utils::Builder TheBuilder_;
+  utils::BuilderHelper TheHelper_;
   
   llvm::LLVMContext & TheContext_;
   llvm::IRBuilder<> & Builder_;

@@ -15,7 +15,7 @@ Type* AbstractTasker::reduceStruct(
   auto NumElem = StructT->getNumElements();
   auto ElementTs = StructT->elements();
   if (NumElem == 1) return ElementTs[0];
-  auto BitWidth = TheBuilder_.getTypeSize(TheModule, StructT);
+  auto BitWidth = TheHelper_.getTypeSize(TheModule, StructT);
   return IntegerType::get(TheContext_, BitWidth);
 }
 
@@ -27,7 +27,7 @@ Type* AbstractTasker::reduceArray(
   auto NumElem = ArrayT->getNumElements();
   auto ElementT = ArrayT->getElementType();
   if (NumElem == 1) return ElementT;
-  auto BitWidth = TheBuilder_.getTypeSize(TheModule, ArrayT);
+  auto BitWidth = TheHelper_.getTypeSize(TheModule, ArrayT);
   return IntegerType::get(TheContext_, BitWidth);
 }
 
@@ -37,7 +37,7 @@ Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
   auto T = V->getType();
   if (auto StrucT = dyn_cast<StructType>(T)) {
     auto NewT = reduceStruct(StrucT, TheModule);
-    return TheBuilder_.createBitCast(V, NewT);
+    return TheHelper_.createBitCast(V, NewT);
   }
   else {
     return V;
@@ -63,12 +63,12 @@ Value* AbstractTasker::load(
   auto BaseT = AllocaT->getPointerElementType();
   if (auto StructT = dyn_cast<StructType>(BaseT)) {
     auto ReducedT = reduceStruct(StructT, TheModule);
-    auto Cast = TheBuilder_.createBitCast(Alloca, ReducedT->getPointerTo());
+    auto Cast = TheHelper_.createBitCast(Alloca, ReducedT->getPointerTo());
     return Builder_.CreateLoad(ReducedT, Cast, Str);
   }
   else if (auto ArrayT = dyn_cast<ArrayType>(BaseT)) {
     auto ReducedT = reduceArray(ArrayT, TheModule);
-    auto Cast = TheBuilder_.createBitCast(Alloca, ReducedT->getPointerTo());
+    auto Cast = TheHelper_.createBitCast(Alloca, ReducedT->getPointerTo());
     return Builder_.CreateLoad(ReducedT, Cast, Str);
   }
   else {

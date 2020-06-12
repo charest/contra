@@ -12,7 +12,7 @@ namespace contra {
 //==============================================================================
 class Serializer {
   
-  utils::Builder & TheBuilder_;
+  utils::BuilderHelper & TheHelper_;
   
   llvm::IRBuilder<> & Builder_;
   llvm::LLVMContext & TheContext_;
@@ -21,7 +21,7 @@ class Serializer {
 
 public:
 
-  Serializer(utils::Builder & TheBuilder);
+  Serializer(utils::BuilderHelper & TheHelper);
 
   llvm::Value* getSize(llvm::Value*, llvm::Type*);
   llvm::Value* offsetPointer(llvm::Value*, llvm::Value*);

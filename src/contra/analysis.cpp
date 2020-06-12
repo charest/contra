@@ -120,7 +120,7 @@ FunctionDef* Analyzer::insertFunction(
 VariableDef* Analyzer::getVariable(const Identifier & Id)
 {
   const auto & Name = Id.getName();
-  auto res = Context::instance().getVariable(Name, !TrackVariableAccess_);
+  auto res = Context::instance().getVariable(Name);
   if (!res)
     THROW_NAME_ERROR("Variable '" << Name << "' has not been"
        << " previously defined", Id.getLoc());
@@ -151,7 +151,7 @@ std::pair<VariableDef*, bool> Analyzer::getOrInsertVariable(
   const auto & Loc = Id.getLoc();
   
   {
-    auto res = Context::instance().getVariable(Name, !TrackVariableAccess_);
+    auto res = Context::instance().getVariable(Name);
     if (res) return {res.get(), false};
   }
  

@@ -11,7 +11,7 @@
 
 namespace utils {
 
-class Builder {
+class BuilderHelper {
   using AllocaInst = llvm::AllocaInst;
   using CallInst = llvm::CallInst;
   using FunctionCallee = llvm::FunctionCallee;
@@ -25,7 +25,7 @@ class Builder {
   llvm::IRBuilder<> Builder_;
 
 public:
-  Builder() : Builder_(TheContext_) {}
+  BuilderHelper() : Builder_(TheContext_) {}
 
   auto & getBuilder() { return Builder_; }
   auto & getContext() { return TheContext_; }

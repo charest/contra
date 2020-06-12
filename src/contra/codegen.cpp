@@ -38,8 +38,8 @@ namespace contra {
 // Constructor
 //==============================================================================
 CodeGen::CodeGen (bool debug = false) :
-  TheContext_(TheBuilder_.getContext()),
-  Builder_(TheBuilder_.getBuilder())
+  TheContext_(TheHelper_.getContext()),
+  Builder_(TheHelper_.getBuilder())
 {
   std::vector<std::string> Args = {
     "./contra",
@@ -62,7 +62,7 @@ CodeGen::CodeGen (bool debug = false) :
 
   librt::RunTimeLib::setup(TheContext_);
   
-  Tasker_ = std::make_unique<LegionTasker>(TheBuilder_);
+  Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
 
   I64Type_  = llvmType<int_t>(TheContext_);
   F64Type_  = llvmType<real_t>(TheContext_);
@@ -229,7 +229,7 @@ VariableAlloca * CodeGen::createVariable(
     Type* VarType)
 {
   Value* NewVar;
-  NewVar = TheBuilder_.createEntryBlockAlloca(VarType, VarName);
+  NewVar = TheHelper_.createEntryBlockAlloca(VarType, VarName);
   return insertVariable(VarName, VariableAlloca{NewVar, VarType});
 }
         
@@ -251,11 +251,11 @@ std::pair<VariableAlloca*, bool> CodeGen::getOrCreateVariable(
 
   if (VarType.isArray()) {
     VarT = getLLVMType(VarType.getIndexedType());
-    NewVar = TheBuilder_.createEntryBlockAlloca(ArrayType_, VarName);
+    NewVar = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName);
   }
   else {
     VarT = getLLVMType(VarType);
-    NewVar = TheBuilder_.createEntryBlockAlloca(VarT, VarName);
+    NewVar = TheHelper_.createEntryBlockAlloca(VarT, VarName);
   }
   
   auto VarE = insertVariable(VarName, VariableAlloca{NewVar, VarT});
@@ -312,7 +312,7 @@ VariableAlloca * CodeGen::createArray(
     Type* ElementT)
 {
   Value* NewVar;
-  NewVar = TheBuilder_.createEntryBlockAlloca(ArrayType_, VarName);
+  NewVar = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName);
   auto it = VariableTable_.front().emplace(VarName, VariableAlloca{NewVar, ElementT});
   return &it.first->second;
 }
@@ -333,9 +333,9 @@ VariableAlloca * CodeGen::createArray(
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
-  SizeExpr = TheBuilder_.getAsValue(SizeExpr);
-  auto DataSize = TheBuilder_.getTypeSize<int_t>(ElementType);
-  auto ArrayA = TheBuilder_.createEntryBlockAlloca(ArrayType_, VarName+"vec");
+  SizeExpr = TheHelper_.getAsValue(SizeExpr);
+  auto DataSize = TheHelper_.getTypeSize<int_t>(ElementType);
+  auto ArrayA = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName+"vec");
 
   std::vector<Value*> ArgVs = {SizeExpr, DataSize, ArrayA};
   Builder_.CreateCall(F, ArgVs);
@@ -353,7 +353,7 @@ void CodeGen::createArray(
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
 
 
-  auto DataSize = TheBuilder_.getTypeSize<int_t>(ElementT);
+  auto DataSize = TheHelper_.getTypeSize<int_t>(ElementT);
   std::vector<Value*> ArgVs = {SizeV, DataSize, ArrayA};
   Builder_.CreateCall(F, ArgVs);
 }
@@ -374,7 +374,7 @@ void CodeGen::initArrays(
   auto ArrayPtrAs = createArrayPointerAllocas(ArrayAs, ElementT);
 
   // create a loop
-  auto Alloca = TheBuilder_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
+  auto Alloca = TheHelper_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
   Value * StartVal = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartVal, Alloca);
   
@@ -383,20 +383,20 @@ void CodeGen::initArrays(
   auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
-  auto CurVar = TheBuilder_.load(Alloca);
-  SizeV = TheBuilder_.getAsValue(SizeV);
+  auto CurVar = TheHelper_.load(Alloca);
+  SizeV = TheHelper_.getAsValue(SizeV);
   auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeV, "initcond");
   Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
   Builder_.SetInsertPoint(LoopBB);
 
   // store value
-  InitV = TheBuilder_.getAsValue(InitV);
+  InitV = TheHelper_.getAsValue(InitV);
   for ( auto ArrayPtrA : ArrayPtrAs)
     insertArrayValue(ArrayPtrA, ElementT, CurVar, InitV);
 
   // increment loop
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
-  TheBuilder_.increment(Alloca, StepVal);
+  TheHelper_.increment(Alloca, StepVal);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(AfterBB);
 }
@@ -434,7 +434,7 @@ void CodeGen::copyArrays(
   auto SrcArrayPtrA = createArrayPointerAlloca(SrcArrayA, ElementT);
   auto TgtArrayPtrAs = createArrayPointerAllocas(TgtArrayAs, ElementT);
 
-  auto CounterA = TheBuilder_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
+  auto CounterA = TheHelper_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
   Value * StartV = llvmValue<int_t>(TheContext_, 0);
   Builder_.CreateStore(StartV, CounterA);
   
@@ -454,7 +454,7 @@ void CodeGen::copyArrays(
     insertArrayValue( TgtArrayPtrA, ElementT, CounterV, SrcV);
 
   auto StepVal = llvmValue<int_t>(TheContext_, 1);
-  TheBuilder_.increment(CounterA, StepVal);
+  TheHelper_.increment(CounterA, StepVal);
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(AfterBB);
 }
@@ -467,7 +467,7 @@ void CodeGen::copyArray(Value* SrcArrayV, Value* TgtArrayA)
   auto F = TheModule_->getFunction("copy");
   if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "copy");
 
-  auto SrcArrayA = TheBuilder_.getAsAlloca(SrcArrayV);
+  auto SrcArrayA = TheHelper_.getAsAlloca(SrcArrayV);
 
   std::vector<Value*> Args = {SrcArrayA, TgtArrayA};
   Builder_.CreateCall(F, Args);
@@ -482,7 +482,7 @@ Value* CodeGen::createArrayPointerAlloca(
 {
   auto ElementPtrT = ElementT->getPointerTo();
   auto ArrayV = getArrayPointer(ArrayA, ElementT);
-  auto ArrayPtrA = TheBuilder_.createEntryBlockAlloca(ElementPtrT);
+  auto ArrayPtrA = TheHelper_.createEntryBlockAlloca(ElementPtrT);
   Builder_.CreateStore(ArrayV, ArrayPtrA);
   return ArrayPtrA;
 }
@@ -511,9 +511,9 @@ Value* CodeGen::getArrayPointer(
     Value* ArrayA,
     Type * ElementT)
 {
-  auto PtrV = TheBuilder_.extractValue(ArrayA, 0);
+  auto PtrV = TheHelper_.extractValue(ArrayA, 0);
   auto PtrT = ElementT->getPointerTo();
-  Value* CastV = TheBuilder_.createBitCast(PtrV, PtrT);
+  Value* CastV = TheHelper_.createBitCast(PtrV, PtrT);
   return CastV;
 }
 
@@ -526,7 +526,7 @@ Value* CodeGen::getArrayElementPointer(
     Value* IndexV)
 {
   auto ArrayPtrV = getArrayPointer(ArrayA, ElementT);
-  IndexV = TheBuilder_.getAsValue(IndexV);
+  IndexV = TheHelper_.getAsValue(IndexV);
   return Builder_.CreateGEP(ArrayPtrV, IndexV);
 }
 
@@ -534,7 +534,7 @@ Value* CodeGen::getArrayElementPointer(
 // Load an array value
 //==============================================================================
 Value* CodeGen::getArraySize(Value* ArrayA)
-{ return TheBuilder_.extractValue(ArrayA, 1); }
+{ return TheHelper_.extractValue(ArrayA, 1); }
   
 
 //==============================================================================
@@ -549,8 +549,8 @@ Value* CodeGen::extractArrayValue(
   if (isArray(ArrayA))
     ArrayGEP = getArrayElementPointer(ArrayA, ElementT, IndexV);
   else
-    ArrayGEP = TheBuilder_.offsetPointer(ArrayA, IndexV);
-  return TheBuilder_.load(ArrayGEP);
+    ArrayGEP = TheHelper_.offsetPointer(ArrayA, IndexV);
+  return TheHelper_.load(ArrayGEP);
 }
 
 //==============================================================================
@@ -562,12 +562,12 @@ void CodeGen::insertArrayValue(
     Value* IndexV,
     Value* ValueV)
 {
-  ValueV = TheBuilder_.getAsValue(ValueV);
+  ValueV = TheHelper_.getAsValue(ValueV);
   Value* ArrayPtr = nullptr;
   if (isArray(ArrayA))
     ArrayPtr = getArrayElementPointer(ArrayA, ElementT, IndexV);
   else
-    ArrayPtr = TheBuilder_.offsetPointer(ArrayA, IndexV);
+    ArrayPtr = TheHelper_.offsetPointer(ArrayA, IndexV);
   Builder_.CreateStore(ValueV, ArrayPtr);
 }
   
@@ -797,7 +797,7 @@ void CodeGen::visit(ArrayExprAST &e)
   else
     initArray(TheFunction, ArrayA, InitVals, VarT);
 
-  ValueResult_ =  TheBuilder_.load(ArrayA, ArrayN);
+  ValueResult_ =  TheHelper_.load(ArrayA, ArrayN);
 }
 
 //==============================================================================
@@ -817,7 +817,7 @@ void CodeGen::visit(RangeExprAST &e)
   auto RangeE = createRange(RangeN, StartV, EndV, StepV, IsTask );
   auto RangeA = RangeE->getAlloca();
 
-  ValueResult_ =  TheBuilder_.load(RangeA, RangeN);
+  ValueResult_ =  TheHelper_.load(RangeA, RangeN);
 }
   
 //==============================================================================
@@ -830,7 +830,7 @@ void CodeGen::visit(CastExprAST &e)
   auto FromV = runExprVisitor(*e.getFromExpr());
 
   if (ToType.isStruct()) {
-    auto ToA = TheBuilder_.createEntryBlockAlloca(ToT);
+    auto ToA = TheHelper_.createEntryBlockAlloca(ToT);
 
     const auto & ToMembers = ToType.getMembers();
     auto NumElem = ToMembers.size();
@@ -838,15 +838,15 @@ void CodeGen::visit(CastExprAST &e)
     for (unsigned i=0; i<NumElem; ++i) {
       auto StructT = cast<StructType>(ToT);
       auto MemberT = StructT->getElementType(i);
-      Value* MemberV = TheBuilder_.extractValue(FromV, i);
-      MemberV = TheBuilder_.createCast(MemberV, MemberT);
-      TheBuilder_.insertValue(ToA, MemberV, i); 
+      Value* MemberV = TheHelper_.extractValue(FromV, i);
+      MemberV = TheHelper_.createCast(MemberV, MemberT);
+      TheHelper_.insertValue(ToA, MemberV, i); 
     }
-    ValueResult_ = TheBuilder_.load(ToA);
+    ValueResult_ = TheHelper_.load(ToA);
   }
   else {
-    FromV = TheBuilder_.getAsValue(FromV);
-    ValueResult_ = TheBuilder_.createCast(FromV, ToT);
+    FromV = TheHelper_.getAsValue(FromV);
+    ValueResult_ = TheHelper_.createCast(FromV, ToT);
   }
 
 }
@@ -855,7 +855,7 @@ void CodeGen::visit(CastExprAST &e)
 // UnaryExprAST - Expression class for a unary operator.
 //==============================================================================
 void CodeGen::visit(UnaryExprAST & e) {
-  auto OperandV = TheBuilder_.getAsValue( runExprVisitor(*e.getOpExpr()) );
+  auto OperandV = TheHelper_.getAsValue( runExprVisitor(*e.getOpExpr()) );
   
   if (OperandV->getType()->isFloatingPointTy()) {
   
@@ -883,8 +883,8 @@ void CodeGen::visit(UnaryExprAST & e) {
 //==============================================================================
 void CodeGen::visit(BinaryExprAST& e) {
   
-  Value *L = TheBuilder_.getAsValue( runExprVisitor(*e.getLeftExpr()) );
-  Value *R = TheBuilder_.getAsValue( runExprVisitor(*e.getRightExpr()) );
+  Value *L = TheHelper_.getAsValue( runExprVisitor(*e.getLeftExpr()) );
+  Value *R = TheHelper_.getAsValue( runExprVisitor(*e.getRightExpr()) );
 
   auto l_is_real = L->getType()->isFloatingPointTy();
   auto r_is_real = R->getType()->isFloatingPointTy();
@@ -985,7 +985,7 @@ void CodeGen::visit(CallExprAST &e) {
   // helpers to get arguments
   auto getArgValue = [&](auto i) { 
     auto Arg = runExprVisitor(*e.getArgExpr(i));
-    return TheBuilder_.getAsValue(Arg);
+    return TheHelper_.getAsValue(Arg);
   };
   auto getArg = [&](auto i)
   { return runExprVisitor(*e.getArgExpr(i)); };
@@ -993,7 +993,7 @@ void CodeGen::visit(CallExprAST &e) {
   // check if its a cast
   if (isLLVMType(Name)) {
     auto ToT = getLLVMType(Name);
-    ValueResult_ = TheBuilder_.createCast(getArgValue(0), ToT);
+    ValueResult_ = TheHelper_.createCast(getArgValue(0), ToT);
     return;
   }
   else if (Name == "len") {
@@ -1069,7 +1069,7 @@ void CodeGen::visit(CallExprAST &e) {
   //----------------------------------------------------------------------------
   else {
     std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
-    for (auto & A : ArgVs) A = TheBuilder_.getAsValue(A);
+    for (auto & A : ArgVs) A = TheHelper_.getAsValue(A);
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
   }
 
@@ -1083,12 +1083,12 @@ void CodeGen::visit(CallExprAST &e) {
 void CodeGen::visit(ExprListAST & e) {
 
   auto StructT = getLLVMType(e.getType());
-  auto StructA = TheBuilder_.createEntryBlockAlloca(StructT, "struct.a");
+  auto StructA = TheHelper_.createEntryBlockAlloca(StructT, "struct.a");
     
   unsigned i = 0;
   for (const auto & Expr : e.getExprs()) {
     auto MemberV = runExprVisitor(*Expr);
-    TheBuilder_.insertValue(StructA, MemberV, i);
+    TheHelper_.insertValue(StructA, MemberV, i);
     i++;
   }
 
@@ -1201,14 +1201,14 @@ void CodeGen::visit(ForStmtAST& e) {
   
   // Emit the start code first, without 'variable' in scope.
   Value* StartV = runStmtVisitor(*e.getStartExpr());
-  Value* EndA = TheBuilder_.createEntryBlockAlloca(VarT, VarN+"end");
-  Value* StepA = TheBuilder_.createEntryBlockAlloca(VarT, VarN+"step");
+  Value* EndA = TheHelper_.createEntryBlockAlloca(VarT, VarN+"end");
+  Value* StepA = TheHelper_.createEntryBlockAlloca(VarT, VarN+"step");
   if (Tasker_->isRange(StartV)) {
-    auto EndV = TheBuilder_.extractValue(StartV, 1);
+    auto EndV = TheHelper_.extractValue(StartV, 1);
     Builder_.CreateStore(EndV, EndA);
-    auto StepV = TheBuilder_.extractValue(StartV, 2);
+    auto StepV = TheHelper_.extractValue(StartV, 2);
     Builder_.CreateStore(StepV, StepA);
-    StartV = TheBuilder_.extractValue(StartV, 0);
+    StartV = TheHelper_.extractValue(StartV, 0);
   }
   Builder_.CreateStore(StartV, VarA);
 
@@ -1223,11 +1223,11 @@ void CodeGen::visit(ForStmtAST& e) {
   Builder_.SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurV = TheBuilder_.load(VarA);
+  Value *CurV = TheHelper_.load(VarA);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  Value* EndV = TheBuilder_.load(EndA);
+  Value* EndV = TheHelper_.load(EndA);
   EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
 
 
@@ -1256,7 +1256,7 @@ void CodeGen::visit(ForStmtAST& e) {
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
-  TheBuilder_.increment( TheBuilder_.getAsAlloca(VarA), StepA);
+  TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA);
 
   // Insert the conditional branch into the end of LoopEndBB.
   Builder_.CreateBr(BeforeBB);
@@ -1366,7 +1366,7 @@ void CodeGen::visit(AssignStmtAST & e)
     NumRight = StructT->getNumElements();
     RightVs.clear();
     for (unsigned i=0; i<NumRight; ++i)
-      RightVs.emplace_back( TheBuilder_.extractValue(StructV, i) );
+      RightVs.emplace_back( TheHelper_.extractValue(StructV, i) );
   }
 
   auto RightIt = RightVs.begin();
@@ -1384,7 +1384,7 @@ void CodeGen::visit(AssignStmtAST & e)
     // Codegen the RHS.
     Value* VariableV = *RightIt;
     if (auto CastType = e.getCast(il))
-      VariableV = TheBuilder_.createCast(VariableV, getLLVMType(*CastType));
+      VariableV = TheHelper_.createCast(VariableV, getLLVMType(*CastType));
 
     // Look up the name.
     const auto & VarType = LHSE->getType();
@@ -1417,7 +1417,7 @@ void CodeGen::visit(AssignStmtAST & e)
     // array = ?
     else if (isArray(VariableA)) {
       if (VarInserted) {
-        auto SizeV = TheBuilder_.extractValue(VariableV, 1);
+        auto SizeV = TheHelper_.extractValue(VariableV, 1);
         createArray(VariableA, SizeV, VarE->getType() );
       }
       copyArray(VariableV, VariableA);
@@ -1451,7 +1451,7 @@ void CodeGen::visit(AssignStmtAST & e)
     // scalar = scalar
     else {
       if (Tasker_->isRange(VariableV)) VarE->setOwner(false);
-      VariableV = TheBuilder_.getAsValue(VariableV);
+      VariableV = TheHelper_.getAsValue(VariableV);
       Builder_.CreateStore(VariableV, VariableA);
     }
 
@@ -1512,7 +1512,7 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
   Value* RetVal = nullptr;
   if ( e.getReturnExpr() ) {
     RetVal = runStmtVisitor(*e.getReturnExpr());
-    if (RetVal) RetVal = TheBuilder_.getAsValue(RetVal);
+    if (RetVal) RetVal = TheHelper_.getAsValue(RetVal);
   }
 
   return RetVal;
