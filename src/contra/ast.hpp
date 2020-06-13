@@ -873,6 +873,7 @@ protected:
   bool IsTopExpression_ = false;
   bool IsTask_ = false;
   std::string Name_;
+  bool IsLeaf_ = false;
 
   FunctionDef* FunctionDef_ = nullptr;
 
@@ -943,6 +944,9 @@ public:
 
   auto getFunctionDef() const { return FunctionDef_; }
   void setFunctionDef(FunctionDef* F) { FunctionDef_ = F; }
+
+  void setLeaf(bool IsLeaf = true) { IsLeaf_ = IsLeaf; }
+  bool isLeaf() const { return IsLeaf_; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -978,6 +982,7 @@ class IndexTaskAST : public FunctionAST {
   std::string LoopVarName_;
   std::vector<VariableDef*> Vars_;
   std::map<std::string, VariableType> VarOverrides_;
+  bool HasAutomaticPartitions_ = false;
 
 public:
 
@@ -986,11 +991,13 @@ public:
       ASTBlock Body,
       const std::string & LoopVar,
       const std::vector<VariableDef*>& Vars,
-      const std::map<std::string, VariableType>& VarOverrides) :
+      const std::map<std::string, VariableType>& VarOverrides,
+      bool HasAutomaticPartitions = false) :
     FunctionAST(Name, std::move(Body), true, false),
     LoopVarName_(LoopVar),
     Vars_(Vars),
-    VarOverrides_(VarOverrides)
+    VarOverrides_(VarOverrides),
+    HasAutomaticPartitions_(HasAutomaticPartitions)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -1007,6 +1014,8 @@ public:
   const auto & getName() const { return Name_; }
 
   const auto & getVarOverrides() const { return VarOverrides_; }
+
+  auto hasAutomaticPartitions() const { return HasAutomaticPartitions_; }
 
 };
 

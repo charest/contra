@@ -42,7 +42,8 @@ public:
   void setTop(bool IsTop = true) { IsTop_ = IsTop; }
 
   bool isLeaf() const { return IsLeaf_; }
-  void setLeaf(bool IsLeaf = true) { IsLeaf_ = IsLeaf; }
+  void setLeaf(bool IsLeaf = true) { 
+    std::cout << "setting " << IsLeaf << " for " << Name_ << std::endl; IsLeaf_ = IsLeaf; }
 
 };
 

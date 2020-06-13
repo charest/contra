@@ -685,7 +685,6 @@ void LegionTasker::createRegistrationArguments(
   auto FalseV = Constant::getNullValue(BoolT);
   Builder_.CreateMemSet(TaskConfigA, FalseV, 4, 1); 
 
-
   if (Task.isLeaf()) {
     auto TrueV = llvmValue(TheContext_, BoolT, 1);
     TheHelper_.insertValue(TaskConfigA, TrueV, 0);

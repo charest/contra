@@ -1,6 +1,7 @@
 #include "contra.hpp"
 #include "errors.hpp"
 #include "futures.hpp"
+#include "leafs.hpp"
 #include "loops.hpp"
 
 #include <iostream>
@@ -66,6 +67,10 @@ std::vector<std::unique_ptr<FunctionAST>>
   // identify futures
   FutureIdentifier TheFut;
   for ( const auto & FnAST : Fs )  TheFut.runVisitor(*FnAST);
+  
+  // identify leafs
+  LeafIdentifier TheLeaf;
+  for ( const auto & FnAST : Fs )  TheLeaf.runVisitor(*FnAST);
   
   return Fs;
 }

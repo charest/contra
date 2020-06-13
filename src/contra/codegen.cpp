@@ -934,7 +934,7 @@ void CodeGen::visit(CallExprAST &e) {
 
   //----------------------------------------------------------------------------
   if (IsTask) {
-    auto TaskI = Tasker_->getTask(Name);
+    const auto & TaskI = Tasker_->getTask(Name);
     Value* FutureV = nullptr;
     
     if (e.isTopLevelTask()) {
@@ -1177,7 +1177,7 @@ void CodeGen::visit(ForStmtAST& e) {
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
-  TheHelper_.increment( TheHelper_.getAsAlloca(VarA), llvmValue<int_t>(TheContext_,1) );
+  TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA );
 
   // Insert the conditional branch into the end of LoopEndBB.
   Builder_.CreateBr(BeforeBB);
@@ -1251,7 +1251,7 @@ void CodeGen::visit(ForeachStmtAST& e)
     }
 
     auto TaskN = e.getName();
-    auto TaskI = Tasker_->getTask(TaskN);
+    const auto & TaskI = Tasker_->getTask(TaskN);
     Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, PartAs, RangeV);
     
     popScope();
@@ -1680,6 +1680,7 @@ void CodeGen::visit(TaskAST& e)
   
   // insert the task 
   auto & TaskI = Tasker_->insertTask(Name);
+  TaskI.setLeaf(e.isLeaf());
   
   // generate wrapped task
   auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
@@ -1793,9 +1794,8 @@ void CodeGen::visit(IndexTaskAST& e)
 	Builder_.CreateRetVoid();
   
 	// register it
-  auto TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
-  //if (TaskN == "__main_loop3__" || TaskN == "__main_loop4__")
-  //  TaskI.setLeaf(); // HACK
+  auto & TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
+  TaskI.setLeaf(e.isLeaf());
 
  	verifyFunction(*Wrapper.TheFunction);
 

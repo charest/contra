@@ -28,6 +28,8 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
     }
   }
 
+  auto HasAutomaticPartitioning = false;
+
   std::map<std::string, VariableType> VarOverride;
   for (auto VarD : e.getAccessedVariables()) {
     const auto & VarN = VarD->getName();
@@ -36,6 +38,9 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
       OverrideType = VarD->getType();
       OverrideType.reset();
       OverrideType.setPartition();
+    }
+    else if (VarD->getType().isRange()) {
+      HasAutomaticPartitioning = true;
     }
   }
 
@@ -49,7 +54,8 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
       std::move(e.moveBodyExprs()),
       LoopVarName,
       e.getAccessedVariables(),
-      VarOverride);
+      VarOverride,
+      HasAutomaticPartitioning);
 
   e.setFieldPartitions(FieldPartitions);
 
