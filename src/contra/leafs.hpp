@@ -22,9 +22,10 @@ public:
     e.setLeaf(!CallsTask_);
   }
   
-  void postVisit(IndexTaskAST& e) override;
   void postVisit(CallExprAST& e) override;
+  void postVisit(AssignStmtAST& e) override;
   void postVisit(ForeachStmtAST& e) override;
+  void postVisit(IndexTaskAST& e) override;
 
 };
 
