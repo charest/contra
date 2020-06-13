@@ -11,6 +11,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 extern "C" {
 
+//==============================================================================
 struct contra_legion_index_space_t {
   int_t start;
   int_t end;
@@ -18,6 +19,7 @@ struct contra_legion_index_space_t {
   legion_index_space_t index_space;
 };
 
+//==============================================================================
 struct contra_legion_field_t {
   legion_index_space_t index_space;
   legion_field_space_t field_space;
@@ -26,6 +28,7 @@ struct contra_legion_field_t {
   legion_logical_region_t logical_region;
 };
 
+//==============================================================================
 struct contra_legion_accessor_t {
   legion_field_id_t field_id;
   legion_physical_region_t physical_region;
@@ -39,8 +42,12 @@ struct contra_legion_accessor_t {
   std::size_t data_size;
 };
 
+//==============================================================================
+// Index partition data
+//==============================================================================
 struct contra_legion_partitions_t {
   
+  //------------------------------------
   struct IndexPartitionDeleter {
     legion_runtime_t * runtime;
     legion_context_t * context;
@@ -54,6 +61,7 @@ struct contra_legion_partitions_t {
     }
   };
   
+  //------------------------------------
   struct LogicalPartitionDeleter {
     legion_runtime_t * runtime;
     legion_context_t * context;
@@ -67,13 +75,15 @@ struct contra_legion_partitions_t {
     }
   };
 
+  //------------------------------------
   using IndexPartitionVal = std::unique_ptr<legion_index_partition_t, IndexPartitionDeleter>;
   using IndexPartitionMap = std::unordered_map< legion_index_space_id_t, IndexPartitionVal >;
-  std::forward_list< IndexPartitionMap > IndexPartitions;
   
+  //------------------------------------
   using LogicalPartitionKey = std::pair<legion_field_id_t, legion_index_partition_id_t>;
   using LogicalPartitionVal = std::unique_ptr<legion_logical_partition_t, LogicalPartitionDeleter>;
 
+  //------------------------------------
   struct LogicalPartitionHash {
     std::size_t operator () (const LogicalPartitionKey &p) const
     {
@@ -83,32 +93,15 @@ struct contra_legion_partitions_t {
     }
   };
 
+  //------------------------------------
   using LogicalPartitionMap = 
     std::unordered_map< LogicalPartitionKey, LogicalPartitionVal, LogicalPartitionHash >;
   
+  //------------------------------------
+  std::forward_list< IndexPartitionMap > IndexPartitions;
   LogicalPartitionMap LogicalPartitions;
-
-  auto createIndexPartition(
-      legion_runtime_t *rt,
-      legion_context_t *ctx,
-      legion_index_space_id_t id)
-  {
-    // found
-    IndexPartitionDeleter Deleter(rt, ctx);
-    for (auto & Scope : IndexPartitions) {
-      auto it = Scope.find(id);
-      if (it != Scope.end()) {
-        it->second = IndexPartitionVal(new legion_index_partition_t, Deleter);
-        return it->second.get();
-      }
-    }
-    // not found
-    auto res = IndexPartitions.front().emplace(
-        id,
-        IndexPartitionVal(new legion_index_partition_t, Deleter) );
-    return res.first->second.get();
-  }
   
+  //------------------------------------
   std::pair<legion_index_partition_t*, bool>
     getOrCreateIndexPartition(
       legion_runtime_t *rt,
@@ -130,35 +123,7 @@ struct contra_legion_partitions_t {
     return std::make_pair(res.first->second.get(), false);
   }
   
-  legion_index_partition_t* getIndexPartition(legion_index_space_id_t id)
-  { 
-    for (const auto & Scope : IndexPartitions) {
-      auto it = Scope.find(id);
-      if (it!=Scope.end()) return it->second.get();
-    }
-    return nullptr;
-  }
-
-  auto createLogicalPartition(
-      legion_runtime_t *rt,
-      legion_context_t *ctx,
-      legion_field_id_t fid,
-      legion_index_partition_id_t pid)
-  {
-    // found 
-    LogicalPartitionDeleter Deleter(rt, ctx);
-    auto it = LogicalPartitions.find(std::make_pair(fid,pid));
-    if (it != LogicalPartitions.end()) {
-      it->second = LogicalPartitionVal(new legion_logical_partition_t, Deleter);
-      return it->second.get();
-    }
-    // not found
-    auto res = LogicalPartitions.emplace(
-        std::make_pair(fid, pid),
-        LogicalPartitionVal(new legion_logical_partition_t, Deleter) );
-    return res.first->second.get();
-  }
-  
+  //------------------------------------
   std::pair<legion_logical_partition_t*, bool>
     getOrCreateLogicalPartition(
       legion_runtime_t *rt,
@@ -180,6 +145,7 @@ struct contra_legion_partitions_t {
   }
   
   
+  //------------------------------------
   legion_logical_partition_t* getLogicalPartition(
       legion_field_id_t fid,
       legion_index_partition_id_t pid)
@@ -189,15 +155,13 @@ struct contra_legion_partitions_t {
     return nullptr;
   }
 
+  //------------------------------------
   void push() 
-  {
-    IndexPartitions.push_front({});
-  }
+  { IndexPartitions.push_front({}); }
 
+  //------------------------------------
   void pop()
-  {
-    IndexPartitions.pop_front();
-  }
+  { IndexPartitions.pop_front(); }
 
 };
 
@@ -235,7 +199,6 @@ void contra_legion_index_space_partition(
       cs->index_space,
       /* granularity */ 1,
       /*color*/ AUTO_GENERATE_ID );
-
 }
 
 //==============================================================================
@@ -355,10 +318,8 @@ void contra_legion_index_space_partition_from_field(
       *runtime,
       *index_part);
 
-  //legion_index_partition_destroy(*runtime, *ctx, *index_part);
-    
   // partition with results
-  *index_part = legion_index_partition_create_by_image(
+  *part = legion_index_partition_create_by_image(
       *runtime,
       *ctx,
       is->index_space,
@@ -370,8 +331,6 @@ void contra_legion_index_space_partition_from_field(
       /* color */ AUTO_GENERATE_ID,
       /* mapper_id */ 0,
       /* mapping_tag_id */ 0);
-  
-  *part = *index_part;
 }
 
 

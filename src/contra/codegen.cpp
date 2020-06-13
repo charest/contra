@@ -284,8 +284,9 @@ void CodeGen::destroyVariable(const VariableAlloca & VarE) {
     Tasker_->destroyRange(*TheModule_, Alloca);
   else if (Tasker_->isAccessor(Alloca))
     Tasker_->destroyAccessor(*TheModule_, Alloca);
-  else if (Tasker_->isPartition(Alloca))
-    Tasker_->destroyPartition(*TheModule_, Alloca);
+  // Index partitions are deleted with index spaces
+  //else if (Tasker_->isPartition(Alloca))
+  //  Tasker_->destroyPartition(*TheModule_, Alloca);
 }
 
 //==============================================================================
