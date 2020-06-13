@@ -37,7 +37,7 @@ namespace contra {
 //==============================================================================
 // Constructor
 //==============================================================================
-CodeGen::CodeGen (bool debug = false) :
+CodeGen::CodeGen (bool) :
   TheContext_(TheHelper_.getContext()),
   Builder_(TheHelper_.getBuilder())
 {
@@ -1608,7 +1608,7 @@ void CodeGen::visit(FunctionAST& e)
 
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
-  auto & P = insertFunction( std::move(e.moveProtoExpr()) );
+  auto & P = insertFunction( e.moveProtoExpr() );
   const auto & Name = P.getName();
   auto TheFunction = getFunction(Name).first;
 
@@ -1674,7 +1674,7 @@ void CodeGen::visit(TaskAST& e)
   
   // Transfer ownership of the prototype to the FunctionProtos map, but keep a
   // reference to it for use below.
-  auto & P = insertFunction( std::move(e.moveProtoExpr()) );
+  auto & P = insertFunction( e.moveProtoExpr() );
   auto Name = P.getName();
   auto TheFunction = getFunction(Name).first;
   

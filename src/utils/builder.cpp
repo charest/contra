@@ -267,9 +267,16 @@ FunctionCallee BuilderHelper::createFunction(
     Type* ReturnT,
     const std::vector<Type*> & ArgTypes)
 {
-  auto FunT = FunctionType::get(ReturnT, ArgTypes, false);
-  auto FunF = TheModule.getOrInsertFunction(Name, FunT);
-  return FunF;
+  if (ArgTypes.empty()) {
+    auto FunT = FunctionType::get(ReturnT, None, false);
+    auto FunF = TheModule.getOrInsertFunction(Name, FunT);
+    return FunF;
+  }
+  else {
+    auto FunT = FunctionType::get(ReturnT, ArgTypes, false);
+    auto FunF = TheModule.getOrInsertFunction(Name, FunT);
+    return FunF;
+  }
 }
 
 //============================================================================  
@@ -283,11 +290,22 @@ CallInst* BuilderHelper::callFunction(
     const std::string & Str)
 {
   std::vector<Type*> ArgTs;
+  ArgTs.reserve(ArgVs.size());
+  for (auto Arg : ArgVs) ArgTs.emplace_back( Arg->getType() );
   auto FunF = createFunction(TheModule, Name, ReturnT, ArgTs);
-  if (ReturnT->isVoidTy())
-    return Builder_.CreateCall(FunF, ArgVs);
-  else
-    return Builder_.CreateCall(FunF, ArgVs, Str);
+
+  if (ArgVs.empty()) {
+    if (ReturnT->isVoidTy())
+      return Builder_.CreateCall(FunF);
+    else
+      return Builder_.CreateCall(FunF, None, Str);
+  }
+  else {
+    if (ReturnT->isVoidTy())
+      return Builder_.CreateCall(FunF, ArgVs);
+    else
+      return Builder_.CreateCall(FunF, ArgVs, Str);
+  }
 }
 
 //==============================================================================

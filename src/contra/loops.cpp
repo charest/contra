@@ -51,7 +51,7 @@ void LoopLifter::postVisit(ForeachStmtAST&e)
 
   auto IndexTask = std::make_unique<IndexTaskAST>(
       LoopTaskName, 
-      std::move(e.moveBodyExprs()),
+      e.moveBodyExprs(),
       LoopVarName,
       e.getAccessedVariables(),
       VarOverride,

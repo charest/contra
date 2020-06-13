@@ -237,7 +237,7 @@ public:
     SizeExpr_(std::move(Size))
   {
     if (auto ExprList = dynamic_cast<ExprListAST*>(ValsExpr.get()))
-      ValExprs_ = std::move(ExprList->moveExprs());
+      ValExprs_ = ExprList->moveExprs();
     else
       ValExprs_.emplace_back( std::move(ValsExpr) );
   }
@@ -466,7 +466,7 @@ public:
     CalleeId_(CalleeId)
   {
     if (auto ExprList = dynamic_cast<ExprListAST*>(ArgsExpr.get()))
-      ArgExprs_ = std::move(ExprList->moveExprs());
+      ArgExprs_ = ExprList->moveExprs();
     else if (ArgsExpr)
       ArgExprs_.emplace_back( std::move(ArgsExpr) );
   }
@@ -704,12 +704,12 @@ public:
     StmtAST(Loc)
   {
     if (auto ExprList = dynamic_cast<ExprListAST*>(LeftExprs.get()))
-      LeftExprs_ = std::move(ExprList->moveExprs());
+      LeftExprs_ = ExprList->moveExprs();
     else
       LeftExprs_.emplace_back( std::move(LeftExprs) );
 
     if (auto ExprList = dynamic_cast<ExprListAST*>(RightExprs.get()))
-      RightExprs_ = std::move(ExprList->moveExprs());
+      RightExprs_ = ExprList->moveExprs();
     else
       RightExprs_.emplace_back( std::move(RightExprs) );
   }

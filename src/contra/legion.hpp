@@ -138,7 +138,7 @@ public:
       llvm::Value*,
       bool) override;
   
-  virtual llvm::Type* getFutureType() const
+  virtual llvm::Type* getFutureType() const override
   { return FutureType_; }
 
   virtual bool isFuture(llvm::Value*) const override;
@@ -214,7 +214,7 @@ public:
       llvm::Value*,
       llvm::Value*) override;
   
-  virtual llvm::Type* getRangeType() const
+  virtual llvm::Type* getRangeType() const override
   { return IndexSpaceDataType_; }
 
   virtual bool isAccessor(llvm::Type*) const override;
@@ -231,7 +231,7 @@ public:
       llvm::Value*) const override;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
-  virtual llvm::Type* getAccessorType() const
+  virtual llvm::Type* getAccessorType() const override
   { return AccessorDataType_; }
   
   virtual llvm::AllocaInst* partition(
@@ -246,12 +246,12 @@ public:
       llvm::Value*,
       bool) override;
   
-  virtual bool isPartition(llvm::Type*) const;
-  virtual bool isPartition(llvm::Value*) const;
+  virtual bool isPartition(llvm::Type*) const override;
+  virtual bool isPartition(llvm::Value*) const override;
   
   virtual void destroyPartition(llvm::Module &, llvm::Value*) override;
   
-  virtual llvm::Type* getPartitionType() const
+  virtual llvm::Type* getPartitionType() const override
   { return IndexPartitionType_; }
   
   virtual ~LegionTasker() = default;

@@ -82,7 +82,7 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
     auto ArgsBeginLoc = getCurLoc();
     getNextToken(); // eat (
     std::unique_ptr<NodeAST> Args;
-    if (CurTok_ != ')') Args = std::move(parseExpression());
+    if (CurTok_ != ')') Args = parseExpression();
     if (CurTok_ != ')')
       THROW_NAME_ERROR("Expected ')'.", getLocationRange(ArgsBeginLoc));
     getNextToken(); // Eat the ')'.
@@ -110,7 +110,7 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
     if (CurTok_ == '[') {
       auto ArrayLoc = getCurLoc();
       getNextToken(); // eat [
-      auto IndexExpr = std::move(parseExpression());
+      auto IndexExpr = parseExpression();
       if (CurTok_ != ']')
         THROW_SYNTAX_ERROR(
             "Expected ']'  in array access/declaration.",
@@ -536,7 +536,7 @@ std::unique_ptr<NodeAST> Parser::parseArrayExpr()
     
   if (CurTok_ == ';') {
     getNextToken(); // eat ;
-    SizeExpr = std::move(parseExpression());
+    SizeExpr = parseExpression();
   }
 
   if (CurTok_ != ']')

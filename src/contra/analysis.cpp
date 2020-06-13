@@ -338,7 +338,7 @@ void Analyzer::visit(ArrayExprAST& e)
     if (CommonType != ValType) {
       auto Loc = e.getValExpr(i)->getLoc();
       checkIsCastable(ValType, CommonType, Loc);
-      e.setValExpr(i, insertCastOp(std::move(e.moveValExpr(i)), CommonType) );
+      e.setValExpr(i, insertCastOp(e.moveValExpr(i), CommonType) );
     }
   }
 
@@ -362,12 +362,12 @@ void Analyzer::visit(RangeExprAST& e)
 
   if (StartType != I64Type_) {
     checkIsCastable(StartType, I64Type_, Loc);
-    e.setStartExpr( insertCastOp(std::move(e.moveStartExpr()), I64Type_) );
+    e.setStartExpr( insertCastOp(e.moveStartExpr(), I64Type_) );
   }
 
   if (EndType != I64Type_) {
     checkIsCastable(EndType, I64Type_, Loc);
-    e.setEndExpr( insertCastOp(std::move(e.moveEndExpr()), I64Type_) );
+    e.setEndExpr( insertCastOp(e.moveEndExpr(), I64Type_) );
   }
 
   TypeResult_ = VariableType(I64Type_, VariableType::Attr::Range);
@@ -435,9 +435,9 @@ void Analyzer::visit(BinaryExprAST& e)
     checkIsCastable(LeftType, RightType, LeftLoc);
     CommonType = promote(LeftType, RightType, Loc);
     if (RightType != CommonType)
-      e.setRightExpr( insertCastOp(std::move(e.moveRightExpr()), CommonType ) );
+      e.setRightExpr( insertCastOp(e.moveRightExpr(), CommonType ) );
     else
-      e.setLeftExpr( insertCastOp(std::move(e.moveLeftExpr()), CommonType ) );
+      e.setLeftExpr( insertCastOp(e.moveLeftExpr(), CommonType ) );
   }
 
   switch (OpCode) {
@@ -513,7 +513,7 @@ void Analyzer::visit(CallExprAST& e)
       auto ParamType = FunRes->getArgType(i);
       if (ArgType != ParamType) {
         checkIsCastable(ArgType, ParamType, ArgExpr->getLoc());
-        e.setArgExpr(i, insertCastOp( std::move(e.moveArgExpr(i)), ParamType) );
+        e.setArgExpr(i, insertCastOp( e.moveArgExpr(i), ParamType) );
       }
     }
 
@@ -710,7 +710,7 @@ void Analyzer::visit(AssignStmtAST& e)
     if (RightType.getBaseType() != LeftType.getBaseType()) {
       checkIsCastable(RightType, LeftType, Loc);
       if (NumLeft==NumRight)
-        e.setRightExpr( ir, insertCastOp(std::move(e.moveRightExpr(ir)), LeftType) );
+        e.setRightExpr( ir, insertCastOp(e.moveRightExpr(ir), LeftType) );
       else
         e.addCast(il, LeftType);
     }
@@ -1005,7 +1005,7 @@ void Analyzer::visit(FunctionAST& e)
             << FnName << "'.  The type '" << RetType << "' cannot be "
             << "converted to the type '" << DeclRetType << "'.",
             e.getReturnExpr()->getLoc());
-      e.setReturnExpr(insertCastOp(std::move(e.moveReturnExpr()), DeclRetType) );
+      e.setReturnExpr(insertCastOp(e.moveReturnExpr(), DeclRetType) );
     }
   }
   
