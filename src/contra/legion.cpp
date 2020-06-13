@@ -351,7 +351,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
   
   auto ArrayGEP = llvmArray(TheContext_, TheModule, ArgEnums);
   auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
-  Builder_.CreateMemCpy(ArgDataPtrV, 1, ArrayGEP, 1, llvmValue<size_t>(TheContext_, NumArgs)); 
+  TheHelper_.memCopy(ArgDataPtrV, ArrayGEP, llvmValue<size_t>(TheContext_, NumArgs)); 
  
   //----------------------------------------------------------------------------
   // Copy args
@@ -683,7 +683,7 @@ void LegionTasker::createRegistrationArguments(
   TaskConfigA = TheHelper_.createEntryBlockAlloca(TaskConfigType_, "options");
   auto BoolT = TaskConfigType_->getElementType(0);
   auto FalseV = Constant::getNullValue(BoolT);
-  Builder_.CreateMemSet(TaskConfigA, FalseV, 4, 1); 
+  TheHelper_.memSet(TaskConfigA, FalseV, 4); 
 
   if (Task.isLeaf()) {
     auto TrueV = llvmValue(TheContext_, BoolT, 1);
@@ -846,7 +846,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   auto ArrayT = ArrayType::get(CharType_, NumArgs);
   auto ArrayA = TheHelper_.createEntryBlockAlloca(WrapperF, ArrayT, "isfuture");
   auto ArgDataPtrV = TheHelper_.load(TaskArgsA, "args");
-  Builder_.CreateMemCpy(ArrayA, 1, ArgDataPtrV, 1, llvmValue<size_t>(TheContext_, NumArgs)); 
+  TheHelper_.memCopy(ArrayA, ArgDataPtrV, llvmValue<size_t>(TheContext_, NumArgs)); 
   
   //----------------------------------------------------------------------------
   // unpack user variables
@@ -1145,7 +1145,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
     // copy data
     RetvalV = TheHelper_.load(RetvalA);
     RetsizeV = TheHelper_.load(RetsizeA);
-    Builder_.CreateMemCpy(RetvalV, 1, ResultA, 1, RetsizeV); 
+    TheHelper_.memCopy(RetvalV, ResultA, RetsizeV); 
     serialize(ResultA, RetvalV);
 
 

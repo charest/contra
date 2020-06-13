@@ -91,6 +91,9 @@ public:
       const std::vector<Value*> & = {},
       const std::string & Str = "");
 
+  CallInst* memCopy(Value* Dest, Value* Src, Value* Size);
+  CallInst* memSet(Value* Dest, Value* Src, unsigned);
+
 };
 
 } // namespace

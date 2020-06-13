@@ -290,4 +290,26 @@ CallInst* BuilderHelper::callFunction(
     return Builder_.CreateCall(FunF, ArgVs, Str);
 }
 
+//==============================================================================
+// Memcopy utility
+//==============================================================================
+CallInst* BuilderHelper::memCopy(
+    Value* Dest,
+    Value* Src,
+    Value* Size)
+{
+  return Builder_.CreateMemCpy(Dest, MaybeAlign(1), Src, MaybeAlign(1), Size);
+}
+
+//==============================================================================
+// Memset utility
+//==============================================================================
+CallInst* BuilderHelper::memSet(
+    Value* Dest,
+    Value* Src,
+    unsigned Size)
+{
+  return Builder_.CreateMemSet(Dest, Src, Size, MaybeAlign(1));
+}
+
 } // namespace

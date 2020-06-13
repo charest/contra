@@ -37,7 +37,7 @@ Value* Serializer::serialize(Value* SrcA, Value* TgtPtrV, Value* OffsetA)
   auto OffsetTgtPtrV = TgtPtrV;
   if (OffsetA) OffsetTgtPtrV = offsetPointer(TgtPtrV, OffsetA);
   auto SizeV = getSize(SrcA, SizeType_);
-  Builder_.CreateMemCpy(OffsetTgtPtrV, 1, SrcA, 1, SizeV); 
+  TheHelper_.memCopy(OffsetTgtPtrV, SrcA, SizeV); 
   return SizeV;
 }
 
@@ -46,7 +46,7 @@ Value* Serializer::deserialize(AllocaInst* TgtA, Value* SrcA, Value* OffsetA)
   auto OffsetSrc = SrcA;
   if (OffsetA) OffsetSrc = offsetPointer(SrcA, OffsetA);
   auto SizeV = getSize(TgtA, SizeType_);
-  Builder_.CreateMemCpy(TgtA, 1, OffsetSrc, 1, SizeV);
+  TheHelper_.memCopy(TgtA, OffsetSrc, SizeV);
   return SizeV;
 }
 

@@ -64,7 +64,7 @@ void compileLLVM(Module & TheModule, const std::string & Filename) {
     THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
 
   legacy::PassManager pass;
-  auto FileType = TargetMachine::CGFT_ObjectFile;
+  auto FileType = CGFT_ObjectFile;
 
   if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
     THROW_CONTRA_ERROR( "TheTargetMachine can't emit a file of this type" );
