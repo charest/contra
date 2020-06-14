@@ -217,6 +217,7 @@ public:
     if (obj.isField()) out << "(Fld)";
     if (obj.isArray()) out << "[";
     if (obj.isRange()) out << "{";
+    if (obj.isPartition()) out << "(Prt)";
     if (obj.Type_) {
       out << obj.Type_->getName();
     }

@@ -39,6 +39,8 @@ namespace librt {
 struct DopeVector {
   static llvm::Type* DopeVectorType;
   static void setup(llvm::LLVMContext &);
+  static bool isDopeVector(llvm::Type* Ty);
+  static bool isDopeVector(llvm::Value* V);
 };
 
 struct DopeVectorAllocate : public DopeVector {

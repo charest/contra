@@ -6,6 +6,7 @@ class Function;
 class LLVMContext;
 class Module;
 class Type;
+class Value;
 }
 
 

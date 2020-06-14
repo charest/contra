@@ -82,6 +82,16 @@ void DopeVector::setup(LLVMContext & TheContext)
   if (!DopeVectorType)
     DopeVectorType = createDopeVectorType(TheContext);
 }
+  
+bool DopeVector::isDopeVector(Type* Ty) 
+{ return DopeVectorType == Ty; }
+  
+bool DopeVector::isDopeVector(Value* V)
+{
+  auto Ty = V->getType();
+  if (isa<AllocaInst>(V)) Ty = Ty->getPointerElementType();
+  return isDopeVector(Ty);
+}
 
 //==============================================================================
 // Installs the Allocate deallocate function

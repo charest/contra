@@ -379,6 +379,33 @@ void contra_legion_index_space_create_from_array(
   //is->index_space = legion_index_space_create(*runtime, *ctx, size);
 }
 
+void contra_legion_index_space_create_from_index_partition(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    legion_task_t * task,
+    legion_index_partition_t * part,
+    contra_legion_index_space_t * is)
+{
+
+  legion_domain_point_t color = legion_task_get_index_point(*task);
+
+  is->index_space = 
+    legion_index_partition_get_index_subspace_domain_point(
+        *runtime,
+        *part,
+        color);
+  
+  legion_domain_t domain =
+    legion_index_space_get_domain(*runtime, is->index_space);
+  
+  legion_rect_1d_t rect = legion_domain_get_rect_1d(domain);
+
+  is->start = rect.lo.x[0];
+  is->end = rect.hi.x[0] + 1;
+  is->step = 1;
+}
+
+
 //==============================================================================
 /// index spce destruction
 //==============================================================================
@@ -433,38 +460,6 @@ void contra_legion_field_create(
       fld->logical_region, fld->field_id, init, data_size, legion_predicate_true());
   }
 }
-
-//==============================================================================
-/// field creation
-//==============================================================================
-void contra_legion_field_create_from_partition(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
-    const char *name,
-    size_t data_size,
-    void* init,
-    legion_index_partition_t * index_part,
-    contra_legion_field_t * fld)
-{
-  contra_legion_index_space_t is;
-
-  is.index_space = 
-    legion_index_partition_get_parent_index_space(
-        *runtime,
-        *index_part);
-  legion_domain_t domain = legion_index_space_get_domain(
-      *runtime,
-      is.index_space);
-  legion_rect_1d_t rect = legion_domain_get_rect_1d(domain);
-
-  is.start = rect.lo.x[0];
-  is.end = rect.hi.x[0] + 1;
-  is.step = 1;
-
-  contra_legion_field_create(runtime, ctx, name, data_size, init, &is, fld);
-}
-
-
 
 //==============================================================================
 /// field destruction
@@ -619,82 +614,6 @@ void contra_legion_partitions_destroy(
   //for (auto & part : (*parts)->LogicalPartitions) part.second.reset();
   delete *parts;
   *parts = nullptr;
-}
-
-//==============================================================================
-// Split an index space
-//==============================================================================
-void contra_legion_split_range(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
-    legion_task_t * task,
-    contra_legion_index_space_t * is)
-{
-  legion_domain_t color_domain = legion_task_get_index_domain(*task);
-  legion_domain_point_t color = legion_task_get_index_point(*task);
-
-  legion_index_space_t cs = legion_index_space_create_domain(
-      *runtime,
-      *ctx,
-      color_domain);
-
-  legion_index_partition_t index_part =
-    legion_index_partition_create_equal(
-        *runtime,
-        *ctx,
-        is->index_space,
-        cs,
-        /*granularity*/ 1,
-        AUTO_GENERATE_ID);
-  
-  legion_index_space_t new_is = 
-    legion_index_partition_get_index_subspace_domain_point(
-        *runtime,
-        index_part,
-        color);
-
-  legion_domain_t new_domain =
-    legion_index_space_get_domain(*runtime, new_is);
-  
-  legion_rect_1d_t rect = legion_domain_get_rect_1d(new_domain);
-
-  is->index_space = new_is;
-  is->start = rect.lo.x[0];
-  is->end = rect.hi.x[0] + 1;
-  is->step = 1;
-
-  legion_index_partition_destroy(*runtime, *ctx, index_part);
-  legion_index_space_destroy(*runtime, *ctx, cs);
-}
-
-
-//==============================================================================
-// Split an index space
-//==============================================================================
-void contra_legion_range_from_index_partition(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
-    legion_task_t * task,
-    legion_index_partition_t * part,
-    contra_legion_index_space_t * is)
-{
-
-  legion_domain_point_t color = legion_task_get_index_point(*task);
-
-  is->index_space = 
-    legion_index_partition_get_index_subspace_domain_point(
-        *runtime,
-        *part,
-        color);
-  
-  legion_domain_t domain =
-    legion_index_space_get_domain(*runtime, is->index_space);
-  
-  legion_rect_1d_t rect = legion_domain_get_rect_1d(domain);
-
-  is->start = rect.lo.x[0];
-  is->end = rect.hi.x[0] + 1;
-  is->step = 1;
 }
 
 //==============================================================================

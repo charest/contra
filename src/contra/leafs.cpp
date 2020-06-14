@@ -37,10 +37,4 @@ void LeafIdentifier::postVisit(ForeachStmtAST& e)
   if (e.isLifted()) CallsTask_ = true;
 }
 
-//==============================================================================
-void LeafIdentifier::postVisit(IndexTaskAST& e)
-{
-  if (e.hasAutomaticPartitions()) CallsTask_ = true;
-}
-
 } // namespace

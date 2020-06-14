@@ -101,8 +101,7 @@ public:
       const std::string &,
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
-      bool,
-      const std::map<std::string, VariableType> & = {}) override;
+      bool) override;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -133,10 +132,9 @@ public:
       llvm::Module &,
       const std::string &,
       int,
+      std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &,
-      llvm::Value*,
-      bool) override;
+      llvm::Value*) override;
   
   virtual llvm::Type* getFutureType() const override
   { return FutureType_; }
@@ -165,12 +163,6 @@ public:
   { return FieldDataType_; }
 
   virtual bool isField(llvm::Value*) const override;
-  virtual llvm::AllocaInst* createField(
-      llvm::Module &,
-      const std::string &,
-      llvm::Type*,
-      llvm::Value*,
-      llvm::Value*) override;
   virtual void createField(
       llvm::Module &,
       llvm::Value*, 
@@ -242,9 +234,7 @@ public:
   virtual llvm::AllocaInst* partition(
       llvm::Module &,
       llvm::Value*,
-      llvm::Type*,
-      llvm::Value*,
-      bool) override;
+      llvm::Value*) override;
   
   virtual bool isPartition(llvm::Type*) const override;
   virtual bool isPartition(llvm::Value*) const override;

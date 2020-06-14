@@ -308,14 +308,10 @@ void CodeGen::eraseVariable(const std::string & VarN )
 ///  Is the variable an array
 //==============================================================================
 bool CodeGen::isArray(Type* Ty)
-{ return ArrayType_ == Ty; }
+{ return librt::DopeVector::isDopeVector(Ty); }
 
 bool CodeGen::isArray(Value* V)
-{
-  auto Ty = V->getType();
-  if (isa<AllocaInst>(V)) Ty = Ty->getPointerElementType();
-  return isArray(Ty);
-}
+{ return librt::DopeVector::isDopeVector(V); }
 
 //==============================================================================
 /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
@@ -905,9 +901,7 @@ void CodeGen::visit(CallExprAST &e) {
       ValueResult_ = Tasker_->partition(
           *TheModule_,
           getArg(0),
-          I64Type_,
-          getArg(1),
-          true );
+          getArg(1));
     }
     else if (NumArgs == 3) {
       ValueResult_ = Tasker_->partition(
@@ -1210,7 +1204,7 @@ void CodeGen::visit(ForeachStmtAST& e)
 
     //----------------------------------
     // Partition Tasks
-    std::map<std::string, Value*> Partitions;
+    std::map<std::string, Value*> Ranges;
     std::map<std::string, Value*> Fields;
     for (auto & Stmt : e.getBodyExprs()) {
       auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
@@ -1219,10 +1213,10 @@ void CodeGen::visit(ForeachStmtAST& e)
       for (unsigned i=0; i<NumVars; ++i) {
         auto VarD = Node->getVarDef(i);
         const auto VarN = Node->getVarName(i);
-        if (!VarD->getType().isField()) {
-          Partitions.emplace( VarN, VarA );
+        if (VarD->getType().isRange()) {
+          Ranges.emplace( VarN, VarA );
         }
-        else {
+        else if (VarD->getType().isField()) {
           Fields.emplace(VarN, VarA);
         }
       }
@@ -1234,20 +1228,14 @@ void CodeGen::visit(ForeachStmtAST& e)
     std::vector<Value*> PartAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
       const auto & Name = VarD->getName();
-      auto pit = Partitions.find(Name);
-      Value* VarA = nullptr;
-      if (pit != Partitions.end()) {
-        VarA = pit->second;
-      }
-      else {
-        auto VarE = getVariable(Name);
-        VarA = VarE->getAlloca();
-      }
-      TaskArgAs.emplace_back(VarA); 
-      
+      auto VarE = getVariable(Name);
+      TaskArgAs.emplace_back(VarE->getAlloca());
+
       Value* PartA = nullptr;
+      auto pit = Ranges.find(Name);
       auto fit = Fields.find(Name);
-      if (fit != Fields.end()) PartA = fit->second;
+      if      (pit != Ranges.end()) PartA = pit->second;
+      else if (fit != Fields.end()) PartA = fit->second;
       PartAs.emplace_back(PartA);
     }
 
@@ -1735,7 +1723,6 @@ void CodeGen::visit(IndexTaskAST& e)
   }
 
   auto TaskN = e.getName();
-  const auto & VarOverrides = e.getVarOverrides();
 
   // get global args
   std::vector<Type*> TaskArgTs;
@@ -1743,17 +1730,12 @@ void CodeGen::visit(IndexTaskAST& e)
   for ( const auto & VarE : e.getVariableDefs() ) {
     const auto & VarN = VarE->getName();
     TaskArgNs.emplace_back( VarN );
-    // check overrides
-    auto vit = VarOverrides.find(VarN);
-    bool OverrideField = (vit != VarOverrides.end() && vit->second.isField());
     // overrided field types
     const auto & VarT = VarE->getType();
-    if (VarT.isField() || OverrideField) { 
+    if (VarT.isField())
       TaskArgTs.emplace_back( AccessorType_ ); 
-    }
-    else {
+    else
       TaskArgTs.emplace_back( getLLVMType(VarT) ); 
-    }
   }
       
 	// generate wrapped task
@@ -1762,8 +1744,7 @@ void CodeGen::visit(IndexTaskAST& e)
       TaskN, 
       TaskArgNs,
       TaskArgTs,
-      true,
-      VarOverrides);
+      true);
 
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {

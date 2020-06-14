@@ -63,8 +63,7 @@ public:
       const std::string &,
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
-      bool,
-      const std::map<std::string, VariableType> & = {}) = 0;
+      bool) = 0;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -93,10 +92,9 @@ public:
       llvm::Module &,
       const std::string &,
       int,
+      std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
-      const std::vector<llvm::Value*> &,
-      llvm::Value*,
-      bool = true) = 0;
+      llvm::Value*) = 0;
 
   virtual llvm::Type* getFutureType() const = 0;
   virtual bool isFuture(llvm::Value*) const = 0;
@@ -115,12 +113,6 @@ public:
 
   virtual llvm::Type* getFieldType() const = 0;
   virtual bool isField(llvm::Value*) const = 0;
-  virtual llvm::AllocaInst* createField(
-      llvm::Module &,
-      const std::string &,
-      llvm::Type*,
-      llvm::Value*,
-      llvm::Value*) = 0;
   virtual void createField(
       llvm::Module &,
       llvm::Value*, 
@@ -187,9 +179,7 @@ public:
   virtual llvm::AllocaInst* partition(
       llvm::Module &,
       llvm::Value*,
-      llvm::Type*,
-      llvm::Value*,
-      bool) = 0;
+      llvm::Value*) = 0;
   
   virtual llvm::Type* getPartitionType() const = 0;
   virtual bool isPartition(llvm::Type*) const = 0;

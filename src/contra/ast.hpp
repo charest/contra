@@ -595,7 +595,6 @@ class ForeachStmtAST : public ForStmtAST {
   std::string Name_;
   bool IsLifted_ = false;
   unsigned NumParts_ = 0;
-  std::vector<NodeAST*> FieldExprs_;
 
 public:
   
@@ -639,9 +638,6 @@ public:
   
   void setNumPartitions(unsigned NumParts) { NumParts_=NumParts; }
   auto getNumPartitions() const { return NumParts_; }
-  
-  void setFieldPartitions(const std::vector<NodeAST*> & FieldExprs)
-  { FieldExprs_ = FieldExprs; }
 };
 
 //==============================================================================
@@ -981,8 +977,6 @@ class IndexTaskAST : public FunctionAST {
 
   std::string LoopVarName_;
   std::vector<VariableDef*> Vars_;
-  std::map<std::string, VariableType> VarOverrides_;
-  bool HasAutomaticPartitions_ = false;
 
 public:
 
@@ -990,14 +984,10 @@ public:
       const std::string & Name,
       ASTBlock Body,
       const std::string & LoopVar,
-      const std::vector<VariableDef*>& Vars,
-      const std::map<std::string, VariableType>& VarOverrides,
-      bool HasAutomaticPartitions = false) :
+      const std::vector<VariableDef*>& Vars) :
     FunctionAST(Name, std::move(Body), true, false),
     LoopVarName_(LoopVar),
-    Vars_(Vars),
-    VarOverrides_(VarOverrides),
-    HasAutomaticPartitions_(HasAutomaticPartitions)
+    Vars_(Vars)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -1012,11 +1002,6 @@ public:
  
   const auto & getLoopVariableName() const { return LoopVarName_; }
   const auto & getName() const { return Name_; }
-
-  const auto & getVarOverrides() const { return VarOverrides_; }
-
-  auto hasAutomaticPartitions() const { return HasAutomaticPartitions_; }
-
 };
 
 } // namespace

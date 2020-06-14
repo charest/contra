@@ -700,8 +700,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     const std::string & TaskName,
     const std::vector<std::string> & TaskArgNs,
     const std::vector<Type*> & TaskArgTs,
-    bool IsIndex,
-    const std::map<std::string, VariableType> & VarOverrides)
+    bool IsIndex)
 {
   //----------------------------------------------------------------------------
   // Create task wrapper
@@ -827,17 +826,10 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   for (unsigned i=0; i<NumArgs; ++i) {
     auto ArgN = TaskArgNs[i];
     auto ArgStr = ArgN + ".alloca";
-    auto vit = VarOverrides.find(ArgN);
-    if (vit != VarOverrides.end() && vit->second.isPartition()) {
-      auto ArgT = IndexPartitionType_;
-      auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgStr);
-      TaskArgAs.emplace_back(ArgA);
-    }
-    else {
-      auto ArgT = TaskArgTs[i];
-      auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgStr);
-      TaskArgAs.emplace_back(ArgA);
-    }
+    auto ArgT = TaskArgTs[i];
+    if (isRange(ArgT) && IsIndex) ArgT = IndexPartitionType_;
+    auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgStr);
+    TaskArgAs.emplace_back(ArgA);
   }
   
   //----------------------------------------------------------------------------
@@ -882,16 +874,6 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   //----------------------------------------------------------------------------
   // partition any ranges
   if (IsIndex) { 
-  
-    std::vector<Type*> SplitRangeArgTs = {
-      RuntimeType_->getPointerTo(),
-      ContextType_->getPointerTo(),
-      TaskType_->getPointerTo(),
-      IndexSpaceDataType_->getPointerTo()
-    };
-
-    auto SplitRangeT = FunctionType::get(VoidType_, SplitRangeArgTs, false);
-    auto SplitRangeF = TheModule.getOrInsertFunction("contra_legion_split_range", SplitRangeT);
     
     std::vector<Type*> GetRangeArgTs = {
       RuntimeType_->getPointerTo(),
@@ -903,18 +885,13 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
 
     auto GetRangeF = TheHelper_.createFunction(
         TheModule,
-        "contra_legion_range_from_index_partition",
+        "contra_legion_index_space_create_from_index_partition",
         VoidType_,
         GetRangeArgTs);
 
     for (unsigned i=0; i<NumArgs; i++) {
       auto ArgN = TaskArgNs[i];
-      auto vit = VarOverrides.find(ArgN);
-      auto ForceIndex = (vit != VarOverrides.end() && vit->second.isPartition());
-      if (isRange(TaskArgAs[i])) {
-        Builder_.CreateCall(SplitRangeF, {RuntimeA, ContextA, TaskA, TaskArgAs[i]});
-      }
-      else if (ForceIndex || isPartition(TaskArgAs[i])) {
+      if (isRange(TaskArgTs[i])) {
         auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceDataType_, ArgN);
         Builder_.CreateCall(GetRangeF, {RuntimeA, ContextA, TaskA, TaskArgAs[i], ArgA});
         TaskArgAs[i] = ArgA;
@@ -1452,10 +1429,9 @@ Value* LegionTasker::launch(
     Module &TheModule,
     const std::string & Name,
     int TaskId,
-    const std::vector<Value*> & ArgAs,
+    std::vector<Value*> ArgAs,
     const std::vector<Value*> & PartAs,
-    Value* RangeV,
-    bool CleanupPartitions )
+    Value* RangeV)
 {
   auto RealT = llvmType<real_t>(TheContext_);
   auto TimerA = TheHelper_.createEntryBlockAlloca(RealT);
@@ -1474,6 +1450,27 @@ Value* LegionTasker::launch(
 
   if (!PartInfoA) PartInfoA = createPartitionInfo(TheModule);
   pushPartitionInfo(TheModule, PartInfoA);
+  
+  //----------------------------------------------------------------------------
+  // Swap ranges for partitions
+
+  std::vector<Value*> TempParts;
+
+  auto NumArgs = ArgAs.size();
+  for (unsigned i=0; i<NumArgs; i++) {
+    if (isRange(ArgAs[i])) {
+      // has a prescribed partition
+      if (PartAs[i]) {
+        ArgAs[i] = PartAs[i];
+      }
+      // temporarily partition
+      else {
+        ArgAs[i] = partition(TheModule, ArgAs[i], RangeV);
+        TempParts.emplace_back( ArgAs[i] );
+      }
+    }
+  }
+
 
   //----------------------------------------------------------------------------
   // Global arguments
@@ -1594,6 +1591,8 @@ Value* LegionTasker::launch(
   
   //----------------------------------------------------------------------------
   // cleanup
+  
+  destroyPartitions(TheModule, TempParts);
   
   destroyOpaqueType(TheModule, LauncherA, "legion_index_launcher_destroy", "task_launcher");
   
@@ -1728,57 +1727,6 @@ bool LegionTasker::isField(Value* FieldA) const
 //==============================================================================
 // Create a legion field
 //==============================================================================
-AllocaInst* LegionTasker::createField(
-    Module & TheModule,
-    const std::string & VarN,
-    Type* VarT,
-    Value* RangeV,
-    Value* VarV)
-{
-  auto FieldA = TheHelper_.createEntryBlockAlloca(FieldDataType_, "field");
-  
-  const auto & LegionE = getCurrentTask();
-  const auto & ContextA = LegionE.ContextAlloca;
-  const auto & RuntimeA = LegionE.RuntimeAlloca;
-  
-  auto NameV = llvmString(TheContext_, TheModule, VarN);
-
-  Value* DataSizeV;
-  if (VarV) {
-    DataSizeV = TheHelper_.getTypeSize<size_t>(VarT);
-    VarV = TheHelper_.getAsAlloca(VarV);
-  }
-  else {
-    DataSizeV = llvmValue<size_t>(TheContext_, 0);
-    VarV = Constant::getNullValue(VoidPtrType_);
-  }
-    
-  Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
-  
-  std::vector<Value*> FunArgVs = {
-    RuntimeA,
-    ContextA,
-    NameV,
-    DataSizeV, 
-    VarV,
-    IndexSpaceA,
-    FieldA};
-  
-  std::string FunN = isRange(RangeV) ?
-    "contra_legion_field_create" : "contra_legion_field_create_from_partition";
-  
-  TheHelper_.callFunction(
-      TheModule,
-      FunN,
-      VoidType_,
-      FunArgVs);
-    
-  return FieldA;
-}
-
-//==============================================================================
-// Create a legion field
-//==============================================================================
 void LegionTasker::createField(
     Module & TheModule,
     Value* FieldA,
@@ -1815,12 +1763,9 @@ void LegionTasker::createField(
     IndexSpaceA,
     FieldA};
   
-  std::string FunN = isRange(RangeV) ?
-    "contra_legion_field_create" : "contra_legion_field_create_from_partition";
-  
   TheHelper_.callFunction(
       TheModule,
-      FunN,
+      "contra_legion_field_create",
       VoidType_,
       FunArgVs);
     
@@ -2007,25 +1952,7 @@ AllocaInst* LegionTasker::partition(
   auto IndexPartA = TheHelper_.createEntryBlockAlloca(IndexPartitionType_);
 
   //------------------------------------
-  if (isRange(ValueA)) {
-    ValueA = TheHelper_.getAsAlloca(ValueA);
-
-    std::vector<Value*> FunArgVs = {
-      RuntimeA,
-      ContextA,
-      ValueA,
-      IndexSpaceA,
-      PartInfoA,
-      IndexPartA};
-    
-    TheHelper_.callFunction(
-        TheModule,
-        "contra_legion_index_space_partition",
-        VoidType_,
-        FunArgVs);
-  }
-  //------------------------------------
-  else if (isField(ValueA)) {
+  if (isField(ValueA)) {
     ValueA = TheHelper_.getAsAlloca(ValueA);
     IndexPartitionA = TheHelper_.getAsAlloca(IndexPartitionA);
     std::vector<Value*> FunArgVs = {
@@ -2044,24 +1971,6 @@ AllocaInst* LegionTasker::partition(
         FunArgVs);
   }
   //------------------------------------
-  else {
-    auto ValueV = TheHelper_.getAsValue(ValueA);
-
-    std::vector<Value*> FunArgVs = {
-      RuntimeA,
-      ContextA,
-      ValueV,
-      IndexSpaceA,
-      PartInfoA,
-      IndexPartA};
-    
-    TheHelper_.callFunction(
-        TheModule,
-        "contra_legion_index_space_partition_from_size",
-        VoidType_,
-        FunArgVs);
-  }
-  //------------------------------------
 
   return IndexPartA;
     
@@ -2073,9 +1982,7 @@ AllocaInst* LegionTasker::partition(
 AllocaInst* LegionTasker::partition(
     Module & TheModule,
     Value* IndexSpaceA,
-    Type*,
-    Value* ValueV,
-    bool ReportSizeError)
+    Value* Color)
 {
 
   auto & LegionE = getCurrentTask();
@@ -2088,23 +1995,63 @@ AllocaInst* LegionTasker::partition(
   auto IndexPartA = TheHelper_.createEntryBlockAlloca(IndexPartitionType_);
     
   IndexSpaceA = TheHelper_.getAsAlloca(IndexSpaceA);
-  auto ValueA = TheHelper_.getAsAlloca(ValueV);
+
+  //------------------------------------
+  if (isRange(Color)) {
+    auto ColorA = TheHelper_.getAsAlloca(Color);
+
+    std::vector<Value*> FunArgVs = {
+      RuntimeA,
+      ContextA,
+      ColorA,
+      IndexSpaceA,
+      PartInfoA,
+      IndexPartA};
+    
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_legion_index_space_partition",
+        VoidType_,
+        FunArgVs);
+  }
+  //------------------------------------
+  else if (librt::DopeVector::isDopeVector(Color)) {
+    auto ColorA = TheHelper_.getAsAlloca(Color);
   
-  std::vector<Value*> FunArgVs = {
-    RuntimeA,
-    ContextA,
-    ValueA,
-    IndexSpaceA,
-    PartInfoA,
-    IndexPartA,
-    llvmValue<bool>(TheContext_, ReportSizeError)
-  };
-  
-  TheHelper_.callFunction(
-      TheModule,
-      "contra_legion_index_space_partition_from_array",
-      VoidType_,
-      FunArgVs);
+    std::vector<Value*> FunArgVs = {
+      RuntimeA,
+      ContextA,
+      ColorA,
+      IndexSpaceA,
+      PartInfoA,
+      IndexPartA,
+      llvmValue<bool>(TheContext_, true)
+    };
+    
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_legion_index_space_partition_from_array",
+        VoidType_,
+        FunArgVs);
+  }
+  //------------------------------------
+  else {
+    auto ColorV = TheHelper_.getAsValue(Color);
+
+    std::vector<Value*> FunArgVs = {
+      RuntimeA,
+      ContextA,
+      ColorV,
+      IndexSpaceA,
+      PartInfoA,
+      IndexPartA};
+    
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_legion_index_space_partition_from_size",
+        VoidType_,
+        FunArgVs);
+  }
   
   return IndexPartA;
 
