@@ -1,6 +1,6 @@
 #include <vector>
 
-int main(int argc, char **argv)
+int main(int, char **)
 {
   std::size_t num = 8192;
   std::size_t num_points = num*num;

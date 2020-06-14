@@ -205,7 +205,6 @@ VariableAlloca * CodeGen::getVariable(const std::string & VarName)
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createVariable(
-    Function *TheFunction,
     const std::string &VarName,
     Type* VarType)
 {
@@ -368,12 +367,12 @@ void CodeGen::allocateArray(
 // Initialize Array
 //==============================================================================
 void CodeGen::initArray(
-    Function *TheFunction,
     Value* ArrayA,
     Value * InitV,
     Value * SizeV,
     Type * ElementT)
 {
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
   
   // create allocas to the pointers
   auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
@@ -409,7 +408,6 @@ void CodeGen::initArray(
 // Initialize an arrays individual values
 //==============================================================================
 void CodeGen::initArray(
-    Function *TheFunction, 
     Value* ArrayA,
     const std::vector<Value *> InitVs,
     Type* ElementT )
@@ -642,7 +640,7 @@ void CodeGen::visit(ArrayAccessExprAST& e)
     ValueResult_ = Tasker_->loadAccessor(*TheModule_, VarE->getType(), VarA, IndexV);
   }
   else if (Tasker_->isRange(VarA)) {
-    ValueResult_ = Tasker_->loadRangeValue(*TheModule_, VarE->getType(), VarA, IndexV);
+    ValueResult_ = Tasker_->loadRangeValue(VarA, IndexV);
   }
   else {
     ValueResult_ = extractArrayValue(VarA, VarE->getType(), IndexV);
@@ -655,8 +653,6 @@ void CodeGen::visit(ArrayAccessExprAST& e)
 //==============================================================================
 void CodeGen::visit(ArrayExprAST &e)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  
   // the llvm variable type
   auto VarType = setArray(e.getType(), false);
   auto VarT = getLLVMType(VarType);
@@ -679,9 +675,9 @@ void CodeGen::visit(ArrayExprAST &e)
   auto ArrayA = ArrayE->getAlloca();
 
   if (e.hasSize()) 
-    initArray(TheFunction, ArrayA, InitVals[0], SizeExpr, VarT);
+    initArray(ArrayA, InitVals[0], SizeExpr, VarT);
   else
-    initArray(TheFunction, ArrayA, InitVals, VarT);
+    initArray(ArrayA, InitVals, VarT);
 
   ValueResult_ = ArrayA;
 }
@@ -893,7 +889,7 @@ void CodeGen::visit(CallExprAST &e) {
     ValueResult_ = nullptr;
     auto Arg = getArg(0);
     if (Tasker_->isRange(Arg))
-      ValueResult_ = Tasker_->getRangeSize(*TheModule_, Arg);
+      ValueResult_ = Tasker_->getRangeSize(Arg);
     return;
   }
   else if (Name == "part") {
@@ -941,7 +937,7 @@ void CodeGen::visit(CallExprAST &e) {
       Tasker_->start(*TheModule_, Argc_, Argv_);
     }
     else {
-      FutureV = Tasker_->launch(*TheModule_, Name, TaskI.getId(), ArgVs);
+      FutureV = Tasker_->launch(*TheModule_, TaskI.getId(), ArgVs);
     }
   
     ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
@@ -1087,7 +1083,7 @@ void CodeGen::visit(ForStmtAST& e) {
   // Create an alloca for the variable in the entry block.
   const auto & VarN = e.getVarName();
   auto VarT = llvmType<int_t>(TheContext_);
-  auto VarE = createVariable(TheFunction, VarN, VarT);
+  auto VarE = createVariable(VarN, VarT);
   auto VarA = VarE->getAlloca();
   
   // Emit the start code first, without 'variable' in scope.
@@ -1241,7 +1237,7 @@ void CodeGen::visit(ForeachStmtAST& e)
 
     auto TaskN = e.getName();
     const auto & TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(*TheModule_, TaskN, TaskI.getId(), TaskArgAs, PartAs, RangeV);
+    Tasker_->launch(*TheModule_, TaskI.getId(), TaskArgAs, PartAs, RangeV);
     
     popScope();
 	  ValueResult_ = UndefValue::get(VoidType_);
@@ -1620,7 +1616,7 @@ void CodeGen::visit(FunctionAST& e)
       VarE = createArray(Arg.getName(), LLType);
     }
     else
-      VarE = createVariable(TheFunction, Arg.getName(), LLType);
+      VarE = createVariable(Arg.getName(), LLType);
     VarE->setOwner(false);
     auto Alloca = VarE->getAlloca();
     

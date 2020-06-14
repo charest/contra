@@ -76,7 +76,7 @@ public:
   
   Instruction* createMalloc(Type*, Value*, const std::string & ="");
 
-  void createFree(Value*, const std::string & ="");
+  void createFree(Value*);
 
   FunctionCallee createFunction(
       Module &,

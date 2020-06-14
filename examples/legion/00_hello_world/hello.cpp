@@ -9,8 +9,8 @@ enum TaskID {
 void hello_world_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;

@@ -84,13 +84,11 @@ public:
   
   virtual llvm::Value* launch(
       llvm::Module &,
-      const std::string &,
       int,
       const std::vector<llvm::Value*> &) = 0;
 
   virtual llvm::Value* launch(
       llvm::Module &,
-      const std::string &,
       int,
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
@@ -98,10 +96,6 @@ public:
 
   virtual llvm::Type* getFutureType() const = 0;
   virtual bool isFuture(llvm::Value*) const = 0;
-
-  virtual llvm::AllocaInst* createFuture(
-      llvm::Module &,
-      const std::string &) = 0;
 
   virtual llvm::Value* loadFuture(
       llvm::Module &,
@@ -133,26 +127,16 @@ public:
       llvm::Value*) = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Value*,
-      const std::string & = "") = 0;
+      llvm::Value*) = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
       llvm::Type*,
-      llvm::Value*,
-      const std::string & = "") = 0;
+      llvm::Value*) = 0;
   virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
-  virtual llvm::Value* getRangeSize(
-      llvm::Module &,
-      llvm::Value*) = 0;
-  virtual llvm::Value* getRangeStart(
-      llvm::Module &,
-      llvm::Value*) = 0;
-  virtual llvm::Value* getRangeEnd(
-      llvm::Module &,
-      llvm::Value*) = 0;
+  virtual llvm::Value* getRangeSize(llvm::Value*) = 0;
+  virtual llvm::Value* getRangeStart(llvm::Value*) = 0;
+  virtual llvm::Value* getRangeEnd(llvm::Value*) = 0;
   virtual llvm::Value* loadRangeValue(
-      llvm::Module &,
-      llvm::Type*,
       llvm::Value*,
       llvm::Value*) = 0;
 

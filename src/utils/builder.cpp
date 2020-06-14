@@ -246,9 +246,7 @@ Instruction* BuilderHelper::createMalloc(
 //============================================================================  
 // Free
 //============================================================================  
-void BuilderHelper::createFree(
-    Value* Val,
-    const std::string & Name)
+void BuilderHelper::createFree(Value* Val)
 {
   auto Ty = Val->getType();
 

@@ -125,12 +125,10 @@ public:
   
   virtual llvm::Value* launch(
       llvm::Module &,
-      const std::string &,
       int,
       const std::vector<llvm::Value*> &) override;
   virtual llvm::Value* launch(
       llvm::Module &,
-      const std::string &,
       int,
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
@@ -140,9 +138,6 @@ public:
   { return FutureType_; }
 
   virtual bool isFuture(llvm::Value*) const override;
-  virtual llvm::AllocaInst* createFuture(
-      llvm::Module &,
-      const std::string &) override;
   virtual llvm::Value* loadFuture(
       llvm::Module &,
       llvm::Value*,
@@ -183,26 +178,16 @@ public:
       llvm::Value*) override;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
-      llvm::Value*,
-      const std::string &) override;
+      llvm::Value*) override;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
       llvm::Type*,
-      llvm::Value*,
-      const std::string &) override;
+      llvm::Value*) override;
   virtual void destroyRange(llvm::Module &, llvm::Value*) override;
-  virtual llvm::Value* getRangeSize(
-      llvm::Module &,
-      llvm::Value*) override;
-  virtual llvm::Value* getRangeStart(
-      llvm::Module &,
-      llvm::Value*) override;
-  virtual llvm::Value* getRangeEnd(
-      llvm::Module &,
-      llvm::Value*) override;
+  virtual llvm::Value* getRangeSize(llvm::Value*) override;
+  virtual llvm::Value* getRangeStart(llvm::Value*) override;
+  virtual llvm::Value* getRangeEnd(llvm::Value*) override;
   virtual llvm::Value* loadRangeValue(
-      llvm::Module &,
-      llvm::Type*,
       llvm::Value*,
       llvm::Value*) override;
   
@@ -309,7 +294,7 @@ protected:
       const std::string &,
       const std::string & = "");
 
-  void destroyGlobalArguments(llvm::Module&, llvm::AllocaInst*);
+  void destroyGlobalArguments(llvm::AllocaInst*);
 
   void createRegistrationArguments(
       llvm::Module&,

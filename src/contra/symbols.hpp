@@ -196,6 +196,8 @@ public:
     if (!LeftType.isArray() && isArray()) return false;
     return isCastableTo(LeftType);
   }
+  
+  VariableType& operator=(const VariableType & other) = default;
 
   bool operator==(const VariableType & other)
   { 

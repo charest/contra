@@ -1020,7 +1020,7 @@ void Analyzer::visit(TaskAST& e)
 }
 
 //==============================================================================
-void Analyzer::visit(IndexTaskAST& e)
+void Analyzer::visit(IndexTaskAST&)
 {}
 
 }

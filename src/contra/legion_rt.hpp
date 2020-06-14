@@ -376,10 +376,10 @@ void contra_legion_index_space_create_from_size(
 /// index space partitioning
 //==============================================================================
 void contra_legion_index_space_create_from_array(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
+    legion_runtime_t *,
+    legion_context_t *,
     dopevector_t *arr,
-    contra_legion_index_space_t * is)
+    contra_legion_index_space_t *)
 {
   std::cout << arr->size << std::endl;
   //is->start = 0;
@@ -392,7 +392,7 @@ void contra_legion_index_space_create_from_array(
 //==============================================================================
 void contra_legion_index_space_create_from_index_partition(
     legion_runtime_t * runtime,
-    legion_context_t * ctx,
+    legion_context_t *,
     legion_task_t * task,
     legion_index_partition_t * part,
     contra_legion_index_space_t * is)
@@ -638,8 +638,8 @@ void contra_legion_partitions_pop(
 /// partition destruction
 //==============================================================================
 void contra_legion_partitions_destroy(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
+    legion_runtime_t *,
+    legion_context_t *,
     contra_legion_partitions_t ** parts)
 {
   //for (auto & part : (*parts)->LogicalPartitions) part.second.reset();
@@ -654,7 +654,7 @@ void contra_legion_get_accessor(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
     legion_physical_region_t **regionptr,
-    uint32_t* num_regions,
+    uint32_t* /*num_regions*/,
     uint32_t* region_id,
     uint32_t* field_id,
     contra_legion_accessor_t* acc)
@@ -714,8 +714,8 @@ void contra_legion_accessor_read(
 /// accessor destruction
 //==============================================================================
 void contra_legion_accessor_destroy(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
+    legion_runtime_t *,
+    legion_context_t *,
     contra_legion_accessor_t * acc)
 {
   legion_accessor_array_1d_destroy(acc->accessor);
@@ -743,12 +743,12 @@ real_t get_wall_time(void) {
   return timer();
 }
 
-void contra_legion_timer_start(real_t * time)
+void contra_legion_timer_start(real_t *)
 {
   //*time = get_wall_time() * 1e3;
 }
 
-void contra_legion_timer_stop(real_t * time)
+void contra_legion_timer_stop(real_t *)
 {
   //std::cout << get_wall_time()*1e3 - *time << std::endl;
 }

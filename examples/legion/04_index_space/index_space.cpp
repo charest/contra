@@ -17,8 +17,8 @@ enum TaskID {
 void field_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;
@@ -84,8 +84,8 @@ void field_task(
 void index_space_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;
@@ -161,8 +161,8 @@ void index_space_task(
 void top_level_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;

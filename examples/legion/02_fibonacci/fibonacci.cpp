@@ -12,8 +12,8 @@ enum TaskID {
 void top_level_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;
@@ -66,8 +66,8 @@ void top_level_task(
 void fibonacci_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;
@@ -145,8 +145,8 @@ void fibonacci_task(
 void sum_task(
     const void *data,
     size_t datalen,
-    const void * userdata,
-    size_t userlen,
+    const void * /*userdata*/,
+    size_t /*userlen*/,
     realm_id_t proc_id)
 {
   legion_task_t task;

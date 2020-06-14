@@ -90,7 +90,7 @@ auto llvmValue( llvm::LLVMContext & TheContext, T Val )
 { return LlvmType<T>::getValue(TheContext, Val); }
 
 template<typename T>
-llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
+llvm::Constant* llvmValue( llvm::LLVMContext &, llvm::Type* Ty, T Val )
 {
   auto Size = Ty->getIntegerBitWidth();
   auto IsSigned = std::is_signed<T>::value;

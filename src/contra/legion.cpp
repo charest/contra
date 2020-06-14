@@ -641,7 +641,6 @@ void LegionTasker::destroyOpaqueType(
 // Destroy task arguments
 //==============================================================================
 void LegionTasker::destroyGlobalArguments(
-    Module& TheModule,
     AllocaInst* TaskArgsA)
 {
   auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
@@ -1345,7 +1344,6 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 //==============================================================================
 Value* LegionTasker::launch(
     Module &TheModule,
-    const std::string & Name,
     int TaskId,
     const std::vector<Value*> & ArgVs)
 {
@@ -1423,7 +1421,7 @@ Value* LegionTasker::launch(
   
   //----------------------------------------------------------------------------
   // Deallocate storate
-  destroyGlobalArguments(TheModule, TaskArgsA);
+  destroyGlobalArguments(TaskArgsA);
 
   return TheHelper_.load(FutureA);
 }
@@ -1433,7 +1431,6 @@ Value* LegionTasker::launch(
 //==============================================================================
 Value* LegionTasker::launch(
     Module &TheModule,
-    const std::string & Name,
     int TaskId,
     std::vector<Value*> ArgAs,
     const std::vector<Value*> & PartAs,
@@ -1620,7 +1617,7 @@ Value* LegionTasker::launch(
   
   popPartitionInfo(TheModule, PartInfoA);
   
-  destroyGlobalArguments(TheModule, TaskArgsA);
+  destroyGlobalArguments(TaskArgsA);
 
   //return Builder_.CreateLoad(FutureMapType_, FutureMapA);
   return nullptr;
@@ -1649,17 +1646,6 @@ Value* LegionTasker::loadFuture(
   deserialize(DataA, DataPtrV);
 
   return TheHelper_.load(DataA, "future");
-}
-
-//==============================================================================
-// insert a future value
-//==============================================================================
-AllocaInst* LegionTasker::createFuture(
-    Module &,
-    const std::string & Name)
-{
-  auto FutureA = TheHelper_.createEntryBlockAlloca(FutureType_, "future.alloca");
-  return FutureA;
 }
 
 //==============================================================================
@@ -1877,8 +1863,7 @@ AllocaInst* LegionTasker::createRange(
 //==============================================================================
 AllocaInst* LegionTasker::createRange(
     Module & TheModule,
-    Value* ValueV,
-    const std::string & Name)
+    Value* ValueV)
 {
   auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(IndexSpaceDataType_, "index");
 
@@ -1913,8 +1898,7 @@ AllocaInst* LegionTasker::createRange(
 AllocaInst* LegionTasker::createRange(
     Module & TheModule,
     Type*,
-    Value* ValueV,
-    const std::string & Name)
+    Value* ValueV)
 {
   auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(IndexSpaceDataType_, "index");
   auto ValueA = TheHelper_.getAsAlloca(ValueV);
@@ -2099,13 +2083,13 @@ void LegionTasker::destroyRange(Module &TheModule, Value* RangeV)
 //==============================================================================
 // get a range start
 //==============================================================================
-llvm::Value* LegionTasker::getRangeStart(Module &TheModule, Value* RangeV)
+llvm::Value* LegionTasker::getRangeStart(Value* RangeV)
 { return TheHelper_.extractValue(RangeV, 0); }
 
 //==============================================================================
 // get a range start
 //==============================================================================
-llvm::Value* LegionTasker::getRangeEnd(Module &TheModule, Value* RangeV)
+llvm::Value* LegionTasker::getRangeEnd(Value* RangeV)
 {
   Value* EndV = TheHelper_.extractValue(RangeV, 1);
   auto OneC = llvmValue<int_t>(TheContext_, 1);
@@ -2116,7 +2100,7 @@ llvm::Value* LegionTasker::getRangeEnd(Module &TheModule, Value* RangeV)
 //==============================================================================
 // get a range size
 //==============================================================================
-llvm::Value* LegionTasker::getRangeSize(Module &TheModule, Value* RangeV)
+llvm::Value* LegionTasker::getRangeSize(Value* RangeV)
 {
   auto StartV = TheHelper_.extractValue(RangeV, 0);
   auto EndV = TheHelper_.extractValue(RangeV, 1);
@@ -2127,8 +2111,6 @@ llvm::Value* LegionTasker::getRangeSize(Module &TheModule, Value* RangeV)
 // get a range value
 //==============================================================================
 llvm::Value* LegionTasker::loadRangeValue(
-    Module &TheModule,
-    Type* ElementT,
     Value* RangeA,
     Value* IndexV)
 {

@@ -228,7 +228,6 @@ private:
   // Variable interface
   //============================================================================
   VariableAlloca * createVariable(
-      Function *TheFunction,
       const std::string &VarName,
       Type* VarType);
 
@@ -276,7 +275,6 @@ private:
 
   // Initializes a bunch of arrays with a value
   void initArray(
-      Function *TheFunction, 
       Value* Var,
       Value * InitVal,
       Value * SizeExpr,
@@ -284,7 +282,6 @@ private:
 
   // initializes an array with a list of values
   void initArray(
-      Function *TheFunction, 
       Value* Var,
       const std::vector<Value *> InitVals,
       Type * ElementType );
