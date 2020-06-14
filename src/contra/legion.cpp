@@ -451,6 +451,12 @@ AllocaInst* LegionTasker::createPartitionInfo(
   auto PartInfoA = TheHelper_.createEntryBlockAlloca(VoidPtrType_, "indexpartinfo");
   auto NullV = Constant::getNullValue(VoidPtrType_);
   Builder_.CreateStore(NullV, PartInfoA);
+  
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_legion_partitions_create",
+      VoidType_,
+      {PartInfoA});
 
   pushPartitionInfo(TheModule, PartInfoA);
     

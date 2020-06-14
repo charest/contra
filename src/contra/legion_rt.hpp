@@ -585,12 +585,21 @@ void contra_legion_task_add_region_requirement(
 }
 
 //==============================================================================
+/// partition create
+//==============================================================================
+void contra_legion_partitions_create(
+    contra_legion_partitions_t ** parts)
+{
+  if (!*parts) *parts = new contra_legion_partitions_t;
+}
+
+
+//==============================================================================
 /// partition push
 //==============================================================================
 void contra_legion_partitions_push(
     contra_legion_partitions_t ** parts)
 {
-  if (!*parts) *parts = new contra_legion_partitions_t;
   (*parts)->push();
 }
 
