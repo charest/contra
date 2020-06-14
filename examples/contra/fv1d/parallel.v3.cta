@@ -56,7 +56,7 @@ tsk main() {
   f64 cfl = 0.5
   f64 max_time = 0.2
   deltat = 1e-1
-  max_its = 100
+  max_its = 1000
 
   gamma = 1.4 
         
@@ -155,7 +155,7 @@ tsk main() {
   point_ids[points_expanded] = -1
 
   foreach i = parts {
-    use points_expanded, point_ids : points_expanded_part
+    use points_expanded : points_expanded_part
     for j = 0:len(points_expanded)-1 {
       point_ids[j] = point_offsets[i] + j
     }
@@ -169,7 +169,7 @@ tsk main() {
 
   # now compute the cell centroids
   foreach i = parts {
-    use cells, centroids, deltax : cells_disjoint_part
+    use cells : cells_disjoint_part
     use vertices  : points_part
 
     for j = 0:len(cells)-1 {
@@ -187,8 +187,7 @@ tsk main() {
   energy  [cells] = 0.
   
   foreach i = parts {
-    use cells, centroids : cells_disjoint_part
-    use density, pressure, velocity, energy : cells_disjoint_part
+    use cells : cells_disjoint_part
 
     for j = 0:len(cells)-1 {
       if centroids[j] < 0.5 {
@@ -230,7 +229,7 @@ tsk main() {
   cell_ids[cells_expanded] = -1
 
   foreach i = parts {
-    use cells_expanded, cell_ids : cells_expanded_part
+    use cells_expanded : cells_expanded_part
     for j = 0:len(cells_expanded)-1 
       cell_ids[j] = cell_offsets[i] + j
   }
@@ -279,7 +278,6 @@ tsk main() {
     foreach i = parts {
     
       use cells : cells_disjoint_part
-      use dmassdt, dmomdt, denerdt : cells_disjoint_part
       use density, pressure, velocity, energy  : cells_overlap_part
  
       # zero residuals
@@ -341,9 +339,7 @@ tsk main() {
     # Apply update
     foreach i = parts {
     
-      use cells, deltax : cells_disjoint_part
-      use density, pressure, velocity, energy  : cells_disjoint_part
-      use dmassdt, dmomdt, denerdt : cells_disjoint_part
+      use cells : cells_disjoint_part
    
       # apply the update
       for j = 0 : len(cells)-1 { 

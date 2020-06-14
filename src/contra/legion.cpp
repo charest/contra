@@ -1465,6 +1465,8 @@ Value* LegionTasker::launch(
   auto NumArgs = ArgAs.size();
   for (unsigned i=0; i<NumArgs; i++) {
     if (isRange(ArgAs[i])) {
+      // keep track of range
+      auto IndexSpaceA = ArgAs[i];
       // has a prescribed partition
       if (PartAs[i]) {
         ArgAs[i] = PartAs[i];
@@ -1474,6 +1476,20 @@ Value* LegionTasker::launch(
         ArgAs[i] = partition(TheModule, ArgAs[i], RangeV);
         TempParts.emplace_back( ArgAs[i] );
       }
+      // keep track of partition
+      auto IndexPartitionA = ArgAs[i];
+      // register these partitions
+      std::vector<Value*> FunArgVs = {
+        RuntimeA,
+        ContextA,
+        IndexSpaceA,
+        IndexPartitionA,
+        PartInfoA};
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_legion_register_index_partition",
+          VoidType_,
+          FunArgVs);
     }
   }
 
@@ -1994,9 +2010,6 @@ AllocaInst* LegionTasker::partition(
   auto & LegionE = getCurrentTask();
   const auto & ContextA = LegionE.ContextAlloca;
   const auto & RuntimeA = LegionE.RuntimeAlloca;
-  auto & PartInfoA = LegionE.PartInfoAlloca;
-
-  if (!PartInfoA) PartInfoA = createPartitionInfo(TheModule);
 
   auto IndexPartA = TheHelper_.createEntryBlockAlloca(IndexPartitionType_);
     
@@ -2011,7 +2024,6 @@ AllocaInst* LegionTasker::partition(
       ContextA,
       ColorA,
       IndexSpaceA,
-      PartInfoA,
       IndexPartA};
     
     TheHelper_.callFunction(
@@ -2029,7 +2041,6 @@ AllocaInst* LegionTasker::partition(
       ContextA,
       ColorA,
       IndexSpaceA,
-      PartInfoA,
       IndexPartA,
       llvmValue<bool>(TheContext_, true)
     };
@@ -2049,7 +2060,6 @@ AllocaInst* LegionTasker::partition(
       ContextA,
       ColorV,
       IndexSpaceA,
-      PartInfoA,
       IndexPartA};
     
     TheHelper_.callFunction(

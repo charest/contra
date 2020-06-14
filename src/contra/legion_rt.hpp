@@ -51,12 +51,16 @@ struct contra_legion_partitions_t {
   struct IndexPartitionDeleter {
     legion_runtime_t * runtime;
     legion_context_t * context;
-    IndexPartitionDeleter(legion_runtime_t * rt, legion_context_t * ctx) :
-      runtime(rt), context(ctx)
+    bool owner;
+    IndexPartitionDeleter(
+        legion_runtime_t * rt,
+        legion_context_t * ctx,
+        bool owns = true) :
+      runtime(rt), context(ctx), owner(owns)
     {}
     void operator()(legion_index_partition_t *ptr)
     {
-      legion_index_partition_destroy(*runtime, *context, *ptr);
+      if (owner) legion_index_partition_destroy(*runtime, *context, *ptr);
       delete ptr;
     }
   };
@@ -106,7 +110,8 @@ struct contra_legion_partitions_t {
     getOrCreateIndexPartition(
       legion_runtime_t *rt,
       legion_context_t *ctx,
-      legion_index_space_id_t id)
+      legion_index_space_id_t id,
+      bool owner = true)
   {
     // found
     for (const auto & Scope : IndexPartitions) {
@@ -116,7 +121,7 @@ struct contra_legion_partitions_t {
       }
     }
     // not found
-    IndexPartitionDeleter Deleter(rt, ctx);
+    IndexPartitionDeleter Deleter(rt, ctx, owner);
     auto res = IndexPartitions.front().emplace(
         id,
         IndexPartitionVal(new legion_index_partition_t, Deleter) );
@@ -189,7 +194,6 @@ void contra_legion_index_space_partition(
     legion_context_t * ctx,
     contra_legion_index_space_t * cs,
     contra_legion_index_space_t * is,
-    contra_legion_partitions_t ** parts,
     legion_index_partition_t * part)
 {
   *part = legion_index_partition_create_equal(
@@ -209,7 +213,6 @@ void contra_legion_index_space_partition_from_size(
     legion_context_t * ctx,
     int_t size,
     contra_legion_index_space_t * is,
-    contra_legion_partitions_t ** parts,
     legion_index_partition_t * part)
 {
   legion_index_space_t color_space = legion_index_space_create(*runtime, *ctx, size);
@@ -233,7 +236,6 @@ void contra_legion_index_space_partition_from_array(
     legion_context_t * ctx,
     dopevector_t *arr,
     contra_legion_index_space_t * is,
-    contra_legion_partitions_t ** parts,
     legion_index_partition_t * part,
     bool do_report)
 {
@@ -355,6 +357,9 @@ void contra_legion_index_space_create(
   legion_index_space_attach_name(*runtime, is->index_space, name, false);  
 }
 
+//==============================================================================
+/// index space partitioning
+//==============================================================================
 void contra_legion_index_space_create_from_size(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
@@ -367,6 +372,9 @@ void contra_legion_index_space_create_from_size(
   is->index_space = legion_index_space_create(*runtime, *ctx, size);
 }
 
+//==============================================================================
+/// index space partitioning
+//==============================================================================
 void contra_legion_index_space_create_from_array(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
@@ -379,6 +387,9 @@ void contra_legion_index_space_create_from_array(
   //is->index_space = legion_index_space_create(*runtime, *ctx, size);
 }
 
+//==============================================================================
+/// index space partitioning
+//==============================================================================
 void contra_legion_index_space_create_from_index_partition(
     legion_runtime_t * runtime,
     legion_context_t * ctx,
@@ -405,6 +416,19 @@ void contra_legion_index_space_create_from_index_partition(
   is->step = 1;
 }
 
+//==============================================================================
+/// register an index partition with an index sapce
+//==============================================================================
+void contra_legion_register_index_partition(
+    legion_runtime_t * runtime,
+    legion_context_t * ctx,
+    contra_legion_index_space_t * is,
+    legion_index_partition_t * index_part,
+    contra_legion_partitions_t ** parts)
+{
+  auto res = (*parts)->getOrCreateIndexPartition(runtime, ctx, is->index_space.id, false);
+  if (!res.second) *res.first = *index_part;
+}
 
 //==============================================================================
 /// index spce destruction
@@ -507,12 +531,10 @@ void contra_legion_index_add_region_requirement(
     legion_context_t * ctx,
     legion_index_launcher_t * launcher,
     contra_legion_index_space_t * cs,
-    void ** void_parts,
+    contra_legion_partitions_t ** parts,
     legion_index_partition_t * specified_part,
     contra_legion_field_t * field)
 {
-  auto parts = reinterpret_cast<contra_legion_partitions_t**>(void_parts);
-
   legion_index_partition_t * index_part = nullptr;
 
   if ( specified_part ) {
