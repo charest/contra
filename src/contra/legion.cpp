@@ -1470,7 +1470,7 @@ Value* LegionTasker::launch(
       }
       // temporarily partition
       else {
-        ArgAs[i] = partition(TheModule, ArgAs[i], RangeV);
+        ArgAs[i] = createPartition(TheModule, ArgAs[i], RangeV);
         TempParts.emplace_back( ArgAs[i] );
       }
       // keep track of partition
@@ -1861,86 +1861,7 @@ AllocaInst* LegionTasker::createRange(
 //==============================================================================
 // create a range
 //==============================================================================
-AllocaInst* LegionTasker::createRange(
-    Module & TheModule,
-    Value* ValueV)
-{
-  auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(IndexSpaceDataType_, "index");
-
-  if (isInsideTask()) {
-    const auto & LegionE = getCurrentTask();
-    const auto & ContextA = LegionE.ContextAlloca;
-    const auto & RuntimeA = LegionE.RuntimeAlloca;
-    
-    std::vector<Value*> FunArgVs = {RuntimeA, ContextA, ValueV, IndexSpaceA};
-    
-    TheHelper_.callFunction(
-        TheModule,
-        "contra_legion_index_space_create_from_size",
-        VoidType_,
-        FunArgVs);
-  }
-  else { 
-    auto ZeroC = llvmValue<int_t>(TheContext_, 0);
-    auto OneC = llvmValue<int_t>(TheContext_, 1);
-    TheHelper_.insertValue(IndexSpaceA, ZeroC,  0);
-    TheHelper_.insertValue(IndexSpaceA, ValueV, 1);
-    TheHelper_.insertValue(IndexSpaceA, OneC,   2);
-  }
-
-  return IndexSpaceA;
-
-}
-
-//==============================================================================
-// create a range
-//==============================================================================
-AllocaInst* LegionTasker::createRange(
-    Module & TheModule,
-    Type*,
-    Value* ValueV)
-{
-  auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(IndexSpaceDataType_, "index");
-  auto ValueA = TheHelper_.getAsAlloca(ValueV);
-
-  if (isInsideTask()) {
-    const auto & LegionE = getCurrentTask();
-    const auto & ContextA = LegionE.ContextAlloca;
-    const auto & RuntimeA = LegionE.RuntimeAlloca;
-    
-    std::vector<Value*> FunArgVs = {RuntimeA, ContextA, ValueA, IndexSpaceA};
-    
-    TheHelper_.callFunction(
-        TheModule,
-        "contra_legion_index_space_create_from_array",
-        VoidType_,
-        FunArgVs);
-  }
-  else { 
-    
-    auto IntT = llvmType<int_t>(TheContext_);
-    auto SumV = TheHelper_.callFunction(
-        TheModule,
-        "contra_legion_sum_array",
-        IntT,
-        {ValueA});
-    
-    auto ZeroC = llvmValue<int_t>(TheContext_, 0);
-    auto OneC = llvmValue<int_t>(TheContext_, 1);
-    TheHelper_.insertValue(IndexSpaceA, ZeroC, 0);
-    TheHelper_.insertValue(IndexSpaceA, SumV,  1);
-    TheHelper_.insertValue(IndexSpaceA, OneC,  2);
-  }
-
-  
-  return IndexSpaceA;
-
-}
-
-//==============================================================================
-// create a range
-//==============================================================================
-AllocaInst* LegionTasker::partition(
+AllocaInst* LegionTasker::createPartition(
     Module & TheModule,
     Value* IndexSpaceA,
     Value* IndexPartitionA,
@@ -1985,7 +1906,7 @@ AllocaInst* LegionTasker::partition(
 //==============================================================================
 // create a range
 //==============================================================================
-AllocaInst* LegionTasker::partition(
+AllocaInst* LegionTasker::createPartition(
     Module & TheModule,
     Value* IndexSpaceA,
     Value* Color)
@@ -2096,6 +2017,18 @@ llvm::Value* LegionTasker::getRangeEnd(Value* RangeV)
   return Builder_.CreateSub(EndV, OneC);
 }
 
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* LegionTasker::getRangeEndPlusOne(Value* RangeV)
+{ return TheHelper_.extractValue(RangeV, 1); }
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* LegionTasker::getRangeStep(Value* RangeV)
+{ return TheHelper_.extractValue(RangeV, 2); }
 
 //==============================================================================
 // get a range size

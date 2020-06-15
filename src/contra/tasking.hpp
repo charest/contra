@@ -125,17 +125,12 @@ public:
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) = 0;
-  virtual llvm::AllocaInst* createRange(
-      llvm::Module &,
-      llvm::Value*) = 0;
-  virtual llvm::AllocaInst* createRange(
-      llvm::Module &,
-      llvm::Type*,
-      llvm::Value*) = 0;
   virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
   virtual llvm::Value* getRangeSize(llvm::Value*) = 0;
   virtual llvm::Value* getRangeStart(llvm::Value*) = 0;
   virtual llvm::Value* getRangeEnd(llvm::Value*) = 0;
+  virtual llvm::Value* getRangeEndPlusOne(llvm::Value*) = 0;
+  virtual llvm::Value* getRangeStep(llvm::Value*) = 0;
   virtual llvm::Value* loadRangeValue(
       llvm::Value*,
       llvm::Value*) = 0;
@@ -155,12 +150,12 @@ public:
       llvm::Value* = nullptr) const = 0;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
   
-  virtual llvm::AllocaInst* partition(
+  virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) = 0;
-  virtual llvm::AllocaInst* partition(
+  virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*) = 0;

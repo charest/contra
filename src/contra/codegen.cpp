@@ -894,13 +894,13 @@ void CodeGen::visit(CallExprAST &e) {
   }
   else if (Name == "part") {
     if (NumArgs == 2) {
-      ValueResult_ = Tasker_->partition(
+      ValueResult_ = Tasker_->createPartition(
           *TheModule_,
           getArg(0),
           getArg(1));
     }
     else if (NumArgs == 3) {
-      ValueResult_ = Tasker_->partition(
+      ValueResult_ = Tasker_->createPartition(
         *TheModule_,
         getArg(0),
         getArg(1),
@@ -1116,11 +1116,11 @@ void CodeGen::visit(ForStmtAST& e) {
   // Use pre-existing range
   else {
     auto RangeV = runStmtVisitor(*e.getStartExpr());
-    auto StartV = TheHelper_.extractValue(RangeV, 0);
+    auto StartV = Tasker_->getRangeStart(RangeV);
     Builder_.CreateStore(StartV, VarA);
-    auto EndV = TheHelper_.extractValue(RangeV, 1);
+    auto EndV = Tasker_->getRangeEndPlusOne(RangeV);
     Builder_.CreateStore(EndV, EndA);
-    auto StepV = TheHelper_.extractValue(RangeV, 2);
+    auto StepV = Tasker_->getRangeStep(RangeV);
     Builder_.CreateStore(StepV, StepA);
   }
 

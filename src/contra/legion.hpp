@@ -176,17 +176,12 @@ public:
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) override;
-  virtual llvm::AllocaInst* createRange(
-      llvm::Module &,
-      llvm::Value*) override;
-  virtual llvm::AllocaInst* createRange(
-      llvm::Module &,
-      llvm::Type*,
-      llvm::Value*) override;
   virtual void destroyRange(llvm::Module &, llvm::Value*) override;
   virtual llvm::Value* getRangeSize(llvm::Value*) override;
   virtual llvm::Value* getRangeStart(llvm::Value*) override;
   virtual llvm::Value* getRangeEnd(llvm::Value*) override;
+  virtual llvm::Value* getRangeEndPlusOne(llvm::Value*) override;
+  virtual llvm::Value* getRangeStep(llvm::Value*) override;
   virtual llvm::Value* loadRangeValue(
       llvm::Value*,
       llvm::Value*) override;
@@ -211,12 +206,12 @@ public:
   virtual llvm::Type* getAccessorType() const override
   { return AccessorDataType_; }
   
-  virtual llvm::AllocaInst* partition(
+  virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) override;
-  virtual llvm::AllocaInst* partition(
+  virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*) override;
