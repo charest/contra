@@ -86,7 +86,7 @@ FunctionDef* Analyzer::getFunction(
   // see if this is an available intrinsic, try installing it first
   if (auto F = librt::RunTimeLib::tryInstall(Name)) {
     auto res = Context::instance().insertFunction(std::move(F));
-    return res.first;
+    return res.get();
   }
   
   THROW_NAME_ERROR("No valid prototype for '" << Name << "'.", Loc);
@@ -108,7 +108,7 @@ FunctionDef* Analyzer::insertFunction(
   const auto & Name = Id.getName();
   auto Sy = std::make_unique<UserFunction>(Name, Id.getLoc(), RetType, ArgTypes);
   auto res = Context::instance().insertFunction( std::move(Sy) );
-  return res.first;
+  return res.get();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

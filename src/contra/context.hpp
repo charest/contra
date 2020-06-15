@@ -2,6 +2,7 @@
 #define CONTRA_CONTEXT_HPP
 
 #include "errors.hpp"
+#include "lookup.hpp"
 #include "symbols.hpp"
 
 #include <deque>
@@ -12,8 +13,8 @@ namespace contra {
 
 class Context {
 
-  using TypeTable = SymbolTable<TypeDef>;
-  using VariableTable = SymbolTable<VariableDef>;
+  using TypeTable = LookupTable< std::unique_ptr<TypeDef> >;
+  using VariableTable = LookupTable< std::unique_ptr<VariableDef> >;
   using FunctionTable = LookupTable< std::vector<std::unique_ptr<FunctionDef>> >;
 
   struct NestedData {
@@ -22,22 +23,30 @@ class Context {
     std::deque<NestedData*> Children;
     unsigned Level = 0;
     VariableTable Variables;
-    std::map<VariableDef*, VariableTable*> AccessedVariables;
+    std::map<VariableDef*, NestedData*> AccessedVariables;
 
-    NestedData(const std::string & Name) : Variables(Level, Name) {}
+    NestedData(const std::string & Name) {}
 
     NestedData(NestedData* Scope, unsigned Lev, const std::string & Name) :
-      Parent(Scope), Level(Lev),
-      Variables(Lev, Name, &Scope->Variables)
+      Parent(Scope), Level(Lev)
     { Parent->addChild(this); }
 
   template<typename Op>
   static void decend(NestedData* Start, Op && op)
   {
     if (!Start) return;
-    std::forward<Op>(op)(Start);
+    if (std::forward<Op>(op)(Start)) return;
     for (auto Child : Start->Children) decend(Child, std::forward<Op>(op));
   }
+  
+  template<typename Op>
+  static void ascend(NestedData* Start, Op && op)
+  {
+    if (!Start) return;
+    if (std::forward<Op>(op)(Start)) return;
+    if (Start->Parent) ascend(Start->Parent, std::forward<Op>(op));
+  }
+
 
   private:
     void addChild(NestedData* Scope) { Children.push_back(Scope); }
@@ -91,41 +100,18 @@ public:
 
   // type interface
   auto isType(const std::string & Name) { return TypeTable_.has(Name); }
-  auto getType(const std::string & Name) { return TypeTable_.find(Name); }
+  FindResult<TypeDef> getType(const std::string & Name);
+  InsertResult<TypeDef> insertType(std::unique_ptr<TypeDef> V);
 
   // Variable interface
-  auto getVariable(const std::string & Name, bool Quietly=false)
-  {
-    auto it = CurrentScope_->Variables.find(Name);
-    if (it && !Quietly) {
-      CurrentScope_->AccessedVariables.emplace(it.get(), it.getTable());
-    }
-    return it;
-  }
-  
-  auto insertType(std::unique_ptr<TypeDef> V)
-  { return TypeTable_.insert(std::move(V)); }
-
-  auto insertVariable(std::unique_ptr<VariableDef> V)
-  { return CurrentScope_->Variables.insert(std::move(V)); }
-
+  FindResult<VariableDef> getVariable(const std::string & Name, bool Quietly=false);
+  InsertResult<VariableDef> insertVariable(std::unique_ptr<VariableDef> V);
   std::vector<VariableDef*> getVariablesAccessedFromAbove() const;
 
   // function interface
   void eraseFunction(const std::string & Name) { return FunctionTable_.erase(Name); }
   auto getFunction(const std::string & Name) { return FunctionTable_.find(Name); }
-  std::pair<FunctionDef*, bool> insertFunction(std::unique_ptr<FunctionDef> F)
-  { 
-    auto & Entry = FunctionTable_[F->getName()];
-    // look for existing
-    for (const auto & Fs : Entry) {
-      if ( isSame(Fs.get(), F.get()) )
-        return {Fs.get(), false};
-    }
-    // otherwise insert
-    Entry.emplace_back(std::move(F));
-    return {Entry.back().get(), true};
-  }
+  InsertResult<FunctionDef> insertFunction(std::unique_ptr<FunctionDef> F);
 
 };
 
