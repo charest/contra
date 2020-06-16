@@ -1,5 +1,4 @@
 #include "analysis.hpp"
-#include "matcher.hpp"
 #include "token.hpp"
 
 #include "librt/librt.hpp"
@@ -719,36 +718,6 @@ void Analyzer::visit(AssignStmtAST& e)
     if (NumRight>1) ir++;
 
   } // for
-  
-  //------------------------------------
-  // Look for possible reductions
-  if (NumLeft == NumRight) {
-    for (unsigned i=0; i<NumLeft; i++) {
-      auto LeftExpr = dynamic_cast<VarAccessExprAST*>(e.getLeftExpr(i));
-      std::cout << LeftExpr->getName() << std::endl;
-      auto RightExpr = e.getRightExpr(i);
-      if (auto BinExpr = dynamic_cast<BinaryExprAST*>(RightExpr)) {
-        if (auto VarExpr = dynamic_cast<VarAccessExprAST*>(BinExpr->getLeftExpr())) {
-          std::cout << "left " << VarExpr->getName() << std::endl;
-        }
-        else if (auto VarExpr = dynamic_cast<VarAccessExprAST*>(BinExpr->getLeftExpr())) {
-          std::cout << "right " << VarExpr->getName() << std::endl;
-        }
-      }
-      //auto res1 = match<BinaryExprAST, VarAccessExprAST, void>(RightExpr, false);
-      //auto res2 = match<BinaryExprAST, void, VarAccessExprAST>(RightExpr, false);
-      //if (!res1.empty()) { 
-      //  RightExpr = dynamic_cast<BinaryExprAST*>(res1.front());
-      //  std::cout << "1 found match!" << std::endl;
-      //}
-      //else if (!res2.empty()) {
-      //  std::cout << "2 found match!" << std::endl;
-      //  RightExpr = dynamic_cast<BinaryExprAST*>(res2.front());
-      //}
-      if (RightExpr) {
-      }
-    }
-  }
   
   TypeResult_ = VariableType();
 }
