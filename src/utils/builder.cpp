@@ -156,7 +156,7 @@ Value* BuilderHelper::getTypeSize(Type* ValT, Type* ResultT)
   return DataSize;
 }
 
-std::size_t BuilderHelper::getTypeSize(const Module & TheModule, Type* Ty)
+std::size_t BuilderHelper::getTypeSizeInBits(const Module & TheModule, Type* Ty)
 {
   auto DL = std::make_unique<DataLayout>(&TheModule);
   return DL->getTypeAllocSizeInBits(Ty);

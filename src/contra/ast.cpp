@@ -36,10 +36,6 @@ void RangeExprAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
-void FieldDeclExprAST::accept(AstVisiter& visiter)
-{ visiter.visit(*this); }
-
-//==============================================================================
 void CastExprAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
@@ -100,12 +96,8 @@ void PartitionStmtAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
-//void VarDeclAST::accept(AstVisiter& visiter)
-//{ visiter.visit(*this); }
-
-//==============================================================================
-//void FieldDeclAST::accept(AstVisiter& visiter)
-//{ visiter.visit(*this); }
+void ReductionStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
 
 //==============================================================================
 void PrototypeAST::accept(AstVisiter& visiter)

@@ -56,14 +56,6 @@ public:
     postVisit(e);
   }
   
-  virtual bool preVisit(FieldDeclExprAST&) { return false; }
-  virtual void postVisit(FieldDeclExprAST&) {}
-  virtual void visit(FieldDeclExprAST&e) {
-    if (preVisit(e)) { return; }
-    e.getIndexExpr()->accept(*this);
-    postVisit(e);
-  }
-  
   virtual bool preVisit(CastExprAST&) { return false; }
   virtual void postVisit(CastExprAST&) {}
   virtual void visit(CastExprAST&e) {
@@ -149,6 +141,14 @@ public:
     e.getPartExpr()->accept(*this);
     postVisit(e);
   }
+  
+  virtual bool preVisit(ReductionStmtAST&) { return false; }
+  virtual void postVisit(ReductionStmtAST&) {}
+  virtual void visit(ReductionStmtAST&e) {
+    if (preVisit(e)) { return; }
+    postVisit(e);
+  }
+  
   
   virtual bool preVisit(PrototypeAST&) { return false; }
   virtual void postVisit(PrototypeAST&) {}

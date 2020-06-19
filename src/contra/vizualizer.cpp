@@ -231,58 +231,12 @@ void Vizualizer::visit(PartitionStmtAST& e)
   runVisitor(*e.getPartExpr());
 }
 
-#if 0
 //==============================================================================
-void Vizualizer::visit(VarDeclAST& e)
+void Vizualizer::visit(ReductionStmtAST& e)
 {
-  Formatter fmt;
-  
-  auto NumVars = e.getNumVars();
-  for (unsigned i=0; i<NumVars; ++i) {
-    fmt << e.getVarName(i);
-    if (e.getVarType(i)) fmt << " {" << e.getVarType(i) << "}";
-    if (i != NumVars-1) fmt << ", ";
-  }
-
   auto my_ind = ind_;
-  labelNode(my_ind, makeLabel(e.getClassName(), fmt));
-  
-  if (e.hasSize()) {
-    createLink(my_ind, "Size");
-    runVisitor(*e.getSizeExpr());
-  }
-
-  createLink(ind_, "Init");
-  runVisitor(*e.getInitExpr());
+  labelNode(my_ind, makeLabel(e.getClassName(), e.getVarName(0)));
 }
-
-//==============================================================================
-void Vizualizer::visit(FieldDeclAST& e)
-{
-  Formatter fmt;
-  
-  auto NumVars = e.getNumVars();
-  for (unsigned i=0; i<NumVars; ++i) {
-    fmt << e.getVarName(i);
-    if (e.getVarType(i)) fmt << " {" << e.getVarType(i) << "}";
-    if (i != NumVars-1) fmt << ", ";
-  }
-
-  auto my_ind = ind_;
-  labelNode(my_ind, makeLabel(e.getClassName(), fmt));
-    
-  createLink(my_ind, "Parts");
-  runVisitor(*e.getPartExpr());
-  
-  if (e.hasSize()) {
-    createLink(my_ind, "Size");
-    runVisitor(*e.getSizeExpr());
-  }
-
-  createLink(ind_, "Init");
-  runVisitor(*e.getInitExpr());
-}
-#endif
 
 //==============================================================================
 void Vizualizer::visit(PrototypeAST& e)

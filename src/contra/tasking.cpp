@@ -15,7 +15,7 @@ Type* AbstractTasker::reduceStruct(
   auto NumElem = StructT->getNumElements();
   auto ElementTs = StructT->elements();
   if (NumElem == 1) return ElementTs[0];
-  auto BitWidth = TheHelper_.getTypeSize(TheModule, StructT);
+  auto BitWidth = TheHelper_.getTypeSizeInBits(TheModule, StructT);
   return IntegerType::get(TheContext_, BitWidth);
 }
 
@@ -27,7 +27,7 @@ Type* AbstractTasker::reduceArray(
   auto NumElem = ArrayT->getNumElements();
   auto ElementT = ArrayT->getElementType();
   if (NumElem == 1) return ElementT;
-  auto BitWidth = TheHelper_.getTypeSize(TheModule, ArrayT);
+  auto BitWidth = TheHelper_.getTypeSizeInBits(TheModule, ArrayT);
   return IntegerType::get(TheContext_, BitWidth);
 }
 
@@ -102,7 +102,7 @@ Value* AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 //==============================================================================
 TaskInfo & AbstractTasker::insertTask(const std::string & Name)
 {
-  auto Id = getNextId();
+  auto Id = makeTaskId();
   auto it = TaskTable_.emplace(Name, TaskInfo(Id));
   return it.first->second;
 }
@@ -111,7 +111,7 @@ TaskInfo & AbstractTasker::insertTask(const std::string & Name)
 TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 {
   auto TaskName = F->getName();
-  auto Id = getNextId();
+  auto Id = makeTaskId();
   auto it = TaskTable_.emplace(Name, TaskInfo(Id, TaskName, F));
   return it.first->second;
 }
@@ -120,7 +120,7 @@ TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 TaskInfo AbstractTasker::popTask(const std::string & Name)
 {
   auto it = TaskTable_.find(Name);
-  auto res = it->second;
+  auto res = std::move(it->second);
   TaskTable_.erase(it);
   return res;
 }

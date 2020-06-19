@@ -1194,32 +1194,34 @@ void CodeGen::visit(ForeachStmtAST& e)
   //---------------------------------------------------------------------------
   else {
     createScope();
-
-    Value* RangeV = runStmtVisitor(*e.getStartExpr());
     
-
+    auto TaskN = e.getName();
+    const auto & TaskI = Tasker_->getTask(TaskN);
+    
     //----------------------------------
-    // Partition Tasks
+    // Map partitions
     std::map<std::string, Value*> Ranges;
     std::map<std::string, Value*> Fields;
     for (auto & Stmt : e.getBodyExprs()) {
-      auto Node = dynamic_cast<PartitionStmtAST*>(Stmt.get());
-      auto VarA = runStmtVisitor(*Node->getPartExpr());
-      auto NumVars = Node->getNumVars();
-      for (unsigned i=0; i<NumVars; ++i) {
-        auto VarD = Node->getVarDef(i);
-        const auto VarN = Node->getVarName(i);
-        if (VarD->getType().isRange()) {
-          Ranges.emplace( VarN, VarA );
-        }
-        else if (VarD->getType().isField()) {
-          Fields.emplace(VarN, VarA);
+      auto StmtPtr = Stmt.get();
+      if (auto Node = dynamic_cast<PartitionStmtAST*>(StmtPtr)) {
+        auto VarA = runStmtVisitor(*Node->getPartExpr());
+        auto NumVars = Node->getNumVars();
+        for (unsigned i=0; i<NumVars; ++i) {
+          auto VarD = Node->getVarDef(i);
+          const auto VarN = Node->getVarName(i);
+          if (VarD->getType().isRange()) {
+            Ranges.emplace( VarN, VarA );
+          }
+          else if (VarD->getType().isField()) {
+            Fields.emplace(VarN, VarA);
+          }
         }
       }
     }
 
     //----------------------------------
-    // Main Task
+    // Prepare arguments
     std::vector<Value*> TaskArgAs;
     std::vector<Value*> PartAs;
     for ( const auto & VarD : e.getAccessedVariables() ) {
@@ -1235,12 +1237,45 @@ void CodeGen::visit(ForeachStmtAST& e)
       PartAs.emplace_back(PartA);
     }
 
-    auto TaskN = e.getName();
-    const auto & TaskI = Tasker_->getTask(TaskN);
-    Tasker_->launch(*TheModule_, TaskI.getId(), TaskArgAs, PartAs, RangeV);
+    Value* RangeV = runStmtVisitor(*e.getStartExpr());
+
+    //----------------------------------
+    // Launch Task
+	  
+    if (e.hasReduction() && TaskI.hasReduction()) {
+      auto FutureV = Tasker_->launch(
+          *TheModule_,
+          TaskI.getId(),
+          TaskArgAs,
+          PartAs,
+          RangeV,
+          true,
+          TaskI.getReduction().getId());
+    
+      std::vector<VariableType> ReduceTypes;
+      std::vector<Value*> ReduceAs;
+      for (auto ReduceD : e.getReductionVars()) {
+        auto VarD = ReduceD.getVariableDef();
+        ReduceTypes.emplace_back( VarD->getType() );
+        auto VarE = getVariable( VarD->getName() );
+        ReduceAs.emplace_back( VarE->getAlloca() );
+      }
+      auto ResultType = VariableType(ReduceTypes);
+      auto ResultT = getLLVMType(ResultType);
+
+      auto ResultV = Tasker_->loadFuture(*TheModule_, FutureV, ResultT);
+
+      for (unsigned i=0; i<ReduceAs.size(); ++i) {
+        auto ValueV = TheHelper_.extractValue(ResultV, i);
+        Builder_.CreateStore(ValueV, ReduceAs[i]);
+      }
+    }
+    else {
+      Tasker_->launch(*TheModule_, TaskI.getId(), TaskArgAs, PartAs, RangeV);
+    }
     
     popScope();
-	  ValueResult_ = UndefValue::get(VoidType_);
+    ValueResult_ = UndefValue::get(VoidType_);
 
   }
 }
@@ -1711,14 +1746,44 @@ void CodeGen::visit(TaskAST& e)
 //==============================================================================
 void CodeGen::visit(IndexTaskAST& e)
 {
+  auto TaskN = e.getName();
+
+  //----------------------------------------------------------------------------
+  // Reduction Op
+  std::unique_ptr<VariableType> ReturnType;
+  std::unique_ptr<ReduceInfo> RedopInfo;
+
+  if (e.hasReduction()) {
+   
+    std::vector<VariableType> ReduceTypes;
+    std::vector<Type*> ReduceTs;
+    std::vector<ReductionType> ReduceOps;
+
+    for (auto ReduceD : e.getReductionDefs()) {
+      auto VarD = ReduceD.getVariableDef();
+      auto VarType = VarD->getType();
+      ReduceTs.emplace_back(getLLVMType(VarType));
+      ReduceTypes.emplace_back(VarType);
+      ReduceOps.emplace_back(ReduceD.getType());
+    }
+    ReturnType = std::make_unique<VariableType>(ReduceTypes);
+
+    RedopInfo = std::make_unique<ReduceInfo>(
+        Tasker_.get()->createReductionOp(
+          *TheModule_,
+          TaskN,
+          ReduceTs,
+          ReduceOps));
+  }
+
+  //----------------------------------------------------------------------------
+  // Index Task
 
   bool CreatedScope = false;
   if (!e.isTopLevelExpression()) {
     CreatedScope = true;
     createScope();
   }
-
-  auto TaskN = e.getName();
 
   // get global args
   std::vector<Type*> TaskArgTs;
@@ -1762,18 +1827,34 @@ void CodeGen::visit(IndexTaskAST& e)
 
   // function body
   for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+
+  // if reductions
+  Value* ResultA = nullptr;
+  if (ReturnType) {
+    auto ResultT = getLLVMType(*ReturnType);
+    ResultA = TheHelper_.createEntryBlockAlloca(ResultT, "reduce.a");
+    unsigned i=0;
+    for (auto VarD : e.getReductionDefs()) {
+      const auto & VarN = VarD.getVariableDef()->getName();
+      auto VarE = getVariable(VarN);
+      auto MemberA = VarE->getAlloca();
+      TheHelper_.insertValue(ResultA, MemberA, i);
+      i++;
+    } 
+  }
   
   // garbage collection
   if (CreatedScope) popScope();
   
   // finish task
-  Tasker_->taskPostamble(*TheModule_);
+  Tasker_->taskPostamble(*TheModule_, ResultA);
   
 	Builder_.CreateRetVoid();
   
 	// register it
   auto & TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);
   TaskI.setLeaf(e.isLeaf());
+  if (RedopInfo) TaskI.setReduction( std::move(RedopInfo) );
 
  	verifyFunction(*Wrapper.TheFunction);
 

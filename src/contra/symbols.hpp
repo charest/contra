@@ -2,6 +2,7 @@
 #define CONTRA_SYMBOLS_HPP
 
 #include "identifier.hpp"
+#include "reductions.hpp"
 #include "sourceloc.hpp"
 
 #include <iostream>
@@ -361,6 +362,7 @@ public:
   const auto & getName() const { return Name_; }
   const auto & getReturnType() const { return ReturnType_; }
   void setReturnType(const VariableType & ReturnType) { ReturnType_=ReturnType; }
+  bool hasReturn() const { return ReturnType_; }
   const auto & getArgTypes() const { return ArgTypes_; }
   const auto & getArgType(int i) const { return ArgTypes_[i]; }
   auto getNumArgs() const { return ArgTypes_.size(); }
@@ -447,6 +449,24 @@ inline bool isSame(const FunctionDef* a, const FunctionDef* b) {
   }
   return true;
 }
+
+//==============================================================================
+// The reduction def
+//==============================================================================
+class ReductionDef {
+
+  VariableDef* VarDef_ = nullptr;
+  ReductionType ReduceType_ = ReductionType::User;
+
+public:
+  ReductionDef(VariableDef* VarDef, ReductionType ReduceType) :
+    VarDef_(VarDef),
+    ReduceType_(ReduceType)
+  {}
+  auto getVariableDef() const { return VarDef_; }
+  auto getType() const { return ReduceType_; }
+};
+
 
 } // namespace
 

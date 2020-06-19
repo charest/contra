@@ -2,9 +2,10 @@
 #define CONTRA_LEGION_HPP
 
 #include "tasking.hpp"
+#include "reductions.hpp"
 #include "librt/dllexport.h"
 
-#include "legion/legion_c.h"
+#include <legion/legion_c.h>
 
 namespace llvm {
 class AllocaInst;
@@ -22,6 +23,7 @@ protected:
   llvm::Type* CharType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* SizeType_ = nullptr;
+  llvm::Type* OffType_ = nullptr;
   llvm::Type* ProcIdType_ = nullptr;
   llvm::Type* RealmIdType_ = nullptr;
   llvm::Type* NumRegionsType_ = nullptr;
@@ -132,7 +134,9 @@ public:
       int,
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
-      llvm::Value*) override;
+      llvm::Value*,
+      bool,
+      int) override;
   
   virtual llvm::Type* getFutureType() const override
   { return FutureType_; }
@@ -223,6 +227,16 @@ public:
   
   virtual llvm::Type* getPartitionType() const override
   { return IndexPartitionType_; }
+
+  virtual ReduceInfo createReductionOp(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<llvm::Type*> &,
+      const std::vector<ReductionType> &) override;
+
+  void registerReductionOp(
+    llvm::Module &TheModule,
+    const ReduceInfo & ReduceOp);
   
   virtual ~LegionTasker() = default;
 

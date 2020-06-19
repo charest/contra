@@ -22,8 +22,7 @@ class ForStmtAST;
 class ForeachStmtAST;
 class AssignStmtAST;
 class PartitionStmtAST;
-class VarDeclAST;
-class FieldDeclAST;
+class ReductionStmtAST;
 class PrototypeAST;
 class FunctionAST;
 class TaskAST;
@@ -50,9 +49,8 @@ public:
   virtual void visit(ForeachStmtAST&) = 0;
   virtual void visit(AssignStmtAST&) = 0;
   virtual void visit(PartitionStmtAST&) = 0;
-
-  //virtual void visit(VarDeclAST&) = 0;
-  //virtual void visit(FieldDeclAST&) = 0;
+  virtual void visit(ReductionStmtAST&) = 0;
+  
   virtual void visit(PrototypeAST&) = 0;
   
   virtual void visit(FunctionAST&) = 0;

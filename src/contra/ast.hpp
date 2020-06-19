@@ -594,7 +594,12 @@ class ForeachStmtAST : public ForStmtAST {
   std::vector<VariableDef*> AccessedVariables_;
   std::string Name_;
   bool IsLifted_ = false;
-  unsigned NumParts_ = 0;
+  unsigned NumQualifiers_ = 0;
+  
+  bool HasReduce_ = false;
+  std::vector<ReductionDef> ReduceVariables_;
+
+
 
 public:
   
@@ -623,7 +628,7 @@ public:
   auto moveBodyExprs() {
     ASTBlock NewBody;
     auto NumBody = BodyExprs_.size();
-    for (unsigned i=NumParts_; i<NumBody; ++i) {
+    for (unsigned i=NumQualifiers_; i<NumBody; ++i) {
       NewBody.emplace_front( std::move(BodyExprs_.back()) );
       BodyExprs_.pop_back();
     }
@@ -636,8 +641,15 @@ public:
   bool isLifted() const { return IsLifted_; }
   void setLifted(bool IsLifted=true) { IsLifted_ = IsLifted; }
   
-  void setNumPartitions(unsigned NumParts) { NumParts_=NumParts; }
-  auto getNumPartitions() const { return NumParts_; }
+  void setNumQualifiers(unsigned NumQualifiers) { NumQualifiers_=NumQualifiers; }
+  auto getNumQualifiers() const { return NumQualifiers_; }
+
+  void setHasReduction(bool HasReduce=true) { HasReduce_=HasReduce; }
+  bool hasReduction() const { return HasReduce_; }
+
+  const auto & getReductionVars() const { return ReduceVariables_; }
+  void setReductionVars(const std::vector<ReductionDef> & ReduceVars)
+  { ReduceVariables_ = ReduceVars; }
 };
 
 //==============================================================================
@@ -650,8 +662,6 @@ protected:
   std::unique_ptr<NodeAST> PartExpr_;
 
   std::vector<VariableDef*> VarDefs_;
-
-  std::string TaskName_;
 
 public:
   PartitionStmtAST(
@@ -677,6 +687,73 @@ public:
 
   auto getVarDef(unsigned i) const { return VarDefs_[i]; }
   void setVarDef(unsigned i, VariableDef* Var) { VarDefs_[i] = Var; }
+};
+
+
+//==============================================================================
+/// Reduction statement
+//==============================================================================
+class ReductionStmtAST : public StmtAST {
+protected:
+
+  std::vector<Identifier> VarIds_;
+  std::string OperatorName_;
+  char OperatorCode_ = 0;
+  LocationRange OperatorLoc_;
+  bool IsOperator_ = false;
+
+  std::vector<VariableDef*> VarDefs_;
+  FunctionDef* OperatorDef_ = nullptr;
+
+public:
+  ReductionStmtAST(
+      const LocationRange & Loc,
+      const std::vector<Identifier> & VarIds,
+      const std::string & OperatorName,
+      const LocationRange & OperatorLoc) :
+    StmtAST(Loc),
+    VarIds_(VarIds),
+    OperatorName_(OperatorName),
+    OperatorLoc_(OperatorLoc),
+    IsOperator_(false),
+    VarDefs_(VarIds.size(), nullptr)
+  {}
+  
+  ReductionStmtAST(
+      const LocationRange & Loc,
+      const std::vector<Identifier> & VarIds,
+      char OperatorCode,
+      const LocationRange & OperatorLoc) :
+    StmtAST(Loc),
+    VarIds_(VarIds),
+    OperatorCode_(OperatorCode),
+    OperatorLoc_(OperatorLoc),
+    IsOperator_(true),
+    VarDefs_(VarIds.size(), nullptr)
+  {}
+
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "ReductionStmtAST"; };
+  
+  auto getNumVars() const { return VarIds_.size(); }
+  const auto & getVarName(unsigned i) const { return VarIds_[i].getName(); }
+  const auto & getVarId(unsigned i) const { return VarIds_[i]; }
+  const auto & getVarIds() const { return VarIds_; }
+
+  auto isOperator() const { return IsOperator_; }
+
+  auto getOperatorId() const { return Identifier{OperatorName_, OperatorLoc_}; }
+  auto getOperatorCode() const { return OperatorCode_; }
+  const auto & getOperatorLoc() const { return OperatorLoc_; }
+  const auto & getOperatorName() const { return OperatorName_; }
+
+  auto getVarDef(unsigned i) const { return VarDefs_[i]; }
+  void setVarDef(unsigned i, VariableDef* Var) { VarDefs_[i] = Var; }
+  
+  void setOperatorDef(FunctionDef* Fun) { OperatorDef_ = Fun; }
+  auto getOperatorDef() const { return OperatorDef_; }
 };
 
 
@@ -738,33 +815,6 @@ public:
     if (it == CastTypes_.end()) return nullptr;
     return &it->second;
   }
-};
-
-//==============================================================================
-/// VarDefExprAST - Expression class for var/in
-//==============================================================================
-class FieldDeclExprAST : public VarAccessExprAST {
-
-  std::unique_ptr<NodeAST> IndexExpr_;
-
-public:
-
-  FieldDeclExprAST(
-      const LocationRange & Loc,
-      const Identifier & VarId, 
-      std::unique_ptr<NodeAST> IndexExpr,
-      std::unique_ptr<Identifier> VarTypeId) :
-    VarAccessExprAST(Loc, VarId, std::move(VarTypeId)),
-    IndexExpr_(std::move(IndexExpr))
-  {}
-  
-  virtual void accept(AstVisiter& visiter) override;
-  
-  virtual std::string getClassName() const override
-  { return "FieldDeclAST"; };
-
-  auto getIndexExpr() const { return IndexExpr_.get(); }
-
 };
 
 //==============================================================================
@@ -977,6 +1027,7 @@ class IndexTaskAST : public FunctionAST {
 
   std::string LoopVarName_;
   std::vector<VariableDef*> Vars_;
+  std::vector<ReductionDef> ReductionVars_;
 
 public:
 
@@ -984,10 +1035,12 @@ public:
       const std::string & Name,
       ASTBlock Body,
       const std::string & LoopVar,
-      const std::vector<VariableDef*>& Vars) :
+      const std::vector<VariableDef*>& Vars,
+      const std::vector<ReductionDef>& ReduceVars = {}) :
     FunctionAST(Name, std::move(Body), true, false),
     LoopVarName_(LoopVar),
-    Vars_(Vars)
+    Vars_(Vars),
+    ReductionVars_(ReduceVars)
   {}
 
   virtual void accept(AstVisiter& visiter) override;
@@ -995,11 +1048,12 @@ public:
   virtual std::string getClassName() const override
   { return "IndexTaskAST"; };
  
-  const auto & getVariableDefs()
-  { return Vars_; }
-
+  const auto & getVariableDefs() { return Vars_; }
   auto getVariableDef(unsigned i) const { return Vars_[i]; }
  
+  bool hasReduction() { return !ReductionVars_.empty(); }
+  const auto & getReductionDefs() { return ReductionVars_; }
+
   const auto & getLoopVariableName() const { return LoopVarName_; }
   const auto & getName() const { return Name_; }
 };

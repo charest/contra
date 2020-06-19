@@ -345,6 +345,8 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parseForExpr();
   case tok_use:
     return parsePartitionExpr();
+  case tok_reduce:
+    return parseReductionExpr();
   case tok_string_literal:
     return parseStringExpr();
   default:
@@ -523,6 +525,60 @@ std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
 }
 
 //==============================================================================
+// reduction
+//==============================================================================
+std::unique_ptr<NodeAST> Parser::parseReductionExpr() {
+
+  auto BeginLoc = getCurLoc();
+  getNextToken();  // eat the reduce
+    
+  std::vector<Identifier> VarIds;
+
+  while (CurTok_ != ':') {
+    auto VarLoc = getIdentifierLoc();
+    if (CurTok_ != tok_identifier)
+      THROW_SYNTAX_ERROR("Expected an identifier after keyword 'reduce'.", VarLoc);
+    VarIds.emplace_back( getIdentifierStr(), VarLoc );
+    getNextToken(); // eat identifier.
+    if (CurTok_ == ',') getNextToken(); // eat ,
+  }
+
+  if (CurTok_ != ':')
+    THROW_SYNTAX_ERROR(
+        "Expected ':'.",
+        getIdentifierLoc());
+  getNextToken(); // eat ":".
+
+  if (!isTokOperator() && (CurTok_ != tok_identifier))
+    THROW_SYNTAX_ERROR(
+        "Expected identifier or operator after ':'.",
+        getIdentifierLoc());
+
+  auto OperatorLoc = getIdentifierLoc();
+  std::unique_ptr<NodeAST> Expr;
+
+  if (isTokOperator()) {
+    Expr = std::make_unique<ReductionStmtAST>(
+        getLocationRange(BeginLoc),
+        VarIds,
+        CurTok_,
+        OperatorLoc);
+  }
+  else {
+    auto OperatorStr = getIdentifierStr();
+    Expr = std::make_unique<ReductionStmtAST>(
+        getLocationRange(BeginLoc),
+        VarIds,
+        OperatorStr,
+        OperatorLoc);
+  }
+  getNextToken(); // eat identifier
+
+  return Expr;
+
+}
+
+//==============================================================================
 // Array expression parser
 //==============================================================================
 std::unique_ptr<NodeAST> Parser::parseArrayExpr()
@@ -552,37 +608,6 @@ std::unique_ptr<NodeAST> Parser::parseArrayExpr()
       LocationRange(BeginLoc, getCurLoc()),
       std::move(ValExprs),
       std::move(SizeExpr));
-}
-
-//==============================================================================
-// Array expression parser
-//==============================================================================
-std::unique_ptr<NodeAST> Parser::parseRangeExpr()
-{
-
-  auto BeginLoc = getCurLoc();
-  getNextToken(); // eat {.
-
-  auto StartExpr = parseExpression();
-
-  if (CurTok_ != tok_range && CurTok_ != ',')
-      THROW_SYNTAX_ERROR(
-          "Expected '..' or ',' in range expression.",
-          LocationRange(BeginLoc, getCurLoc()));
-  getNextToken(); // eat ..
-  
-  auto EndExpr = parseExpression();
-  
-  if (CurTok_ != '}')
-    THROW_SYNTAX_ERROR(
-        "Expected '}' at the end of a range expression.",
-        LocationRange(BeginLoc, getCurLoc()));
-  getNextToken(); // eat }
-
-  return std::make_unique<RangeExprAST>(
-      LocationRange(BeginLoc, getCurLoc()),
-        std::move(StartExpr),
-        std::move(EndExpr));
 }
 
 //==============================================================================

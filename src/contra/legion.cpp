@@ -6,8 +6,95 @@
 #include "legion_rt.hpp"
 #include "utils/llvm_utils.hpp"
 
-#include <vector>
+#include <legion.h>
 
+#include <vector>
+  
+typedef void (*apply_t)(void *, const void*, off_t, off_t, size_t, bool);
+typedef void (*fold_t)(void *, const void*, off_t, off_t, size_t, bool);
+typedef void (*init_t)(void *, size_t);
+
+class ReductionOp : public Realm::ReductionOpUntyped {
+
+  apply_t apply_ptr;
+  fold_t fold_ptr;
+  init_t init_ptr;
+
+public:
+
+  ReductionOp(size_t size, apply_t apply_p, fold_t fold_p, init_t init_p) :
+      ReductionOpUntyped(size, size, 0, true, true),
+      apply_ptr(apply_p),
+      fold_ptr(fold_p),
+      init_ptr(init_p)
+  {}
+
+  virtual ReductionOpUntyped *clone(void) const
+  { return new ReductionOp(sizeof_lhs, apply_ptr, fold_ptr, init_ptr); }
+      
+  virtual void apply(
+      void *lhs,
+      const void *rhs,
+      size_t count,
+			bool exclusive = false) const
+  {
+    if(exclusive) (*apply_ptr)(lhs, rhs, sizeof_lhs, sizeof_rhs, count, true);
+    else          (*apply_ptr)(lhs, rhs, sizeof_lhs, sizeof_rhs, count, false);
+  }
+
+  virtual void apply_strided(
+      void *lhs,
+      const void *rhs,
+			off_t lhs_stride,
+      off_t rhs_stride,
+      size_t count,
+			bool exclusive = false) const
+  {
+    if(exclusive) (*apply_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, true);
+    else          (*apply_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, false);
+  }
+
+  virtual void fold(
+      void *rhs1,
+      const void *rhs2,
+      size_t count,
+	    bool exclusive = false) const
+  {
+    if(exclusive) (*fold_ptr)(rhs1, rhs2, sizeof_lhs, sizeof_rhs, count, true);
+    else          (*fold_ptr)(rhs1, rhs2, sizeof_lhs, sizeof_rhs, count, false);
+  }
+
+  virtual void fold_strided(
+      void *lhs,
+      const void *rhs,
+		  off_t lhs_stride,
+      off_t rhs_stride,
+      size_t count,
+		  bool exclusive = false) const
+  {
+    if(exclusive) (*fold_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, true);
+    else          (*fold_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, false);
+  }
+
+  virtual void init(void *ptr, size_t count) const
+  { (*init_ptr)(ptr, count); }
+
+};
+
+extern "C" {
+
+void contra_legion_create_reduction(
+    legion_reduction_op_id_t redop,
+    apply_t apply_ptr,
+    fold_t fold_ptr,
+    init_t init_ptr,
+    std::size_t data_size)
+{
+  auto RedOp = new ReductionOp(data_size, apply_ptr, fold_ptr, init_ptr);
+  Legion::Runtime::register_reduction_op(redop, RedOp, NULL, NULL, false);
+}
+
+} // extern C
 
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker
@@ -31,6 +118,7 @@ LegionTasker::LegionTasker(utils::BuilderHelper & TheHelper)
   Int32Type_ = llvmType<int>(TheContext_);
   BoolType_ = llvmType<bool>(TheContext_);
   CharType_ = llvmType<char>(TheContext_);
+  OffType_ = llvmType<off_t>(TheContext_);
   RealmIdType_ = llvmType<realm_id_t>(TheContext_);
   NumRegionsType_ = llvmType<std::uint32_t>(TheContext_); 
   TaskVariantIdType_ = llvmType<legion_variant_id_t>(TheContext_);
@@ -361,8 +449,6 @@ AllocaInst* LegionTasker::createGlobalArguments(
   
   for (auto i : ValueArgId) {
     auto ArgV = TheHelper_.getAsAlloca(ArgVorAs[i]);
-    // load offset
-    ArgSizeV = TheHelper_.extractValue(TaskArgsA, 1);
     // copy
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
     serialize(ArgV, ArgDataPtrV, ArgSizeGEP);
@@ -387,7 +473,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
   for (auto i : FieldArgId) {
     Value* ArgV = ArgVorAs[i];
     // load offset
-    ArgSizeV = TheHelper_.extractValue(TaskArgsA, 1);
+    auto ArgSizeV = TheHelper_.extractValue(TaskArgsA, 1);
     // offset data pointer
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
     auto OffsetArgDataPtrV = TheHelper_.offsetPointer(ArgDataPtrV, ArgSizeV);
@@ -1106,11 +1192,10 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   // Have return value
   bool HasNonVoidResult = ResultV && !ResultV->getType()->isVoidTy();
   if (HasNonVoidResult) {
-    
-    // store result
-    auto ResultT = ResultV->getType();
-    auto ResultA = TheHelper_.createEntryBlockAlloca(ResultT, "result");
-    Builder_.CreateStore( ResultV, ResultA );
+
+    // store/load result
+    auto ResultA = TheHelper_.getAsAlloca( ResultV );
+    ResultV = TheHelper_.getAsValue( ResultV );
 
     // return size
     auto RetsizeT = RetsizeV->getType();
@@ -1129,7 +1214,6 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
     RetsizeV = TheHelper_.load(RetsizeA);
     TheHelper_.memCopy(RetvalV, ResultA, RetsizeV); 
     serialize(ResultA, RetvalV);
-
 
     // final loads
     RetsizeV = TheHelper_.load(RetsizeA);
@@ -1234,6 +1318,10 @@ void LegionTasker::postregisterTask(
       PreRetT,
       PreArgVs,
       "task_variant_id");
+  
+  //----------------------------------------------------------------------------
+  // Register reduction
+  if (Task.hasReduction()) registerReductionOp(TheModule, Task.getReduction());
 }
 
 //==============================================================================
@@ -1290,6 +1378,10 @@ void LegionTasker::preregisterTask(
       "exec_set");
   destroyOpaqueType(TheModule, LayoutSetA, "legion_task_layout_constraint_set_destroy",
       "layout_set");
+  
+  //----------------------------------------------------------------------------
+  // Register reduction
+  if (Task.hasReduction()) registerReductionOp(TheModule, Task.getReduction());
 }
   
 //==============================================================================
@@ -1423,7 +1515,7 @@ Value* LegionTasker::launch(
   // Deallocate storate
   destroyGlobalArguments(TaskArgsA);
 
-  return TheHelper_.load(FutureA);
+  return FutureA;
 }
 
 //==============================================================================
@@ -1434,7 +1526,9 @@ Value* LegionTasker::launch(
     int TaskId,
     std::vector<Value*> ArgAs,
     const std::vector<Value*> & PartAs,
-    Value* RangeV)
+    Value* RangeV,
+    bool HasReduction,
+    int RedopId)
 {
   auto RealT = llvmType<real_t>(TheContext_);
   auto TimerA = TheHelper_.createEntryBlockAlloca(RealT);
@@ -1582,31 +1676,52 @@ Value* LegionTasker::launch(
   auto RuntimeV = load(RuntimeA, TheModule, "runtime");
 
   std::vector<Value*> ExecArgVs = { RuntimeV, ContextV, LauncherRV };
-  auto FutureMapRT = reduceStruct(FutureMapType_, TheModule);
-  Value* FutureMapRV = TheHelper_.callFunction(
-      TheModule,
-      "legion_index_launcher_execute",
-      FutureMapRT,
-      ExecArgVs,
-      "launcher_exec");
-  auto FutureMapA = TheHelper_.createEntryBlockAlloca(FutureMapType_, "future_map.alloca");
-  store(FutureMapRV, FutureMapA);
+
+  Value* Result = nullptr;
+
+  //------------------------------------
+  // With reduction
+  if (HasReduction) {
+    auto OpIdC = llvmValue<legion_reduction_op_id_t>(TheContext_, RedopId);
+    ExecArgVs.emplace_back( OpIdC );
+    auto FutureRT = reduceStruct(FutureType_, TheModule);
+    Value* FutureRV = TheHelper_.callFunction(
+        TheModule,
+        "legion_index_launcher_execute_reduction",
+        FutureRT,
+        ExecArgVs,
+        "launcher_exec");
+    auto FutureA = TheHelper_.createEntryBlockAlloca(FutureType_, "future.alloca");
+    store(FutureRV, FutureA);
+    Result = FutureA;
+  }
+  //------------------------------------
+  // No reduction
+  else {
+    auto FutureMapRT = reduceStruct(FutureMapType_, TheModule);
+    Value* FutureMapRV = TheHelper_.callFunction(
+        TheModule,
+        "legion_index_launcher_execute",
+        FutureMapRT,
+        ExecArgVs,
+        "launcher_exec");
+    auto FutureMapA = TheHelper_.createEntryBlockAlloca(FutureMapType_, "future_map.alloca");
+    store(FutureMapRV, FutureMapA);
   
-	//----------------------------------------------------------------------------
+    // Destroy future map
+    //TheHelper_.callFunction(
+    //    TheModule,
+    //    "legion_future_map_wait_all_results",
+    //    VoidType_,
+    //    {FutureMapRV});
+    destroyOpaqueType(TheModule, FutureMapA, "legion_future_map_destroy", "future_map");
+  }
+	
+  //----------------------------------------------------------------------------
   // Destroy argument map
   
   destroyOpaqueType(TheModule, ArgMapA, "legion_argument_map_destroy", "arg_map");
 
-	//----------------------------------------------------------------------------
-  // Destroy future map
-
-  TheHelper_.callFunction(
-      TheModule,
-      "legion_future_map_wait_all_results",
-      VoidType_,
-      {FutureMapRV});
-  
-  destroyOpaqueType(TheModule, FutureMapA, "legion_future_map_destroy", "future_map");
   
   //----------------------------------------------------------------------------
   // cleanup
@@ -1619,8 +1734,7 @@ Value* LegionTasker::launch(
   
   destroyGlobalArguments(TaskArgsA);
 
-  //return Builder_.CreateLoad(FutureMapType_, FutureMapA);
-  return nullptr;
+  return Result;
 }
 
 
@@ -1695,13 +1809,13 @@ void LegionTasker::toFuture(
 //==============================================================================
 void LegionTasker::copyFuture(
     Module & TheModule,
-    Value* ValueV,
+    Value* Val,
     Value* FutureA)
 {
   // load runtime
   auto FutureRT = reduceStruct(FutureType_, TheModule);
 
-  auto ValueRV = Builder_.CreateExtractValue(ValueV, 0);
+  auto ValueRV = TheHelper_.extractValue(Val, 0);
   auto FutureRV = TheHelper_.callFunction(
       TheModule,
       "legion_future_copy",
@@ -2181,6 +2295,234 @@ void LegionTasker::destroyPartition(
       "contra_legion_partition_destroy",
       VoidType_,
       FunArgVs);
+}
+
+//==============================================================================
+// create a reduction op
+//==============================================================================
+ReduceInfo LegionTasker::createReductionOp(
+    Module &TheModule,
+    const std::string & ReductionN,
+    const std::vector<Type*> & VarTs,
+    const std::vector<ReductionType> & ReduceTypes)
+{
+  // generate id
+  auto RedOpId = makeReductionId();
+
+  // get var types
+
+  // get data size
+  std::size_t DataSize = 0;
+  std::vector<std::size_t> DataSizes;
+  for (auto VarT : VarTs) {
+    DataSizes.emplace_back( TheHelper_.getTypeSizeInBits(TheModule, VarT)/8 );
+    DataSize += DataSizes.back();
+  }
+
+  Function *ApplyF, *InitF;
+
+  //----------------------------------------------------------------------------
+  // create apply
+  {
+    std::string ApplyN = ReductionN + "apply";
+    
+    std::vector<Type*> ArgTs = {
+      VoidPtrType_,
+      VoidPtrType_,
+      OffType_,
+      OffType_,
+      SizeType_,
+      BoolType_
+    };
+    FunctionType* ApplyT = FunctionType::get(VoidType_, ArgTs, false);
+    ApplyF = Function::Create(
+        ApplyT,
+        Function::ExternalLinkage,
+        ApplyN,
+        TheModule);
+  
+    auto BB = BasicBlock::Create(TheContext_, "entry", ApplyF);
+    Builder_.SetInsertPoint(BB);
+
+    unsigned i=0;
+    std::vector<AllocaInst*> ArgAs(ArgTs.size());
+    for (auto &Arg : ApplyF->args()) {
+      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
+      Builder_.CreateStore(&Arg, ArgAs[i]);
+      ++i;
+    }
+
+    auto CounterA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    auto InnerOffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    auto OuterOffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+    Builder_.CreateStore(ZeroC, CounterA);
+    Builder_.CreateStore(ZeroC, OuterOffsetA);
+  
+    auto BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", ApplyF);
+    auto LoopBB =   BasicBlock::Create(TheContext_, "loop", ApplyF);
+    auto IncrBB =   BasicBlock::Create(TheContext_, "incr", ApplyF);
+    auto AfterBB =  BasicBlock::Create(TheContext_, "afterloop", ApplyF);
+  
+    Builder_.CreateBr(BeforeBB);
+    Builder_.SetInsertPoint(BeforeBB);
+
+    auto CounterV = TheHelper_.load(CounterA);
+    auto EndV = TheHelper_.load(ArgAs[4]);
+    auto CondV = Builder_.CreateICmpSLT(CounterV, EndV, "loopcond");
+    Builder_.CreateCondBr(CondV, LoopBB, AfterBB);
+
+    Builder_.SetInsertPoint(LoopBB);
+
+    auto OuterOffsetV = TheHelper_.load(OuterOffsetA);
+    Builder_.CreateStore( OuterOffsetV, InnerOffsetA);
+
+    for (unsigned i=0; i<VarTs.size(); ++i) {
+      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
+      Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
+      auto OffsetV = TheHelper_.load(InnerOffsetA);
+      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+      auto VarT = VarTs[i];
+      auto VarPtrT = VarT->getPointerTo();
+      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
+      RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
+      auto LhsV = TheHelper_.load(LhsPtrV);
+      auto RhsV = TheHelper_.load(RhsPtrV);
+      Value* ResV;
+      if (VarT->isFloatingPointTy())
+        ResV = Builder_.CreateFAdd(LhsV, RhsV);
+      else
+        ResV = Builder_.CreateAdd(LhsV, RhsV);
+      Builder_.CreateStore(ResV, LhsPtrV);
+      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      TheHelper_.increment( InnerOffsetA, SizeC );
+    }
+    
+    
+    Builder_.CreateBr(IncrBB);
+    Builder_.SetInsertPoint(IncrBB);
+    
+    auto StrideV = TheHelper_.load(ArgAs[2]);
+    TheHelper_.increment( OuterOffsetA, StrideV );
+    
+    auto OneC = llvmValue(TheContext_, SizeType_, 1);
+    TheHelper_.increment( CounterA, OneC );
+    Builder_.CreateBr(BeforeBB);
+    Builder_.SetInsertPoint(AfterBB);
+    
+    Builder_.CreateRetVoid();
+  }
+  
+  //----------------------------------------------------------------------------
+  // create fold
+
+  //----------------------------------------------------------------------------
+  // create init
+  {
+    std::string InitN = ReductionN + "init";
+ 
+    std::vector<Type*> ArgTs = {
+      VoidPtrType_,
+      SizeType_
+    };
+    FunctionType* InitT = FunctionType::get(VoidType_, ArgTs, false);
+    InitF = Function::Create(
+        InitT,
+        Function::ExternalLinkage,
+        InitN,
+        TheModule);
+  
+    auto BB = BasicBlock::Create(TheContext_, "entry", InitF);
+    Builder_.SetInsertPoint(BB);
+
+    unsigned i=0;
+    std::vector<AllocaInst*> ArgAs(ArgTs.size());
+    for (auto &Arg : InitF->args()) {
+      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
+      Builder_.CreateStore(&Arg, ArgAs[i]);
+      ++i;
+    }
+
+    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+    auto CounterA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    Builder_.CreateStore(ZeroC, CounterA);
+    Builder_.CreateStore(ZeroC, OffsetA);
+  
+    auto BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", InitF);
+    auto LoopBB =   BasicBlock::Create(TheContext_, "loop", InitF);
+    auto IncrBB =   BasicBlock::Create(TheContext_, "incr", InitF);
+    auto AfterBB =  BasicBlock::Create(TheContext_, "afterloop", InitF);
+  
+    Builder_.CreateBr(BeforeBB);
+    Builder_.SetInsertPoint(BeforeBB);
+
+    auto CounterV = TheHelper_.load(CounterA);
+    auto EndV = TheHelper_.load(ArgAs[1]);
+    auto CondV = Builder_.CreateICmpSLT(CounterV, EndV, "loopcond");
+    Builder_.CreateCondBr(CondV, LoopBB, AfterBB);
+
+    Builder_.SetInsertPoint(LoopBB);
+
+
+    for (unsigned i=0; i<VarTs.size(); ++i) {
+      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
+      auto OffsetV = TheHelper_.load(OffsetA);
+      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarTs[i]->getPointerTo());
+      auto InitC = Constant::getNullValue(VarTs[i]);
+      Builder_.CreateStore(InitC, LhsPtrV);
+      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      TheHelper_.increment( OffsetA, SizeC );
+    }
+    
+    Builder_.CreateBr(IncrBB);
+    Builder_.SetInsertPoint(IncrBB);
+    
+    auto OneC = llvmValue(TheContext_, SizeType_, 1);
+    TheHelper_.increment( CounterA, OneC );
+    Builder_.CreateBr(BeforeBB);
+    Builder_.SetInsertPoint(AfterBB);
+    
+    Builder_.CreateRetVoid();
+  }
+  
+
+  //----------------------------------------------------------------------------
+  // create reduction
+  return ReduceInfo(RedOpId, ApplyF, ApplyF, InitF, DataSize);
+
+}
+
+//==============================================================================
+// call a reduction creation op
+//==============================================================================
+void LegionTasker::registerReductionOp(
+    Module &TheModule,
+    const ReduceInfo & ReduceOp)
+{
+  auto DataSizeC = llvmValue(TheContext_, SizeType_, ReduceOp.getDataSize());
+  auto IdC = llvmValue<legion_reduction_op_id_t>(TheContext_, ReduceOp.getId());
+  
+  auto ApplyT = ReduceOp.getApplyType();
+  const auto & ApplyN = ReduceOp.getApplyName();
+  auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
+
+  auto FoldT = ReduceOp.getFoldType();
+  const auto & FoldN = ReduceOp.getFoldName();
+  auto FoldF = TheModule.getOrInsertFunction(FoldN, FoldT).getCallee();
+  
+  auto InitT = ReduceOp.getInitType();
+  const auto & InitN = ReduceOp.getInitName();
+  auto InitF = TheModule.getOrInsertFunction(InitN, InitT).getCallee();
+        
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_legion_create_reduction",
+      VoidType_,
+      {IdC, ApplyF, FoldF, InitF, DataSizeC});
+  
 }
 
 }

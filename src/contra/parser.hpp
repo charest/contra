@@ -105,7 +105,6 @@ public:
   std::unique_ptr<NodeAST> parseForExpr();
 
   std::unique_ptr<NodeAST> parseArrayExpr();
-  std::unique_ptr<NodeAST> parseRangeExpr();
   
   /// primary
   ///   ::= identifierexpr
@@ -139,6 +138,7 @@ public:
   std::unique_ptr<NodeAST> parseVarDefExpr();
   
   std::unique_ptr<NodeAST> parsePartitionExpr();
+  std::unique_ptr<NodeAST> parseReductionExpr();
 
   /// Top level function parser 
   std::unique_ptr<FunctionAST> parseFunction();

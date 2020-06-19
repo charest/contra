@@ -92,6 +92,7 @@ private:
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
   void visit(PartitionStmtAST&) override;
+  void visit(ReductionStmtAST&) override;
 
   void visit(PrototypeAST&) override;
 
@@ -110,7 +111,7 @@ private:
   TypeDef* getType(const Identifier & Id);
 
   // variable interface
-  VariableDef* getVariable(const Identifier & Id);
+  VariableDef* getVariable(const Identifier & Id, bool Quietly=false);
   VariableDef* insertVariable(const Identifier & Id, const VariableType & VarType);
   std::pair<VariableDef*, bool> getOrInsertVariable(
       const Identifier & Id,

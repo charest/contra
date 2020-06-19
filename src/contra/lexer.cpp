@@ -59,26 +59,7 @@ int Lexer::gettok() {
   }
   
   //----------------------------------------------------------------------------
-  // Range: ..
-  
-  if (LastChar_ == '.' && NextChar == '.') {
-    advance(); // eat next .
-    LastChar_ = advance();
-    return tok_range;
-  }
-
-  //----------------------------------------------------------------------------
   // Number: [0-9.]+
-  //if (isdigit(LastChar_) || LastChar_ == '.') { // Number: [0-9.]+
-  //  std::string NumStr;
-  //  do {
-  //    NumStr += LastChar_;
-  //    LastChar_ = advance();
-  //  } while (isdigit(LastChar_) || LastChar_ == '.');
-
-  //  IdentifierStr_ = NumStr; 
-  //  return tok_int_number;
-  //}
 
   // check if there is a sign in from of a number
   //bool is_signed_number = false;

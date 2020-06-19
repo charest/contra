@@ -1,6 +1,8 @@
 #ifndef CONTRA_TASKINFO_HPP
 #define CONTRA_TASKINFO_HPP
 
+#include "reduceinfo.hpp"
+
 #include "llvm/IR/IRBuilder.h"
 
 #include <string>
@@ -17,6 +19,8 @@ class TaskInfo {
   llvm::FunctionType * FunctionType_ = nullptr;
   bool IsTop_ = false;
   bool IsLeaf_ = false;
+
+  std::unique_ptr<ReduceInfo> Redop_;
 
 public:
 
@@ -43,6 +47,11 @@ public:
 
   bool isLeaf() const { return IsLeaf_; }
   void setLeaf(bool IsLeaf = true) { IsLeaf_ = IsLeaf; }
+
+  bool hasReduction() const { return static_cast<bool>(Redop_); }
+  const auto & getReduction() const { return *Redop_; }
+  void setReduction(std::unique_ptr<ReduceInfo> Redop)
+  { Redop_ = std::move(Redop); }
 
 };
 

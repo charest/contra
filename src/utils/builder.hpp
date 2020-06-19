@@ -46,7 +46,7 @@ public:
   Type* getAllocatedType(Value*);
 
   Value* getTypeSize(Type*, Type*);
-  std::size_t getTypeSize(const llvm::Module & TheModule, Type* Ty);
+  std::size_t getTypeSizeInBits(const llvm::Module & TheModule, Type* Ty);
  
   template<typename T>
   Value* getTypeSize(Type* ElementType)

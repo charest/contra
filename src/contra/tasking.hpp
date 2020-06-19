@@ -2,6 +2,8 @@
 #define CONTRA_TASKING_HPP
 
 #include "serializer.hpp"
+#include "reduceinfo.hpp"
+#include "reductions.hpp"
 #include "taskinfo.hpp"
 
 #include "utils/builder.hpp"
@@ -20,7 +22,8 @@ class VariableType;
 //==============================================================================
 class AbstractTasker {
 
-  unsigned IdCounter_ = 0;
+  unsigned TaskIdCounter_ = 0;
+  unsigned ReduceIdCounter_ = 1;
   bool IsStarted_ = false;
   
   std::map<std::string, TaskInfo> TaskTable_;
@@ -52,6 +55,7 @@ public:
     llvm::AllocaInst* Index;
   };
 
+  //----------------------------------------------------------------------------
   // abstraact interface
   virtual PreambleResult taskPreamble(
       llvm::Module &,
@@ -92,7 +96,9 @@ public:
       int,
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
-      llvm::Value*) = 0;
+      llvm::Value*,
+      bool = false,
+      int = 0) = 0;
 
   virtual llvm::Type* getFutureType() const = 0;
   virtual bool isFuture(llvm::Value*) const = 0;
@@ -166,6 +172,15 @@ public:
   
   virtual void destroyPartition(llvm::Module &, llvm::Value*) = 0;
   
+  virtual ReduceInfo createReductionOp(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<llvm::Type*> &,
+      const std::vector<ReductionType> &) = 0;
+  
+  //----------------------------------------------------------------------------
+  // Common public members
+
   // registration
   void preregisterTasks(llvm::Module &);
   void postregisterTasks(llvm::Module &);
@@ -206,7 +221,11 @@ public:
 
 protected:
   
-  auto getNextId() { return IdCounter_++; }
+  //----------------------------------------------------------------------------
+  // Private members
+  
+  auto makeTaskId() { return TaskIdCounter_++; }
+  auto makeReductionId() { return ReduceIdCounter_++; }
 
   // helpers
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;

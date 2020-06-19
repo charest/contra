@@ -1,0 +1,25 @@
+tsk top_level() {
+  
+  num = 10
+  num_parts = 2
+  num_points = num*num
+
+  parts = 0 : num_parts-1
+  points = 0 : num_points-1
+  
+  dsum = 0.
+  isum = 0
+
+  foreach i = parts {
+    reduce isum, dsum : +
+    for j = 0:len(points)-1 {
+      dsum = dsum + 1.
+      isum = isum + 1
+    }
+  }
+
+  print("Sum should be %d, sum is %d and %f\n", num_points, dsum, isum)
+
+}
+
+top_level()

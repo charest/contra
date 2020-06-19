@@ -39,6 +39,7 @@ void Tokens::setup() {
     { tok_foreach, "foreach" },
     { tok_function, "fn" },
     { tok_if, "if" },
+    { tok_reduce, "reduce" },
     { tok_return, "return" },
     { tok_task, "tsk" },
     { tok_true, "true" },

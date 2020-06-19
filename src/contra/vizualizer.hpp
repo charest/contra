@@ -67,8 +67,7 @@ private:
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
   void visit(PartitionStmtAST&) override;
-  //void visit(VarDeclAST&) override;
-  //void visit(FieldDeclAST&) override;
+  void visit(ReductionStmtAST&) override;
   void visit(PrototypeAST&) override;
   void visit(FunctionAST&) override;
   void visit(TaskAST&) override;

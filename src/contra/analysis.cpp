@@ -117,10 +117,10 @@ FunctionDef* Analyzer::insertFunction(
 
 
 //==============================================================================
-VariableDef* Analyzer::getVariable(const Identifier & Id)
+VariableDef* Analyzer::getVariable(const Identifier & Id, bool Quietly)
 {
   const auto & Name = Id.getName();
-  auto res = Context::instance().getVariable(Name);
+  auto res = Context::instance().getVariable(Name, Quietly);
   if (!res)
     THROW_NAME_ERROR("Variable '" << Name << "' has not been"
        << " previously defined", Id.getLoc());
@@ -574,31 +574,49 @@ void Analyzer::visit(ForeachStmtAST& e)
   auto VarD = insertVariable(VarId, I64Type_);
   
   auto & BodyExprs = e.getBodyExprs();
-  
-  unsigned NumParts = 0;
-  bool DoParts = true;
+    
+  unsigned NumQual = 0;
+  bool IsQual = true;
   for ( const auto & stmt : BodyExprs ) {
-    if (dynamic_cast<const PartitionStmtAST *>(stmt.get())) {
-      if (!DoParts)
-        THROW_NAME_ERROR("Partition statements must appear first in 'foreach' loops.",
+    auto StmtPtr = stmt.get();
+    bool IsPart = dynamic_cast<PartitionStmtAST*>(StmtPtr);
+    bool IsReduce = dynamic_cast<ReductionStmtAST*>(StmtPtr);
+    if (IsReduce) e.setHasReduction();
+    if (IsPart || IsReduce) {
+      if (!IsQual)
+        THROW_NAME_ERROR(
+            "Partition/reduction statements must appear first in 'foreach' loops.",
             stmt->getLoc());
-      NumParts++;
+      NumQual++;
     }
-    else if (DoParts) {
-      DoParts = false;
+    else if (IsQual) {
+      IsQual = false;
     }
   }
+
+  std::vector<VariableType> ReduceVarTypes;
+  std::vector< std::pair<VariableDef*, FunctionDef*> > ReducePairs;
   
   createScope();
-  for (unsigned i=0; i<NumParts; ++i) {
-    auto Expr = dynamic_cast<PartitionStmtAST*>(BodyExprs[i].get());
-    runStmtVisitor(*Expr);
+  for (unsigned i=0; i<NumQual; ++i) {
+    auto BodyExpr = BodyExprs[i].get();
+    runStmtVisitor(*BodyExpr);
+    // get reduction info
+    auto ReduceExpr = dynamic_cast<ReductionStmtAST*>(BodyExpr);
+    if (ReduceExpr) {
+      auto NumReduceVars = ReduceExpr->getNumVars();
+      for (unsigned i=0; i<NumReduceVars; ++i) {
+        ReducePairs.emplace_back(
+            ReduceExpr->getVarDef(i),
+            ReduceExpr->getOperatorDef() );
+      }
+    } // reduce
   }
   popScope();
 
   createScope();
   auto NumExprs = BodyExprs.size();
-  for (unsigned i=NumParts; i<NumExprs; ++i) runStmtVisitor(*BodyExprs[i]);
+  for (unsigned i=NumQual; i<NumExprs; ++i) runStmtVisitor(*BodyExprs[i]);
   auto AccessedVars = Context::instance().getVariablesAccessedFromAbove();
   {
     auto it = std::find(AccessedVars.begin(), AccessedVars.end(), VarD);
@@ -606,7 +624,7 @@ void Analyzer::visit(ForeachStmtAST& e)
   }
   popScope();
 
-  e.setNumPartitions(NumParts);
+  e.setNumQualifiers(NumQual);
   
   e.setAccessedVariables(AccessedVars);
   
@@ -748,163 +766,55 @@ void Analyzer::visit(PartitionStmtAST& e)
 }
 
 //==============================================================================
-#if 0
-void Analyzer::visit(VarDeclAST& e)
+void Analyzer::visit(ReductionStmtAST& e)
 {
-  // check if there is a specified type, if there is, get it
-  auto TypeId = e.getTypeId();
-  VariableType VarType;
-  if (TypeId) {
-    VarType = VariableType(getType(TypeId));
-    VarType.setArray( e.isArray() );
-    VarType.setRange( e.isRange() );
-    VarType.setRange( e.isPartition() );
-    DestinationType_ = VarType;
-  }
-  
-  auto InitType = runExprVisitor(*e.getInitExpr());
-  if (!VarType) {
-    VarType = InitType;
-    e.setArray(InitType.isArray());
-    e.setRange(InitType.isRange());
-    e.setPartition(InitType.isPartition());
-  }
-
-  //----------------------------------------------------------------------------
-  // Array Variable
-  if (e.isArray()) {
-
-    // If Array already on right hand side, nothing to do
-    
-    //  scalar on right hand side
-    if (!InitType.isArray()) {
-    
-      auto ElementType = VariableType(VarType);
-      ElementType.setArray(false);
-      if (ElementType != InitType) {
-        checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
-        e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
-      }
- 
-      if (e.hasSize()) {
-        auto SizeType = runExprVisitor(*e.getSizeExpr());
-        if (SizeType != I64Type_)
-          THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
-             e.getSizeExpr()->getLoc());
-      }
-
-    } // scalar init
-
-  }
-  //----------------------------------------------------------------------------
-  // Range Variable
-  else if (e.isRange()) {
-    if (! dynamic_cast<RangeExprAST*>(e.getInitExpr()) )
-      THROW_NAME_ERROR( "Range expressions can only be inialized with ranges.",
-          e.getInitExpr()->getLoc());
-  }
-  //----------------------------------------------------------------------------
-  // Partition Variable
-  else if (e.isPartition()) {
-    if (! dynamic_cast<PartitionStmtAST*>(e.getInitExpr()) )
-      THROW_NAME_ERROR( "Partition expressions can only be inialized with partitions.",
-          e.getInitExpr()->getLoc());
-  }
-  //----------------------------------------------------------------------------
-  // Scalar variable
-  else {
-
-    if (VarType != InitType) {
-      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
-      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
-    }
-
-  }
-  // End
-  //----------------------------------------------------------------------------
-  
   auto NumVars = e.getNumVars();
+
   for (unsigned i=0; i<NumVars; ++i) {
-    auto VarId = e.getVarId(i);
-    auto VarDef = insertVariable(VarId, VarType);
-    e.setVariableDef(i, VarDef);
+    const auto & VarId = e.getVarId(i);
+    auto VarDef = getVariable(VarId);
+    const auto VarType = VarDef->getType();
+    if (VarType != strip(VarType))
+      THROW_NAME_ERROR(
+          "Reductions currently only supported for scalars.",
+          VarId.getLoc());
+    e.setVarDef(i, VarDef);
   }
 
-  TypeResult_ = VarType;
-}
+  auto OpLoc = e.getOperatorLoc();
 
-//==============================================================================
-void Analyzer::visit(FieldDeclAST& e)
-{
-  // check if there is a specified type, if there is, get it
-  auto TypeId = e.getTypeId();
-  VariableType VarType;
-  if (TypeId) {
-    VarType = VariableType(getType(TypeId));
-    VarType.setArray( e.isArray() );
-    DestinationType_ = VarType;
-  }
-  
-  auto InitType = runExprVisitor(*e.getInitExpr());
-  if (InitType.isArray())
-    THROW_NAME_ERROR( "Only scalar initializers allowed for fields.",
-        e.getInitExpr()->getLoc());
-  
-  if (!VarType) {
-    VarType = InitType;
-  }
-
-  //----------------------------------------------------------------------------
-  // Array Variable
-  if (e.isArray()) {
-
-    auto ElementType = VariableType(VarType);
-    ElementType.setArray(false);
-    if (ElementType != InitType) {
-      checkIsCastable(InitType, ElementType, e.getInitExpr()->getLoc());
-      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), ElementType) );
+  if (e.isOperator()) {
+    auto OpCode = e.getOperatorCode();
+    switch (OpCode) {
+      case tok_add:
+      case tok_sub:
+      case tok_mul:
+      case tok_div:
+      case tok_mod:
+        break;
+      default:
+        THROW_NAME_ERROR(
+            "Unsupported reduction operator" << Tokens::getName(OpCode),
+            OpLoc);
     }
- 
-    if (!e.hasSize()) 
-      THROW_NAME_ERROR( "Array size is explicitly required for fields.", e.getLoc() );
-
-    auto SizeType = runExprVisitor(*e.getSizeExpr());
-    if (SizeType != I64Type_)
-      THROW_NAME_ERROR( "Size expression for arrays must be an integer.",
-         e.getSizeExpr()->getLoc());
   }
-  //----------------------------------------------------------------------------
-  // Scalar variable
   else {
-
-    if (VarType != InitType) {
-      checkIsCastable(InitType, VarType, e.getInitExpr()->getLoc());
-      e.setInitExpr( insertCastOp(std::move(e.moveInitExpr()), VarType) );
-    }
-
-  }
-  // End
-  //----------------------------------------------------------------------------
- 
-  // Field specific
-  auto PartType = runExprVisitor(*e.getPartExpr());
-  if (PartType != RangeType_)
-    THROW_NAME_ERROR( "Partition expression for fields must be a range.",
-       e.getPartExpr()->getLoc());
-
-  
-  VarType.setField();
-
-  auto NumVars = e.getNumVars();
-  for (unsigned i=0; i<NumVars; ++i) {
-    auto VarId = e.getVarId(i);
-    auto VarDef = insertVariable(VarId, VarType);
-    e.setVariableDef(i, VarDef);
+    const auto & ReductionId = e.getOperatorId();
+    auto FunDef = getFunction(ReductionId);
+    if (FunDef->getNumArgs() != 2)
+      THROW_NAME_ERROR(
+          "Reduction operator must accept exactly two arguments.",
+          OpLoc);
+    if (!FunDef->hasReturn())
+      THROW_NAME_ERROR(
+          "Reduction operator must return a value.",
+          OpLoc);
+    e.setOperatorDef(FunDef);
   }
 
-  TypeResult_ = VarType;
+
+  TypeResult_ = VoidType_;
 }
-#endif
 
 //==============================================================================
 void Analyzer::visit(PrototypeAST& e)
