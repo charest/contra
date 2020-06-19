@@ -17,6 +17,7 @@ class CastExprAST;
 class UnaryExprAST;
 class BinaryExprAST;
 class CallExprAST;
+class BreakStmtAST;
 class IfStmtAST;
 class ForStmtAST;
 class ForeachStmtAST;
@@ -44,6 +45,7 @@ public:
   virtual void visit(BinaryExprAST&) = 0;
   virtual void visit(CallExprAST&) = 0;
 
+  virtual void visit(BreakStmtAST&) = 0;
   virtual void visit(IfStmtAST&) = 0;
   virtual void visit(ForStmtAST&) = 0;
   virtual void visit(ForeachStmtAST&) = 0;

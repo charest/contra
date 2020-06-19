@@ -53,9 +53,8 @@ tsk main() {
   f64 xleft = 0
   f64 xright = 1
 
-  f64 cfl = 0.5
+  f64 cfl = 1.0
   f64 max_time = 0.2
-  deltat = 1e-1
   max_its = 1000
 
   gamma = 1.4 
@@ -205,19 +204,6 @@ tsk main() {
 
   } # parts
   
-  #============================================================================
-  # estimate time step
-
-  deltax_ave = length / num_cells
-
-  deltat_l = cfl * deltax_ave / wave_speed(gamma, dl, pl, vl)
-  deltat_r = cfl * deltax_ave / wave_speed(gamma, dr, pr, vr)
-
-  deltat = fmin( deltat, deltat_l )
-  deltat = fmin( deltat, deltat_r )
-
-  max_its = fmin( max_its, max_time / deltat )
-    
 
   #============================================================================
   # advance solution
@@ -245,6 +231,7 @@ tsk main() {
 
   # start iteration
   time = 0.
+  elapsed = timer()
 
   for n = 1 : max_its {
     
@@ -252,25 +239,19 @@ tsk main() {
     #-----------------------------------
     # Compute time step
     
-#    foreach i in parts do
-#      partition cells by cell_sizes
-#
-#      var jleft = 0
-#      var jright = length(cells) - 1
-#  
-#      if (i==0) then
-#        jleft = jleft + num_ghost
-#      elif (i==num_parts-1) then
-#        jright = jright - num_ghost
-#      end
-#    
-#      for j in ileft to iright do
-#        var inv_dt : f64 = wave_speed(gamma, density[j], pressure[j], velocity[j]) / deltax[j]
-#        deltat = fmax( inv_dt, deltat )
-#      end
-#    end
-#
-#    deltat = cfl / deltat
+    deltat = 0.
+    
+    foreach i = parts {
+      use cells : cells_disjoint_part
+      reduce deltat : max
+
+      for j = 0:len(cells)-1 {
+        inv_dt = wave_speed(gamma, density[j], pressure[j], velocity[j]) / deltax[j]
+        deltat = fmax( inv_dt, deltat )
+      }
+    }
+
+    deltat = cfl / deltat
     deltat = fmin( max_time - time, deltat )
 
     #-----------------------------------
@@ -359,8 +340,11 @@ tsk main() {
     } # parts
 
     time = time + deltat
+    delta = timer() - elapsed
+    print("Step %5d, Time %e, Step %e, Elapsed %e\n", n, time, deltat, delta)
 
-    print("Step %5d, Time %e\n", n, time)
+    if time > max_time - 1e-6
+      break
 
   }
 

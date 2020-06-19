@@ -89,13 +89,24 @@ template<typename T>
 auto llvmValue( llvm::LLVMContext & TheContext, T Val )
 { return LlvmType<T>::getValue(TheContext, Val); }
 
-template<typename T>
-llvm::Constant* llvmValue( llvm::LLVMContext &, llvm::Type* Ty, T Val )
+template<
+  typename T,
+  typename = typename std::enable_if_t<!std::is_floating_point<T>::value>
+  >
+llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
 {
   auto Size = Ty->getIntegerBitWidth();
   auto IsSigned = std::is_signed<T>::value;
   return llvm::Constant::getIntegerValue(Ty, llvm::APInt(Size, Val, IsSigned));
+}
 
+template<
+  typename T,
+  typename std::enable_if_t<std::is_floating_point<T>::value>* = nullptr
+  >
+llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
+{
+  llvm::ConstantFP::get(TheContext, llvm::APFloat(Val));
 }
 
 template<typename T>

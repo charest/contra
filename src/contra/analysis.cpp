@@ -634,6 +634,12 @@ void Analyzer::visit(ForeachStmtAST& e)
 }
 
 //==============================================================================
+void Analyzer::visit(BreakStmtAST&)
+{
+  TypeResult_ = VoidType_;
+}
+
+//==============================================================================
 void Analyzer::visit(IfStmtAST& e)
 {
   auto CondType = runExprVisitor(*e.getCondExpr());
@@ -783,6 +789,8 @@ void Analyzer::visit(ReductionStmtAST& e)
 
   auto OpLoc = e.getOperatorLoc();
 
+  //------------------------------------
+  // builtin operators
   if (e.isOperator()) {
     auto OpCode = e.getOperatorCode();
     switch (OpCode) {
@@ -798,18 +806,25 @@ void Analyzer::visit(ReductionStmtAST& e)
             OpLoc);
     }
   }
+  //------------------------------------
+  // functions
   else {
     const auto & ReductionId = e.getOperatorId();
-    auto FunDef = getFunction(ReductionId);
-    if (FunDef->getNumArgs() != 2)
-      THROW_NAME_ERROR(
-          "Reduction operator must accept exactly two arguments.",
-          OpLoc);
-    if (!FunDef->hasReturn())
-      THROW_NAME_ERROR(
-          "Reduction operator must return a value.",
-          OpLoc);
-    e.setOperatorDef(FunDef);
+    const auto & ReductionN = ReductionId.getName();
+
+    // user functions
+    if (ReductionN != "max" && ReductionN != "min") {
+      auto FunDef = getFunction(ReductionId);
+      if (FunDef->getNumArgs() != 2)
+        THROW_NAME_ERROR(
+            "Reduction operator must accept exactly two arguments.",
+            OpLoc);
+      if (!FunDef->hasReturn())
+        THROW_NAME_ERROR(
+            "Reduction operator must return a value.",
+            OpLoc);
+      e.setOperatorDef(FunDef);
+    }
   }
 
 

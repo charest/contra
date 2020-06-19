@@ -52,6 +52,10 @@ void CallExprAST::accept(AstVisiter& visiter)
 { visiter.visit(*this); }
 
 //==============================================================================
+void BreakStmtAST::accept(AstVisiter& visiter)
+{ visiter.visit(*this); }
+
+//==============================================================================
 // IfExprAST - Expression class for if/then/else.
 //==============================================================================
 std::unique_ptr<NodeAST> IfStmtAST::makeNested( 

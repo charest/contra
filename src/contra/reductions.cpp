@@ -1,5 +1,6 @@
 #include "reductions.hpp"
 
+#include <iostream>
 
 namespace contra {
 

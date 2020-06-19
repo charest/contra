@@ -82,6 +82,9 @@ public:
 
   std::shared_ptr<BinopPrecedence> getBinopPrecedence() const
   { return BinopPrecedence_; }
+  
+  // break statement
+  std::unique_ptr<NodeAST> parseBreakExpr();
 
   /// numberexpr ::= number
   std::unique_ptr<NodeAST> parseIntegerExpr();

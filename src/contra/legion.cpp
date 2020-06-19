@@ -10,92 +10,6 @@
 
 #include <vector>
   
-typedef void (*apply_t)(void *, const void*, off_t, off_t, size_t, bool);
-typedef void (*fold_t)(void *, const void*, off_t, off_t, size_t, bool);
-typedef void (*init_t)(void *, size_t);
-
-class ReductionOp : public Realm::ReductionOpUntyped {
-
-  apply_t apply_ptr;
-  fold_t fold_ptr;
-  init_t init_ptr;
-
-public:
-
-  ReductionOp(size_t size, apply_t apply_p, fold_t fold_p, init_t init_p) :
-      ReductionOpUntyped(size, size, 0, true, true),
-      apply_ptr(apply_p),
-      fold_ptr(fold_p),
-      init_ptr(init_p)
-  {}
-
-  virtual ReductionOpUntyped *clone(void) const
-  { return new ReductionOp(sizeof_lhs, apply_ptr, fold_ptr, init_ptr); }
-      
-  virtual void apply(
-      void *lhs,
-      const void *rhs,
-      size_t count,
-			bool exclusive = false) const
-  {
-    if(exclusive) (*apply_ptr)(lhs, rhs, sizeof_lhs, sizeof_rhs, count, true);
-    else          (*apply_ptr)(lhs, rhs, sizeof_lhs, sizeof_rhs, count, false);
-  }
-
-  virtual void apply_strided(
-      void *lhs,
-      const void *rhs,
-			off_t lhs_stride,
-      off_t rhs_stride,
-      size_t count,
-			bool exclusive = false) const
-  {
-    if(exclusive) (*apply_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, true);
-    else          (*apply_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, false);
-  }
-
-  virtual void fold(
-      void *rhs1,
-      const void *rhs2,
-      size_t count,
-	    bool exclusive = false) const
-  {
-    if(exclusive) (*fold_ptr)(rhs1, rhs2, sizeof_lhs, sizeof_rhs, count, true);
-    else          (*fold_ptr)(rhs1, rhs2, sizeof_lhs, sizeof_rhs, count, false);
-  }
-
-  virtual void fold_strided(
-      void *lhs,
-      const void *rhs,
-		  off_t lhs_stride,
-      off_t rhs_stride,
-      size_t count,
-		  bool exclusive = false) const
-  {
-    if(exclusive) (*fold_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, true);
-    else          (*fold_ptr)(lhs, rhs, lhs_stride, rhs_stride, count, false);
-  }
-
-  virtual void init(void *ptr, size_t count) const
-  { (*init_ptr)(ptr, count); }
-
-};
-
-extern "C" {
-
-void contra_legion_create_reduction(
-    legion_reduction_op_id_t redop,
-    apply_t apply_ptr,
-    fold_t fold_ptr,
-    init_t init_ptr,
-    std::size_t data_size)
-{
-  auto RedOp = new ReductionOp(data_size, apply_ptr, fold_ptr, init_ptr);
-  Legion::Runtime::register_reduction_op(redop, RedOp, NULL, NULL, false);
-}
-
-} // extern C
-
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker
 ////////////////////////////////////////////////////////////////////////////////
@@ -413,7 +327,8 @@ AllocaInst* LegionTasker::createGlobalArguments(
 
   // add 1 byte for each argument first
   auto ArgSizeT = TaskArgsType_->getElementType(1);
-  TheHelper_.insertValue( TaskArgsA, llvmValue(TheContext_, ArgSizeT, NumArgs), 1);
+  auto ArgSizeC = llvmValue(TheContext_, ArgSizeT, NumArgs);
+  TheHelper_.insertValue( TaskArgsA, ArgSizeC, 1);
 
   // count user argument sizes
   for (auto i : ValueArgId) {
@@ -2298,6 +2213,127 @@ void LegionTasker::destroyPartition(
 }
 
 //==============================================================================
+// create reduction funcction
+//==============================================================================
+Function* LegionTasker::createReductionFunction(
+    Module & TheModule,
+    const std::string & FunN,
+    const std::string & OpN,
+    const std::vector<std::size_t> & DataSizes,
+    const std::vector<Type*> & VarTs,
+    const std::vector<ReductionType> & ReduceTypes)
+{
+  std::vector<Type*> ArgTs = {
+    VoidPtrType_,
+    VoidPtrType_,
+    OffType_,
+    OffType_,
+    SizeType_,
+    BoolType_
+  };
+  FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
+  auto FunF = Function::Create(
+      FunT,
+      Function::ExternalLinkage,
+      FunN,
+      TheModule);
+
+  auto BB = BasicBlock::Create(TheContext_, "entry", FunF);
+  Builder_.SetInsertPoint(BB);
+
+  unsigned i=0;
+  std::vector<AllocaInst*> ArgAs(ArgTs.size());
+  for (auto &Arg : FunF->args()) {
+    ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
+    Builder_.CreateStore(&Arg, ArgAs[i]);
+    ++i;
+  }
+
+  auto CounterA = TheHelper_.createEntryBlockAlloca(SizeType_);
+  auto InnerOffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+  auto OuterOffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+  auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+  Builder_.CreateStore(ZeroC, CounterA);
+  Builder_.CreateStore(ZeroC, OuterOffsetA);
+
+  auto BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", FunF);
+  auto LoopBB =   BasicBlock::Create(TheContext_, "loop", FunF);
+  auto IncrBB =   BasicBlock::Create(TheContext_, "incr", FunF);
+  auto AfterBB =  BasicBlock::Create(TheContext_, "afterloop", FunF);
+
+  Builder_.CreateBr(BeforeBB);
+  Builder_.SetInsertPoint(BeforeBB);
+
+  auto CounterV = TheHelper_.load(CounterA);
+  auto EndV = TheHelper_.load(ArgAs[4]);
+  auto CondV = Builder_.CreateICmpSLT(CounterV, EndV, "loopcond");
+  Builder_.CreateCondBr(CondV, LoopBB, AfterBB);
+
+  Builder_.SetInsertPoint(LoopBB);
+
+  auto OuterOffsetV = TheHelper_.load(OuterOffsetA);
+  Builder_.CreateStore( OuterOffsetV, InnerOffsetA);
+
+  for (unsigned i=0; i<VarTs.size(); ++i) {
+    Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
+    Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
+    auto OffsetV = TheHelper_.load(InnerOffsetA);
+    LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+    RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+    auto VarT = VarTs[i];
+    auto VarPtrT = VarT->getPointerTo();
+    LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
+    RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
+    std::string TypeN;
+    if (VarT->isFloatingPointTy())
+      TypeN = "real";
+    else
+      TypeN = "int";
+    std::string ReduceN;
+    if (ReduceTypes[i] == ReductionType::Add)
+      ReduceN = "sum";
+    else if (ReduceTypes[i] == ReductionType::Sub)
+      ReduceN = "sub";
+    else if (ReduceTypes[i] == ReductionType::Mult)
+      ReduceN = "mul";
+    else if (ReduceTypes[i] == ReductionType::Div)
+      ReduceN = "div";
+    else if (ReduceTypes[i] == ReductionType::Min)
+      ReduceN = "min";
+    else if (ReduceTypes[i] == ReductionType::Max)
+      ReduceN = "max";
+    else {
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+    auto FinalN = "contra_" + ReduceN + "_" + OpN + "_" + TypeN;
+    TheHelper_.callFunction(
+        TheModule,
+        FinalN,
+        VoidType_,
+        {LhsPtrV, RhsPtrV, ArgAs[5]});
+    auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+    TheHelper_.increment( InnerOffsetA, SizeC );
+  }
+  
+  
+  Builder_.CreateBr(IncrBB);
+  Builder_.SetInsertPoint(IncrBB);
+  
+  auto StrideV = TheHelper_.load(ArgAs[2]);
+  TheHelper_.increment( OuterOffsetA, StrideV );
+  
+  auto OneC = llvmValue(TheContext_, SizeType_, 1);
+  TheHelper_.increment( CounterA, OneC );
+  Builder_.CreateBr(BeforeBB);
+  Builder_.SetInsertPoint(AfterBB);
+  
+  Builder_.CreateRetVoid();
+
+  return FunF;
+}
+
+//==============================================================================
 // create a reduction op
 //==============================================================================
 ReduceInfo LegionTasker::createReductionOp(
@@ -2319,107 +2355,37 @@ ReduceInfo LegionTasker::createReductionOp(
     DataSize += DataSizes.back();
   }
 
-  Function *ApplyF, *InitF;
 
   //----------------------------------------------------------------------------
   // create apply
-  {
-    std::string ApplyN = ReductionN + "apply";
-    
-    std::vector<Type*> ArgTs = {
-      VoidPtrType_,
-      VoidPtrType_,
-      OffType_,
-      OffType_,
-      SizeType_,
-      BoolType_
-    };
-    FunctionType* ApplyT = FunctionType::get(VoidType_, ArgTs, false);
-    ApplyF = Function::Create(
-        ApplyT,
-        Function::ExternalLinkage,
-        ApplyN,
-        TheModule);
-  
-    auto BB = BasicBlock::Create(TheContext_, "entry", ApplyF);
-    Builder_.SetInsertPoint(BB);
-
-    unsigned i=0;
-    std::vector<AllocaInst*> ArgAs(ArgTs.size());
-    for (auto &Arg : ApplyF->args()) {
-      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
-      Builder_.CreateStore(&Arg, ArgAs[i]);
-      ++i;
-    }
-
-    auto CounterA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto InnerOffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto OuterOffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
-    Builder_.CreateStore(ZeroC, CounterA);
-    Builder_.CreateStore(ZeroC, OuterOffsetA);
-  
-    auto BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", ApplyF);
-    auto LoopBB =   BasicBlock::Create(TheContext_, "loop", ApplyF);
-    auto IncrBB =   BasicBlock::Create(TheContext_, "incr", ApplyF);
-    auto AfterBB =  BasicBlock::Create(TheContext_, "afterloop", ApplyF);
-  
-    Builder_.CreateBr(BeforeBB);
-    Builder_.SetInsertPoint(BeforeBB);
-
-    auto CounterV = TheHelper_.load(CounterA);
-    auto EndV = TheHelper_.load(ArgAs[4]);
-    auto CondV = Builder_.CreateICmpSLT(CounterV, EndV, "loopcond");
-    Builder_.CreateCondBr(CondV, LoopBB, AfterBB);
-
-    Builder_.SetInsertPoint(LoopBB);
-
-    auto OuterOffsetV = TheHelper_.load(OuterOffsetA);
-    Builder_.CreateStore( OuterOffsetV, InnerOffsetA);
-
-    for (unsigned i=0; i<VarTs.size(); ++i) {
-      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
-      Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
-      auto OffsetV = TheHelper_.load(InnerOffsetA);
-      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
-      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
-      auto VarT = VarTs[i];
-      auto VarPtrT = VarT->getPointerTo();
-      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
-      RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = TheHelper_.load(LhsPtrV);
-      auto RhsV = TheHelper_.load(RhsPtrV);
-      Value* ResV;
-      if (VarT->isFloatingPointTy())
-        ResV = Builder_.CreateFAdd(LhsV, RhsV);
-      else
-        ResV = Builder_.CreateAdd(LhsV, RhsV);
-      Builder_.CreateStore(ResV, LhsPtrV);
-      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
-      TheHelper_.increment( InnerOffsetA, SizeC );
-    }
-    
-    
-    Builder_.CreateBr(IncrBB);
-    Builder_.SetInsertPoint(IncrBB);
-    
-    auto StrideV = TheHelper_.load(ArgAs[2]);
-    TheHelper_.increment( OuterOffsetA, StrideV );
-    
-    auto OneC = llvmValue(TheContext_, SizeType_, 1);
-    TheHelper_.increment( CounterA, OneC );
-    Builder_.CreateBr(BeforeBB);
-    Builder_.SetInsertPoint(AfterBB);
-    
-    Builder_.CreateRetVoid();
-  }
+  auto ApplyF = createReductionFunction(
+      TheModule,
+      ReductionN + "apply",
+      "apply",
+      DataSizes,
+      VarTs,
+      ReduceTypes);
   
   //----------------------------------------------------------------------------
   // create fold
+  auto FoldF = createReductionFunction(
+      TheModule,
+      ReductionN + "fold",
+      "fold",
+      DataSizes,
+      VarTs,
+      ReduceTypes);
 
   //----------------------------------------------------------------------------
   // create init
+  Function *InitF;
   {
+
+    constexpr auto MinReal = std::numeric_limits<real_t>::lowest();
+    constexpr auto MaxReal = std::numeric_limits<real_t>::max();
+    constexpr auto MinInt  = std::numeric_limits<int_t>::lowest();
+    constexpr auto MaxInt  = std::numeric_limits<int_t>::max();
+
     std::string InitN = ReductionN + "init";
  
     std::vector<Type*> ArgTs = {
@@ -2471,7 +2437,40 @@ ReduceInfo LegionTasker::createReductionOp(
       auto OffsetV = TheHelper_.load(OffsetA);
       LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarTs[i]->getPointerTo());
-      auto InitC = Constant::getNullValue(VarTs[i]);
+      Constant* InitC = nullptr;
+      auto VarT = VarTs[i];
+      if (VarT->isFloatingPointTy()) {
+        if (ReduceTypes[i] == ReductionType::Add ||
+            ReduceTypes[i] == ReductionType::Sub)
+          InitC = llvmValue<real_t>(TheContext_, 0);
+        else if (ReduceTypes[i] == ReductionType::Mult ||
+                 ReduceTypes[i] == ReductionType::Div)
+          InitC = llvmValue<real_t>(TheContext_, 1);
+        else if (ReduceTypes[i] == ReductionType::Min)
+          InitC = llvmValue<real_t>(TheContext_, MaxReal);
+        else if (ReduceTypes[i] == ReductionType::Max)
+          InitC = llvmValue<real_t>(TheContext_, MinReal);
+        else {
+          std::cerr << "Unsupported reduction op." << std::endl;;
+          abort();
+        }
+      }
+      else {
+        if (ReduceTypes[i] == ReductionType::Add ||
+            ReduceTypes[i] == ReductionType::Sub)
+          InitC = llvmValue<int_t>(TheContext_, 0);
+        else if (ReduceTypes[i] == ReductionType::Mult ||
+                 ReduceTypes[i] == ReductionType::Div)
+          InitC = llvmValue<int_t>(TheContext_, 1);
+        else if (ReduceTypes[i] == ReductionType::Min)
+          InitC = llvmValue<int_t>(TheContext_, MaxInt);
+        else if (ReduceTypes[i] == ReductionType::Max)
+          InitC = llvmValue<int_t>(TheContext_, MinInt);
+        else {
+          std::cerr << "Unsupported reduction op." << std::endl;;
+          abort();
+        }
+      }
       Builder_.CreateStore(InitC, LhsPtrV);
       auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
       TheHelper_.increment( OffsetA, SizeC );
@@ -2491,7 +2490,7 @@ ReduceInfo LegionTasker::createReductionOp(
 
   //----------------------------------------------------------------------------
   // create reduction
-  return ReduceInfo(RedOpId, ApplyF, ApplyF, InitF, DataSize);
+  return ReduceInfo(RedOpId, ApplyF, FoldF, InitF, DataSize);
 
 }
 

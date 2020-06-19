@@ -89,6 +89,7 @@ private:
 
   void visit(ForStmtAST&) override;
   void visit(ForeachStmtAST&) override;
+  void visit(BreakStmtAST&) override;
   void visit(IfStmtAST&) override;
   void visit(AssignStmtAST&) override;
   void visit(PartitionStmtAST&) override;

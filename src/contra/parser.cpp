@@ -10,6 +10,15 @@
 
 namespace contra {
 
+//==============================================================================
+// break
+//==============================================================================
+std::unique_ptr<NodeAST> Parser::parseBreakExpr() {
+  auto Result = std::make_unique<BreakStmtAST>(getIdentifierLoc());
+  getNextToken(); // consume the break
+  return std::move(Result);
+}
+
   
 //==============================================================================
 // numberexpr ::= number
@@ -349,6 +358,8 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parseReductionExpr();
   case tok_string_literal:
     return parseStringExpr();
+  case tok_break:
+    return parseBreakExpr();
   default:
     THROW_SYNTAX_ERROR("Unknown token '" <<  Tokens::getName(CurTok_)
         << "' when expecting an expression", getIdentifierLoc());
@@ -562,6 +573,7 @@ std::unique_ptr<NodeAST> Parser::parseReductionExpr() {
         getLocationRange(BeginLoc),
         VarIds,
         CurTok_,
+        Tokens::getName(CurTok_),
         OperatorLoc);
   }
   else {

@@ -32,6 +32,7 @@ void Tokens::setup() {
   // add keywords here
   std::map<int, std::string> Keywords = {
     { tok_binary, "binary" },
+    { tok_break, "break" },
     { tok_elif, "elif" },
     { tok_else, "else" },
     { tok_false, "false" },

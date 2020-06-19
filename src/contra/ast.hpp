@@ -511,6 +511,25 @@ public:
 
 };
 
+//==============================================================================
+/// Break statement
+//==============================================================================
+class BreakStmtAST : public StmtAST {
+protected:
+
+public:
+
+  BreakStmtAST(const LocationRange & Loc) :
+    StmtAST(Loc)
+  {}
+  
+  virtual void accept(AstVisiter& visiter) override;
+  
+  virtual std::string getClassName() const override
+  { return "BreakStmtAST"; };
+
+};
+
 
 //==============================================================================
 /// IfExprAST - Expression class for if/then/else.
@@ -723,9 +742,11 @@ public:
       const LocationRange & Loc,
       const std::vector<Identifier> & VarIds,
       char OperatorCode,
+      const std::string & OperatorName,
       const LocationRange & OperatorLoc) :
     StmtAST(Loc),
     VarIds_(VarIds),
+    OperatorName_(OperatorName),
     OperatorCode_(OperatorCode),
     OperatorLoc_(OperatorLoc),
     IsOperator_(true),

@@ -96,6 +96,13 @@ public:
     for (const auto & Expr : e.getExprs()) Expr->accept(*this);
     postVisit(e);
   }
+  
+  virtual bool preVisit(BreakStmtAST&) { return false; }
+  virtual void postVisit(BreakStmtAST&) {}
+  virtual void visit(BreakStmtAST&e) {
+    if (preVisit(e)) { return; }
+    postVisit(e);
+  }
 
   virtual bool preVisit(IfStmtAST&) { return false; }
   virtual void postVisit(IfStmtAST&) {}

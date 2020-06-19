@@ -5,8 +5,6 @@
 #include "reductions.hpp"
 #include "librt/dllexport.h"
 
-#include <legion/legion_c.h>
-
 namespace llvm {
 class AllocaInst;
 }
@@ -234,10 +232,6 @@ public:
       const std::vector<llvm::Type*> &,
       const std::vector<ReductionType> &) override;
 
-  void registerReductionOp(
-    llvm::Module &TheModule,
-    const ReduceInfo & ReduceOp);
-  
   virtual ~LegionTasker() = default;
 
 protected:
@@ -316,6 +310,19 @@ protected:
   void pushPartitionInfo(llvm::Module&, llvm::AllocaInst*);
   void popPartitionInfo(llvm::Module&, llvm::AllocaInst*);
   void destroyPartitionInfo(llvm::Module&);
+  
+  void registerReductionOp(
+    llvm::Module &TheModule,
+    const ReduceInfo & ReduceOp);
+
+  llvm::Function* createReductionFunction(
+      llvm::Module &TheModule,
+      const std::string &,
+      const std::string &,
+      const std::vector<std::size_t> &,
+      const std::vector<llvm::Type*> &,
+      const std::vector<ReductionType> &);
+  
 };
 
 } // namepsace

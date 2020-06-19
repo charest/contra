@@ -50,6 +50,7 @@ class CodeGen : public RecursiveAstVisiter {
   Value* ValueResult_ = nullptr;
   Function* FunctionResult_ = nullptr;
   bool IsPacked_ = false;
+  llvm::BasicBlock *ExitBlock_ = nullptr;
 
   // symbol tables
   std::map<std::string, Type*> TypeTable_;
@@ -136,6 +137,7 @@ public:
   Function* runFuncVisitor(T&e)
   {
     FunctionResult_ = nullptr;
+    ExitBlock_ = nullptr;
     e.accept(*this);
     return FunctionResult_;
   }
@@ -169,6 +171,7 @@ private:
   void visit(CallExprAST&) override;
   void visit(ExprListAST&) override;
 
+  void visit(BreakStmtAST&) override;
   void visit(ForStmtAST&) override;
   void visit(ForeachStmtAST&) override;
   void visit(IfStmtAST&) override;

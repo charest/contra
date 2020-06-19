@@ -982,6 +982,13 @@ void CodeGen::visit(ExprListAST & e) {
   ValueResult_ = StructA;
 }
 
+//==============================================================================
+// Break statement
+//==============================================================================
+void CodeGen::visit(BreakStmtAST &) {
+  if (ExitBlock_) Builder_.CreateBr(ExitBlock_);
+}
+
 
 //==============================================================================
 // IfExprAST - Expression class for if/then/else.
@@ -1131,6 +1138,10 @@ void CodeGen::visit(ForStmtAST& e) {
   BasicBlock *IncrBB =   BasicBlock::Create(TheContext_, "incr", TheFunction);
   BasicBlock *AfterBB =  BasicBlock::Create(TheContext_, "afterloop", TheFunction);
 
+  // set new exit block
+  auto OldExitBlock = ExitBlock_;
+  ExitBlock_ = AfterBB;
+
   Builder_.CreateBr(BeforeBB);
   Builder_.SetInsertPoint(BeforeBB);
 
@@ -1154,12 +1165,18 @@ void CodeGen::visit(ForStmtAST& e) {
   // current BB.  Note that we ignore the value computed by the body, but don't
   // allow an error.
   createScope();
-  for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
+  bool HasBreak = 0;
+  for ( auto & Stmt : e.getBodyExprs() ) {
+    auto StmtPtr = Stmt.get();
+    if (dynamic_cast<BreakStmtAST*>(StmtPtr)) HasBreak = true;
+    runStmtVisitor(*StmtPtr);
+    if (HasBreak) break;
+  }
   popScope();
 
 
   // Insert unconditional branch to increment.
-  Builder_.CreateBr(IncrBB);
+  if (!HasBreak) Builder_.CreateBr(IncrBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(IncrBB);
@@ -1176,6 +1193,9 @@ void CodeGen::visit(ForStmtAST& e) {
   // Any new code will be inserted in AfterBB.
   //TheFunction->getBasicBlockList().push_back(AfterBB);
   Builder_.SetInsertPoint(AfterBB);
+
+  // reset exit block
+  ExitBlock_ = OldExitBlock;
 
   // for expr always returns 0.
   popScope();
