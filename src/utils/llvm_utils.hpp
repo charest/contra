@@ -106,7 +106,7 @@ template<
   >
 llvm::Constant* llvmValue( llvm::LLVMContext & TheContext, llvm::Type* Ty, T Val )
 {
-  llvm::ConstantFP::get(TheContext, llvm::APFloat(Val));
+  return llvm::ConstantFP::get(TheContext, llvm::APFloat(Val));
 }
 
 template<typename T>

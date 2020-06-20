@@ -46,14 +46,14 @@ class LookupTable {
 
 public:
 
-  using FindResult = FindResult<T>;
-  using InsertResult = InsertResult<T>;
+  using FindResultType = FindResult<T>;
+  using InsertResultType = InsertResult<T>;
 
   auto & operator[](const std::string & Name) {
     return LookupTable_[Name]; 
   }
 
-  InsertResult insert(const std::string & Name, T && Lookup) {
+  InsertResultType insert(const std::string & Name, T && Lookup) {
     // search first
     auto it = find(Name);
     if (it) return {it.get(), false};
@@ -62,7 +62,7 @@ public:
     return {&res.first->second, res.second};
   }
 
-  FindResult find(const std::string & Name) {
+  FindResultType find(const std::string & Name) {
     auto it = LookupTable_.find(Name);
     if (it == LookupTable_.end())  {
       return {nullptr, false};

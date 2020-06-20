@@ -48,7 +48,7 @@ FindResult<VariableDef> Context::getVariable(
     const std::string & Name,
     bool Quietly)
 {
-  VariableTable::FindResult res;
+  VariableTable::FindResultType res;
   NestedData* FoundScope = nullptr;
 
   NestedData::ascend(
