@@ -71,10 +71,12 @@ public:
     //EE = std::make_unique<LLVMLinkInOrcMCJITReplacement>(MM, Resolver, TM);
     std::string ErrMsgStr;
     llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr); 
+#ifdef HAVE_LEGION
     if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(REALM_LIBRARY, &ErrMsgStr) )
       THROW_CONTRA_ERROR(ErrMsgStr);
     if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(LEGION_LIBRARY, &ErrMsgStr) )
       THROW_CONTRA_ERROR(ErrMsgStr);
+#endif
   }
 
   auto &getTargetMachine() { return *TM; }

@@ -61,21 +61,31 @@ endif()
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 find_package(Legion REQUIRED)
-MESSAGE(STATUS "Legion includes: ${Legion_INCLUDE_DIRS}")
-MESSAGE(STATUS "Legion libraries: ${Legion_LIBRARIES}")
-
-# need pthreads
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package(Threads REQUIRED)
-# need zlib
-find_package(ZLIB REQUIRED)
-# add other necessary libaries for legion
-list(APPEND Legion_LIBRARIES Threads::Threads ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-if(UNIX AND NOT APPLE)
-  list(APPEND Legion_LIBRARIES rt)
+if (Legion_FOUND)
+  MESSAGE(STATUS "Legion includes: ${Legion_INCLUDE_DIRS}")
+  MESSAGE(STATUS "Legion libraries: ${Legion_LIBRARIES}")
+  
+  # need pthreads
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  find_package(Threads REQUIRED)
+  # need zlib
+  find_package(ZLIB REQUIRED)
+  # add other necessary libaries for legion
+  list(APPEND Legion_LIBRARIES Threads::Threads ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+  if(UNIX AND NOT APPLE)
+    list(APPEND Legion_LIBRARIES rt)
+  endif()
+  target_include_directories(contra PUBLIC ${Legion_INCLUDE_DIRS})
+  target_link_libraries(contra PUBLIC ${Legion_LIBRARIES})
 endif()
-target_include_directories(contra PUBLIC ${Legion_INCLUDE_DIRS})
-target_link_libraries(contra PUBLIC ${Legion_LIBRARIES})
+
+#------------------------------------------------------------------------------#
+# Kokkos
+#------------------------------------------------------------------------------#
+find_package(Kokkos)
+if (Kokkos_FOUND)
+  target_link_libraries(contra PUBLIC Kokkos::kokkos)
+endif()
 
 #------------------------------------------------------------------------------#
 # build library
