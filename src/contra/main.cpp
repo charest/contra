@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
   Interp.setOptimized( args.count("O") );
   if (args.count("i")) Interp.setDumpIR(args.at("i"));
   if (args.count("d")) Interp.setDumpDot(args.at("d"));
+  if (args.count("b")) Interp.setBackend(args.at("b"));
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;

@@ -2,6 +2,7 @@
 #define CONTRA_CONTRA_HPP
 
 #include "analysis.hpp"
+#include "backends.hpp"
 #include "codegen.hpp"
 #include "file_utils.hpp"
 #include "llvm.hpp"
@@ -36,7 +37,10 @@ class Contra : public ErrorVisiter {
   std::unique_ptr<Vizualizer> TheViz_;
   std::unique_ptr<Analyzer> TheAnalyser_;
 
+  SupportedBackends BackendType_ = static_cast<SupportedBackends>(0);
+
 public:
+
 
   ~Contra() {
     // Print out all of the generated code.
@@ -74,6 +78,20 @@ public:
 
   bool dumpDot() const { return !DotFileName_.empty(); }
   void setDumpDot(const std::string & DotFileName) { DotFileName_ = DotFileName; }
+
+  void setBackend(const std::string & Backend)
+  {
+    auto lower = tolower(Backend);
+    BackendType_ = SupportedBackends::Size;
+#ifdef HAVE_LEGION
+    if (lower == "legion") BackendType_ = SupportedBackends::Legion; 
+#endif
+#ifdef HAVE_KOKKOS
+    if (lower == "kokkos") BackendType_ = SupportedBackends::Kokkos;
+#endif
+    if (BackendType_ == SupportedBackends::Size)
+      THROW_CONTRA_ERROR("Unsupported backend requested: '" << Backend << "'.");
+  }
 
   // top ::= definition | external | expression | ';'
   void mainLoop();

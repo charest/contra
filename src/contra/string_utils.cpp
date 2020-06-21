@@ -1,5 +1,6 @@
 #include "string_utils.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 namespace contra {
@@ -139,6 +140,34 @@ std::string html(const std::string& s)
   }
 
   return res;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//! to lower case
+////////////////////////////////////////////////////////////////////////////////
+std::string tolower(const std::string& s)
+{
+  std::string lower;
+  std::transform(
+      s.begin(),
+      s.end(),
+      std::back_inserter(lower),
+      [](unsigned char c){ return std::tolower(c); });
+  return lower;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//! to upper case
+////////////////////////////////////////////////////////////////////////////////
+std::string toupper(const std::string& s)
+{
+  std::string upper;
+  std::transform(
+      s.begin(),
+      s.end(),
+      std::back_inserter(upper),
+      [](unsigned char c){ return std::toupper(c); });
+  return upper;
 }
 
 } // namespace

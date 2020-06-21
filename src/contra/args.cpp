@@ -38,12 +38,14 @@ auto parseArguments(
     if ( c == -1 )
       break;
     // long options that set a flag
-    else if (c == 0)
+    else if (c == 0) {
       key_value_pair[long_options[option_index].name] =
         optarg ? optarg : "";
+    }
     // standard short/long option
-    else
+    else {
       key_value_pair[c_str] = optarg ? optarg : "";
+    }
     
   }
     
@@ -70,6 +72,7 @@ int processArguments(
   // the usage stagement
   auto print_usage = [&argv]() {
     std::cout << "Usage: " << argv[0]
+              << " [--backend,-b BACKEND]"
               << " [--compile,-c]"
               << " [--debug,-g]"
               << " [--dump-ir,-i IR_FILE]"
@@ -81,6 +84,7 @@ int processArguments(
               << " [--verbose,-v]"
               << " [SOURCE_FILE]"
               << std::endl << std::endl;
+    std::cout << "\t--backend:\t Use BACKEND backend. Default is legion." << std::endl;
     std::cout << "\t--compile:\t Compile provided SOURCE_FILE." << std::endl;
     std::cout << "\t--debug:\t Turn off optimizations." << std::endl;
     std::cout << "\t--dump-ir:\t Dump IR." << std::endl;
@@ -95,21 +99,42 @@ int processArguments(
   // Define the options
   struct option long_options[] =
     {
-      {"debug",           no_argument, 0, 'g'},
+      {"backend",   required_argument, 0, 'b'},
       {"compile",         no_argument, 0, 'c'},
+      {"debug",           no_argument, 0, 'g'},
       {"force",           no_argument, 0, 'f'},
       {"help",            no_argument, 0, 'h'},
       {"dump-ir",   required_argument, 0, 'i'},
       {"dump-dot",  required_argument, 0, 'd'},
       {"output",    required_argument, 0, 'o'},
-      {"optimize",  required_argument, 0, 'O'},
+      {"optimize",        no_argument, 0, 'O'},
       {"verbose",         no_argument, 0, 'v'},
       {0, 0, 0, 0}
     };
-  const char * short_options = "d:gfhi:cOo:v";
+
+  // make short options
+  std::map<char, std::string> ShortToLong;
+  std::string short_options;
+  for (auto Opt : long_options ) {
+    if (!Opt.val) break;
+    short_options += Opt.val;
+    if (Opt.has_arg) short_options += ':';
+    ShortToLong[Opt.val] = std::string(Opt.name);
+  }
 
   // parse the arguments
-  auto ret = parseArguments(argc, argv, long_options, short_options, args);
+  auto ret = parseArguments(
+      argc,
+      argv,
+      long_options,
+      short_options.c_str(),
+      args);
+
+  // replicate info under short options as long as well
+  for (const auto & MapPair : ShortToLong) {
+    auto it = args.find( std::string(1,MapPair.first) );
+    if (it != args.end()) args.emplace(MapPair.second, it->second);
+  }
 
   // process the simple ones
   if ( args.count("h") ) print_usage();

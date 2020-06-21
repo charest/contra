@@ -1,10 +1,11 @@
 #ifndef CONTRA_CODEGEN_HPP
 #define CONTRA_CODEGEN_HPP
 
-#include "recursive.hpp"
-#include "tasking.hpp"
+#include "backends.hpp"
 #include "jit.hpp"
+#include "recursive.hpp"
 #include "symbols.hpp" 
+#include "tasking.hpp"
 #include "variable.hpp"
 
 #include "utils/llvm_utils.hpp"
@@ -78,7 +79,7 @@ public:
   //============================================================================
 
   // Constructor
-  CodeGen(bool);
+  CodeGen(SupportedBackends, bool);
 
   // destructor
   virtual ~CodeGen();

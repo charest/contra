@@ -37,10 +37,12 @@ namespace contra {
 //==============================================================================
 // Constructor
 //==============================================================================
-CodeGen::CodeGen (bool) :
+CodeGen::CodeGen (SupportedBackends Backend, bool) :
   TheContext_(TheHelper_.getContext()),
   Builder_(TheHelper_.getBuilder())
 {
+
+  // setup backend args
   std::vector<std::string> Args = {
     "./contra",
     "-ll:gsize", "0",
@@ -53,21 +55,35 @@ CodeGen::CodeGen (bool) :
   Argc_ = Args.size();
   Argv_ = new char *[Argc_];
 
-
   for ( unsigned i=0; i<Args.size(); ++i ) {
     auto len = Args[i].size();
     Argv_[i] = new char[len+1];
     strcpy(Argv_[i], Args[i].data());
   }
 
+  // setup runtime
   librt::RunTimeLib::setup(TheContext_);
   
+  // setup types
   I64Type_  = llvmType<int_t>(TheContext_);
   F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
   ArrayType_ = librt::DopeVector::DopeVectorType;
   
-  Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
+  // setup tasker
+  Tasker_ = nullptr;
+
+#ifdef HAVE_LEGION
+  if (Backend == SupportedBackends::Legion)
+    Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
+#endif
+#ifdef HAVE_KOKKOS
+  if (Backend == SupportedBackends::Kokkos)
+    Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
+#endif
+  
+  if (!Tasker_) THROW_CONTRA_ERROR("No backend selected!");
+
   Tasker_->registerSerializer<ArraySerializer>(
       ArrayType_,
       TheHelper_,
@@ -75,7 +91,7 @@ CodeGen::CodeGen (bool) :
   
   AccessorType_ = Tasker_->getAccessorType();
 
-
+  // setup types
   auto & C = Context::instance();
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
   TypeTable_.emplace( C.getFloat64Type()->getName(),  F64Type_);
@@ -83,6 +99,7 @@ CodeGen::CodeGen (bool) :
 
   VariableTable_.push_front({});
 
+  // init function optimizer
   initializeModuleAndPassManager();
 
 }

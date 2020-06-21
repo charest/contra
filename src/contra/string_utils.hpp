@@ -34,6 +34,11 @@ std::string escape(const std::string& s);
 //! sanitize for html 
 std::string html(const std::string& s);
 
+//! to lower case
+std::string tolower(const std::string& s);
+//! to upper case
+std::string toupper(const std::string& s);
+
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief Convert a value to a string.
 //! \param [in] x The value to convert to a string.
