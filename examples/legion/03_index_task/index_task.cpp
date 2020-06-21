@@ -97,7 +97,7 @@ void top_level_task(
   legion_argument_map_t arg_map = legion_argument_map_create();
   for (i = 0; i < num_points; i++) {
     legion_task_argument_t local_task_args;
-    int input = i + 10;
+    int input = i + num_points;
     local_task_args.args = &input;
     local_task_args.arglen = sizeof(input);
     legion_point_1d_t tmp_p;

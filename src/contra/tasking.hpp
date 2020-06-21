@@ -41,6 +41,7 @@ protected:
 
   llvm::Type* VoidType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
+  llvm::Type* IntType_ = nullptr;
 
 public:
   
@@ -131,7 +132,7 @@ public:
       llvm::Value*,
       llvm::Value*,
       llvm::Value*) = 0;
-  virtual void destroyRange(llvm::Module &, llvm::Value*) = 0;
+  virtual void destroyRange(llvm::Module &, llvm::Value*) {}
   virtual llvm::Value* getRangeSize(llvm::Value*) = 0;
   virtual llvm::Value* getRangeStart(llvm::Value*) = 0;
   virtual llvm::Value* getRangeEnd(llvm::Value*) = 0;

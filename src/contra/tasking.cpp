@@ -8,6 +8,8 @@ using namespace llvm;
 using namespace utils;
   
 //==============================================================================
+// Contructor
+//==============================================================================
 AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   TheHelper_(TheHelper),
   Builder_(TheHelper.getBuilder()),
@@ -16,6 +18,7 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
 {
   VoidType_ = llvmType<void>(TheContext_);
   Int32Type_ = llvmType<int>(TheContext_);
+  IntType_ = llvmType<int_t>(TheContext_);
 }
 
 //==============================================================================

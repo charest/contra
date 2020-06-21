@@ -11,6 +11,8 @@ namespace contra {
 
 class KokkosTasker : public AbstractTasker {
 
+  llvm::StructType* IndexSpaceDataType_ = nullptr;
+
 public:
  
   KokkosTasker(utils::BuilderHelper & TheHelper);
@@ -20,6 +22,28 @@ public:
       int,
       char **) override;
   virtual void stopRuntime(llvm::Module &) override;
+  
+  virtual bool isRange(llvm::Type*) const override;
+  virtual bool isRange(llvm::Value*) const override;
+  virtual llvm::AllocaInst* createRange(
+      llvm::Module &,
+      const std::string &,
+      llvm::Value*,
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual llvm::Value* getRangeSize(llvm::Value*) override;
+  virtual llvm::Value* getRangeStart(llvm::Value*) override;
+  virtual llvm::Value* getRangeEnd(llvm::Value*) override;
+  virtual llvm::Value* getRangeEndPlusOne(llvm::Value*) override;
+  virtual llvm::Value* getRangeStep(llvm::Value*) override;
+  virtual llvm::Value* loadRangeValue(
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual llvm::Type* getRangeType() const override
+  { return IndexSpaceDataType_; }
+
+protected:
+  llvm::StructType* createIndexSpaceDataType();
 };
 
 } // namepsace

@@ -1,5 +1,3 @@
 add_subdirectory(00_hello_world)
-#add_subdirectory(01_fizzbuzz)
-#add_subdirectory(02_fibonacci)
-#add_subdirectory(03_index_task)
+add_subdirectory(03_index_task)
 #add_subdirectory(04_index_space)
