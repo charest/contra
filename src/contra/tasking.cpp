@@ -6,6 +6,17 @@ namespace contra {
 
 using namespace llvm;
 using namespace utils;
+  
+//==============================================================================
+AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
+  TheHelper_(TheHelper),
+  Builder_(TheHelper.getBuilder()),
+  TheContext_(TheHelper.getContext()),
+  DefaultSerializer_(TheHelper)
+{
+  VoidType_ = llvmType<void>(TheContext_);
+  Int32Type_ = llvmType<int>(TheContext_);
+}
 
 //==============================================================================
 Type* AbstractTasker::reduceStruct(

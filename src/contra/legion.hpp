@@ -1,9 +1,10 @@
 #ifndef CONTRA_LEGION_HPP
 #define CONTRA_LEGION_HPP
 
+#ifdef HAVE_LEGION
+
 #include "tasking.hpp"
 #include "reductions.hpp"
-#include "librt/dllexport.h"
 
 namespace llvm {
 class AllocaInst;
@@ -15,11 +16,9 @@ class LegionTasker : public AbstractTasker {
 protected:
   
   llvm::Type* VoidPtrType_ = nullptr;
-  llvm::Type* VoidType_ = nullptr;
   llvm::Type* ByteType_ = nullptr;
   llvm::Type* BoolType_ = nullptr;
   llvm::Type* CharType_ = nullptr;
-  llvm::Type* Int32Type_ = nullptr;
   llvm::Type* SizeType_ = nullptr;
   llvm::Type* OffType_ = nullptr;
   llvm::Type* ProcIdType_ = nullptr;
@@ -327,4 +326,5 @@ protected:
 
 } // namepsace
 
+#endif // HAVE_LEGION
 #endif // LIBRT_LEGION_HPP

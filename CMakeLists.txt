@@ -60,7 +60,7 @@ endif()
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-find_package(Legion REQUIRED)
+find_package(Legion)
 if (Legion_FOUND)
   MESSAGE(STATUS "Legion includes: ${Legion_INCLUDE_DIRS}")
   MESSAGE(STATUS "Legion libraries: ${Legion_LIBRARIES}")

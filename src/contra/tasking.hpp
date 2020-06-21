@@ -38,14 +38,13 @@ protected:
   Serializer DefaultSerializer_;
   std::map<llvm::Type*, std::unique_ptr<Serializer>> Serializer_;
 
+
+  llvm::Type* VoidType_ = nullptr;
+  llvm::Type* Int32Type_ = nullptr;
+
 public:
   
-  AbstractTasker(utils::BuilderHelper & TheHelper) :
-    TheHelper_(TheHelper),
-    Builder_(TheHelper.getBuilder()),
-    TheContext_(TheHelper.getContext()),
-    DefaultSerializer_(TheHelper)
-  {}
+  AbstractTasker(utils::BuilderHelper & TheHelper);
   
   virtual ~AbstractTasker() = default;
 
@@ -83,8 +82,9 @@ public:
       const std::string &,
       const TaskInfo &) = 0;
   
-  virtual void setTopLevelTask(llvm::Module &, int) = 0;
+  virtual void setTopLevelTask(llvm::Module &, int) {}
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
+  virtual void stopRuntime(llvm::Module &) {}
   
   virtual llvm::Value* launch(
       llvm::Module &,
