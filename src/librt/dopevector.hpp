@@ -20,13 +20,13 @@ struct dopevector_t {
 };
 
 /// memory allocation
-DLLEXPORT void allocate(int_t size, int_t data_size, dopevector_t * dv);
+DLLEXPORT void dopevector_allocate(int_t size, int_t data_size, dopevector_t * dv);
 
 /// memory deallocation
-DLLEXPORT void deallocate(dopevector_t * dv);
+DLLEXPORT void dopevector_deallocate(dopevector_t * dv);
 
 /// memory deallocation
-DLLEXPORT void copy(dopevector_t * src, dopevector_t * tgt);
+DLLEXPORT void dopevector_copy(dopevector_t * src, dopevector_t * tgt);
 
 } // extern
 
@@ -37,7 +37,7 @@ class FunctionDef;
 namespace librt {
 
 struct DopeVector {
-  static llvm::Type* DopeVectorType;
+  static llvm::StructType* DopeVectorType;
   static void setup(llvm::LLVMContext &);
   static bool isDopeVector(llvm::Type* Ty);
   static bool isDopeVector(llvm::Value* V);

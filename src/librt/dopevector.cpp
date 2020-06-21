@@ -12,7 +12,7 @@ extern "C" {
 //==============================================================================
 /// memory allocation
 //==============================================================================
-void allocate(int_t size, int_t data_size, dopevector_t * dv)
+void dopevector_allocate(int_t size, int_t data_size, dopevector_t * dv)
 {
   dv->data = malloc(size*data_size);
   dv->size = size;
@@ -23,7 +23,7 @@ void allocate(int_t size, int_t data_size, dopevector_t * dv)
 //==============================================================================
 /// memory deallocation
 //==============================================================================
-void deallocate(dopevector_t * dv)
+void dopevector_deallocate(dopevector_t * dv)
 {
   free(dv->data);
   dv->size = 0;
@@ -34,7 +34,7 @@ void deallocate(dopevector_t * dv)
 //==============================================================================
 /// copy
 //==============================================================================
-void copy(dopevector_t * src, dopevector_t * tgt)
+void dopevector_copy(dopevector_t * src, dopevector_t * tgt)
 {
   int_t len = src->size*src->data_size;
   if (tgt->capacity < src->size) {
@@ -54,15 +54,15 @@ using namespace contra;
 using namespace llvm;
 using namespace utils;
 
-Type* DopeVector::DopeVectorType = nullptr;
-const std::string DopeVectorAllocate::Name = "allocate";
-const std::string DopeVectorDeAllocate::Name = "deallocate";
-const std::string DopeVectorCopy::Name = "copy";
+StructType* DopeVector::DopeVectorType = nullptr;
+const std::string DopeVectorAllocate::Name = "dopevector_allocate";
+const std::string DopeVectorDeAllocate::Name = "dopevector_deallocate";
+const std::string DopeVectorCopy::Name = "dopevector_copy";
 
 //==============================================================================
 // Create the dopevector type 
 //==============================================================================
-Type * createDopeVectorType(LLVMContext & TheContext)
+StructType * createDopeVectorType(LLVMContext & TheContext)
 {
   auto DopeVectorType = StructType::create( TheContext, "dopevector_t" );
   auto VoidPointerType = llvmType<void*>(TheContext);

@@ -5,6 +5,7 @@ namespace llvm {
 class Function;
 class LLVMContext;
 class Module;
+class StructType;
 class Type;
 class Value;
 }

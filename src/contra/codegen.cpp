@@ -62,13 +62,19 @@ CodeGen::CodeGen (bool) :
 
   librt::RunTimeLib::setup(TheContext_);
   
-  Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
-
   I64Type_  = llvmType<int_t>(TheContext_);
   F64Type_  = llvmType<real_t>(TheContext_);
   VoidType_ = Type::getVoidTy(TheContext_);
   ArrayType_ = librt::DopeVector::DopeVectorType;
+  
+  Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
+  Tasker_->registerSerializer<ArraySerializer>(
+      ArrayType_,
+      TheHelper_,
+      librt::DopeVector::DopeVectorType);
+  
   AccessorType_ = Tasker_->getAccessorType();
+
 
   auto & C = Context::instance();
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
@@ -353,8 +359,9 @@ void CodeGen::allocateArray(
     Type * ElementT)
 {
   Function *F; 
-  F = TheModule_->getFunction("allocate");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "allocate");
+  const auto & AllocateN = librt::DopeVectorAllocate::Name;
+  F = TheModule_->getFunction(AllocateN);
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, AllocateN);
 
 
   auto DataSize = TheHelper_.getTypeSize<int_t>(ElementT);
@@ -427,8 +434,9 @@ void CodeGen::initArray(
 //==============================================================================
 void CodeGen::copyArray(Value* SrcArrayV, Value* TgtArrayA)
 {
-  auto F = TheModule_->getFunction("copy");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "copy");
+  const auto & CopyN = librt::DopeVectorCopy::Name;
+  auto F = TheModule_->getFunction(CopyN);
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, CopyN);
 
   auto SrcArrayA = TheHelper_.getAsAlloca(SrcArrayV);
 
@@ -523,8 +531,9 @@ void CodeGen::insertArrayValue(
 //==============================================================================
 void CodeGen::destroyArray(Value* Alloca)
 {
-  auto F = TheModule_->getFunction("deallocate");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
+  const auto & DeallocateN = librt::DopeVectorDeAllocate::Name;
+  auto F = TheModule_->getFunction(DeallocateN);
+  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, DeallocateN);
 
   Builder_.CreateCall(F, Alloca);
 }
@@ -536,12 +545,7 @@ void CodeGen::destroyArrays(const std::vector<Value*> & Arrays)
 {
   if (Arrays.empty()) return;
 
-  Function *F; 
-  F = TheModule_->getFunction("deallocate");
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, "deallocate");
-  
-  for ( auto Array : Arrays )
-  { destroyArray(Array); }
+  for ( auto Array : Arrays ) destroyArray(Array);
 }
 
 

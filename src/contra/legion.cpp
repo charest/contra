@@ -318,7 +318,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     }
     ArgEnums[i] = static_cast<char>(ArgEnum);
   
-    auto ArgSizeV = getSerializedSize(ArgVorA, SizeType_);
+    auto ArgSizeV = getSerializedSize(TheModule, ArgVorA, SizeType_);
     TheHelper_.insertValue(ArgSizesA, ArgSizeV, i);
   }
 
@@ -366,7 +366,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     auto ArgV = TheHelper_.getAsAlloca(ArgVorAs[i]);
     // copy
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
-    serialize(ArgV, ArgDataPtrV, ArgSizeGEP);
+    serialize(TheModule, ArgV, ArgDataPtrV, ArgSizeGEP);
     // increment
     ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 1);
     auto ArgSizeV = TheHelper_.extractValue(ArgSizesA, i);
@@ -865,7 +865,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     // Emit then block
     Builder_.SetInsertPoint(ThenBB);
     // copy
-    auto ArgSizeV = deserialize(TaskArgAs[i], TaskArgsA, OffsetA);
+    auto ArgSizeV = deserialize(TheModule, TaskArgAs[i], TaskArgsA, OffsetA);
     // increment
     TheHelper_.increment(OffsetA, ArgSizeV, "offset");
     // finish then
@@ -1114,7 +1114,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
 
     // return size
     auto RetsizeT = RetsizeV->getType();
-    RetsizeV = getSerializedSize(ResultV, RetsizeT);
+    RetsizeV = getSerializedSize(TheModule, ResultV, RetsizeT);
     auto RetsizeA = TheHelper_.createEntryBlockAlloca(RetsizeT, "retsize");
     Builder_.CreateStore( RetsizeV, RetsizeA );
 
@@ -1128,7 +1128,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
     RetvalV = TheHelper_.load(RetvalA);
     RetsizeV = TheHelper_.load(RetsizeA);
     TheHelper_.memCopy(RetvalV, ResultA, RetsizeV); 
-    serialize(ResultA, RetvalV);
+    serialize(TheModule, ResultA, RetvalV);
 
     // final loads
     RetsizeV = TheHelper_.load(RetsizeA);
@@ -1672,7 +1672,7 @@ Value* LegionTasker::loadFuture(
       "future");
   
   auto DataA = TheHelper_.createEntryBlockAlloca(DataT);
-  deserialize(DataA, DataPtrV);
+  deserialize(TheModule, DataA, DataPtrV);
 
   return TheHelper_.load(DataA, "future");
 }

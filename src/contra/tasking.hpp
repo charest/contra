@@ -180,6 +180,14 @@ public:
   
   //----------------------------------------------------------------------------
   // Common public members
+  
+  template<typename T, typename...Args>
+  void registerSerializer(llvm::Type* Ty, Args&&... As)
+  {
+    Serializer_.emplace(
+        Ty,
+        std::make_unique<T>(std::forward<Args>(As)...) );
+  }
 
   // registration
   void preregisterTasks(llvm::Module &);
@@ -236,9 +244,17 @@ protected:
   void store(llvm::Value*, llvm::Value *) const;
 
   // Serializer
-  llvm::Value* getSerializedSize(llvm::Value*, llvm::Type*);
-  llvm::Value* serialize(llvm::Value*, llvm::Value*, llvm::Value* = nullptr);
-  llvm::Value* deserialize(llvm::AllocaInst*, llvm::Value*, llvm::Value* = nullptr);
+  llvm::Value* getSerializedSize(llvm::Module&, llvm::Value*, llvm::Type*);
+  llvm::Value* serialize(
+      llvm::Module&,
+      llvm::Value*,
+      llvm::Value*,
+      llvm::Value* = nullptr);
+  llvm::Value* deserialize(
+      llvm::Module&,
+      llvm::AllocaInst*,
+      llvm::Value*,
+      llvm::Value* = nullptr);
 
 };
 

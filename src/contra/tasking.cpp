@@ -186,29 +186,38 @@ void AbstractTasker::postregisterTasks(Module & TheModule)
 }
  
 //==============================================================================
-Value* AbstractTasker::getSerializedSize(Value* Val, Type* ResultT)
-{
-  auto ValT = Val->getType();
-  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
-  auto it = Serializer_.find(ValT);
-  if (it != Serializer_.end()) return it->second->getSize(Val, ResultT);
-
-  // default behaviour
-  return DefaultSerializer_.getSize(Val, ResultT);
-}
-
-Value* AbstractTasker::serialize(Value* Val, Value* DataPtrV, Value* OffsetA)
+Value* AbstractTasker::getSerializedSize(
+    Module& TheModule,
+    Value* Val,
+    Type* ResultT)
 {
   auto ValT = Val->getType();
   if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
-    return it->second->serialize(Val, DataPtrV, OffsetA);
+    return it->second->getSize(TheModule, Val, ResultT);
+
+  // default behaviour
+  return DefaultSerializer_.getSize(TheModule, Val, ResultT);
+}
+
+Value* AbstractTasker::serialize(
+    Module& TheModule,
+    Value* Val,
+    Value* DataPtrV,
+    Value* OffsetA)
+{
+  auto ValT = Val->getType();
+  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
+  auto it = Serializer_.find(ValT);
+  if (it != Serializer_.end())
+    return it->second->serialize(TheModule, Val, DataPtrV, OffsetA);
   else
-    return DefaultSerializer_.serialize(Val, DataPtrV, OffsetA);
+    return DefaultSerializer_.serialize(TheModule, Val, DataPtrV, OffsetA);
 }
 
 Value* AbstractTasker::deserialize(
+    Module& TheModule,
     AllocaInst* ValA,
     Value* DataPtrV,
     Value* OffsetA)
@@ -216,9 +225,9 @@ Value* AbstractTasker::deserialize(
   auto ValT = ValA->getAllocatedType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
-    return it->second->deserialize(ValA, DataPtrV, OffsetA);
+    return it->second->deserialize(TheModule, ValA, DataPtrV, OffsetA);
   else
-    return DefaultSerializer_.deserialize(ValA, DataPtrV, OffsetA);
+    return DefaultSerializer_.deserialize(TheModule, ValA, DataPtrV, OffsetA);
 }
 
 } // namespace
