@@ -3,7 +3,7 @@
 
 #include <fstream>
 
-namespace contra {
+namespace utils {
 
 inline bool file_exists (const std::string& name)
 {

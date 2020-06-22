@@ -14,6 +14,8 @@ class KokkosTasker : public AbstractTasker {
   llvm::StructType* IndexSpaceDataType_ = nullptr;
   llvm::StructType* FieldDataType_ = nullptr;
 
+  const TaskInfo * TopLevelTask_ = nullptr;
+
 public:
  
   KokkosTasker(utils::BuilderHelper & TheHelper);
@@ -23,6 +25,17 @@ public:
       int,
       char **) override;
   virtual void stopRuntime(llvm::Module &) override;
+  
+  virtual PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<std::string> &,
+      const std::vector<llvm::Type*> &) override;
+  
+  virtual void setTopLevelTask(
+      llvm::Module &,
+      const TaskInfo & TaskI) override
+  { TopLevelTask_ = &TaskI; }
   
   virtual bool isRange(llvm::Type*) const override;
   virtual bool isRange(llvm::Value*) const override;
@@ -40,10 +53,10 @@ public:
   virtual llvm::Value* loadRangeValue(
       llvm::Value*,
       llvm::Value*) override;
-  virtual llvm::Type* getRangeType() const override
+  virtual llvm::Type* getRangeType(llvm::Type*) const override
   { return IndexSpaceDataType_; }
   
-  virtual llvm::Type* getFieldType() const override
+  virtual llvm::Type* getFieldType(llvm::Type*) const override
   { return FieldDataType_; }
 
   virtual bool isField(llvm::Value*) const override;
@@ -55,7 +68,7 @@ public:
       llvm::Value*,
       llvm::Value*) override;
   virtual void destroyField(llvm::Module &, llvm::Value*) override;
-
+  
 protected:
   llvm::StructType* createIndexSpaceDataType();
   llvm::StructType* createFieldDataType();

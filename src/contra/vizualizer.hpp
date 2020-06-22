@@ -3,8 +3,9 @@
 
 #include "config.hpp"
 #include "recursive.hpp"
-#include "file_utils.hpp"
-#include "string_utils.hpp"
+
+#include "utils/file_utils.hpp"
+#include "utils/string_utils.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -28,7 +29,7 @@ public:
 
   Vizualizer(const std::string & FileName, bool Overwrite = false)
   {
-    if (!Overwrite && file_exists(FileName))
+    if (!Overwrite && utils::file_exists(FileName))
       THROW_CONTRA_ERROR("File '" << FileName
           << "' already exists!  Use -f to overwrite.");
     OutputStream_.open(FileName.c_str());

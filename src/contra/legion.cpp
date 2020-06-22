@@ -1063,6 +1063,19 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
 
 }
 
+
+//==============================================================================
+// Create the function wrapper
+//==============================================================================
+LegionTasker::PreambleResult LegionTasker::taskPreamble(
+    Module &TheModule,
+    const std::string & TaskName,
+    const std::vector<std::string> & TaskArgNs,
+    const std::vector<Type*> & TaskArgTs)
+{
+  return taskPreamble(TheModule, TaskName, TaskArgNs, TaskArgTs, true);
+}
+
 //==============================================================================
 // Create the function wrapper
 //==============================================================================
@@ -1173,6 +1186,9 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
       "contra_legion_timer_stop",
       VoidType_,
       {LegionE.TimerAlloca});
+  
+  // Finish off the function.  Tasks always return void
+  Builder_.CreateRetVoid();
   
   finishTask();
 }
@@ -1299,9 +1315,10 @@ void LegionTasker::preregisterTask(
 //==============================================================================
 // Set top level task
 //==============================================================================
-void LegionTasker::setTopLevelTask(Module &TheModule, int TaskId )
+void LegionTasker::setTopLevelTask(Module &TheModule, const TaskInfo & TaskI)
 {
 
+  auto TaskId = TaskI.getId();
   auto TaskIdV = llvmValue(TheContext_, TaskIdType_, TaskId);
   std::vector<Value*> SetArgVs = { TaskIdV };
   TheHelper_.callFunction(
@@ -1348,7 +1365,7 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 //==============================================================================
 Value* LegionTasker::launch(
     Module &TheModule,
-    int TaskId,
+    const TaskInfo & TaskI,
     const std::vector<Value*> & ArgVs)
 {
   //----------------------------------------------------------------------------
@@ -1364,7 +1381,8 @@ Value* LegionTasker::launch(
   
   //----------------------------------------------------------------------------
   // Launch
- 
+
+  auto TaskId = TaskI.getId();
   auto MapperIdV = llvmValue(TheContext_, MapperIdType_, 0); 
   auto MappingTagIdV = llvmValue(TheContext_, MappingTagIdType_, 0); 
   auto PredicateV = load(PredicateA, TheModule, "predicate");
@@ -1435,7 +1453,7 @@ Value* LegionTasker::launch(
 //==============================================================================
 Value* LegionTasker::launch(
     Module &TheModule,
-    int TaskId,
+    const TaskInfo & TaskI,
     std::vector<Value*> ArgAs,
     const std::vector<Value*> & PartAs,
     Value* RangeV,
@@ -1530,6 +1548,7 @@ Value* LegionTasker::launch(
   //----------------------------------------------------------------------------
   // Launch
  
+  auto TaskId = TaskI.getId();
   auto MapperIdV = llvmValue(TheContext_, MapperIdType_, 0); 
   auto MappingTagIdV = llvmValue(TheContext_, MappingTagIdType_, 0); 
   auto PredicateV = load(PredicateA, TheModule, "predicate");

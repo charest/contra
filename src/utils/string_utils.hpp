@@ -5,7 +5,7 @@
 #include <sstream>
 #include <vector>
 
-namespace contra {
+namespace utils {
 
 //! \brief Get a file name.
 //! \param [in] str  the input string

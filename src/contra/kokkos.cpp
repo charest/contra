@@ -68,6 +68,9 @@ Value* KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
       Int32Type_,
       StartArgVs,
       "start");
+  
+  launch(TheModule, *TopLevelTask_, {});
+
   return RetI;
 }
 
@@ -81,6 +84,18 @@ void KokkosTasker::stopRuntime(Module &TheModule)
       "contra_kokkos_runtime_stop",
       VoidType_,
       {});
+}
+
+//==============================================================================
+// Create the function wrapper
+//==============================================================================
+KokkosTasker::PreambleResult KokkosTasker::taskPreamble(
+    Module &TheModule,
+    const std::string & TaskName,
+    const std::vector<std::string> & TaskArgNs,
+    const std::vector<Type*> & TaskArgTs)
+{
+  abort();
 }
 
 //==============================================================================
@@ -246,6 +261,5 @@ void KokkosTasker::destroyField(Module &TheModule, Value* FieldA)
       VoidType_,
       {FieldA});
 }
-
 
 }

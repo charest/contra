@@ -955,11 +955,11 @@ void CodeGen::visit(CallExprAST &e) {
         Tasker_->postregisterTasks(*TheModule_);
       else
         Tasker_->preregisterTasks(*TheModule_);
-      Tasker_->setTopLevelTask(*TheModule_, TaskI.getId());
+      Tasker_->setTopLevelTask(*TheModule_, TaskI);
       Tasker_->start(*TheModule_, Argc_, Argv_);
     }
     else {
-      FutureV = Tasker_->launch(*TheModule_, TaskI.getId(), ArgVs);
+      FutureV = Tasker_->launch(*TheModule_, TaskI, ArgVs);
     }
   
     ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
@@ -1287,7 +1287,7 @@ void CodeGen::visit(ForeachStmtAST& e)
     if (e.hasReduction() && TaskI.hasReduction()) {
       auto FutureV = Tasker_->launch(
           *TheModule_,
-          TaskI.getId(),
+          TaskI,
           TaskArgAs,
           PartAs,
           RangeV,
@@ -1313,7 +1313,7 @@ void CodeGen::visit(ForeachStmtAST& e)
       }
     }
     else {
-      Tasker_->launch(*TheModule_, TaskI.getId(), TaskArgAs, PartAs, RangeV);
+      Tasker_->launch(*TheModule_, TaskI, TaskArgAs, PartAs, RangeV);
     }
     
     popScope();
@@ -1740,12 +1740,12 @@ void CodeGen::visit(TaskAST& e)
   auto Name = P.getName();
   auto TheFunction = getFunction(Name).first;
   
-  // insert the task 
-  auto & TaskI = Tasker_->insertTask(Name);
-  TaskI.setLeaf(e.isLeaf());
-  
   // generate wrapped task
   auto Wrapper = Tasker_->taskPreamble(*TheModule_, Name, TheFunction);
+  
+  // insert the task 
+  auto & TaskI = Tasker_->insertTask(Name, Wrapper.TheFunction);
+  TaskI.setLeaf(e.isLeaf());
 
   // insert arguments into variable table
   unsigned ArgIdx = 0;
@@ -1771,14 +1771,10 @@ void CodeGen::visit(TaskAST& e)
   // Finish wrapped task
   Tasker_->taskPostamble(*TheModule_, RetVal);
   
-  // Finish off the function.  Tasks always return void
-  Builder_.CreateRetVoid();
-  
   // Validate the generated code, checking for consistency.
   verifyFunction(*Wrapper.TheFunction);
   
   // set the finished function
-  TaskI.setFunction(Wrapper.TheFunction);
   FunctionResult_ = Wrapper.TheFunction;
 
 }
@@ -1846,8 +1842,7 @@ void CodeGen::visit(IndexTaskAST& e)
       *TheModule_,
       TaskN, 
       TaskArgNs,
-      TaskArgTs,
-      true);
+      TaskArgTs);
 
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {

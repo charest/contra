@@ -4,6 +4,8 @@
 #include "leafs.hpp"
 #include "loops.hpp"
 
+#include "utils/file_utils.hpp"
+
 #include <iostream>
 
 using namespace llvm;
@@ -29,7 +31,7 @@ void Contra::setup(const std::string & FileName)
   }
   else if (!IRFileName_.empty()) {
     std::error_code EC;
-    if (!isOverwrite() && file_exists(IRFileName_))
+    if (!isOverwrite() && utils::file_exists(IRFileName_))
       THROW_CONTRA_ERROR("File '" << IRFileName_
           << "' already exists!  Use -f to overwrite.");
     IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC, llvm::sys::fs::F_None);

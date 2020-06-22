@@ -1,7 +1,7 @@
 #include "args.hpp"
 #include "contra.hpp"
 #include "precedence.hpp"
-#include "string_utils.hpp"
+#include "utils/string_utils.hpp"
 
 #include "librt/librt.hpp"
 
@@ -13,6 +13,7 @@
 // Main driver code.
 //==============================================================================
 using namespace contra;
+using namespace utils;
 
 int main(int argc, char** argv) {
 

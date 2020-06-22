@@ -28,6 +28,8 @@ set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 # options
 option(BUILD_SHARED_LIBS "Build shared libraries." ON)
 
+set(SUPPORTED_BACKENDS)
+
 #------------------------------------------------------------------------------#
 # configure targets
 #------------------------------------------------------------------------------#
@@ -77,6 +79,8 @@ if (Legion_FOUND)
   endif()
   target_include_directories(contra PUBLIC ${Legion_INCLUDE_DIRS})
   target_link_libraries(contra PUBLIC ${Legion_LIBRARIES})
+
+  list(APPEND SUPPORTED_BACKENDS "legion")
 endif()
 
 #------------------------------------------------------------------------------#
@@ -85,6 +89,7 @@ endif()
 find_package(Kokkos)
 if (Kokkos_FOUND)
   target_link_libraries(contra PUBLIC Kokkos::kokkos)
+  list(APPEND SUPPORTED_BACKENDS "kokkos")
 endif()
 
 #------------------------------------------------------------------------------#

@@ -98,8 +98,7 @@ public:
       llvm::Module &,
       const std::string &,
       const std::vector<std::string> &,
-      const std::vector<llvm::Type*> &,
-      bool) override;
+      const std::vector<llvm::Type*> &) override;
 
   virtual void taskPostamble(
       llvm::Module &,
@@ -114,7 +113,9 @@ public:
       const std::string &,
       const TaskInfo &) override;
   
-  virtual void setTopLevelTask(llvm::Module &, int) override;
+  virtual void setTopLevelTask(
+      llvm::Module &,
+      const TaskInfo &) override;
   
   virtual llvm::Value* startRuntime(
       llvm::Module &,
@@ -123,18 +124,18 @@ public:
   
   virtual llvm::Value* launch(
       llvm::Module &,
-      int,
+      const TaskInfo &,
       const std::vector<llvm::Value*> &) override;
   virtual llvm::Value* launch(
       llvm::Module &,
-      int,
+      const TaskInfo &,
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
       llvm::Value*,
       bool,
       int) override;
   
-  virtual llvm::Type* getFutureType() const override
+  virtual llvm::Type* getFutureType(llvm::Type*) const override
   { return FutureType_; }
 
   virtual bool isFuture(llvm::Value*) const override;
@@ -154,7 +155,7 @@ public:
       llvm::Value*,
       llvm::Value*) override;
   
-  virtual llvm::Type* getFieldType() const override
+  virtual llvm::Type* getFieldType(llvm::Type*) const override
   { return FieldDataType_; }
 
   virtual bool isField(llvm::Value*) const override;
@@ -186,7 +187,7 @@ public:
       llvm::Value*,
       llvm::Value*) override;
   
-  virtual llvm::Type* getRangeType() const override
+  virtual llvm::Type* getRangeType(llvm::Type*) const override
   { return IndexSpaceDataType_; }
 
   virtual bool isAccessor(llvm::Type*) const override;
@@ -221,7 +222,7 @@ public:
   
   virtual void destroyPartition(llvm::Module &, llvm::Value*) override;
   
-  virtual llvm::Type* getPartitionType() const override
+  virtual llvm::Type* getPartitionType(llvm::Type*) const override
   { return IndexPartitionType_; }
 
   virtual ReduceInfo createReductionOp(
@@ -294,6 +295,13 @@ protected:
       llvm::Value*,
       const std::string &,
       const std::string & = "");
+  
+  PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<std::string> &,
+      const std::vector<llvm::Type*> &,
+      bool);
 
   void destroyGlobalArguments(llvm::AllocaInst*);
 

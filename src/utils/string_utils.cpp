@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
-namespace contra {
+namespace utils {
 
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief Get a file name.

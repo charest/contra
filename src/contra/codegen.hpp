@@ -205,18 +205,19 @@ private:
 
   Type* getLLVMType(const VariableType & Ty)
   {
-    if (Ty.isArray()) return ArrayType_;
-    if (Ty.isRange()) return Tasker_->getRangeType();
-    if (Ty.isField()) { return Tasker_->getFieldType(); }
-    if (Ty.isFuture()) { return Tasker_->getFutureType(); }
-    if (Ty.isPartition()) return Tasker_->getPartitionType();
     if (Ty.isStruct()) {
       std::vector<llvm::Type*> Members;
       for (const auto & M : Ty.getMembers())
         Members.emplace_back( getLLVMType(M) );
       return llvm::StructType::create(Members, "struct.t");
     }
-    return TypeTable_.at(Ty.getBaseType()->getName());
+    auto VarT = TypeTable_.at(Ty.getBaseType()->getName());
+    if (Ty.isArray()) return ArrayType_;
+    if (Ty.isRange()) return Tasker_->getRangeType(VarT);
+    if (Ty.isField()) return Tasker_->getFieldType(VarT);
+    if (Ty.isFuture()) return Tasker_->getFutureType(VarT);
+    if (Ty.isPartition()) return Tasker_->getPartitionType(VarT);
+    return VarT; 
   }
   
   Type* getLLVMType(const Identifier & Id)

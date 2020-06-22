@@ -4,7 +4,6 @@
 #include "analysis.hpp"
 #include "backends.hpp"
 #include "codegen.hpp"
-#include "file_utils.hpp"
 #include "llvm.hpp"
 #include "parser.hpp"
 #include "vizualizer.hpp"
@@ -81,7 +80,7 @@ public:
 
   void setBackend(const std::string & Backend)
   {
-    auto lower = tolower(Backend);
+    auto lower = utils::tolower(Backend);
     BackendType_ = SupportedBackends::Size;
 #ifdef HAVE_LEGION
     if (lower == "legion") BackendType_ = SupportedBackends::Legion; 

@@ -1,5 +1,7 @@
-foreach(_test hello)
-  add_test(
-    NAME example_${_test}
-    COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta)
+foreach(_backend ${SUPPORTED_BACKENDS})
+  foreach(_test hello)
+    add_test(
+      NAME example_${_test}_${_backend}
+      COMMAND $<TARGET_FILE:contra> -b ${_backend} ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta)
+  endforeach()
 endforeach()

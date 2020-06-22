@@ -16,7 +16,7 @@ std::string Vizualizer::makeLabel(const std::string & Type, const std::string & 
     ss << "\"" << Type << "\"";
   }
   else {
-    auto NewExtra = html(Extra);
+    auto NewExtra = utils::html(Extra);
     ss << "<" << Type << "<BR />";
     ss << "<FONT POINT-SIZE=\"12\">";
     ss << NewExtra;

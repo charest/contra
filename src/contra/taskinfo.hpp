@@ -24,8 +24,14 @@ class TaskInfo {
 
 public:
 
-  TaskInfo(int Id, const std::string & Name, llvm::Function * Func)
-    : Id_(Id), Name_(Name), Function_(Func), FunctionType_(Func->getFunctionType())
+  TaskInfo(
+      int Id,
+      const std::string & Name,
+      llvm::Function * Func) :
+    Id_(Id), 
+    Name_(Name),
+    Function_(Func),
+    FunctionType_(Func->getFunctionType())
   {}
 
   TaskInfo(int Id) : Id_(Id)
@@ -34,13 +40,9 @@ public:
   auto getId() const { return Id_; }
   const auto & getName() const { return Name_; }
   
-  void setFunction(llvm::Function* F) {
-    Name_ = F->getName();
-    Function_ = F;
-    FunctionType_ = F->getFunctionType();
-  }
   auto getFunction() const { return Function_; }
   auto getFunctionType() const { return FunctionType_; }
+  auto getReturnType() const { return FunctionType_->getReturnType(); }
 
   bool isTop() const { return IsTop_; }
   void setTop(bool IsTop = true) { IsTop_ = IsTop; }

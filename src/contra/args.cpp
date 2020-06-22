@@ -1,5 +1,6 @@
 #include "args.hpp"
-#include "string_utils.hpp"
+
+#include "utils/string_utils.hpp"
 
 #include <getopt.h>
 #include <iostream>
@@ -33,7 +34,7 @@ auto parseArguments(
   while (c != -1) {
     c = getopt_long(argc, argvcopy.data(), short_options, long_options, &option_index);
     auto c_char = static_cast<char>(c);
-    auto c_str = to_string( c_char );
+    auto c_str = utils::to_string( c_char );
     // finished with arguments
     if ( c == -1 )
       break;

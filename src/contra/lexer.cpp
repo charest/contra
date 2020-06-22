@@ -1,7 +1,8 @@
 #include "errors.hpp"
 #include "lexer.hpp"
-#include "string_utils.hpp"
 #include "token.hpp"
+
+#include "utils/string_utils.hpp"
 
 #include <cstdio>
 #include <iostream>
@@ -132,7 +133,7 @@ int Lexer::gettok() {
     std::string quoted;
     while ((LastChar_ = advance()) != '\"')
       quoted += LastChar_;
-    IdentifierStr_ = unescape(quoted);
+    IdentifierStr_ = utils::unescape(quoted);
     LastChar_ = advance();
     return tok_string_literal;
   }

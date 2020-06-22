@@ -1,6 +1,8 @@
+#include "errors.hpp"
 #include "tasking.hpp"
 
 #include "utils/llvm_utils.hpp"
+#include "llvm/Support/raw_ostream.h"
 
 namespace contra {
 
@@ -21,6 +23,75 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   Int32Type_ = llvmType<int>(TheContext_);
   IntType_ = llvmType<int_t>(TheContext_);
   RealType_ = llvmType<real_t>(TheContext_);
+}
+
+//==============================================================================
+// Default Preamble
+//==============================================================================
+AbstractTasker::PreambleResult AbstractTasker::taskPreamble(
+    Module &TheModule,
+    const std::string & Name,
+    Function* TaskF)
+{
+  
+  // Create a new basic block to start insertion into.
+  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TaskF);
+  Builder_.SetInsertPoint(BB);
+
+  std::vector<AllocaInst*> TaskArgAs;
+
+  for (auto & Arg : TaskF->args()) {
+    // get arg type
+    auto ArgT = Arg.getType();
+    // Create an alloca for this variable.
+    auto ArgN = std::string(Arg.getName()) + ".alloca";
+    auto Alloca = TheHelper_.createEntryBlockAlloca(TaskF, ArgT, ArgN);
+    // Store the initial value into the alloca.
+    Builder_.CreateStore(&Arg, Alloca);
+    TaskArgAs.emplace_back(Alloca);
+  }
+  
+  return {TaskF, TaskArgAs, nullptr}; 
+}
+ 
+//==============================================================================
+// Create the function wrapper
+//==============================================================================
+void AbstractTasker::taskPostamble(Module &TheModule, Value* ResultV)
+{
+
+  //----------------------------------------------------------------------------
+  // Have return value
+  if (ResultV && !ResultV->getType()->isVoidTy()) {
+    ResultV = TheHelper_.getAsValue(ResultV);
+    Builder_.CreateRet(ResultV);
+  }
+  else {
+    Builder_.CreateRetVoid();
+  }
+  
+}
+  
+//==============================================================================
+// Launch a task
+//==============================================================================
+Value* AbstractTasker::launch(
+    Module &TheModule,
+    const TaskInfo & TaskI,
+    const std::vector<Value*> & Args)
+{
+  std::vector<Value*> ArgVs;
+  for (auto Arg : Args)
+    ArgVs.emplace_back( TheHelper_.getAsValue(Arg) );
+
+  std::cout << "callling " << TaskI.getName() << std::endl;
+  auto ResultT = TaskI.getReturnType();
+  auto Res = TheHelper_.callFunction(
+      TheModule,
+      TaskI.getName(),
+      ResultT,
+      ArgVs);
+  return Res;
 }
 
 //==============================================================================
@@ -116,20 +187,22 @@ Value* AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 }
 
 //==============================================================================
-TaskInfo & AbstractTasker::insertTask(const std::string & Name)
-{
-  auto Id = makeTaskId();
-  auto it = TaskTable_.emplace(Name, TaskInfo(Id));
-  return it.first->second;
-}
-
-//==============================================================================
 TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 {
   auto TaskName = F->getName();
   auto Id = makeTaskId();
   auto it = TaskTable_.emplace(Name, TaskInfo(Id, TaskName, F));
   return it.first->second;
+}
+
+//==============================================================================
+const TaskInfo & AbstractTasker::getTask(const std::string & Name) const
+{
+  auto it = TaskTable_.find(Name);
+  if (it != TaskTable_.end())
+    return it->second;
+  else 
+    THROW_CONTRA_ERROR("Unknown task requested: '" << Name << "'.");
 }
   
 //==============================================================================

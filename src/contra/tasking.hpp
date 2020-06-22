@@ -62,59 +62,58 @@ public:
   virtual PreambleResult taskPreamble(
       llvm::Module &,
       const std::string &,
-      llvm::Function*) = 0;
+      llvm::Function*);
 
   virtual PreambleResult taskPreamble(
       llvm::Module &,
       const std::string &,
       const std::vector<std::string> &,
-      const std::vector<llvm::Type*> &,
-      bool) = 0;
+      const std::vector<llvm::Type*> &) = 0;
 
   virtual void taskPostamble(
       llvm::Module &,
-      llvm::Value* = nullptr) = 0;
+      llvm::Value* = nullptr);
 
   virtual void preregisterTask(
       llvm::Module &,
       const std::string &,
-      const TaskInfo &) = 0;
+      const TaskInfo &) {};
 
   virtual void postregisterTask(
       llvm::Module &,
       const std::string &,
-      const TaskInfo &) = 0;
+      const TaskInfo &) {};
   
-  virtual void setTopLevelTask(llvm::Module &, int) {}
+  virtual void setTopLevelTask(llvm::Module &, const TaskInfo &) = 0;
   virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
   virtual void stopRuntime(llvm::Module &) {}
   
   virtual llvm::Value* launch(
       llvm::Module &,
-      int,
-      const std::vector<llvm::Value*> &) = 0;
+      const TaskInfo &,
+      const std::vector<llvm::Value*> &);
 
   virtual llvm::Value* launch(
       llvm::Module &,
-      int,
+      const TaskInfo &,
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
       llvm::Value*,
       bool = false,
-      int = 0) = 0;
+      int = 0) {};
 
-  virtual llvm::Type* getFutureType() const = 0;
-  virtual bool isFuture(llvm::Value*) const = 0;
+  virtual llvm::Type* getFutureType(llvm::Type* Ty) const { return Ty; };
+  virtual bool isFuture(llvm::Value*) const { return false; };
 
   virtual llvm::Value* loadFuture(
       llvm::Module &,
       llvm::Value*,
-      llvm::Type*)=0;
-  virtual void destroyFuture(llvm::Module &, llvm::Value*) = 0;
-  virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
-  virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) = 0;
+      llvm::Type*) {};
+  virtual void destroyFuture(llvm::Module &, llvm::Value*) {};
+  virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) {};
+  virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) {};
 
-  virtual llvm::Type* getFieldType() const = 0;
+  virtual llvm::Type* getFieldType(llvm::Type*) const = 0;
   virtual bool isField(llvm::Value*) const = 0;
   virtual void createField(
       llvm::Module &,
@@ -127,7 +126,7 @@ public:
   
   virtual bool isRange(llvm::Type*) const = 0;
   virtual bool isRange(llvm::Value*) const = 0;
-  virtual llvm::Type* getRangeType() const = 0;
+  virtual llvm::Type* getRangeType(llvm::Type*) const = 0;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
       const std::string &,
@@ -144,42 +143,42 @@ public:
       llvm::Value*,
       llvm::Value*) = 0;
 
-  virtual bool isAccessor(llvm::Type*) const = 0;
-  virtual bool isAccessor(llvm::Value*) const = 0;
-  virtual llvm::Type* getAccessorType() const = 0;
+  virtual bool isAccessor(llvm::Type*) const { return false; };
+  virtual bool isAccessor(llvm::Value*) const { return false; };
+  virtual llvm::Type* getAccessorType() const {};
   virtual void storeAccessor(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value* = nullptr) const = 0;
+      llvm::Value* = nullptr) const {};
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,
-      llvm::Value* = nullptr) const = 0;
-  virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
+      llvm::Value* = nullptr) const {};
+  virtual void destroyAccessor(llvm::Module &, llvm::Value*) {};
   
   virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value*) = 0;
+      llvm::Value*) {};
   virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
-      llvm::Value*) = 0;
+      llvm::Value*) {};
   
-  virtual llvm::Type* getPartitionType() const = 0;
-  virtual bool isPartition(llvm::Type*) const = 0;
-  virtual bool isPartition(llvm::Value*) const = 0;
+  virtual llvm::Type* getPartitionType(llvm::Type*) const {};
+  virtual bool isPartition(llvm::Type*) const {};
+  virtual bool isPartition(llvm::Value*) const {};
   
-  virtual void destroyPartition(llvm::Module &, llvm::Value*) = 0;
+  virtual void destroyPartition(llvm::Module &, llvm::Value*) {};
   
   virtual ReduceInfo createReductionOp(
       llvm::Module &,
       const std::string &,
       const std::vector<llvm::Type*> &,
-      const std::vector<ReductionType> &) = 0;
+      const std::vector<ReductionType> &) {};
   
   //----------------------------------------------------------------------------
   // Common public members
@@ -204,15 +203,13 @@ public:
   
   // Task table interface
   TaskInfo & insertTask(const std::string & Name, llvm::Function* F);
-  TaskInfo & insertTask(const std::string & Name);
 
   bool isTask(const std::string & Name) const
   { return TaskTable_.count(Name); }
 
   TaskInfo popTask(const std::string & Name);
 
-  const auto & getTask(const std::string & Name) const
-  { return TaskTable_.at(Name); }
+  const TaskInfo & getTask(const std::string & Name) const;
 
   // future interface
   void destroyFutures(llvm::Module &, const std::vector<llvm::Value*> &);
