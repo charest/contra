@@ -1,6 +1,10 @@
 #include "kokkos.hpp"
 
+#include "errors.hpp"
+#include "kokkos_rt.hpp"
+
 #include "utils/llvm_utils.hpp"
+#include "llvm/Support/raw_ostream.h"
   
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker
@@ -18,6 +22,7 @@ KokkosTasker::KokkosTasker(utils::BuilderHelper & TheHelper)
   : AbstractTasker(TheHelper)
 {
   IndexSpaceDataType_ = createIndexSpaceDataType();
+  FieldDataType_ = createFieldDataType();
 }
 
 //==============================================================================
@@ -29,6 +34,17 @@ StructType * KokkosTasker::createIndexSpaceDataType()
   auto NewType = StructType::create( TheContext_, members, "contra_kokkos_index_space_t" );
   return NewType;
 }
+
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * KokkosTasker::createFieldDataType()
+{
+  std::vector<Type*> members = { Int32Type_, VoidPtrType_ };
+  auto NewType = StructType::create( TheContext_, members, "contra_kokkos_field_t" );
+  return NewType;
+}
+
 
 //==============================================================================
 // start runtime
@@ -159,6 +175,76 @@ llvm::Value* KokkosTasker::loadRangeValue(
   auto StartV = TheHelper_.extractValue(RangeA, 0); 
   IndexV = TheHelper_.getAsValue(IndexV);
   return Builder_.CreateAdd(StartV, IndexV);
+}
+
+//==============================================================================
+// Is this a field type
+//==============================================================================
+bool KokkosTasker::isField(Value* FieldA) const
+{
+  auto FieldT = FieldA->getType();
+  if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
+  return (FieldT == FieldDataType_);
+}
+
+
+//==============================================================================
+// Create a legion field
+//==============================================================================
+void KokkosTasker::createField(
+    Module & TheModule,
+    Value* FieldA,
+    const std::string & VarN,
+    Type* VarT,
+    Value* RangeV,
+    Value* VarV)
+{
+  auto NameV = llvmString(TheContext_, TheModule, VarN);
+
+  Value* DataTypeV;
+  if (VarT == IntType_)
+    DataTypeV = llvmValue<int>(TheContext_, KokkosFieldType::Integer);
+  else if (VarT == RealType_)
+    DataTypeV = llvmValue<int>(TheContext_, KokkosFieldType::Real);
+  else {
+    std::string str;
+    raw_string_ostream out(str);
+    VarT->print(out);
+    THROW_CONTRA_ERROR("Unknown field type: " << str);
+  }
+
+  if (VarV)
+    VarV = TheHelper_.getAsAlloca(VarV);
+  else
+    VarV = Constant::getNullValue(VoidPtrType_);
+    
+  Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
+  
+  std::vector<Value*> FunArgVs = {
+    NameV,
+    DataTypeV, 
+    VarV,
+    IndexSpaceA,
+    FieldA};
+  
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_kokkos_field_create",
+      VoidType_,
+      FunArgVs);
+    
+}
+
+//==============================================================================
+// destroey a field
+//==============================================================================
+void KokkosTasker::destroyField(Module &TheModule, Value* FieldA)
+{
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_kokkos_field_destroy",
+      VoidType_,
+      {FieldA});
 }
 
 

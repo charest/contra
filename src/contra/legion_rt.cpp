@@ -255,36 +255,6 @@ void contra_legion_index_space_create(
 //==============================================================================
 /// index space partitioning
 //==============================================================================
-void contra_legion_index_space_create_from_size(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
-    int_t size,
-    contra_legion_index_space_t * is)
-{
-  is->start = 0;
-  is->end = size;
-  is->step = 1;
-  is->index_space = legion_index_space_create(*runtime, *ctx, size);
-}
-
-//==============================================================================
-/// index space partitioning
-//==============================================================================
-void contra_legion_index_space_create_from_array(
-    legion_runtime_t *,
-    legion_context_t *,
-    dopevector_t *arr,
-    contra_legion_index_space_t *)
-{
-  std::cout << arr->size << std::endl;
-  //is->start = 0;
-  //is->end = size-1;
-  //is->index_space = legion_index_space_create(*runtime, *ctx, size);
-}
-
-//==============================================================================
-/// index space partitioning
-//==============================================================================
 void contra_legion_index_space_create_from_index_partition(
     legion_runtime_t * runtime,
     legion_context_t *,

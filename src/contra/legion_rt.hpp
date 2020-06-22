@@ -273,20 +273,6 @@ void contra_legion_index_space_create(
     contra_legion_index_space_t * is);
 
 /// index space partitioning
-void contra_legion_index_space_create_from_size(
-    legion_runtime_t * runtime,
-    legion_context_t * ctx,
-    int_t size,
-    contra_legion_index_space_t * is);
-
-/// index space partitioning
-void contra_legion_index_space_create_from_array(
-    legion_runtime_t *,
-    legion_context_t *,
-    dopevector_t *arr,
-    contra_legion_index_space_t *);
-
-/// index space partitioning
 void contra_legion_index_space_create_from_index_partition(
     legion_runtime_t * runtime,
     legion_context_t *,

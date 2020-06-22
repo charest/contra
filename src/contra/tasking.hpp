@@ -40,8 +40,10 @@ protected:
 
 
   llvm::Type* VoidType_ = nullptr;
+  llvm::Type* VoidPtrType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* IntType_ = nullptr;
+  llvm::Type* RealType_ = nullptr;
 
 public:
   

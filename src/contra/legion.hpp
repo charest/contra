@@ -15,7 +15,6 @@ namespace contra {
 class LegionTasker : public AbstractTasker {
 protected:
   
-  llvm::Type* VoidPtrType_ = nullptr;
   llvm::Type* ByteType_ = nullptr;
   llvm::Type* BoolType_ = nullptr;
   llvm::Type* CharType_ = nullptr;

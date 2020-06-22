@@ -12,6 +12,7 @@ namespace contra {
 class KokkosTasker : public AbstractTasker {
 
   llvm::StructType* IndexSpaceDataType_ = nullptr;
+  llvm::StructType* FieldDataType_ = nullptr;
 
 public:
  
@@ -41,9 +42,23 @@ public:
       llvm::Value*) override;
   virtual llvm::Type* getRangeType() const override
   { return IndexSpaceDataType_; }
+  
+  virtual llvm::Type* getFieldType() const override
+  { return FieldDataType_; }
+
+  virtual bool isField(llvm::Value*) const override;
+  virtual void createField(
+      llvm::Module &,
+      llvm::Value*, 
+      const std::string &,
+      llvm::Type*,
+      llvm::Value*,
+      llvm::Value*) override;
+  virtual void destroyField(llvm::Module &, llvm::Value*) override;
 
 protected:
   llvm::StructType* createIndexSpaceDataType();
+  llvm::StructType* createFieldDataType();
 };
 
 } // namepsace

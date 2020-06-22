@@ -17,8 +17,10 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   DefaultSerializer_(TheHelper)
 {
   VoidType_ = llvmType<void>(TheContext_);
+  VoidPtrType_ = llvmType<void*>(TheContext_);
   Int32Type_ = llvmType<int>(TheContext_);
   IntType_ = llvmType<int_t>(TheContext_);
+  RealType_ = llvmType<real_t>(TheContext_);
 }
 
 //==============================================================================

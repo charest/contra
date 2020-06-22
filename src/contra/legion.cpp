@@ -25,7 +25,6 @@ using namespace utils;
 LegionTasker::LegionTasker(utils::BuilderHelper & TheHelper)
   : AbstractTasker(TheHelper)
 {
-  VoidPtrType_ = llvmType<void*>(TheContext_);
   ByteType_ = VoidPtrType_->getPointerElementType();
   SizeType_ = llvmType<std::size_t>(TheContext_);
   BoolType_ = llvmType<bool>(TheContext_);
