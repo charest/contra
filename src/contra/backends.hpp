@@ -12,6 +12,10 @@ enum class SupportedBackends {
 #ifdef HAVE_KOKKOS
   Kokkos,
 #endif
+#ifdef HAVE_CUDA
+  Cuda,
+#endif
+  Serial,
   Size
 };
 

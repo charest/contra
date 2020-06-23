@@ -87,7 +87,7 @@ public:
       const TaskInfo &) {};
   
   virtual void setTopLevelTask(llvm::Module &, const TaskInfo &) = 0;
-  virtual llvm::Value* startRuntime(llvm::Module &, int, char **) = 0;
+  virtual void startRuntime(llvm::Module &, int, char **) = 0;
   virtual void stopRuntime(llvm::Module &) {}
   
   virtual llvm::Value* launch(
@@ -199,7 +199,7 @@ public:
   void postregisterTasks(llvm::Module &);
 
   // startup interface
-  llvm::Value* start(llvm::Module & TheModule, int Argc, char ** Argv);
+  void start(llvm::Module & TheModule, int Argc, char ** Argv);
   
   bool isStarted() const { return IsStarted_; }
   void setStarted() { IsStarted_ = true; }

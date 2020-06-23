@@ -8,6 +8,7 @@
 #define LEGION_LIBRARY "@Legion_LIBRARY@"
 
 #cmakedefine HAVE_KOKKOS
+#cmakedefine HAVE_CUDA
 
 namespace {
 

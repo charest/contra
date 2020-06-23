@@ -38,7 +38,7 @@ StructType * KokkosTasker::createFieldDataType()
 //==============================================================================
 // start runtime
 //==============================================================================
-Value* KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 {
 
   auto ArgcV = llvmValue(TheContext_, Int32Type_, Argc);
@@ -51,7 +51,7 @@ Value* KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
   auto ArgvV = llvmArray(TheContext_, TheModule, ArgVs, {ZeroC, ZeroC});
 
   std::vector<Value*> StartArgVs = { ArgcV, ArgvV };
-  auto RetI = TheHelper_.callFunction(
+  TheHelper_.callFunction(
       TheModule,
       "contra_kokkos_runtime_start",
       Int32Type_,
@@ -59,8 +59,6 @@ Value* KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
       "start");
   
   launch(TheModule, *TopLevelTask_, {});
-
-  return RetI;
 }
 
 //==============================================================================

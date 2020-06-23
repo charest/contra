@@ -88,6 +88,10 @@ public:
 #ifdef HAVE_KOKKOS
     if (lower == "kokkos") BackendType_ = SupportedBackends::Kokkos;
 #endif
+#ifdef HAVE_CUDA
+    if (lower == "cuda") BackendType_ = SupportedBackends::Cuda;
+#endif
+    if (lower == "serial") BackendType_ = SupportedBackends::Serial;
     if (BackendType_ == SupportedBackends::Size)
       THROW_CONTRA_ERROR("Unsupported backend requested: '" << Backend << "'.");
   }

@@ -28,7 +28,7 @@ set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 # options
 option(BUILD_SHARED_LIBS "Build shared libraries." ON)
 
-set(SUPPORTED_BACKENDS)
+set(SUPPORTED_BACKENDS "serial")
 
 #------------------------------------------------------------------------------#
 # configure targets
@@ -89,12 +89,23 @@ endif()
 find_package(Kokkos)
 if (Kokkos_FOUND)
   target_link_libraries(contra PUBLIC Kokkos::kokkos)
-  list(APPEND SUPPORTED_BACKENDS "kokkos")
+  #list(APPEND SUPPORTED_BACKENDS "kokkos")
+endif()
+
+#------------------------------------------------------------------------------#
+# Cuda toolkit
+#------------------------------------------------------------------------------#
+find_package(CUDA)
+if (CUDA_FOUND)
+  target_link_libraries(contra PUBLIC ${CUDA_cudart_static_LIBRARY})
+  #list(APPEND SUPPORTED_BACKENDS "cuda")
 endif()
 
 #------------------------------------------------------------------------------#
 # build library
 #------------------------------------------------------------------------------#
+
+MESSAGE(STATUS "Supported backends: ${SUPPORTED_BACKENDS}")
 
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)

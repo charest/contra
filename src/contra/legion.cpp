@@ -1331,7 +1331,7 @@ void LegionTasker::setTopLevelTask(Module &TheModule, const TaskInfo & TaskI)
 //==============================================================================
 // start runtime
 //==============================================================================
-Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 {
 
   TheHelper_.callFunction(
@@ -1351,13 +1351,12 @@ Value* LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
   auto BackV = llvmValue(TheContext_, BoolType_, false);
 
   std::vector<Value*> StartArgVs = { ArgcV, ArgvV, BackV };
-  auto RetI = TheHelper_.callFunction(
+  TheHelper_.callFunction(
       TheModule,
       "legion_runtime_start",
       Int32Type_,
       StartArgVs,
       "start");
-  return RetI;
 }
 
 //==============================================================================

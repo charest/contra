@@ -286,10 +286,10 @@ void AbstractTasker::store(Value* Val, Value * Alloca) const
 }
 
 //==============================================================================
-Value* AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
+void AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 { 
   setStarted();
-  return startRuntime(TheModule, Argc, Argv);
+  startRuntime(TheModule, Argc, Argv);
 }
 
 //==============================================================================

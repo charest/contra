@@ -19,7 +19,7 @@ public:
  
   KokkosTasker(utils::BuilderHelper & TheHelper);
 
-  virtual llvm::Value* startRuntime(
+  virtual void startRuntime(
       llvm::Module &,
       int,
       char **) override;

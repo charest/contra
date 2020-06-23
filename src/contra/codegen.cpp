@@ -7,6 +7,7 @@
 #include "kokkos.hpp"
 #include "legion.hpp"
 #include "precedence.hpp"
+#include "serial.hpp"
 #include "token.hpp"
 #include "variable.hpp"
 
@@ -82,6 +83,8 @@ CodeGen::CodeGen (SupportedBackends Backend, bool) :
   if (Backend == SupportedBackends::Kokkos)
     Tasker_ = std::make_unique<KokkosTasker>(TheHelper_);
 #endif
+  if (Backend == SupportedBackends::Serial)
+    Tasker_ = std::make_unique<SerialTasker>(TheHelper_);
   
   if (!Tasker_) THROW_CONTRA_ERROR("No backend selected!");
 

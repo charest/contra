@@ -2,6 +2,7 @@
 #define CONTRA_KOKKOS_RT_HPP
 
 #include "config.hpp"
+#include "tasking_rt.hpp"
 
 #include <Kokkos_Core.hpp>
 
@@ -39,12 +40,6 @@ extern "C" {
 /// Types needed for kokkos runtime
 ////////////////////////////////////////////////////////////////////////////////
 
-//==============================================================================
-struct contra_kokkos_index_space_t {
-  int_t start;
-  int_t end;
-  int_t step;
-};
 
 //==============================================================================
 struct contra_kokkos_field_t {
@@ -71,7 +66,7 @@ void contra_kokkos_field_create(
     const char * name,
     int data_type,
     const void* init,
-    contra_kokkos_index_space_t * is,
+    contra_index_space_t * is,
     contra_kokkos_field_t * fld);
 /// destroy a field
 void contra_kokkos_field_destroy(contra_kokkos_field_t * fld);

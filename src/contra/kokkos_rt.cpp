@@ -6,8 +6,6 @@ using namespace contra;
 
 std::unique_ptr<KokkosRuntime> KokkosRT;
 
-using index_type = int;
-
 extern "C" {
   
 //==============================================================================
@@ -32,7 +30,7 @@ void contra_kokkos_field_create(
     const char * name,
     int data_type,
     const void* init,
-    contra_kokkos_index_space_t * is,
+    contra_index_space_t * is,
     contra_kokkos_field_t * fld)
 {
   auto size = is->end - is->start;
