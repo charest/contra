@@ -11,7 +11,6 @@ namespace contra {
 
 class KokkosTasker : public AbstractTasker {
 
-  llvm::StructType* IndexSpaceDataType_ = nullptr;
   llvm::StructType* FieldDataType_ = nullptr;
 
   const TaskInfo * TopLevelTask_ = nullptr;
@@ -37,25 +36,6 @@ public:
       const TaskInfo & TaskI) override
   { TopLevelTask_ = &TaskI; }
   
-  virtual bool isRange(llvm::Type*) const override;
-  virtual bool isRange(llvm::Value*) const override;
-  virtual llvm::AllocaInst* createRange(
-      llvm::Module &,
-      const std::string &,
-      llvm::Value*,
-      llvm::Value*,
-      llvm::Value*) override;
-  virtual llvm::Value* getRangeSize(llvm::Value*) override;
-  virtual llvm::Value* getRangeStart(llvm::Value*) override;
-  virtual llvm::Value* getRangeEnd(llvm::Value*) override;
-  virtual llvm::Value* getRangeEndPlusOne(llvm::Value*) override;
-  virtual llvm::Value* getRangeStep(llvm::Value*) override;
-  virtual llvm::Value* loadRangeValue(
-      llvm::Value*,
-      llvm::Value*) override;
-  virtual llvm::Type* getRangeType(llvm::Type*) const override
-  { return IndexSpaceDataType_; }
-  
   virtual llvm::Type* getFieldType(llvm::Type*) const override
   { return FieldDataType_; }
 
@@ -70,7 +50,6 @@ public:
   virtual void destroyField(llvm::Module &, llvm::Value*) override;
   
 protected:
-  llvm::StructType* createIndexSpaceDataType();
   llvm::StructType* createFieldDataType();
 };
 

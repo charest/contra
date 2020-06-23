@@ -27,7 +27,7 @@ class AbstractTasker {
   bool IsStarted_ = false;
   
   std::map<std::string, TaskInfo> TaskTable_;
-
+  
 protected:
 
   utils::BuilderHelper & TheHelper_;
@@ -44,6 +44,8 @@ protected:
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* IntType_ = nullptr;
   llvm::Type* RealType_ = nullptr;
+  
+  llvm::StructType* DefaultIndexSpaceDataType_ = nullptr;
 
 public:
   
@@ -124,24 +126,25 @@ public:
       llvm::Value*) = 0;
   virtual void destroyField(llvm::Module &, llvm::Value*) = 0;
   
-  virtual bool isRange(llvm::Type*) const = 0;
-  virtual bool isRange(llvm::Value*) const = 0;
-  virtual llvm::Type* getRangeType(llvm::Type*) const = 0;
+  virtual bool isRange(llvm::Type*) const;
+  virtual bool isRange(llvm::Value*) const;
   virtual llvm::AllocaInst* createRange(
       llvm::Module &,
       const std::string &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value*) = 0;
+      llvm::Value*);
   virtual void destroyRange(llvm::Module &, llvm::Value*) {}
-  virtual llvm::Value* getRangeSize(llvm::Value*) = 0;
-  virtual llvm::Value* getRangeStart(llvm::Value*) = 0;
-  virtual llvm::Value* getRangeEnd(llvm::Value*) = 0;
-  virtual llvm::Value* getRangeEndPlusOne(llvm::Value*) = 0;
-  virtual llvm::Value* getRangeStep(llvm::Value*) = 0;
+  virtual llvm::Value* getRangeSize(llvm::Value*);
+  virtual llvm::Value* getRangeStart(llvm::Value*);
+  virtual llvm::Value* getRangeEnd(llvm::Value*);
+  virtual llvm::Value* getRangeEndPlusOne(llvm::Value*);
+  virtual llvm::Value* getRangeStep(llvm::Value*);
   virtual llvm::Value* loadRangeValue(
       llvm::Value*,
-      llvm::Value*) = 0;
+      llvm::Value*);
+  virtual llvm::Type* getRangeType(llvm::Type*) const
+  { return DefaultIndexSpaceDataType_; }
 
   virtual bool isAccessor(llvm::Type*) const { return false; };
   virtual bool isAccessor(llvm::Value*) const { return false; };
@@ -234,6 +237,8 @@ protected:
   
   auto makeTaskId() { return TaskIdCounter_++; }
   auto makeReductionId() { return ReduceIdCounter_++; }
+  
+  llvm::StructType* createDefaultIndexSpaceDataType();
 
   // helpers
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;

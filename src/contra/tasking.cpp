@@ -23,6 +23,18 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   Int32Type_ = llvmType<int>(TheContext_);
   IntType_ = llvmType<int_t>(TheContext_);
   RealType_ = llvmType<real_t>(TheContext_);
+  
+  DefaultIndexSpaceDataType_ = createDefaultIndexSpaceDataType();
+}
+
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * AbstractTasker::createDefaultIndexSpaceDataType()
+{
+  std::vector<Type*> members = { IntType_, IntType_, IntType_ };
+  auto NewType = StructType::create( TheContext_, members, "contra_kokkos_index_space_t" );
+  return NewType;
 }
 
 //==============================================================================
@@ -92,6 +104,100 @@ Value* AbstractTasker::launch(
       ResultT,
       ArgVs);
   return Res;
+}
+
+//==============================================================================
+// Is this an range type
+//==============================================================================
+bool AbstractTasker::isRange(Type* RangeT) const
+{
+  return (RangeT == DefaultIndexSpaceDataType_);
+}
+
+bool AbstractTasker::isRange(Value* RangeA) const
+{
+  auto RangeT = RangeA->getType();
+  if (isa<AllocaInst>(RangeA)) RangeT = RangeT->getPointerElementType();
+  return isRange(RangeT);
+}
+
+
+//==============================================================================
+// create a range
+//==============================================================================
+AllocaInst* AbstractTasker::createRange(
+    Module & TheModule,
+    const std::string & Name,
+    Value* StartV,
+    Value* EndV,
+    Value* StepV)
+{
+  auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(DefaultIndexSpaceDataType_, "index");
+
+  StartV = TheHelper_.getAsValue(StartV);
+  EndV = TheHelper_.getAsValue(EndV);
+  if (StepV) StepV = TheHelper_.getAsValue(StepV);
+
+  TheHelper_.insertValue(IndexSpaceA, StartV, 0);
+  auto OneC = llvmValue<int_t>(TheContext_, 1);
+  EndV = Builder_.CreateAdd(EndV, OneC);
+  TheHelper_.insertValue(IndexSpaceA, EndV, 1);
+  if (!StepV) StepV = OneC;
+  TheHelper_.insertValue(IndexSpaceA, StepV, 2);
+  
+  return IndexSpaceA;
+
+}
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* AbstractTasker::getRangeStart(Value* RangeV)
+{ return TheHelper_.extractValue(RangeV, 0); }
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* AbstractTasker::getRangeEnd(Value* RangeV)
+{
+  Value* EndV = TheHelper_.extractValue(RangeV, 1);
+  auto OneC = llvmValue<int_t>(TheContext_, 1);
+  return Builder_.CreateSub(EndV, OneC);
+}
+
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* AbstractTasker::getRangeEndPlusOne(Value* RangeV)
+{ return TheHelper_.extractValue(RangeV, 1); }
+
+//==============================================================================
+// get a range start
+//==============================================================================
+llvm::Value* AbstractTasker::getRangeStep(Value* RangeV)
+{ return TheHelper_.extractValue(RangeV, 2); }
+
+//==============================================================================
+// get a range size
+//==============================================================================
+llvm::Value* AbstractTasker::getRangeSize(Value* RangeV)
+{
+  auto StartV = TheHelper_.extractValue(RangeV, 0);
+  auto EndV = TheHelper_.extractValue(RangeV, 1);
+  return Builder_.CreateSub(EndV, StartV);
+}
+
+//==============================================================================
+// get a range value
+//==============================================================================
+llvm::Value* AbstractTasker::loadRangeValue(
+    Value* RangeA,
+    Value* IndexV)
+{
+  auto StartV = TheHelper_.extractValue(RangeA, 0); 
+  IndexV = TheHelper_.getAsValue(IndexV);
+  return Builder_.CreateAdd(StartV, IndexV);
 }
 
 //==============================================================================

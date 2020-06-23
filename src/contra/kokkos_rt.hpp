@@ -6,6 +6,7 @@
 #include <Kokkos_Core.hpp>
 
 #include <memory>
+#include <vector>
 
 namespace contra {
 
@@ -51,6 +52,10 @@ struct contra_kokkos_field_t {
   void *field;
 };
 
+//==============================================================================
+struct contra_kokkos_task_t {
+  std::vector<byte_t> data;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Function prototypes for kokkos runtime
@@ -70,6 +75,11 @@ void contra_kokkos_field_create(
     contra_kokkos_field_t * fld);
 /// destroy a field
 void contra_kokkos_field_destroy(contra_kokkos_field_t * fld);
+  
+/// create task data
+byte_t* contra_kokkos_task_create(contra_kokkos_task_t ** task, int_t size);
+/// destroy task data
+void contra_kokkos_task_destroy(contra_kokkos_task_t ** task);
 
 } // extern
 

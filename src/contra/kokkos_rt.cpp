@@ -106,5 +106,20 @@ void contra_kokkos_field_destroy(contra_kokkos_field_t * fld)
   fld->field = nullptr;
 }
 
+//==============================================================================
+/// create task data
+//==============================================================================
+byte_t * contra_kokkos_task_create(contra_kokkos_task_t ** task, int_t size)
+{
+  *task = new contra_kokkos_task_t;
+  (*task)->data.resize(size);
+  return (*task)->data.data();
+}
+
+//==============================================================================
+/// destroy task data
+//==============================================================================
+void contra_kokkos_task_destroy(contra_kokkos_task_t ** task)
+{ delete *task; }
 
 } // extern
