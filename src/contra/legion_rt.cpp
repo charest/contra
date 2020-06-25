@@ -73,17 +73,6 @@ void contra_legion_startup() {}
 //==============================================================================
 /// index space creation
 //==============================================================================
-int_t contra_legion_sum_array(dopevector_t * arr)
-{
-  int_t sum = 0;
-  auto ptr = static_cast<const int_t*>(arr->data);
-  for (int_t i=0; i<arr->size; ++i) sum += ptr[i];
-  return sum;
-}
-
-//==============================================================================
-/// index space creation
-//==============================================================================
 void contra_legion_index_space_partition(
     legion_runtime_t * runtime,
     legion_context_t * ctx,

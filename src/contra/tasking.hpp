@@ -41,11 +41,12 @@ protected:
 
   llvm::Type* VoidType_ = nullptr;
   llvm::Type* VoidPtrType_ = nullptr;
+  llvm::Type* BoolType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* IntType_ = nullptr;
   llvm::Type* RealType_ = nullptr;
   
-  llvm::StructType* DefaultIndexSpaceDataType_ = nullptr;
+  llvm::StructType* DefaultIndexSpaceType_ = nullptr;
 
 public:
   
@@ -144,38 +145,38 @@ public:
       llvm::Value*,
       llvm::Value*);
   virtual llvm::Type* getRangeType(llvm::Type*) const
-  { return DefaultIndexSpaceDataType_; }
+  { return DefaultIndexSpaceType_; }
 
-  virtual bool isAccessor(llvm::Type*) const { return false; };
-  virtual bool isAccessor(llvm::Value*) const { return false; };
-  virtual llvm::Type* getAccessorType() const {};
+  virtual bool isAccessor(llvm::Type*) const = 0;
+  virtual bool isAccessor(llvm::Value*) const = 0;
+  virtual llvm::Type* getAccessorType() const = 0;
   virtual void storeAccessor(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value* = nullptr) const {};
+      llvm::Value* = nullptr) const = 0;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,
-      llvm::Value* = nullptr) const {};
-  virtual void destroyAccessor(llvm::Module &, llvm::Value*) {};
+      llvm::Value* = nullptr) const = 0;
+  virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
   
   virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value*) {};
+      llvm::Value*) = 0;
   virtual llvm::AllocaInst* createPartition(
       llvm::Module &,
       llvm::Value*,
-      llvm::Value*) {};
+      llvm::Value*) = 0;
   
-  virtual llvm::Type* getPartitionType(llvm::Type*) const {};
-  virtual bool isPartition(llvm::Type*) const {};
-  virtual bool isPartition(llvm::Value*) const {};
+  virtual llvm::Type* getPartitionType(llvm::Type*) const = 0;
+  virtual bool isPartition(llvm::Type*) const = 0;
+  virtual bool isPartition(llvm::Value*) const = 0;
   
-  virtual void destroyPartition(llvm::Module &, llvm::Value*) {};
+  virtual void destroyPartition(llvm::Module &, llvm::Value*) = 0;
   
   virtual ReduceInfo createReductionOp(
       llvm::Module &,
@@ -238,7 +239,7 @@ protected:
   auto makeTaskId() { return TaskIdCounter_++; }
   auto makeReductionId() { return ReduceIdCounter_++; }
   
-  llvm::StructType* createDefaultIndexSpaceDataType();
+  llvm::StructType* createDefaultIndexSpaceType();
 
   // helpers
   llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;

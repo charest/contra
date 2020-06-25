@@ -27,7 +27,6 @@ LegionTasker::LegionTasker(utils::BuilderHelper & TheHelper)
 {
   ByteType_ = VoidPtrType_->getPointerElementType();
   SizeType_ = llvmType<std::size_t>(TheContext_);
-  BoolType_ = llvmType<bool>(TheContext_);
   CharType_ = llvmType<char>(TheContext_);
   OffType_ = llvmType<off_t>(TheContext_);
   RealmIdType_ = llvmType<realm_id_t>(TheContext_);

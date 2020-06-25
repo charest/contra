@@ -2,7 +2,9 @@
 
 #include "errors.hpp"
 
+#include "librt/dopevector.hpp"
 #include "utils/llvm_utils.hpp"
+
 #include "llvm/Support/raw_ostream.h"
   
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,19 +22,84 @@ using namespace utils;
 SerialTasker::SerialTasker(utils::BuilderHelper & TheHelper)
   : AbstractTasker(TheHelper)
 {
-  FieldDataType_ = createFieldDataType();
+  IndexSpaceType_ = DefaultIndexSpaceType_;
+  IndexPartitionType_ = createIndexPartitionType();
+  PartitionInfoType_ = VoidPtrType_->getPointerTo();
+  FieldType_ = createFieldType();
+  AccessorType_ = createAccessorType();
 }
 
 //==============================================================================
 // Create the field data type
 //==============================================================================
-StructType * SerialTasker::createFieldDataType()
+StructType * SerialTasker::createFieldType()
 {
-  std::vector<Type*> members = { IntType_, VoidPtrType_ };
+  std::vector<Type*> members = {
+    IntType_,
+    VoidPtrType_,
+    IndexSpaceType_->getPointerTo() };
   auto NewType = StructType::create( TheContext_, members, "contra_serial_field_t" );
   return NewType;
 }
 
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * SerialTasker::createAccessorType()
+{
+  std::vector<Type*> members = {
+    BoolType_,
+    IntType_,
+    VoidPtrType_,
+    FieldType_->getPointerTo(),
+    IndexPartitionType_->getPointerTo() };
+  auto NewType = StructType::create( TheContext_, members, "contra_serial_accessor_t" );
+  return NewType;
+}
+
+
+//==============================================================================
+// Create the partition data type
+//==============================================================================
+StructType * SerialTasker::createIndexPartitionType()
+{
+  auto IntPtrT = IntType_->getPointerTo();
+  std::vector<Type*> members = {
+    IntType_,
+    IntType_,
+    IntType_,
+    IntPtrT,
+    IntPtrT->getPointerTo(),
+    IndexSpaceType_->getPointerTo()};
+  auto NewType = StructType::create( TheContext_, members, "contra_serial_partition_t" );
+  return NewType;
+}
+
+//==============================================================================
+// Create partitioninfo
+//==============================================================================
+AllocaInst* SerialTasker::createPartitionInfo(Module & TheModule)
+{
+  auto Alloca = TheHelper_.createEntryBlockAlloca(PartitionInfoType_);
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_serial_partition_info_create",
+      VoidType_,
+      {Alloca});
+  return Alloca;
+}
+
+//==============================================================================
+// destroy partition info
+//==============================================================================
+void SerialTasker::destroyPartitionInfo(Module & TheModule, AllocaInst* PartA)
+{
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_serial_partition_info_destroy",
+      VoidType_,
+      {PartA});
+}
 
 //==============================================================================
 // start runtime
@@ -52,15 +119,23 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
     const std::vector<Type*> & TaskArgTs)
 {
 
-  std::vector<Type*> WrapperArgTs = TaskArgTs;
   std::vector<std::string> WrapperArgNs = TaskArgNs;
+    
+  std::vector<Type*> WrapperArgTs;
+  for (auto ArgT : TaskArgTs) {
+    if (isRange(ArgT)) ArgT = IndexPartitionType_;
+    WrapperArgTs.emplace_back(ArgT);
+  }
 
   WrapperArgTs.emplace_back(IntType_);
   WrapperArgNs.emplace_back("index");
 
   auto WrapperT = FunctionType::get(VoidType_, WrapperArgTs, false);
-  auto WrapperF = Function::Create(WrapperT, Function::ExternalLinkage,
-      TaskName, &TheModule);
+  auto WrapperF = Function::Create(
+      WrapperT,
+      Function::ExternalLinkage,
+      TaskName,
+      &TheModule);
   
   // Set names for all arguments.
   unsigned Idx = 0;
@@ -87,7 +162,33 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
     ArgIdx++;
   }
 
+  //----------------------------------------------------------------------------
+  // partition any ranges
+  std::vector<Type*> GetRangeArgTs = {
+    IntType_,
+    IndexPartitionType_->getPointerTo(),
+    IndexSpaceType_->getPointerTo()
+  };
+
+  auto GetRangeF = TheHelper_.createFunction(
+      TheModule,
+      "contra_serial_index_space_create_from_partition",
+      VoidType_,
+      GetRangeArgTs);
+  
   auto IndexA = WrapperArgAs.back();
+  auto IndexV = TheHelper_.load(IndexA);
+
+  for (unsigned i=0; i<TaskArgNs.size(); i++) {
+    if (isRange(TaskArgTs[i])) {
+      auto ArgN = TaskArgNs[i];
+      auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
+      Builder_.CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
+      WrapperArgAs[i] = ArgA;
+    }
+  }
+  
+
   WrapperArgAs.pop_back();
   return {WrapperF, WrapperArgAs, IndexA};
 }
@@ -104,7 +205,7 @@ Value* SerialTasker::launch(
     bool HasReduction,
     int RedopId)
 {
-  //if (!PartInfoA) PartInfoA = createPartitionInfo(TheModule);
+  auto PartInfoA = createPartitionInfo(TheModule);
 
   //----------------------------------------------------------------------------
   // Swap ranges for partitions
@@ -128,17 +229,43 @@ Value* SerialTasker::launch(
       // keep track of partition
       auto IndexPartitionA = ArgAs[i];
       // register these partitions
-      //std::vector<Value*> FunArgVs = {
-      //  IndexSpaceA,
-      //  IndexPartitionA,
-      //  PartInfoA};
-      //TheHelper_.callFunction(
-      //    TheModule,
-      //    "contra_serial_register_index_partition",
-      //    VoidType_,
-      //    FunArgVs);
+      std::vector<Value*> FunArgVs = {
+        IndexSpaceA,
+        IndexPartitionA,
+        PartInfoA};
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_serial_register_index_partition",
+          VoidType_,
+          FunArgVs);
     }
   }
+  
+  //----------------------------------------------------------------------------
+  // Prepare other args
+
+  Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
+
+  for (unsigned i=0; i<NumArgs; i++) {
+    if (!isField(ArgAs[i])) continue;
+    auto FieldA = TheHelper_.getAsAlloca(ArgAs[i]);
+    Value* IndexPartitionA = Constant::getNullValue(IndexPartitionType_->getPointerTo());
+    if (PartAs[i]) IndexPartitionA = TheHelper_.getAsAlloca(PartAs[i]);
+    auto AccessorA = TheHelper_.createEntryBlockAlloca(AccessorType_);
+    std::vector<Value*> FunArgVs = {
+      IndexSpaceA,
+      IndexPartitionA,
+      PartInfoA,
+      FieldA,
+      AccessorA};
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_serial_accessor_create",
+        VoidType_,
+        FunArgVs);
+    ArgAs[i] = AccessorA;
+  }
+  
   
   //----------------------------------------------------------------------------
   // create for loop
@@ -185,6 +312,18 @@ Value* SerialTasker::launch(
   //TheFunction->getBasicBlockList().push_back(LoopBB);
   Builder_.SetInsertPoint(LoopBB);
 
+  // set the current accessor partition
+  for (auto ArgA : ArgAs) {
+    if (isAccessor(ArgA)) {
+      auto VarV = TheHelper_.load(VarA);
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_serial_accessor_set_current",
+          VoidType_,
+          {VarV, ArgA} );
+    }
+  }
+
   // CALL FUNCTION HERE
   ArgAs.emplace_back(VarA);
 
@@ -221,7 +360,87 @@ Value* SerialTasker::launch(
   //----------------------------------------------------------------------------
   // cleanup
   
-  //destroyPartitions(TheModule, TempParts);
+  destroyPartitions(TheModule, TempParts);
+  destroyPartitionInfo(TheModule, PartInfoA);
+
+  return nullptr;
+}
+
+//==============================================================================
+// create a range
+//==============================================================================
+AllocaInst* SerialTasker::createPartition(
+    Module & TheModule,
+    Value* IndexSpaceA,
+    Value* Color)
+{
+
+  auto IndexPartA = TheHelper_.createEntryBlockAlloca(IndexPartitionType_);
+    
+  IndexSpaceA = TheHelper_.getAsAlloca(IndexSpaceA);
+
+  //------------------------------------
+  if (isRange(Color)) {
+    auto ColorA = TheHelper_.getAsAlloca(Color);
+
+    std::vector<Value*> FunArgVs = {
+      ColorA,
+      IndexSpaceA,
+      IndexPartA};
+    
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_serial_partition_from_index_space",
+        VoidType_,
+        FunArgVs);
+  }
+  //------------------------------------
+  else if (librt::DopeVector::isDopeVector(Color)) {
+    auto ColorA = TheHelper_.getAsAlloca(Color);
+  
+    std::vector<Value*> FunArgVs = {
+      ColorA,
+      IndexSpaceA,
+      IndexPartA,
+      llvmValue<bool>(TheContext_, true)
+    };
+    
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_serial_partition_from_array",
+        VoidType_,
+        FunArgVs);
+  }
+  //------------------------------------
+  else {
+    auto ColorV = TheHelper_.getAsValue(Color);
+
+    std::vector<Value*> FunArgVs = {
+      ColorV,
+      IndexSpaceA,
+      IndexPartA};
+    
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_serial_partition_from_size",
+        VoidType_,
+        FunArgVs);
+  }
+  
+  return IndexPartA;
+
+}
+
+//==============================================================================
+// create a range
+//==============================================================================
+AllocaInst* SerialTasker::createPartition(
+    Module & TheModule,
+    Value* IndexSpaceA,
+    Value* IndexPartitionA,
+    Value* ValueA)
+{
+  abort();
 }
 
 //==============================================================================
@@ -231,7 +450,7 @@ bool SerialTasker::isField(Value* FieldA) const
 {
   auto FieldT = FieldA->getType();
   if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
-  return (FieldT == FieldDataType_);
+  return (FieldT == FieldType_);
 }
 
 
@@ -285,6 +504,123 @@ void SerialTasker::destroyField(Module &TheModule, Value* FieldA)
       "contra_serial_field_destroy",
       VoidType_,
       {FieldA});
+}
+
+//==============================================================================
+// Is this an accessor type
+//==============================================================================
+bool SerialTasker::isAccessor(Type* AccessorT) const
+{ return (AccessorT == AccessorType_); }
+
+bool SerialTasker::isAccessor(Value* AccessorA) const
+{
+  auto AccessorT = AccessorA->getType();
+  if (isa<AllocaInst>(AccessorA)) AccessorT = AccessorT->getPointerElementType();
+  return isAccessor(AccessorT);
+}
+
+//==============================================================================
+// Store a value into an accessor
+//==============================================================================
+void SerialTasker::storeAccessor(
+    Module & TheModule,
+    Value* ValueV,
+    Value* AccessorV,
+    Value* IndexV) const
+{
+  auto ValueA = TheHelper_.getAsAlloca(ValueV);
+
+  Value* AccessorA = TheHelper_.getAsAlloca(AccessorV);
+    
+  std::vector<Value*> FunArgVs = { AccessorA, ValueA };
+  
+  if (IndexV) {
+    FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
+  }
+  else {
+    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+  }
+  
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_serial_accessor_write",
+      VoidType_,
+      FunArgVs);
+}
+
+//==============================================================================
+// Load a value from an accessor
+//==============================================================================
+Value* SerialTasker::loadAccessor(
+    Module & TheModule, 
+    Type * ValueT,
+    Value* AccessorV,
+    Value* IndexV) const
+{
+  auto AccessorA = TheHelper_.getAsAlloca(AccessorV);
+    
+  auto ValueA = TheHelper_.createEntryBlockAlloca(ValueT);
+
+  std::vector<Value*> FunArgVs = { AccessorA, ValueA };
+  
+  if (IndexV) {
+    FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
+  }
+  else {
+    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+  }
+
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_serial_accessor_read",
+      VoidType_,
+      FunArgVs);
+
+  return TheHelper_.load(ValueA);
+}
+
+//==============================================================================
+// destroey an accessor
+//==============================================================================
+void SerialTasker::destroyAccessor(
+    Module &TheModule,
+    Value* AccessorA)
+{
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_serial_accessor_destroy",
+      VoidType_,
+      {AccessorA});
+}
+
+
+//==============================================================================
+// Is this an range type
+//==============================================================================
+bool SerialTasker::isPartition(Type* PartT) const
+{ return (PartT == IndexPartitionType_); }
+
+bool SerialTasker::isPartition(Value* PartA) const
+{
+  auto PartT = PartA->getType();
+  if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
+  return isPartition(PartT);
+}
+
+//==============================================================================
+// destroey an accessor
+//==============================================================================
+void SerialTasker::destroyPartition(
+    Module &TheModule,
+    Value* PartitionA)
+{
+  std::vector<Value*> FunArgVs = {PartitionA};
+  
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_serial_partition_destroy",
+      VoidType_,
+      FunArgVs);
 }
 
 }

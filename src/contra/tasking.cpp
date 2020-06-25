@@ -20,17 +20,18 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
 {
   VoidType_ = llvmType<void>(TheContext_);
   VoidPtrType_ = llvmType<void*>(TheContext_);
+  BoolType_ = llvmType<bool>(TheContext_);
   Int32Type_ = llvmType<int>(TheContext_);
   IntType_ = llvmType<int_t>(TheContext_);
   RealType_ = llvmType<real_t>(TheContext_);
   
-  DefaultIndexSpaceDataType_ = createDefaultIndexSpaceDataType();
+  DefaultIndexSpaceType_ = createDefaultIndexSpaceType();
 }
 
 //==============================================================================
 // Create the field data type
 //==============================================================================
-StructType * AbstractTasker::createDefaultIndexSpaceDataType()
+StructType * AbstractTasker::createDefaultIndexSpaceType()
 {
   std::vector<Type*> members = { IntType_, IntType_, IntType_ };
   auto NewType = StructType::create( TheContext_, members, "contra_index_space_t" );
@@ -110,7 +111,7 @@ Value* AbstractTasker::launch(
 //==============================================================================
 bool AbstractTasker::isRange(Type* RangeT) const
 {
-  return (RangeT == DefaultIndexSpaceDataType_);
+  return (RangeT == DefaultIndexSpaceType_);
 }
 
 bool AbstractTasker::isRange(Value* RangeA) const
@@ -131,7 +132,7 @@ AllocaInst* AbstractTasker::createRange(
     Value* EndV,
     Value* StepV)
 {
-  auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(DefaultIndexSpaceDataType_, "index");
+  auto IndexSpaceA = TheHelper_.createEntryBlockAlloca(DefaultIndexSpaceType_, "index");
 
   StartV = TheHelper_.getAsValue(StartV);
   EndV = TheHelper_.getAsValue(EndV);
