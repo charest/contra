@@ -28,6 +28,17 @@ public:
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &) override;
   
+  using AbstractTasker::launch;
+  
+  virtual llvm::Value* launch(
+      llvm::Module &,
+      const TaskInfo &,
+      std::vector<llvm::Value*>,
+      const std::vector<llvm::Value*> &,
+      llvm::Value*,
+      bool,
+      int) override;
+  
   virtual void setTopLevelTask(
       llvm::Module &,
       const TaskInfo & TaskI) override

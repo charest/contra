@@ -33,7 +33,7 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
 StructType * AbstractTasker::createDefaultIndexSpaceDataType()
 {
   std::vector<Type*> members = { IntType_, IntType_, IntType_ };
-  auto NewType = StructType::create( TheContext_, members, "contra_kokkos_index_space_t" );
+  auto NewType = StructType::create( TheContext_, members, "contra_index_space_t" );
   return NewType;
 }
 
@@ -96,7 +96,6 @@ Value* AbstractTasker::launch(
   for (auto Arg : Args)
     ArgVs.emplace_back( TheHelper_.getAsValue(Arg) );
 
-  std::cout << "callling " << TaskI.getName() << std::endl;
   auto ResultT = TaskI.getReturnType();
   auto Res = TheHelper_.callFunction(
       TheModule,

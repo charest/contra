@@ -93,7 +93,7 @@ public:
   virtual llvm::Value* launch(
       llvm::Module &,
       const TaskInfo &,
-      const std::vector<llvm::Value*> &);
+      const std::vector<llvm::Value*> & = {});
 
   virtual llvm::Value* launch(
       llvm::Module &,
@@ -102,7 +102,7 @@ public:
       const std::vector<llvm::Value*> &,
       llvm::Value*,
       bool = false,
-      int = 0) {};
+      int = 0) = 0;
 
   virtual llvm::Type* getFutureType(llvm::Type* Ty) const { return Ty; };
   virtual bool isFuture(llvm::Value*) const { return false; };

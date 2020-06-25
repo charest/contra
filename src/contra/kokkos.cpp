@@ -58,7 +58,7 @@ void KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
       StartArgVs,
       "start");
   
-  launch(TheModule, *TopLevelTask_, {});
+  launch(TheModule, *TopLevelTask_);
 }
 
 //==============================================================================
