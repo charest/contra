@@ -6,12 +6,62 @@
 #include "tasking.hpp"
 #include "reductions.hpp"
 
-namespace llvm {
-class AllocaInst;
-}
-
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+// Legion Reduction
+////////////////////////////////////////////////////////////////////////////////
+class LegionReduceInfo : public AbstractReduceInfo {
+  int Id_ = -1;
+
+  llvm::FunctionType* ApplyT_ = nullptr;
+  llvm::FunctionType* FoldT_ = nullptr;
+  llvm::FunctionType* InitT_ = nullptr;
+  
+  std::string ApplyN_;
+  std::string FoldN_;
+  std::string InitN_;
+
+  std::size_t DataSize_ = 0;
+
+public:
+
+  LegionReduceInfo(
+      int Id,
+      llvm::Function* Apply,
+      llvm::Function* Fold,
+      llvm::Function* Init,
+      std::size_t DataSize)
+    : 
+      Id_(Id),
+      ApplyT_(Apply->getFunctionType()),
+      FoldT_(Fold->getFunctionType()),
+      InitT_(Init->getFunctionType()),
+      ApplyN_(Apply->getName()),
+      FoldN_(Fold->getName()),
+      InitN_(Init->getName()),
+      DataSize_(DataSize)
+  {}
+
+  auto getId() const { return Id_; }
+  
+  auto getApplyType() const { return ApplyT_; }
+  const auto & getApplyName() const { return ApplyN_; }
+
+  auto getFoldType() const { return FoldT_; }
+  const auto & getFoldName() const { return FoldN_; }
+
+  auto getInitType() const { return InitT_; }
+  const auto & getInitName() const { return InitN_; }
+
+  auto getDataSize() const { return DataSize_; }
+
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Legion Tasker
+////////////////////////////////////////////////////////////////////////////////
 class LegionTasker : public AbstractTasker {
 protected:
   
@@ -97,11 +147,13 @@ public:
       llvm::Module &,
       const std::string &,
       const std::vector<std::string> &,
-      const std::vector<llvm::Type*> &) override;
+      const std::vector<llvm::Type*> &,
+      llvm::Type*) override;
 
   virtual void taskPostamble(
       llvm::Module &,
-      llvm::Value*) override;
+      llvm::Value*,
+      bool) override;
   
   virtual void preregisterTask(
       llvm::Module &,
@@ -131,8 +183,7 @@ public:
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
       llvm::Value*,
-      bool,
-      int) override;
+      const AbstractReduceInfo *) override;
   
   virtual llvm::Type* getFutureType(llvm::Type*) const override
   { return FutureType_; }
@@ -224,7 +275,7 @@ public:
   virtual llvm::Type* getPartitionType(llvm::Type*) const override
   { return IndexPartitionType_; }
 
-  virtual ReduceInfo createReductionOp(
+  virtual std::unique_ptr<AbstractReduceInfo> createReductionOp(
       llvm::Module &,
       const std::string &,
       const std::vector<llvm::Type*> &,
@@ -318,7 +369,7 @@ protected:
   
   void registerReductionOp(
     llvm::Module &TheModule,
-    const ReduceInfo & ReduceOp);
+    const AbstractReduceInfo * ReduceOp);
 
   llvm::Function* createReductionFunction(
       llvm::Module &TheModule,

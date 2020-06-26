@@ -1070,7 +1070,8 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     Module &TheModule,
     const std::string & TaskName,
     const std::vector<std::string> & TaskArgNs,
-    const std::vector<Type*> & TaskArgTs)
+    const std::vector<Type*> & TaskArgTs,
+    llvm::Type*)
 {
   return taskPreamble(TheModule, TaskName, TaskArgNs, TaskArgTs, true);
 }
@@ -1102,7 +1103,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
 //==============================================================================
 // Create the function wrapper
 //==============================================================================
-void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
+void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV, bool)
 {
 
   Value* RetvalV = Constant::getNullValue(VoidPtrType_);
@@ -1188,7 +1189,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV)
   
   // Finish off the function.  Tasks always return void
   Builder_.CreateRetVoid();
-  
+
   finishTask();
 }
 
@@ -1455,8 +1456,7 @@ Value* LegionTasker::launch(
     std::vector<Value*> ArgAs,
     const std::vector<Value*> & PartAs,
     Value* RangeV,
-    bool HasReduction,
-    int RedopId)
+    const AbstractReduceInfo* AbstractRedop)
 {
   auto RealT = llvmType<real_t>(TheContext_);
   auto TimerA = TheHelper_.createEntryBlockAlloca(RealT);
@@ -1610,7 +1610,9 @@ Value* LegionTasker::launch(
 
   //------------------------------------
   // With reduction
-  if (HasReduction) {
+  if (AbstractRedop) {
+    auto Redop = dynamic_cast<const LegionReduceInfo*>(AbstractRedop);
+    auto RedopId = Redop->getId();
     auto OpIdC = llvmValue<legion_reduction_op_id_t>(TheContext_, RedopId);
     ExecArgVs.emplace_back( OpIdC );
     auto FutureRT = reduceStruct(FutureType_, TheModule);
@@ -2350,7 +2352,7 @@ Function* LegionTasker::createReductionFunction(
 //==============================================================================
 // create a reduction op
 //==============================================================================
-ReduceInfo LegionTasker::createReductionOp(
+std::unique_ptr<AbstractReduceInfo> LegionTasker::createReductionOp(
     Module &TheModule,
     const std::string & ReductionN,
     const std::vector<Type*> & VarTs,
@@ -2394,11 +2396,6 @@ ReduceInfo LegionTasker::createReductionOp(
   // create init
   Function *InitF;
   {
-
-    constexpr auto MinReal = std::numeric_limits<real_t>::lowest();
-    constexpr auto MaxReal = std::numeric_limits<real_t>::max();
-    constexpr auto MinInt  = std::numeric_limits<int_t>::lowest();
-    constexpr auto MaxInt  = std::numeric_limits<int_t>::max();
 
     std::string InitN = ReductionN + "init";
  
@@ -2451,40 +2448,8 @@ ReduceInfo LegionTasker::createReductionOp(
       auto OffsetV = TheHelper_.load(OffsetA);
       LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarTs[i]->getPointerTo());
-      Constant* InitC = nullptr;
       auto VarT = VarTs[i];
-      if (VarT->isFloatingPointTy()) {
-        if (ReduceTypes[i] == ReductionType::Add ||
-            ReduceTypes[i] == ReductionType::Sub)
-          InitC = llvmValue<real_t>(TheContext_, 0);
-        else if (ReduceTypes[i] == ReductionType::Mult ||
-                 ReduceTypes[i] == ReductionType::Div)
-          InitC = llvmValue<real_t>(TheContext_, 1);
-        else if (ReduceTypes[i] == ReductionType::Min)
-          InitC = llvmValue<real_t>(TheContext_, MaxReal);
-        else if (ReduceTypes[i] == ReductionType::Max)
-          InitC = llvmValue<real_t>(TheContext_, MinReal);
-        else {
-          std::cerr << "Unsupported reduction op." << std::endl;;
-          abort();
-        }
-      }
-      else {
-        if (ReduceTypes[i] == ReductionType::Add ||
-            ReduceTypes[i] == ReductionType::Sub)
-          InitC = llvmValue<int_t>(TheContext_, 0);
-        else if (ReduceTypes[i] == ReductionType::Mult ||
-                 ReduceTypes[i] == ReductionType::Div)
-          InitC = llvmValue<int_t>(TheContext_, 1);
-        else if (ReduceTypes[i] == ReductionType::Min)
-          InitC = llvmValue<int_t>(TheContext_, MaxInt);
-        else if (ReduceTypes[i] == ReductionType::Max)
-          InitC = llvmValue<int_t>(TheContext_, MinInt);
-        else {
-          std::cerr << "Unsupported reduction op." << std::endl;;
-          abort();
-        }
-      }
+      auto InitC = initReduce(VarT, ReduceTypes[i]);
       Builder_.CreateStore(InitC, LhsPtrV);
       auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
       TheHelper_.increment( OffsetA, SizeC );
@@ -2504,7 +2469,8 @@ ReduceInfo LegionTasker::createReductionOp(
 
   //----------------------------------------------------------------------------
   // create reduction
-  return ReduceInfo(RedOpId, ApplyF, FoldF, InitF, DataSize);
+  return 
+    std::make_unique<LegionReduceInfo>(RedOpId, ApplyF, FoldF, InitF, DataSize);
 
 }
 
@@ -2513,21 +2479,23 @@ ReduceInfo LegionTasker::createReductionOp(
 //==============================================================================
 void LegionTasker::registerReductionOp(
     Module &TheModule,
-    const ReduceInfo & ReduceOp)
+    const AbstractReduceInfo * ParentReduceOp)
 {
-  auto DataSizeC = llvmValue(TheContext_, SizeType_, ReduceOp.getDataSize());
-  auto IdC = llvmValue<legion_reduction_op_id_t>(TheContext_, ReduceOp.getId());
+  auto ReduceOp = dynamic_cast<const LegionReduceInfo*>(ParentReduceOp);
+
+  auto DataSizeC = llvmValue(TheContext_, SizeType_, ReduceOp->getDataSize());
+  auto IdC = llvmValue<legion_reduction_op_id_t>(TheContext_, ReduceOp->getId());
   
-  auto ApplyT = ReduceOp.getApplyType();
-  const auto & ApplyN = ReduceOp.getApplyName();
+  auto ApplyT = ReduceOp->getApplyType();
+  const auto & ApplyN = ReduceOp->getApplyName();
   auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
 
-  auto FoldT = ReduceOp.getFoldType();
-  const auto & FoldN = ReduceOp.getFoldName();
+  auto FoldT = ReduceOp->getFoldType();
+  const auto & FoldN = ReduceOp->getFoldName();
   auto FoldF = TheModule.getOrInsertFunction(FoldN, FoldT).getCallee();
   
-  auto InitT = ReduceOp.getInitType();
-  const auto & InitN = ReduceOp.getInitName();
+  auto InitT = ReduceOp->getInitType();
+  const auto & InitN = ReduceOp->getInitName();
   auto InitF = TheModule.getOrInsertFunction(InitN, InitT).getCallee();
         
   TheHelper_.callFunction(

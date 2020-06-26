@@ -116,7 +116,8 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
     Module &TheModule,
     const std::string & TaskName,
     const std::vector<std::string> & TaskArgNs,
-    const std::vector<Type*> & TaskArgTs)
+    const std::vector<Type*> & TaskArgTs,
+    llvm::Type* ResultT)
 {
 
   std::vector<std::string> WrapperArgNs = TaskArgNs;
@@ -130,7 +131,9 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
   WrapperArgTs.emplace_back(IntType_);
   WrapperArgNs.emplace_back("index");
 
-  auto WrapperT = FunctionType::get(VoidType_, WrapperArgTs, false);
+  if (!ResultT) ResultT = VoidType_;
+
+  auto WrapperT = FunctionType::get(ResultT, WrapperArgTs, false);
   auto WrapperF = Function::Create(
       WrapperT,
       Function::ExternalLinkage,
@@ -193,6 +196,7 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
   return {WrapperF, WrapperArgAs, IndexA};
 }
 
+
 //==============================================================================
 // Launch an index task
 //==============================================================================
@@ -202,8 +206,7 @@ Value* SerialTasker::launch(
     std::vector<Value*> ArgAs,
     const std::vector<Value*> & PartAs,
     Value* RangeV,
-    bool HasReduction,
-    int RedopId)
+    const AbstractReduceInfo* AbstractReduceOp)
 {
   auto PartInfoA = createPartitionInfo(TheModule);
 
@@ -266,6 +269,28 @@ Value* SerialTasker::launch(
     ArgAs[i] = AccessorA;
   }
   
+
+  //----------------------------------------------------------------------------
+  AllocaInst* ResultA = nullptr;
+  
+  if (AbstractReduceOp) {
+    auto ReduceOp = dynamic_cast<const SerialReduceInfo*>(AbstractReduceOp);
+    
+    auto ResultT = StructType::create( TheContext_, "reduce" );
+    ResultT->setBody( ReduceOp->getVarTypes() );
+    ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
+
+    auto NumReduce = ReduceOp->getNumReductions();
+    for (unsigned i=0; i<NumReduce; ++i) {
+      auto VarT = ReduceOp->getVarType(i);
+      auto Op = ReduceOp->getReduceOp(i);
+      // get init value
+      auto InitC = initReduce(VarT, Op);
+      // store init
+      TheHelper_.insertValue(ResultA, InitC, i);
+    }
+
+  }
   
   //----------------------------------------------------------------------------
   // create for loop
@@ -331,11 +356,34 @@ Value* SerialTasker::launch(
   for (auto ArgA : ArgAs)
     ArgVs.emplace_back( TheHelper_.getAsValue(ArgA) );
 
-  TheHelper_.callFunction(
-      TheModule,
-      TaskI.getName(),
-      VoidType_,
-      ArgVs);
+  //------------------------------------
+  // Call function with reduction
+  if (ResultA && AbstractReduceOp) {
+    auto ResultT = ResultA->getAllocatedType();
+    auto ResultV = TheHelper_.callFunction(
+        TheModule,
+        TaskI.getName(),
+        ResultT,
+        ArgVs);
+    auto ReduceOp = dynamic_cast<const SerialReduceInfo*>(AbstractReduceOp);
+    auto NumReduce = ReduceOp->getNumReductions();
+    for (unsigned i=0; i<NumReduce; ++i) {
+      auto VarV = TheHelper_.extractValue(ResultV, i);
+      auto ReduceV = TheHelper_.extractValue(ResultA, i);
+      auto Op = ReduceOp->getReduceOp(i);
+      ReduceV = applyReduce(ReduceV, VarV, Op);
+      TheHelper_.insertValue(ResultA, ReduceV, i);
+    }
+  }
+  //------------------------------------
+  // Call function without reduction
+  else {
+    TheHelper_.callFunction(
+        TheModule,
+        TaskI.getName(),
+        VoidType_,
+        ArgVs);
+  }
       
   // Insert unconditional branch to increment.
   Builder_.CreateBr(IncrBB);
@@ -363,7 +411,7 @@ Value* SerialTasker::launch(
   destroyPartitions(TheModule, TempParts);
   destroyPartitionInfo(TheModule, PartInfoA);
 
-  return nullptr;
+  return ResultA;
 }
 
 //==============================================================================
@@ -622,5 +670,17 @@ void SerialTasker::destroyPartition(
       VoidType_,
       FunArgVs);
 }
+//==============================================================================
+// create a reduction op
+//==============================================================================
+std::unique_ptr<AbstractReduceInfo> SerialTasker::createReductionOp(
+    Module &,
+    const std::string &,
+    const std::vector<Type*> & VarTs,
+    const std::vector<ReductionType> & ReduceTypes)
+{
+  return std::make_unique<SerialReduceInfo>(VarTs, ReduceTypes);
+}
+
 
 }

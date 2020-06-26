@@ -80,7 +80,8 @@ KokkosTasker::PreambleResult KokkosTasker::taskPreamble(
     Module &TheModule,
     const std::string & TaskName,
     const std::vector<std::string> & TaskArgNs,
-    const std::vector<Type*> & TaskArgTs)
+    const std::vector<Type*> & TaskArgTs,
+    llvm::Type*)
 {
   abort();
 }

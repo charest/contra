@@ -29,7 +29,8 @@ public:
       llvm::Module &,
       const std::string &,
       const std::vector<std::string> &,
-      const std::vector<llvm::Type*> &) override;
+      const std::vector<llvm::Type*> &,
+      llvm::Type*) override;
 
   using AbstractTasker::launch;
   
@@ -39,27 +40,36 @@ public:
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
       llvm::Value*,
-      bool,
-      int) override {}
+      const AbstractReduceInfo *) override
+  { return nullptr; }
   
   virtual void setTopLevelTask(
       llvm::Module &,
       const TaskInfo & TaskI) override
   { TopLevelTask_ = &TaskI; }
   
-  virtual llvm::AllocaInst* createPartition(
+  virtual std::unique_ptr<AbstractReduceInfo> createReductionOp(
       llvm::Module &,
-      llvm::Value*,
-      llvm::Value*,
-      llvm::Value*) override {}
-  virtual llvm::AllocaInst* createPartition(
-      llvm::Module &,
-      llvm::Value*,
-      llvm::Value*) override {}
+      const std::string &,
+      const std::vector<llvm::Type*> &,
+      const std::vector<ReductionType> &) override
+  { return nullptr; }
+
   
-  virtual llvm::Type* getPartitionType(llvm::Type*) const override {}
-  virtual bool isPartition(llvm::Type*) const override {}
-  virtual bool isPartition(llvm::Value*) const override {}
+  virtual llvm::AllocaInst* createPartition(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*,
+      llvm::Value*) override { return nullptr; }
+  virtual llvm::AllocaInst* createPartition(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*) override { return nullptr; }
+  
+  virtual llvm::Type* getPartitionType(llvm::Type*) const override
+  {return nullptr;}
+  virtual bool isPartition(llvm::Type*) const override { return false; }
+  virtual bool isPartition(llvm::Value*) const override { return false; }
   virtual void destroyPartition(llvm::Module &, llvm::Value*) override {}
   
   

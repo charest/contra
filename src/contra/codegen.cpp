@@ -1294,8 +1294,7 @@ void CodeGen::visit(ForeachStmtAST& e)
           TaskArgAs,
           PartAs,
           RangeV,
-          true,
-          TaskI.getReduction().getId());
+          TaskI.getReduction());
     
       std::vector<VariableType> ReduceTypes;
       std::vector<Value*> ReduceAs;
@@ -1305,6 +1304,7 @@ void CodeGen::visit(ForeachStmtAST& e)
         auto VarE = getVariable( VarD->getName() );
         ReduceAs.emplace_back( VarE->getAlloca() );
       }
+
       auto ResultType = VariableType(ReduceTypes);
       auto ResultT = getLLVMType(ResultType);
 
@@ -1772,7 +1772,7 @@ void CodeGen::visit(TaskAST& e)
   if (CreatedScope) popScope();
 
   // Finish wrapped task
-  Tasker_->taskPostamble(*TheModule_, RetVal);
+  Tasker_->taskPostamble(*TheModule_, RetVal, false);
   
   // Validate the generated code, checking for consistency.
   verifyFunction(*Wrapper.TheFunction);
@@ -1791,8 +1791,8 @@ void CodeGen::visit(IndexTaskAST& e)
 
   //----------------------------------------------------------------------------
   // Reduction Op
-  std::unique_ptr<VariableType> ReturnType;
-  std::unique_ptr<ReduceInfo> RedopInfo;
+  Type* ResultT = nullptr;
+  std::unique_ptr<AbstractReduceInfo> RedopInfo;
 
   if (e.hasReduction()) {
    
@@ -1807,14 +1807,14 @@ void CodeGen::visit(IndexTaskAST& e)
       ReduceTypes.emplace_back(VarType);
       ReduceOps.emplace_back(ReduceD.getType());
     }
-    ReturnType = std::make_unique<VariableType>(ReduceTypes);
+    auto ReturnType = VariableType(ReduceTypes);
+    ResultT = getLLVMType(ReturnType);
 
-    RedopInfo = std::make_unique<ReduceInfo>(
-        Tasker_.get()->createReductionOp(
+    RedopInfo = Tasker_->createReductionOp(
           *TheModule_,
           TaskN,
           ReduceTs,
-          ReduceOps));
+          ReduceOps);
   }
 
   //----------------------------------------------------------------------------
@@ -1845,7 +1845,8 @@ void CodeGen::visit(IndexTaskAST& e)
       *TheModule_,
       TaskN, 
       TaskArgNs,
-      TaskArgTs);
+      TaskArgTs,
+      ResultT);
 
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
@@ -1870,8 +1871,7 @@ void CodeGen::visit(IndexTaskAST& e)
 
   // if reductions
   Value* ResultA = nullptr;
-  if (ReturnType) {
-    auto ResultT = getLLVMType(*ReturnType);
+  if (ResultT) {
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT, "reduce.a");
     unsigned i=0;
     for (auto VarD : e.getReductionDefs()) {
@@ -1887,9 +1887,7 @@ void CodeGen::visit(IndexTaskAST& e)
   if (CreatedScope) popScope();
   
   // finish task
-  Tasker_->taskPostamble(*TheModule_, ResultA);
-  
-	Builder_.CreateRetVoid();
+  Tasker_->taskPostamble(*TheModule_, ResultA, true);
   
 	// register it
   auto & TaskI = Tasker_->insertTask(TaskN, Wrapper.TheFunction);

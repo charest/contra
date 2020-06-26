@@ -20,7 +20,7 @@ class TaskInfo {
   bool IsTop_ = false;
   bool IsLeaf_ = false;
 
-  std::unique_ptr<ReduceInfo> Redop_;
+  std::unique_ptr<AbstractReduceInfo> Redop_;
 
 public:
 
@@ -51,8 +51,8 @@ public:
   void setLeaf(bool IsLeaf = true) { IsLeaf_ = IsLeaf; }
 
   bool hasReduction() const { return static_cast<bool>(Redop_); }
-  const auto & getReduction() const { return *Redop_; }
-  void setReduction(std::unique_ptr<ReduceInfo> Redop)
+  auto getReduction() const { return Redop_.get(); }
+  void setReduction(std::unique_ptr<AbstractReduceInfo> Redop)
   { Redop_ = std::move(Redop); }
 
 };

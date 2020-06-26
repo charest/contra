@@ -7,6 +7,36 @@
 
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+// Serial Reduction
+////////////////////////////////////////////////////////////////////////////////
+class SerialReduceInfo : public AbstractReduceInfo {
+
+  std::vector<llvm::Type*> VarTypes_;
+  std::vector<ReductionType> ReduceTypes_;
+
+public:
+
+  SerialReduceInfo(
+      const std::vector<llvm::Type*> & VarTypes,
+      const std::vector<ReductionType> & ReduceTypes) :
+    VarTypes_(VarTypes),
+    ReduceTypes_(ReduceTypes)
+  {}
+
+  auto getNumReductions() const { return VarTypes_.size(); }
+  
+  const auto & getVarTypes() const { return VarTypes_; }
+  auto getVarType(unsigned i) const { return VarTypes_[i]; }
+  auto getReduceOp(unsigned i) const { return ReduceTypes_[i]; }
+
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Serial Tasker
+////////////////////////////////////////////////////////////////////////////////
+
 class SerialTasker : public AbstractTasker {
 
   llvm::StructType* FieldType_ = nullptr;
@@ -31,7 +61,8 @@ public:
       llvm::Module &,
       const std::string &,
       const std::vector<std::string> &,
-      const std::vector<llvm::Type*> &) override;
+      const std::vector<llvm::Type*> &,
+      llvm::Type*) override;
   
   using AbstractTasker::launch;
   
@@ -41,13 +72,19 @@ public:
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
       llvm::Value*,
-      bool,
-      int) override;
+      const AbstractReduceInfo*) override;
   
   virtual void setTopLevelTask(
       llvm::Module &,
       const TaskInfo & TaskI) override
   { TopLevelTask_ = &TaskI; }
+  
+  virtual std::unique_ptr<AbstractReduceInfo> createReductionOp(
+      llvm::Module &,
+      const std::string &,
+      const std::vector<llvm::Type*> &,
+      const std::vector<ReductionType> &) override;
+
   
   virtual llvm::AllocaInst* createPartition(
       llvm::Module &,

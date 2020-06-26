@@ -71,11 +71,13 @@ public:
       llvm::Module &,
       const std::string &,
       const std::vector<std::string> &,
-      const std::vector<llvm::Type*> &) = 0;
+      const std::vector<llvm::Type*> &,
+      llvm::Type*) = 0;
 
   virtual void taskPostamble(
       llvm::Module &,
-      llvm::Value* = nullptr);
+      llvm::Value*,
+      bool);
 
   virtual void preregisterTask(
       llvm::Module &,
@@ -102,16 +104,15 @@ public:
       std::vector<llvm::Value*>,
       const std::vector<llvm::Value*> &,
       llvm::Value*,
-      bool = false,
-      int = 0) = 0;
+      const AbstractReduceInfo * = nullptr) = 0;
 
   virtual llvm::Type* getFutureType(llvm::Type* Ty) const { return Ty; };
   virtual bool isFuture(llvm::Value*) const { return false; };
 
   virtual llvm::Value* loadFuture(
       llvm::Module &,
-      llvm::Value*,
-      llvm::Type*) {};
+      llvm::Value* Val,
+      llvm::Type*) {return Val;};
   virtual void destroyFuture(llvm::Module &, llvm::Value*) {};
   virtual void toFuture(llvm::Module &, llvm::Value*, llvm::Value*) {};
   virtual void copyFuture(llvm::Module &, llvm::Value*, llvm::Value*) {};
@@ -178,11 +179,11 @@ public:
   
   virtual void destroyPartition(llvm::Module &, llvm::Value*) = 0;
   
-  virtual ReduceInfo createReductionOp(
+  virtual std::unique_ptr<AbstractReduceInfo> createReductionOp(
       llvm::Module &,
       const std::string &,
       const std::vector<llvm::Type*> &,
-      const std::vector<ReductionType> &) {};
+      const std::vector<ReductionType> &) = 0;
   
   //----------------------------------------------------------------------------
   // Common public members
@@ -261,6 +262,10 @@ protected:
       llvm::AllocaInst*,
       llvm::Value*,
       llvm::Value* = nullptr);
+
+  // reductions
+  llvm::Constant* initReduce(llvm::Type*, ReductionType);
+  llvm::Value* applyReduce(llvm::Value*, llvm::Value*, ReductionType);
 
 };
 

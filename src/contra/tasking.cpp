@@ -66,11 +66,14 @@ AbstractTasker::PreambleResult AbstractTasker::taskPreamble(
   
   return {TaskF, TaskArgAs, nullptr}; 
 }
- 
+
 //==============================================================================
 // Create the function wrapper
 //==============================================================================
-void AbstractTasker::taskPostamble(Module &TheModule, Value* ResultV)
+void AbstractTasker::taskPostamble(
+    Module &TheModule,
+    Value* ResultV,
+    bool)
 {
 
   //----------------------------------------------------------------------------
@@ -82,9 +85,9 @@ void AbstractTasker::taskPostamble(Module &TheModule, Value* ResultV)
   else {
     Builder_.CreateRetVoid();
   }
-  
+
 }
-  
+ 
 //==============================================================================
 // Launch a task
 //==============================================================================
@@ -423,6 +426,102 @@ Value* AbstractTasker::deserialize(
     return it->second->deserialize(TheModule, ValA, DataPtrV, OffsetA);
   else
     return DefaultSerializer_.deserialize(TheModule, ValA, DataPtrV, OffsetA);
+}
+
+//==============================================================================
+Constant* AbstractTasker::initReduce(Type* VarT, ReductionType Op)
+{
+  Constant* InitC = nullptr;
+    
+  constexpr auto MinReal = std::numeric_limits<real_t>::lowest();
+  constexpr auto MaxReal = std::numeric_limits<real_t>::max();
+  constexpr auto MinInt  = std::numeric_limits<int_t>::lowest();
+  constexpr auto MaxInt  = std::numeric_limits<int_t>::max();
+
+  // Floating point
+  if (VarT->isFloatingPointTy()) {
+    if (Op == ReductionType::Add ||
+        Op == ReductionType::Sub)
+      InitC = llvmValue<real_t>(TheContext_, 0);
+    else if (Op == ReductionType::Mult ||
+             Op == ReductionType::Div)
+      InitC = llvmValue<real_t>(TheContext_, 1);
+    else if (Op == ReductionType::Min)
+      InitC = llvmValue<real_t>(TheContext_, MaxReal);
+    else if (Op == ReductionType::Max)
+      InitC = llvmValue<real_t>(TheContext_, MinReal);
+    else {
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+  }
+  // Integer
+  else {
+    if (Op == ReductionType::Add ||
+        Op == ReductionType::Sub)
+      InitC = llvmValue<int_t>(TheContext_, 0);
+    else if (Op == ReductionType::Mult ||
+             Op == ReductionType::Div)
+      InitC = llvmValue<int_t>(TheContext_, 1);
+    else if (Op == ReductionType::Min)
+      InitC = llvmValue<int_t>(TheContext_, MaxInt);
+    else if (Op == ReductionType::Max)
+      InitC = llvmValue<int_t>(TheContext_, MinInt);
+    else {
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+  }
+
+  return InitC;
+}
+
+//==============================================================================
+Value* AbstractTasker::applyReduce(Value* LhsV, Value* RhsV, ReductionType Op)
+{
+  auto VarT = LhsV->getType();
+  // Floating point
+  if (VarT->isFloatingPointTy()) {
+    switch (Op) {
+    case ReductionType::Add:
+      return Builder_.CreateFAdd(LhsV, RhsV, "addtmp");
+    case ReductionType::Sub:
+      return Builder_.CreateFSub(LhsV, RhsV, "subtmp");
+    case ReductionType::Mult:
+      return Builder_.CreateFMul(LhsV, RhsV, "multmp");
+    case ReductionType::Div:
+      return Builder_.CreateFDiv(LhsV, RhsV, "divtmp");
+    case ReductionType::Min:
+      return Builder_.CreateMinimum(LhsV, RhsV, "mintmp");
+    case ReductionType::Max:
+      return Builder_.CreateMaximum(LhsV, RhsV, "maxtmp");
+    default :
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+  }
+  // Integer
+  else {
+    switch (Op) {
+    case ReductionType::Add:
+      return Builder_.CreateAdd(LhsV, RhsV, "addtmp");
+    case ReductionType::Sub:
+      return Builder_.CreateSub(LhsV, RhsV, "subtmp");
+    case ReductionType::Mult:
+      return Builder_.CreateMul(LhsV, RhsV, "multmp");
+    case ReductionType::Div:
+      return Builder_.CreateSDiv(LhsV, RhsV, "divtmp");
+    case ReductionType::Min:
+      return Builder_.CreateMinimum(LhsV, RhsV, "mintmp");
+    case ReductionType::Max:
+      return Builder_.CreateMaximum(LhsV, RhsV, "maxtmp");
+    default:
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+  }
+    
+  return nullptr;
 }
 
 } // namespace
