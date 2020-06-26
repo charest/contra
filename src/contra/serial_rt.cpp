@@ -61,12 +61,7 @@ void contra_serial_index_space_create_from_partition(
     contra_serial_partition_t * part,
     contra_index_space_t * is)
 {
-  if (part->offsets) {
-    is->setup(part->offsets[i], part->offsets[i+1]);
-  }
-  else if (part->indices) {
-    abort();
-  }
+  is->setup(part->offsets[i], part->offsets[i+1]);
 }
 
 //==============================================================================
@@ -107,7 +102,7 @@ void contra_serial_partition_from_size(
     }
   }
 
-  part->setup( index_size, index_size, num_parts, is, offsets);
+  part->setup( index_size, num_parts, is, offsets);
 }
 
 //==============================================================================
@@ -141,10 +136,62 @@ void contra_serial_partition_from_array(
     for (int_t i=0; i<num_parts; ++i) 
       offsets[i+1] = offsets[i] + size_ptr[i];
 
-    part->setup( index_size, index_size, num_parts, is, offsets);
+    part->setup( index_size, num_parts, is, offsets);
 
   }
   //------------------------------------
+}
+
+//==============================================================================
+/// index space creation
+//==============================================================================
+void contra_serial_partition_from_field(
+    contra_serial_field_t *fld,
+    contra_index_space_t * is,
+    contra_serial_partition_t * fld_part,
+    contra_serial_partition_t * part)
+{
+  auto num_parts = fld_part->num_parts;
+
+  auto indices = new int_t*[num_parts];
+  auto offsets = new int_t[num_parts+1];
+  offsets[0] = 0;
+  
+  auto fld_ptr = static_cast<int_t*>(fld->data);
+
+  if (auto fld_indices = fld_part->indices) {
+
+    for (int_t i=0; i<num_parts; ++i) {
+      auto size = fld_part->size(i);
+      offsets[i+1] = offsets[i] + size;
+      auto & part_indices = indices[i];
+      part_indices = new int_t[size];
+      auto fld_part_indices = fld_indices[i];
+      for (int_t j=0; j<size; ++j) {
+        part_indices[j] = fld_ptr[ fld_part_indices[j] ]; 
+      }
+    }
+
+  }
+  else {
+    
+    auto fld_offsets = fld_part->offsets;
+
+    for (int_t i=0; i<num_parts; ++i) {
+      auto size = fld_part->size(i);
+      offsets[i+1] = offsets[i] + size;
+      auto & part_indices = indices[i];
+      part_indices = new int_t[size];
+      auto fld_part_offset = fld_offsets[i];
+      for (int_t j=0; j<size; ++j) {
+        part_indices[j] = fld_ptr[ fld_part_offset + j ]; 
+      }
+    }
+
+  }
+
+  auto expanded_size = fld->index_space->size();
+  part->setup(expanded_size, num_parts, is, indices, offsets);
 }
 
 //==============================================================================
@@ -156,47 +203,51 @@ void contra_serial_partition_destroy(contra_serial_partition_t * part)
 //==============================================================================
 /// Accessor write
 //==============================================================================
-void contra_serial_accessor_create(
+contra_serial_partition_t*  contra_serial_partition_get(
     contra_index_space_t * cs,
-    contra_serial_partition_t * part,
-    contra_serial_partition_info_t **info,
     contra_serial_field_t * fld,
-    contra_serial_accessor_t * acc)
+    contra_serial_partition_info_t **info)
 {
   // no partitioning specified
-  if(!part) {
-    auto res = (*info)->getOrCreatePartition(fld->index_space);
-    part = res.first;
-    if (!res.second) {
-      contra_serial_partition_from_index_space(
-          cs,
-          fld->index_space,
-          part);
-      (*info)->register_partition(fld->index_space, part);
-    }
+  auto res = (*info)->getOrCreatePartition(fld->index_space);
+  auto part = res.first;
+  if (!res.second) {
+    contra_serial_partition_from_index_space(
+        cs,
+        fld->index_space,
+        part);
+    (*info)->register_partition(fld->index_space, part);
   }
 
-  acc->setup(part, fld);
+  return part;
 }
 
 //==============================================================================
 /// Set an accessors current partition.
 //==============================================================================
-void contra_serial_accessor_set_current(
+void contra_serial_accessor_setup(
     int_t i,
+    contra_serial_partition_t * part,
+    contra_serial_field_t * fld,
     contra_serial_accessor_t * acc)
 {
-  if (auto offsets = acc->index_part->offsets) {
-    acc->is_allocated = false;
-    auto fld = acc->field;
-    acc->data = static_cast<byte_t*>(fld->data) + acc->data_size*offsets[i];
-  }
-  else if (acc->index_part->indices) {
-    abort();
+  auto fld_data = static_cast<byte_t*>(fld->data);
+  auto data_size = fld->data_size;
+
+  if (part->indices) {
+    auto size = part->size(i);
+    acc->setup( size, data_size );
+    auto dest = static_cast<byte_t*>(acc->data);
+    auto indices = part->indices[i];
+    for (int_t j=0; j<size; ++j) {
+      const auto src = fld_data + data_size*indices[j];
+      memcpy(dest, src, data_size);
+      dest += data_size;
+    }
   }
   else {
-    std::cerr << "Offsets AND indices are not set!" << std::endl;
-    abort();
+    auto offsets = part->offsets;
+    acc->setup( fld_data + data_size*offsets[i], data_size );
   }
 }
 

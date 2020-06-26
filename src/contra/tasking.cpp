@@ -477,7 +477,11 @@ Constant* AbstractTasker::initReduce(Type* VarT, ReductionType Op)
 }
 
 //==============================================================================
-Value* AbstractTasker::applyReduce(Value* LhsV, Value* RhsV, ReductionType Op)
+Value* AbstractTasker::applyReduce(
+    Module& TheModule,
+    Value* LhsV,
+    Value* RhsV,
+    ReductionType Op)
 {
   auto VarT = LhsV->getType();
   // Floating point
@@ -492,9 +496,17 @@ Value* AbstractTasker::applyReduce(Value* LhsV, Value* RhsV, ReductionType Op)
     case ReductionType::Div:
       return Builder_.CreateFDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
-      return Builder_.CreateMinimum(LhsV, RhsV, "mintmp");
+      return TheHelper_.callFunction(
+          TheModule,
+          "fmin",
+          RealType_,
+          {LhsV, RhsV});
     case ReductionType::Max:
-      return Builder_.CreateMaximum(LhsV, RhsV, "maxtmp");
+      return TheHelper_.callFunction(
+          TheModule,
+          "fmax",
+          RealType_,
+          {LhsV, RhsV});
     default :
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -512,9 +524,17 @@ Value* AbstractTasker::applyReduce(Value* LhsV, Value* RhsV, ReductionType Op)
     case ReductionType::Div:
       return Builder_.CreateSDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
-      return Builder_.CreateMinimum(LhsV, RhsV, "mintmp");
+      return TheHelper_.callFunction(
+          TheModule,
+          "imin",
+          IntType_,
+          {LhsV, RhsV});
     case ReductionType::Max:
-      return Builder_.CreateMaximum(LhsV, RhsV, "maxtmp");
+      return TheHelper_.callFunction(
+          TheModule,
+          "imax",
+          IntType_,
+          {LhsV, RhsV});
     default:
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();

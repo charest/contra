@@ -26,7 +26,6 @@ extern "C" {
 
 //==============================================================================
 struct contra_serial_partition_t {
-  int_t index_size;
   int_t part_size;
   int_t num_parts;
   int_t* offsets;
@@ -34,18 +33,30 @@ struct contra_serial_partition_t {
   contra_index_space_t *index_space;
 
   void setup(
-      int_t index_sz,
       int_t part_sz,
       int_t parts,
       contra_index_space_t *is,
       int_t * offs)
   {
-    index_size = index_sz;
     num_parts = parts;
-    part_size = index_sz;
+    part_size = part_sz;
     index_space = is;
     offsets = offs;
     indices = nullptr;
+  }
+
+  void setup(
+      int_t part_sz,
+      int_t parts,
+      contra_index_space_t *is,
+      int_t ** indx,
+      int_t * offs)
+  {
+    num_parts = parts;
+    part_size = part_sz;
+    index_space = is;
+    offsets = offs;
+    indices = indx;
   }
 
   void destroy() {
@@ -59,11 +70,13 @@ struct contra_serial_partition_t {
       delete[] indices;
       indices = nullptr;
     }
-    index_size = 0;
     part_size = 0;
     num_parts = 0;
     index_space = nullptr;
   }
+
+  auto size(int_t i) { return offsets[i+1] - offsets[i]; }
+  
 };
 
 
@@ -96,18 +109,17 @@ struct contra_serial_accessor_t {
   bool is_allocated;
   int_t data_size;
   void *data;
-  contra_serial_field_t* field;
-  contra_serial_partition_t* index_part;
   
-  void setup(
-      contra_serial_partition_t * part,
-      contra_serial_field_t * fld)
-  {
+  void setup(void * ptr, int_t data_sz) {
     is_allocated = false;
-    data_size = fld->data_size;
-    data = nullptr;
-    field = fld;
-    index_part = part;
+    data_size = data_sz;
+    data = ptr;
+  }
+
+  void setup(int_t size, int_t data_sz) {
+    is_allocated = true;
+    data_size = data_sz;  
+    data = malloc(size * data_size);
   }
   
   void destroy() {
@@ -115,8 +127,6 @@ struct contra_serial_accessor_t {
     is_allocated = false;
     data_size = 0;
     data = nullptr;
-    field = nullptr;
-    index_part = nullptr;
   }
 };
 
