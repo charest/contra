@@ -66,8 +66,6 @@ public:
           Compiler(*TM)
       )
   {
-
-
     //EE = std::make_unique<LLVMLinkInOrcMCJITReplacement>(MM, Resolver, TM);
     std::string ErrMsgStr;
     llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr); 
