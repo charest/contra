@@ -41,32 +41,32 @@ public:
   using JITSymbol = llvm::JITSymbol;
   using VModuleKey = llvm::orc::VModuleKey;
 
-  JIT() 
+  JIT(llvm::TargetMachine* TM) 
     : 
-      MM(std::make_shared<llvm::SectionMemoryManager>()),
-      Resolver(
+      MM_(std::make_shared<llvm::SectionMemoryManager>()),
+      Resolver_(
         llvm::orc::createLegacyLookupResolver(
-          ES,
+          ES_,
           [this](const std::string &Name) { return findMangledSymbol(Name); },
           [](llvm::Error Err) { llvm::cantFail(std::move(Err), "lookupFlags failed"); }
         )
       ),
-      TM(llvm::EngineBuilder().selectTarget()),
-      DL(TM->createDataLayout()),
-      ObjectLayer(
+      TM_(TM),
+      DL_(TM_->createDataLayout()),
+      ObjectLayer_(
         llvm::AcknowledgeORCv1Deprecation,
-        ES,
+        ES_,
         [this](VModuleKey) {
-          return ObjLayerT::Resources{MM, Resolver};
+          return ObjLayerT::Resources{MM_, Resolver_};
         }
       ),
-      CompileLayer(
+      CompileLayer_(
         llvm::AcknowledgeORCv1Deprecation,
-          ObjectLayer,
-          Compiler(*TM)
+          ObjectLayer_,
+          Compiler(*TM_)
       )
   {
-    //EE = std::make_unique<LLVMLinkInOrcMCJITReplacement>(MM, Resolver, TM);
+    //EE = std::make_unique<LLVMLinkInOrcMCJITReplacement>(MM, Resolver, TM_);
     std::string ErrMsgStr;
     llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr); 
 #ifdef HAVE_LEGION
@@ -77,18 +77,20 @@ public:
 #endif
   }
 
-  auto &getTargetMachine() { return *TM; }
+  JIT() : JIT(llvm::EngineBuilder().selectTarget()) {}
+
+  auto &getTargetMachine() { return *TM_; }
 
   auto addModule(std::unique_ptr<llvm::Module> M) {
-    auto K = ES.allocateVModule();
-    llvm::cantFail(CompileLayer.addModule(K, std::move(M)));
-    ModuleKeys.push_back(K);
+    auto K = ES_.allocateVModule();
+    llvm::cantFail(CompileLayer_.addModule(K, std::move(M)));
+    ModuleKeys_.push_back(K);
     return K;
   }
 
   void removeModule(VModuleKey K) {
-    ModuleKeys.erase(llvm::find(ModuleKeys, K));
-    llvm::cantFail(CompileLayer.removeModule(K));
+    ModuleKeys_.erase(llvm::find(ModuleKeys_, K));
+    llvm::cantFail(CompileLayer_.removeModule(K));
   }
 
   auto findSymbol(const std::string Name) {
@@ -100,14 +102,14 @@ private:
   std::string mangle(const std::string &Name);
   JITSymbol findMangledSymbol(const std::string &Name);
 
-  llvm::orc::ExecutionSession ES;
-  std::shared_ptr<llvm::SectionMemoryManager> MM;
-  std::shared_ptr<llvm::orc::SymbolResolver> Resolver;
-  std::unique_ptr<llvm::TargetMachine> TM;
-  const llvm::DataLayout DL;
-  ObjLayerT ObjectLayer;
-  CompileLayerT CompileLayer;
-  std::vector<VModuleKey> ModuleKeys;
+  llvm::orc::ExecutionSession ES_;
+  std::shared_ptr<llvm::SectionMemoryManager> MM_;
+  std::shared_ptr<llvm::orc::SymbolResolver> Resolver_;
+  std::unique_ptr<llvm::TargetMachine> TM_;
+  const llvm::DataLayout DL_;
+  ObjLayerT ObjectLayer_;
+  CompileLayerT CompileLayer_;
+  std::vector<VModuleKey> ModuleKeys_;
   //std::unique_ptr<llvm::ExecutionEngine> EE;
 };
 

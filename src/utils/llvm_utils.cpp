@@ -1,5 +1,14 @@
 #include "llvm_utils.hpp"
 
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Host.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+
 using namespace llvm;
 
 namespace utils {
@@ -57,6 +66,46 @@ Constant* llvmArray(
   else {
     return ConstantExpr::getGetElementPtr(nullptr, GVStr, GEPIndices, true);
   }
+}
+
+//==============================================================================
+void initializeAllTargets() {
+  // Initialize the target registry etc.
+  InitializeAllTargetInfos();
+  InitializeAllTargets();
+  InitializeAllTargetMCs();
+  InitializeAllAsmParsers();
+  InitializeAllAsmPrinters();
+}
+
+//==============================================================================
+TargetMachine* createTargetMachine(const std::string & Type)
+{
+  const Target* MyTgt = nullptr; 
+  for(auto & Tgt : TargetRegistry::targets()) {
+    if (Type == Tgt.getName()) {
+      MyTgt = &Tgt;
+      break;
+    }
+  }
+
+  TargetMachine* Machine = nullptr;
+
+  if ( MyTgt ) {
+    if (Type == "nvptx64") {
+    }
+  }
+
+  return Machine;
+}
+
+//==============================================================================
+void startLLVM() {
+
+  InitializeNativeTarget();
+  InitializeNativeTargetAsmPrinter();
+  InitializeNativeTargetAsmParser();
+  
 }
 
 } // namespace

@@ -14,6 +14,8 @@
 #include "librt/librt.hpp"
 #include "librt/dopevector.hpp"
 
+#include "utils/llvm_utils.hpp"
+
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/LinkAllPasses.h"
@@ -85,6 +87,12 @@ CodeGen::CodeGen (SupportedBackends Backend, bool) :
 #endif
   if (Backend == SupportedBackends::Serial)
     Tasker_ = std::make_unique<SerialTasker>(TheHelper_);
+
+#ifdef HAVE_CUDA
+  if (Backend == SupportedBackends::Cuda) {
+    auto TM = createTargetMachine("nvptx64");
+  }     
+#endif
   
   if (!Tasker_) THROW_CONTRA_ERROR("No backend selected!");
 
@@ -139,7 +147,7 @@ void CodeGen::initializeModule()
 {
   // Open a new module.
   TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
-  TheModule_->setDataLayout(TheJIT_.getTargetMachine().createDataLayout());
+  TheModule_->setDataLayout(HostJIT_.getTargetMachine().createDataLayout());
 }
 
 //==============================================================================
@@ -174,7 +182,7 @@ JIT::VModuleKey CodeGen::doJIT()
 {
   auto TmpModule = std::move(TheModule_);
   initializeModuleAndPassManager();
-  auto H = TheJIT_.addModule(std::move(TmpModule));
+  auto H = HostJIT_.addModule(std::move(TmpModule));
   return H;
 }
 
@@ -182,13 +190,13 @@ JIT::VModuleKey CodeGen::doJIT()
 // Search the JIT for a symbol
 //==============================================================================
 JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
-{ return TheJIT_.findSymbol(Symbol); }
+{ return HostJIT_.findSymbol(Symbol); }
 
 //==============================================================================
 // Delete a JITed module
 //==============================================================================
 void CodeGen::removeJIT( JIT::VModuleKey H )
-{ TheJIT_.removeModule(H); }
+{ HostJIT_.removeModule(H); }
 
 
 ////////////////////////////////////////////////////////////////////////////////

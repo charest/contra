@@ -7,7 +7,7 @@ std::string JIT::mangle(const std::string &Name) {
   std::string MangledName;
   {
     llvm::raw_string_ostream MangledNameStream(MangledName);
-    llvm::Mangler::getNameWithPrefix(MangledNameStream, Name, DL);
+    llvm::Mangler::getNameWithPrefix(MangledNameStream, Name, DL_);
   }
   return MangledName;
 }
@@ -34,8 +34,8 @@ JIT::JITSymbol JIT::findMangledSymbol(const std::string &Name) {
   // Search modules in reverse order: from last added to first added.
   // This is the opposite of the usual search order for dlsym, but makes more
   // sense in a REPL where we want to bind to the newest available definition.
-  for (auto H : llvm::make_range(ModuleKeys.rbegin(), ModuleKeys.rend()))
-    if (auto Sym = CompileLayer.findSymbolIn(H, Name, ExportedSymbolsOnly))
+  for (auto H : llvm::make_range(ModuleKeys_.rbegin(), ModuleKeys_.rend()))
+    if (auto Sym = CompileLayer_.findSymbolIn(H, Name, ExportedSymbolsOnly))
       return Sym;
 
   // If we can't find the symbol in the JIT, try looking in the host process.

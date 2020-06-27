@@ -11,6 +11,10 @@
 #include <type_traits>
 #include <vector>
 
+namespace llvm {
+class TargetMachine;
+}
+
 namespace utils {
 
 //============================================================================
@@ -143,6 +147,11 @@ llvm::Constant* llvmArray(
 
   return llvmArray(TheContext, TheModule, ValsC, GEPIndices);
 }
+
+//============================================================================
+void startLLVM();
+void initializeAllTargets();
+llvm::TargetMachine* createTargetMachine(const std::string&);
 
 } // namespace
 

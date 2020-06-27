@@ -1,4 +1,7 @@
+#include "compiler.hpp"
 #include "errors.hpp"
+
+#include "utils/llvm_utils.hpp"
 
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -9,30 +12,14 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 
-#include <iostream>
-
 using namespace llvm;
 
 namespace contra {
 
 //==============================================================================
-void startLLVM() {
-
-  InitializeNativeTarget();
-  InitializeNativeTargetAsmPrinter();
-  InitializeNativeTargetAsmParser();
-
-}
-
-//==============================================================================
-void compileLLVM(Module & TheModule, const std::string & Filename) {
+void compile(Module & TheModule, const std::string & Filename) {
   
-  // Initialize the target registry etc.
-  InitializeAllTargetInfos();
-  InitializeAllTargets();
-  InitializeAllTargetMCs();
-  InitializeAllAsmParsers();
-  InitializeAllAsmPrinters();
+  utils::initializeAllTargets();
 
   auto TargetTriple = sys::getDefaultTargetTriple();
   TheModule.setTargetTriple(TargetTriple);
@@ -76,5 +63,6 @@ void compileLLVM(Module & TheModule, const std::string & Filename) {
   std::cout << "Wrote " << Filename << "\n";
 
 }
+
 
 } // namespace

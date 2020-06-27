@@ -4,9 +4,10 @@
 #include "analysis.hpp"
 #include "backends.hpp"
 #include "codegen.hpp"
-#include "llvm.hpp"
 #include "parser.hpp"
 #include "vizualizer.hpp"
+
+#include "compiler.hpp"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -45,7 +46,7 @@ public:
     // Print out all of the generated code.
     //TheCG.TheModule->print(llvm::errs(), nullptr);
     // Compile if necessary
-    if (!OutputFileName_.empty()) compileLLVM( TheCG_->getModule(), OutputFileName_ );
+    if (!OutputFileName_.empty()) compile( TheCG_->getModule(), OutputFileName_ );
     IRFileStream_ = nullptr;
   }
 

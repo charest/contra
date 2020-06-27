@@ -45,7 +45,8 @@ class CodeGen : public RecursiveAstVisiter {
   std::unique_ptr<llvm::ExecutionEngine> TheEngine_;
 
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
-  JIT TheJIT_;
+  JIT HostJIT_;
+  std::unique_ptr<JIT> DeviceJIT_;
 
   // visitor results
   Value* ValueResult_ = nullptr;
