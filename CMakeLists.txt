@@ -97,8 +97,9 @@ endif()
 #------------------------------------------------------------------------------#
 find_package(CUDA)
 if (CUDA_FOUND)
-  target_link_libraries(contra PUBLIC ${CUDA_cudart_static_LIBRARY})
-  #list(APPEND SUPPORTED_BACKENDS "cuda")
+  target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
+  target_include_directories(contra PUBLIC ${CUDA_INCLUDE_DIRS})
+  list(APPEND SUPPORTED_BACKENDS "cuda")
 endif()
 
 #------------------------------------------------------------------------------#

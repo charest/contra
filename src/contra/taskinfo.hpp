@@ -22,6 +22,8 @@ class TaskInfo {
 
   std::unique_ptr<AbstractReduceInfo> Redop_;
 
+  std::string KernelString_;
+
 public:
 
   TaskInfo(
@@ -55,6 +57,10 @@ public:
   void setReduction(std::unique_ptr<AbstractReduceInfo> Redop)
   { Redop_ = std::move(Redop); }
 
+  void setKernelString(const std::string & Str)
+  { KernelString_ = Str; }
+  const std::string & getKernelString() const
+  { return KernelString_; }
 };
 
 } // namespace

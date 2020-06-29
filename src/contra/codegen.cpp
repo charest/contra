@@ -3,6 +3,8 @@
 #include "ast.hpp"
 #include "context.hpp"
 #include "codegen.hpp"
+#include "compiler.hpp"
+#include "cuda.hpp"
 #include "errors.hpp"
 #include "kokkos.hpp"
 #include "legion.hpp"
@@ -90,7 +92,8 @@ CodeGen::CodeGen (SupportedBackends Backend, bool) :
 
 #ifdef HAVE_CUDA
   if (Backend == SupportedBackends::Cuda) {
-    auto TM = createTargetMachine("nvptx64");
+    DeviceJIT_ = std::make_unique<CudaJIT>();
+    Tasker_ = std::make_unique<CudaTasker>(TheHelper_);
   }     
 #endif
   
@@ -147,7 +150,7 @@ void CodeGen::initializeModule()
 {
   // Open a new module.
   TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
-  TheModule_->setDataLayout(HostJIT_.getTargetMachine().createDataLayout());
+  TheModule_->setDataLayout(HostJIT_.getTargetMachine()->createDataLayout());
 }
 
 //==============================================================================
@@ -180,9 +183,8 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 JIT::VModuleKey CodeGen::doJIT()
 {
-  auto TmpModule = std::move(TheModule_);
+  auto H = HostJIT_.addModule(std::move(TheModule_));
   initializeModuleAndPassManager();
-  auto H = HostJIT_.addModule(std::move(TmpModule));
   return H;
 }
 
@@ -591,8 +593,22 @@ std::pair<Function*, bool> CodeGen::getFunction(std::string Name) {
     return {F,false};
   
   // see if this is an available intrinsic, try installing it first
-  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
-    return {F,false};
+  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name)) {
+    if (Name == "print") {
+      auto PrintType = FunctionType::get(
+          Type::getInt32Ty(TheContext_),
+          {llvmType<void*>(TheContext_), llvmType<void*>(TheContext_)},
+          false /* var args */ );
+     auto PrintFun = Function::Create(
+          PrintType,
+          Function::ExternalLinkage,
+          "vprintf",
+          *TheModule_);
+      return {PrintFun,false};
+    }
+    else
+      return {F,false};
+  }
 
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
@@ -628,7 +644,7 @@ void CodeGen::visit(ValueExprAST & e)
     ValueResult_ = llvmValue(TheContext_, e.getVal<real_t>());
     break;
   case ValueExprAST::ValueType::String:
-    ValueResult_ = llvmString(TheContext_, getModule(), e.getVal<std::string>());
+    ValueResult_ = llvmString(TheContext_, *TheModule_, e.getVal<std::string>());
     break;
   }
 }
@@ -990,6 +1006,10 @@ void CodeGen::visit(CallExprAST &e) {
   else {
     std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
     for (auto & A : ArgVs) A = TheHelper_.getAsValue(A);
+    if (Name == "print") {
+      ArgVs.resize(2);
+      ArgVs[1] = Constant::getNullValue(llvmType<void*>(TheContext_));
+    }
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
   }
 
@@ -1637,7 +1657,7 @@ void CodeGen::visit(PrototypeAST &e) {
 
   FunctionType *FT = FunctionType::get(ReturnType, ArgTypes, false);
 
-  Function *F = Function::Create(FT, Function::ExternalLinkage, e.getName(), &getModule());
+  Function *F = Function::Create(FT, Function::ExternalLinkage, e.getName(), *TheModule_);
 
   // Set names for all arguments.
   unsigned Idx = 0;
@@ -1673,6 +1693,7 @@ Value* CodeGen::codegenFunctionBody(FunctionAST& e)
 //==============================================================================
 void CodeGen::visit(FunctionAST& e)
 {
+
   bool CreatedScope = false;
   if (!e.isTopLevelExpression()) {
     CreatedScope = true;
@@ -1729,7 +1750,7 @@ void CodeGen::visit(FunctionAST& e)
   
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
-   
+  
   FunctionResult_ = TheFunction;
 
 }
@@ -1796,6 +1817,13 @@ void CodeGen::visit(TaskAST& e)
 void CodeGen::visit(IndexTaskAST& e)
 {
   auto TaskN = e.getName();
+
+  // create a new device module
+  std::unique_ptr<Module> OldModule;
+  if (DeviceJIT_) {
+    OldModule = std::move(TheModule_);
+    TheModule_ = DeviceJIT_->createModule(TheContext_);
+  }
 
   //----------------------------------------------------------------------------
   // Reduction Op
@@ -1904,8 +1932,13 @@ void CodeGen::visit(IndexTaskAST& e)
 
  	verifyFunction(*Wrapper.TheFunction);
 
-	FunctionResult_ = Wrapper.TheFunction;
+  // Compile device code
+  if (DeviceJIT_) {
+    DeviceJIT_->addModule( std::move(TheModule_) );
+    TheModule_ = std::move(OldModule);
+  }
 
+	FunctionResult_ = Wrapper.TheFunction;
 }
 
 } // namespace

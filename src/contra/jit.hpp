@@ -19,6 +19,7 @@
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 
 #include <algorithm>
@@ -79,7 +80,7 @@ public:
 
   JIT() : JIT(llvm::EngineBuilder().selectTarget()) {}
 
-  auto &getTargetMachine() { return *TM_; }
+  auto getTargetMachine() { return TM_.get(); }
 
   auto addModule(std::unique_ptr<llvm::Module> M) {
     auto K = ES_.allocateVModule();

@@ -2,6 +2,7 @@
 #define CONTRA_CODEGEN_HPP
 
 #include "backends.hpp"
+#include "cuda_jit.hpp"
 #include "jit.hpp"
 #include "recursive.hpp"
 #include "symbols.hpp" 
@@ -46,7 +47,7 @@ class CodeGen : public RecursiveAstVisiter {
 
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
   JIT HostJIT_;
-  std::unique_ptr<JIT> DeviceJIT_;
+  std::unique_ptr<CudaJIT> DeviceJIT_; 
 
   // visitor results
   Value* ValueResult_ = nullptr;

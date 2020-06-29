@@ -5,6 +5,7 @@
 
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -16,7 +17,9 @@ using namespace llvm;
 
 namespace contra {
 
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
+// Standard compiler for host
+////////////////////////////////////////////////////////////////////////////////
 void compile(Module & TheModule, const std::string & Filename) {
   
   utils::initializeAllTargets();
@@ -64,5 +67,55 @@ void compile(Module & TheModule, const std::string & Filename) {
 
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Standard compiler for host
+////////////////////////////////////////////////////////////////////////////////
+std::string compileKernel(
+    Module & TheModule,
+    TargetMachine * TM,
+    const std::string & Filename) 
+{
+
+  if (!TheModule.getInstructionCount()) return "";
+  
+  //----------------------------------------------------------------------------
+  // Create output stream
+
+  std::unique_ptr<raw_pwrite_stream> Dest;
+  
+  SmallString<SmallVectorLength> SmallStr;
+
+  // output to string
+  if (Filename.empty()) {
+    Dest = std::make_unique<raw_svector_ostream>(SmallStr);
+  }
+  // output to file
+  else {
+    std::error_code EC;
+    Dest = std::make_unique<raw_fd_ostream>(Filename, EC, sys::fs::OF_None);
+    if (EC)
+      THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
+  }
+  
+  //----------------------------------------------------------------------------
+  // Compile
+  
+  auto PassMan = legacy::PassManager();
+  PassMan.add(createVerifierPass());
+
+  auto fail = TM->addPassesToEmitFile(
+      PassMan,
+      *Dest,
+      nullptr,
+      CGFT_AssemblyFile,
+      false);
+  if (fail)
+    THROW_CONTRA_ERROR( "Error generating PTX");
+  
+  PassMan.run(TheModule);
+
+  return SmallStr.str();
+
+}
 
 } // namespace

@@ -23,9 +23,13 @@ Value* BuilderHelper::createCast(Value* FromVal, Type* ToType)
     return CastInst::Create(Instruction::SIToFP, FromVal,
         ToType, "cast", TheBlock);
   }
-  else {
-    return FromVal;
+  else if (FromType->isIntegerTy() && ToType->isIntegerTy()) {
+    if (ToType->getIntegerBitWidth() > FromType->getIntegerBitWidth())
+      return CastInst::Create(Instruction::SExt, FromVal, ToType, "cast", TheBlock);
+    else if (FromType->getIntegerBitWidth() > ToType->getIntegerBitWidth())
+      return CastInst::Create(Instruction::Trunc, FromVal, ToType, "cast", TheBlock);
   }
+  return FromVal;
 }
 
 //==============================================================================

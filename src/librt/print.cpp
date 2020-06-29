@@ -45,7 +45,7 @@ Function * Print::install(LLVMContext & TheContext, Module & TheModule)
       true /* var args */ );
 
   //auto PrintFun = TheModule.getOrInsertFunction("print", PrintType);
-  auto PrintFun = Function::Create(PrintType, Function::InternalLinkage,
+  auto PrintFun = Function::Create(PrintType, Function::ExternalLinkage,
       Print::Name, TheModule);
   return PrintFun;
 }

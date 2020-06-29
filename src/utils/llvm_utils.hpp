@@ -8,6 +8,7 @@
 #include "llvm/IR/IRBuilder.h"
 
 #include <iostream>
+#include <memory>
 #include <type_traits>
 #include <vector>
 

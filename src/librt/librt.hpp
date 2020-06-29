@@ -49,8 +49,10 @@ public:
 
   static void setup(llvm::LLVMContext &);
 
-  static llvm::Function* tryInstall(llvm::LLVMContext &TheContext,
-      llvm::Module &TheModule, const std::string & Name)
+  static llvm::Function* tryInstall(
+      llvm::LLVMContext &TheContext,
+      llvm::Module &TheModule,
+      const std::string & Name)
   {
     auto it = InstallMap.find(Name);
     if (it != InstallMap.end())

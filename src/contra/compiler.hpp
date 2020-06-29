@@ -7,11 +7,17 @@
 
 namespace llvm {
 class Module;
+class TargetMachine;
 }
 
 namespace contra {
 
 void compile(llvm::Module &, const std::string &);
+
+std::string compileKernel(
+    llvm::Module & TheModule,
+    llvm::TargetMachine * TM,
+    const std::string & Filename = "");
 
 } // namespace
 
