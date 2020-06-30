@@ -123,6 +123,8 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
     llvm::Type* ResultT)
 {
 
+  //----------------------------------------------------------------------------
+  // Create function header
   std::vector<std::string> WrapperArgNs = TaskArgNs;
     
   std::vector<Type*> WrapperArgTs;
@@ -140,6 +142,7 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
       TaskName,
       &TheModule);
 
+  // annotate as kernel
   auto Annots = TheModule.getOrInsertNamedMetadata("nvvm.annotations");
   std::vector<Metadata*> Meta = {
     ValueAsMetadata::get(WrapperF),
@@ -223,17 +226,6 @@ Value* CudaTasker::launch(
     Value* RangeV,
     const AbstractReduceInfo* AbstractReduceOp)
 {
-  //----------------------------------------------------------------------------
-  // load the kernel
-  
-  //auto KernelStr = llvmString(TheContext_, TheModule, TaskI.getKernelString());
-  auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
-  //TheHelper_.callFunction(
-  //  TheModule,
-  //  "contra_cuda_register_kernel",
-  //  VoidType_,
-  //  {KernelStr});
-  
 
   //----------------------------------------------------------------------------
   // Swap ranges for partitions
@@ -318,15 +310,42 @@ Value* CudaTasker::launch(
 
   }
   
+  //----------------------------------------------------------------------------
+  // Setup args
+
+  std::vector<Value*> ArgVs;
+  for (auto ArgA : ArgAs) {
+    if (librt::DopeVector::isDopeVector(ArgA)) {
+      auto ArrayA = TheHelper_.getAsAlloca(ArgA);
+      auto DevPtr = TheHelper_.callFunction(
+          TheModule,
+          "contra_cuda_array2dev",
+          VoidPtrType_,
+          {ArrayA});
+      ArgVs.emplace_back( TheHelper_.getAsAlloca(DevPtr) );
+      ArgVs.emplace_back( TheHelper_.getElementPointer(ArrayA, 1) );
+      ArgVs.emplace_back( ArgVs.back() );
+      ArgVs.emplace_back( TheHelper_.getElementPointer(ArrayA, 3) );
+    }
+    else {
+      ArgVs.emplace_back( TheHelper_.getAsAlloca(ArgA) );
+    }
+  }
+
+  auto NumExpandedArgs = ArgVs.size();
+  auto ExpandedArgsT = ArrayType::get(VoidPtrType_, NumExpandedArgs);
+  auto ExpandedArgsA = TheHelper_.createEntryBlockAlloca(ExpandedArgsT);
+
+  for (unsigned i=0; i<NumExpandedArgs; ++i) {
+    auto ArgV = TheHelper_.createBitCast(ArgVs[i], VoidPtrType_);
+    TheHelper_.insertValue(ExpandedArgsA, ArgV, i);
+  }
+    
+  auto RangeA = TheHelper_.getAsAlloca(RangeV);
+  
 
   //----------------------------------------------------------------------------
   // Call function
-
-  std::vector<Value*> ArgVs;
-  for (auto ArgA : ArgAs)
-    ArgVs.emplace_back( TheHelper_.getAsValue(ArgA) );
-    
-  auto RangeA = TheHelper_.getAsAlloca(RangeV);
 
   //------------------------------------
   // Call function with reduction
@@ -350,11 +369,12 @@ Value* CudaTasker::launch(
   //------------------------------------
   // Call function without reduction
   else {
+    auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
     TheHelper_.callFunction(
       TheModule,
       "contra_cuda_launch_kernel",
       VoidType_,
-      {TaskStr, RangeA});
+      {TaskStr, RangeA, ExpandedArgsA});
   }
 
 

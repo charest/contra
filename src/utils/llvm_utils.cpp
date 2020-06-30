@@ -79,38 +79,14 @@ void initializeAllTargets() {
 }
 
 //==============================================================================
-TargetMachine* createTargetMachine(const std::string & Type)
+const Target* findTarget(const std::string & Type)
 {
-  initializeAllTargets();
-
-  const Target* MyTgt = nullptr; 
   for(auto & Tgt : TargetRegistry::targets()) {
     if (Type == Tgt.getName()) {
-      MyTgt = &Tgt;
-      break;
+      return &Tgt;
     }
   }
-
-  TargetMachine* Machine = nullptr;
-
-  if ( MyTgt ) {
-    if (Type == TargetNvptxString) {
-      Triple Trip( sys::getDefaultTargetTriple() );
-      Trip.setArch(Triple::nvptx64);
-      Trip.setVendor(Triple::NVIDIA);
-      Trip.setOS(Triple::CUDA);
-      Machine = MyTgt->createTargetMachine(
-            Trip.getTriple(),
-            "sm_30",
-            "",
-            TargetOptions(),
-            None,
-            None,
-            CodeGenOpt::Aggressive);
-    }
-  }
-
-  return Machine;
+  return nullptr;
 }
 
 //==============================================================================

@@ -17,6 +17,7 @@ struct dopevector_t {
   int_t size = 0;
   int_t capacity = 0;
   int_t data_size = 0;
+  int_t bytes() const { return size*data_size; }
 };
 
 /// memory allocation

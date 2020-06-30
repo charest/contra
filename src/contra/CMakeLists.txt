@@ -24,6 +24,7 @@ target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp )
 
 if (CUDA_FOUND)
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda.cpp )
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_jit.cpp )
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_rt.cpp )
 endif()
 if (Kokkos_FOUND)

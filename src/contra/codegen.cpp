@@ -92,7 +92,7 @@ CodeGen::CodeGen (SupportedBackends Backend, bool) :
 
 #ifdef HAVE_CUDA
   if (Backend == SupportedBackends::Cuda) {
-    DeviceJIT_ = std::make_unique<CudaJIT>();
+    DeviceJIT_ = std::make_unique<CudaJIT>(TheHelper_);
     Tasker_ = std::make_unique<CudaTasker>(TheHelper_);
   }     
 #endif
@@ -593,22 +593,8 @@ std::pair<Function*, bool> CodeGen::getFunction(std::string Name) {
     return {F,false};
   
   // see if this is an available intrinsic, try installing it first
-  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name)) {
-    if (Name == "print") {
-      auto PrintType = FunctionType::get(
-          Type::getInt32Ty(TheContext_),
-          {llvmType<void*>(TheContext_), llvmType<void*>(TheContext_)},
-          false /* var args */ );
-     auto PrintFun = Function::Create(
-          PrintType,
-          Function::ExternalLinkage,
-          "vprintf",
-          *TheModule_);
-      return {PrintFun,false};
-    }
-    else
-      return {F,false};
-  }
+  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
+    return {F,false};
 
   // If not, check whether we can codegen the declaration from some existing
   // prototype.
@@ -1006,11 +992,9 @@ void CodeGen::visit(CallExprAST &e) {
   else {
     std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
     for (auto & A : ArgVs) A = TheHelper_.getAsValue(A);
-    if (Name == "print") {
-      ArgVs.resize(2);
-      ArgVs[1] = Constant::getNullValue(llvmType<void*>(TheContext_));
-    }
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
+    if (Name == "print")
+      ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
   }
 
   IsPacked_ = FunPair.second;
@@ -1750,6 +1734,9 @@ void CodeGen::visit(FunctionAST& e)
   
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
+    
+  if (DeviceJIT_)
+    DeviceJIT_->addModule( TheModule_.get() );
   
   FunctionResult_ = TheFunction;
 
@@ -1822,7 +1809,7 @@ void CodeGen::visit(IndexTaskAST& e)
   std::unique_ptr<Module> OldModule;
   if (DeviceJIT_) {
     OldModule = std::move(TheModule_);
-    TheModule_ = DeviceJIT_->createModule(TheContext_);
+    TheModule_ = DeviceJIT_->createModule();
   }
 
   //----------------------------------------------------------------------------

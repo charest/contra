@@ -176,7 +176,6 @@ AllocaInst* BuilderHelper::createEntryBlockAlloca(
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   return createEntryBlockAlloca(TheFunction, Ty, Name);
 }
-
 AllocaInst* BuilderHelper::createEntryBlockAlloca(
     Function* F,
     Type* Ty,

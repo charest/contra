@@ -10,7 +10,7 @@
 extern "C" {
 
 /// generic c print statement
-DLLEXPORT void print(const char *format, ...);
+DLLEXPORT int print(const char *format, ...);
 
 } // extern
 

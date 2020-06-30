@@ -1,13 +1,12 @@
 fn index_task(i64 id, i64 ilocal, i64 iglobal, i64 arr[])
-  
-  print("Hello world from task %d, with local arg %d, and global arg %d and %d!\n",
+  print("Hello world from task %ld, with local arg %ld, and global arg %ld and %ld!\n",
     id, ilocal, iglobal, arr[id])
 
 
 tsk top_level() {
   
   num_points = 10
-  print("Running hello world redux for %d points...\n", num_points)
+  print("Running hello world redux for %lld points...\n", num_points)
 
   arr = [0; num_points]
   for i = 0 : num_points-1

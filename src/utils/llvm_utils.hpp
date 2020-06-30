@@ -13,7 +13,7 @@
 #include <vector>
 
 namespace llvm {
-class TargetMachine;
+class Target;
 }
 
 namespace utils {
@@ -152,7 +152,7 @@ llvm::Constant* llvmArray(
 //============================================================================
 void startLLVM();
 void initializeAllTargets();
-llvm::TargetMachine* createTargetMachine(const std::string&);
+const llvm::Target* findTarget(const std::string&);
 
 } // namespace
 

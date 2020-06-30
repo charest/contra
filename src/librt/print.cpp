@@ -13,15 +13,16 @@ extern "C" {
 //==============================================================================
 /// generic c print statement
 //==============================================================================
-void print(const char *format, ...)
+int print(const char *format, ...)
 {
-
    va_list arg;
+   int done;
 
    va_start (arg, format);
-   vfprintf (stdout, format, arg);
+   done = vfprintf (stdout, format, arg);
    va_end (arg);
 
+   return done;
 }
 
 } // extern
@@ -40,7 +41,7 @@ const std::string Print::Name = "print";
 Function * Print::install(LLVMContext & TheContext, Module & TheModule)
 {
   auto PrintType = FunctionType::get(
-      Type::getVoidTy(TheContext),
+      Type::getInt32Ty(TheContext),
       llvmType<void*>(TheContext),
       true /* var args */ );
 
