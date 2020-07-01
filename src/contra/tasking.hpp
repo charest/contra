@@ -44,6 +44,7 @@ protected:
   llvm::Type* BoolType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* IntType_ = nullptr;
+  llvm::Type* SizeType_ = nullptr;
   llvm::Type* RealType_ = nullptr;
   
   llvm::StructType* DefaultIndexSpaceType_ = nullptr;

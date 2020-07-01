@@ -29,7 +29,7 @@ struct contra_serial_partition_t {
   int_t part_size;
   int_t num_parts;
   int_t* offsets;
-  int_t** indices;
+  int_t* indices;
   contra_index_space_t *index_space;
 
   void setup(
@@ -49,7 +49,7 @@ struct contra_serial_partition_t {
       int_t part_sz,
       int_t parts,
       contra_index_space_t *is,
-      int_t ** indx,
+      int_t * indx,
       int_t * offs)
   {
     num_parts = parts;
@@ -65,8 +65,6 @@ struct contra_serial_partition_t {
       offsets = nullptr;
     }
     if (indices) {
-      for (int_t i=0; i<num_parts; ++i)
-        delete[] indices[i];
       delete[] indices;
       indices = nullptr;
     }

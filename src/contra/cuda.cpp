@@ -31,33 +31,6 @@ CudaTasker::CudaTasker(utils::BuilderHelper & TheHelper)
 }
 
 //==============================================================================
-// Create the field data type
-//==============================================================================
-StructType * CudaTasker::createFieldType()
-{
-  std::vector<Type*> members = {
-    IntType_,
-    VoidPtrType_,
-    IndexSpaceType_->getPointerTo() };
-  auto NewType = StructType::create( TheContext_, members, "contra_serial_field_t" );
-  return NewType;
-}
-
-//==============================================================================
-// Create the field data type
-//==============================================================================
-StructType * CudaTasker::createAccessorType()
-{
-  std::vector<Type*> members = {
-    BoolType_,
-    IntType_,
-    VoidPtrType_};
-  auto NewType = StructType::create( TheContext_, members, "contra_serial_accessor_t" );
-  return NewType;
-}
-
-
-//==============================================================================
 // Create the partition data type
 //==============================================================================
 StructType * CudaTasker::createIndexPartitionType()
@@ -67,11 +40,41 @@ StructType * CudaTasker::createIndexPartitionType()
     IntType_,
     IntType_,
     IntPtrT,
-    IntPtrT->getPointerTo(),
-    IndexSpaceType_->getPointerTo()};
-  auto NewType = StructType::create( TheContext_, members, "contra_serial_partition_t" );
+    IntPtrT};
+  auto NewType = StructType::create( TheContext_, members, "contra_cuda_partition_t" );
   return NewType;
 }
+
+
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * CudaTasker::createFieldType()
+{
+  std::vector<Type*> members = {
+    IntType_,
+    IntType_,
+    VoidPtrType_,
+    IndexSpaceType_->getPointerTo()};
+  auto NewType = StructType::create( TheContext_, members, "contra_cuda_field_t" );
+  return NewType;
+}
+
+
+//==============================================================================
+// Create the field data type
+//==============================================================================
+StructType * CudaTasker::createAccessorType()
+{
+  std::vector<Type*> members = {
+    IntType_,
+    VoidPtrType_,
+    IntType_->getPointerTo(),
+    FieldType_->getPointerTo() };
+  auto NewType = StructType::create( TheContext_, members, "contra_cuda_accessor_t" );
+  return NewType;
+}
+
 
 //==============================================================================
 // Create partitioninfo
@@ -81,7 +84,7 @@ AllocaInst* CudaTasker::createPartitionInfo(Module & TheModule)
   auto Alloca = TheHelper_.createEntryBlockAlloca(PartitionInfoType_);
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_partition_info_create",
+      "contra_cuda_partition_info_create",
       VoidType_,
       {Alloca});
   return Alloca;
@@ -94,7 +97,7 @@ void CudaTasker::destroyPartitionInfo(Module & TheModule, AllocaInst* PartA)
 {
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_partition_info_destroy",
+      "contra_cuda_partition_info_destroy",
       VoidType_,
       {PartA});
 }
@@ -174,31 +177,6 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
     WrapperArgAs.emplace_back(Alloca);
     ArgIdx++;
   }
-
-  //----------------------------------------------------------------------------
-  // partition any ranges
-  std::vector<Type*> GetRangeArgTs = {
-    IntType_,
-    IndexPartitionType_->getPointerTo(),
-    IndexSpaceType_->getPointerTo()
-  };
-
-#if 0
-  auto GetRangeF = TheHelper_.createFunction(
-      TheModule,
-      "contra_serial_index_space_create_from_partition",
-      VoidType_,
-      GetRangeArgTs);
-  
-  for (unsigned i=0; i<TaskArgNs.size(); i++) {
-    if (isRange(TaskArgTs[i])) {
-      auto ArgN = TaskArgNs[i];
-      auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
-      Builder_.CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
-      WrapperArgAs[i] = ArgA;
-    }
-  }
-#endif
   
   //----------------------------------------------------------------------------
   // determine my index
@@ -211,6 +189,29 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
   auto IndexA = TheHelper_.createEntryBlockAlloca(WrapperF, IntType_, "index");
   Builder_.CreateStore(IndexV, IndexA);
 
+  //----------------------------------------------------------------------------
+  // partition any ranges
+  std::vector<Type*> GetRangeArgTs = {
+    IntType_,
+    IndexPartitionType_->getPointerTo(),
+    IndexSpaceType_->getPointerTo()
+  };
+
+  auto GetRangeF = TheHelper_.createFunction(
+      TheModule,
+      "contra_cuda_index_space_create_from_partition",
+      VoidType_,
+      GetRangeArgTs);
+  
+  for (unsigned i=0; i<TaskArgNs.size(); i++) {
+    if (isRange(TaskArgTs[i])) {
+      auto ArgN = TaskArgNs[i];
+      auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
+      Builder_.CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
+      WrapperArgAs[i] = ArgA;
+    }
+  }
+  
   return {WrapperF, WrapperArgAs, IndexA};
 }
 
@@ -227,6 +228,8 @@ Value* CudaTasker::launch(
     const AbstractReduceInfo* AbstractReduceOp)
 {
 
+  std::vector<AllocaInst*> ToFree;
+
   //----------------------------------------------------------------------------
   // Swap ranges for partitions
   
@@ -235,6 +238,7 @@ Value* CudaTasker::launch(
   std::vector<Value*> TempParts;
 
   auto NumArgs = ArgAs.size();
+
   for (unsigned i=0; i<NumArgs; i++) {
     if (isRange(ArgAs[i])) {
       // keep track of range
@@ -255,36 +259,15 @@ Value* CudaTasker::launch(
         IndexSpaceA,
         IndexPartitionA,
         PartInfoA};
-      TheHelper_.callFunction(
+      auto DevIndexPartitionPtr = TheHelper_.callFunction(
           TheModule,
-          "contra_serial_register_index_partition",
-          VoidType_,
+          "contra_cuda_partition2dev",
+          IndexPartitionType_,
           FunArgVs);
+      auto DevIndexPartitionA = TheHelper_.getAsAlloca(DevIndexPartitionPtr);
+      ToFree.emplace_back(DevIndexPartitionA);
+      ArgAs[i] = DevIndexPartitionA;
     }
-  }
-
-  //----------------------------------------------------------------------------
-  // Prepare other args
-
-  Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
-  std::map<unsigned, std::pair<AllocaInst*, Value*>> AccessorData; 
-
-  for (unsigned i=0; i<NumArgs; i++) {
-    if (!isField(ArgAs[i])) continue;
-    auto FieldA = TheHelper_.getAsAlloca(ArgAs[i]);
-    Value* IndexPartitionA = nullptr;
-    if (PartAs[i]) {
-      IndexPartitionA = TheHelper_.getAsAlloca(PartAs[i]);
-    }
-    else {
-      IndexPartitionA = TheHelper_.callFunction(
-          TheModule,
-          "contra_serial_partition_get",
-          IndexPartitionType_->getPointerTo(),
-          {IndexSpaceA, FieldA, PartInfoA});
-    }
-    auto AccessorA = TheHelper_.createEntryBlockAlloca(AccessorType_);
-    AccessorData.emplace( i, std::make_pair(AccessorA, IndexPartitionA) );
   }
   
   //----------------------------------------------------------------------------
@@ -312,33 +295,53 @@ Value* CudaTasker::launch(
   
   //----------------------------------------------------------------------------
   // Setup args
+  
+  Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
+  
+  for (unsigned i=0; i<NumArgs; i++) {
+    auto ArgA = ArgAs[i];
 
-  std::vector<Value*> ArgVs;
-  for (auto ArgA : ArgAs) {
+    //----------------------------------
+    // Array
     if (librt::DopeVector::isDopeVector(ArgA)) {
       auto ArrayA = TheHelper_.getAsAlloca(ArgA);
       auto DevPtr = TheHelper_.callFunction(
           TheModule,
           "contra_cuda_array2dev",
-          VoidPtrType_,
+          librt::DopeVector::DopeVectorType,
           {ArrayA});
-      ArgVs.emplace_back( TheHelper_.getAsAlloca(DevPtr) );
-      ArgVs.emplace_back( TheHelper_.getElementPointer(ArrayA, 1) );
-      ArgVs.emplace_back( ArgVs.back() );
-      ArgVs.emplace_back( TheHelper_.getElementPointer(ArrayA, 3) );
+      auto DevPtrA = TheHelper_.getAsAlloca(DevPtr);
+      ToFree.emplace_back( DevPtrA );
+      ArgAs[i] = DevPtrA;
     }
+    //----------------------------------
+    // Field
+    else if (isField(ArgA)) {
+      auto FieldA = TheHelper_.getAsAlloca(ArgA);
+      Value* PartA = Constant::getNullValue(IndexPartitionType_->getPointerTo());
+      if (PartAs[i]) PartA = TheHelper_.getAsAlloca(PartAs[i]);
+      auto DevFieldV = TheHelper_.callFunction(
+            TheModule,
+            "contra_cuda_field2dev",
+            AccessorType_,
+            {IndexSpaceA, PartA, FieldA, PartInfoA});
+      auto DevFieldA = TheHelper_.getAsAlloca(DevFieldV);
+      ToFree.emplace_back( DevFieldA );
+      ArgAs[i] = DevFieldA;
+    }
+    //----------------------------------
+    // Scalar
     else {
-      ArgVs.emplace_back( TheHelper_.getAsAlloca(ArgA) );
+      ArgAs[i] = TheHelper_.getAsAlloca(ArgA);
     }
   }
+  
+  auto ArgsT = ArrayType::get(VoidPtrType_, NumArgs);
+  auto ArgsA = TheHelper_.createEntryBlockAlloca(ArgsT);
 
-  auto NumExpandedArgs = ArgVs.size();
-  auto ExpandedArgsT = ArrayType::get(VoidPtrType_, NumExpandedArgs);
-  auto ExpandedArgsA = TheHelper_.createEntryBlockAlloca(ExpandedArgsT);
-
-  for (unsigned i=0; i<NumExpandedArgs; ++i) {
-    auto ArgV = TheHelper_.createBitCast(ArgVs[i], VoidPtrType_);
-    TheHelper_.insertValue(ExpandedArgsA, ArgV, i);
+  for (unsigned i=0; i<NumArgs; ++i) {
+    auto ArgV = TheHelper_.createBitCast(ArgAs[i], VoidPtrType_);
+    TheHelper_.insertValue(ArgsA, ArgV, i);
   }
     
   auto RangeA = TheHelper_.getAsAlloca(RangeV);
@@ -355,7 +358,7 @@ Value* CudaTasker::launch(
         TheModule,
         TaskI.getName(),
         ResultT,
-        ArgVs);
+        ArgAs);
     auto ReduceOp = dynamic_cast<const CudaReduceInfo*>(AbstractReduceOp);
     auto NumReduce = ReduceOp->getNumReductions();
     for (unsigned i=0; i<NumReduce; ++i) {
@@ -374,16 +377,47 @@ Value* CudaTasker::launch(
       TheModule,
       "contra_cuda_launch_kernel",
       VoidType_,
-      {TaskStr, RangeA, ExpandedArgsA});
+      {TaskStr, RangeA, ArgsA});
   }
 
 
   //----------------------------------------------------------------------------
   // cleanup
+
+  for (auto AllocA : ToFree) {
+    if (isPartition(AllocA)) {
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_cuda_partition_free",
+          VoidType_,
+          {AllocA});
+    }
+    else if (isAccessor(AllocA)) {
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_cuda_accessor_free",
+          VoidType_,
+          {AllocA});
+    }
+    else if (librt::DopeVector::isDopeVector(AllocA)) {
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_cuda_array_free",
+          VoidType_,
+          {AllocA});
+    }
+    else {
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_cuda_free",
+          VoidType_,
+          {AllocA});
+    }
+  }
   
   destroyPartitions(TheModule, TempParts);
   destroyPartitionInfo(TheModule, PartInfoA);
-
+  
   return ResultA;
 }
 
@@ -411,7 +445,7 @@ AllocaInst* CudaTasker::createPartition(
     
     TheHelper_.callFunction(
         TheModule,
-        "contra_serial_partition_from_index_space",
+        "contra_cuda_partition_from_index_space",
         VoidType_,
         FunArgVs);
   }
@@ -428,7 +462,7 @@ AllocaInst* CudaTasker::createPartition(
     
     TheHelper_.callFunction(
         TheModule,
-        "contra_serial_partition_from_array",
+        "contra_cuda_partition_from_array",
         VoidType_,
         FunArgVs);
   }
@@ -443,7 +477,7 @@ AllocaInst* CudaTasker::createPartition(
     
     TheHelper_.callFunction(
         TheModule,
-        "contra_serial_partition_from_size",
+        "contra_cuda_partition_from_size",
         VoidType_,
         FunArgVs);
   }
@@ -477,7 +511,7 @@ AllocaInst* CudaTasker::createPartition(
     
     TheHelper_.callFunction(
         TheModule,
-        "contra_serial_partition_from_field",
+        "contra_cuda_partition_from_field",
         VoidType_,
         FunArgVs);
   }
@@ -531,7 +565,7 @@ void CudaTasker::createField(
   
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_field_create",
+      "contra_cuda_field_create",
       VoidType_,
       FunArgVs);
     
@@ -544,7 +578,7 @@ void CudaTasker::destroyField(Module &TheModule, Value* FieldA)
 {
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_field_destroy",
+      "contra_cuda_field_destroy",
       VoidType_,
       {FieldA});
 }
@@ -586,7 +620,7 @@ void CudaTasker::storeAccessor(
   
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_accessor_write",
+      "contra_cuda_accessor_write",
       VoidType_,
       FunArgVs);
 }
@@ -615,7 +649,7 @@ Value* CudaTasker::loadAccessor(
 
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_accessor_read",
+      "contra_cuda_accessor_read",
       VoidType_,
       FunArgVs);
 
@@ -629,13 +663,12 @@ void CudaTasker::destroyAccessor(
     Module &TheModule,
     Value* AccessorA)
 {
-  TheHelper_.callFunction(
-      TheModule,
-      "contra_serial_accessor_destroy",
-      VoidType_,
-      {AccessorA});
+  //TheHelper_.callFunction(
+  //    TheModule,
+  //    "contra_cuda_accessor_destroy",
+  //    VoidType_,
+  //    {AccessorA});
 }
-
 
 //==============================================================================
 // Is this an range type
@@ -665,6 +698,7 @@ void CudaTasker::destroyPartition(
       VoidType_,
       FunArgVs);
 }
+
 //==============================================================================
 // create a reduction op
 //==============================================================================

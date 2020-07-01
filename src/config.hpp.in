@@ -11,6 +11,14 @@
 #cmakedefine HAVE_KOKKOS
 #cmakedefine HAVE_CUDA
 
+#include "config.defs"
+
+#ifdef __CUDACC__
+#define CONTRA_INLINE_TARGET __host__ __device__
+#else
+#define CONTRA_INLINE_TARGET
+#endif
+
 namespace {
 
   using int_t = std::int64_t;

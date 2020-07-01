@@ -17,6 +17,13 @@ struct dopevector_t {
   int_t size = 0;
   int_t capacity = 0;
   int_t data_size = 0;
+  void setup(int_t sz, int_t data_sz, void* dat)
+  {
+    data = dat;
+    size = sz;
+    data_size = data_sz;
+    capacity = sz;
+  }
   int_t bytes() const { return size*data_size; }
 };
 

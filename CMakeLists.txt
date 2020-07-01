@@ -97,6 +97,9 @@ endif()
 #------------------------------------------------------------------------------#
 find_package(CUDA)
 if (CUDA_FOUND)
+  enable_language(CUDA)
+  add_library( contra_cuda STATIC )
+  target_compile_options(contra_cuda PUBLIC -lib -rdc=true )
   target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
   target_include_directories(contra PUBLIC ${CUDA_INCLUDE_DIRS})
   list(APPEND SUPPORTED_BACKENDS "cuda")
@@ -110,6 +113,11 @@ MESSAGE(STATUS "Supported backends: ${SUPPORTED_BACKENDS}")
 
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(contra PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
+if (TARGET contra_cuda)
+  target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
+endif()
+
 add_subdirectory(src)
 
 #------------------------------------------------------------------------------#

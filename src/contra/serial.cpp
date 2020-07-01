@@ -66,7 +66,7 @@ StructType * SerialTasker::createIndexPartitionType()
     IntType_,
     IntType_,
     IntPtrT,
-    IntPtrT->getPointerTo(),
+    IntPtrT,
     IndexSpaceType_->getPointerTo()};
   auto NewType = StructType::create( TheContext_, members, "contra_serial_partition_t" );
   return NewType;

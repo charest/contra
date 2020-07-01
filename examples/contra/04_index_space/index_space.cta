@@ -9,18 +9,18 @@ tsk top_level() {
 
   foreach i = parts {
     for j = 0:len(points)-1 {
-      print("Loop with parition %d and local id %d\n", i, j)
+      print("Loop with parition %ld and local id %ld\n", i, j)
       myid[j] = j
     }
   }
   
   foreach i = parts {
     for j = 0:len(points)-1
-      print("Loop with parition %d and local id %d\n", i, myid[j])
+      print("Loop with parition %ld and local id %ld\n", i, myid[j])
   }
   
   foreach i = points 
-    print("Loop with counter %d and myid is now %d\n", i, myid)
+    print("Loop with counter %ld and myid is now %ld\n", i, myid)
 
 }
 

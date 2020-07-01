@@ -23,6 +23,7 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   BoolType_ = llvmType<bool>(TheContext_);
   Int32Type_ = llvmType<int>(TheContext_);
   IntType_ = llvmType<int_t>(TheContext_);
+  SizeType_ = llvmType<std::size_t>(TheContext_);
   RealType_ = llvmType<real_t>(TheContext_);
   
   DefaultIndexSpaceType_ = createDefaultIndexSpaceType();
