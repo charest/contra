@@ -6,6 +6,7 @@
 #include "utils/llvm_utils.hpp"
 
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -98,8 +99,12 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
         }
       } // Instruction
     } // Block
+  
+    verifyFunction(Func);
+
   } // Function
 
+  //M->print(outs(), nullptr); outs() << "\n";
   auto KernelStr = compileKernel(
       *M,
       TargetMachine_);
@@ -137,11 +142,7 @@ CallInst* CudaJIT::replacePrint(Module &M, CallInst* CallI) {
       Int32T,
       {VoidPtrT, VoidPtrT},
       false /* var args */ );
-  auto PrintF = Function::Create(
-      PrintT,
-      Function::ExternalLinkage,
-      "vprintf",
-      M);
+  auto PrintF = M.getOrInsertFunction("vprintf", PrintT).getCallee();
   auto NumArgs = CallI->arg_size();
   Value* VarArgsV;
 

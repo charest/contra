@@ -114,6 +114,17 @@ void CudaTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
 
   launch(TheModule, *TopLevelTask_);
 }
+//==============================================================================
+// Default Preamble
+//==============================================================================
+CudaTasker::PreambleResult CudaTasker::taskPreamble(
+    Module &TheModule,
+    const std::string & Name,
+    Function* TaskF)
+{
+  startTask();
+  return AbstractTasker::taskPreamble(TheModule, Name, TaskF);
+}
 
 //==============================================================================
 // Create the function wrapper
@@ -126,6 +137,8 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
     llvm::Type* ResultT)
 {
 
+  startTask();
+
   //----------------------------------------------------------------------------
   // Create function header
   std::vector<std::string> WrapperArgNs = TaskArgNs;
@@ -136,9 +149,12 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
     WrapperArgTs.emplace_back(ArgT);
   }
 
-  if (!ResultT) ResultT = VoidType_;
+  if (ResultT) {
+    WrapperArgTs.emplace_back(VoidPtrType_);
+    WrapperArgNs.emplace_back("indata");
+  }
 
-  auto WrapperT = FunctionType::get(ResultT, WrapperArgTs, false);
+  auto WrapperT = FunctionType::get(VoidType_, WrapperArgTs, false);
   auto WrapperF = Function::Create(
       WrapperT,
       Function::ExternalLinkage,
@@ -211,10 +227,62 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
       WrapperArgAs[i] = ArgA;
     }
   }
+
+  if (ResultT) {
+    auto & TaskI = getCurrentTask();
+    TaskI.ResultAlloca = WrapperArgAs.back();
+    WrapperArgAs.pop_back();
+  }
   
   return {WrapperF, WrapperArgAs, IndexA};
 }
 
+//==============================================================================
+// Create the function wrapper
+//==============================================================================
+void CudaTasker::taskPostamble(
+    Module &TheModule,
+    Value* ResultV,
+    bool IsIndex)
+{
+
+  //----------------------------------------------------------------------------
+  // Have return value
+  if (ResultV && !ResultV->getType()->isVoidTy()) {
+
+    // Index task
+    if (IsIndex) {
+      const auto & TaskI = getCurrentTask();
+      auto IndataA = TaskI.ResultAlloca;
+      
+      auto ResultA = TheHelper_.getAsAlloca(ResultV);
+      auto ResultT = ResultA->getAllocatedType();
+      
+      auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
+      
+      TheHelper_.callFunction(
+          TheModule,
+          "contra_cuda_set_reduction_value",
+          VoidType_,
+          {IndataA, ResultA, DataSizeV});
+
+      Builder_.CreateRetVoid();
+    }
+    // Regular task
+    else {
+      ResultV = TheHelper_.getAsValue(ResultV);
+      Builder_.CreateRet(ResultV);
+    }
+  }
+  //----------------------------------------------------------------------------
+  // No return value
+  else {
+    Builder_.CreateRetVoid();
+  }
+
+  finishTask();
+}
+ 
 
 //==============================================================================
 // Launch an index task
@@ -271,29 +339,6 @@ Value* CudaTasker::launch(
   }
   
   //----------------------------------------------------------------------------
-  // Do reductions
-  AllocaInst* ResultA = nullptr;
-  
-  if (AbstractReduceOp) {
-    auto ReduceOp = dynamic_cast<const CudaReduceInfo*>(AbstractReduceOp);
-    
-    auto ResultT = StructType::create( TheContext_, "reduce" );
-    ResultT->setBody( ReduceOp->getVarTypes() );
-    ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
-
-    auto NumReduce = ReduceOp->getNumReductions();
-    for (unsigned i=0; i<NumReduce; ++i) {
-      auto VarT = ReduceOp->getVarType(i);
-      auto Op = ReduceOp->getReduceOp(i);
-      // get init value
-      auto InitC = initReduce(VarT, Op);
-      // store init
-      TheHelper_.insertValue(ResultA, InitC, i);
-    }
-
-  }
-  
-  //----------------------------------------------------------------------------
   // Setup args
   
   Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
@@ -336,6 +381,31 @@ Value* CudaTasker::launch(
     }
   }
   
+  //----------------------------------------------------------------------------
+  // Do reductions
+  AllocaInst* IndataA = nullptr;
+  StructType* ResultT = nullptr;
+  
+  if (AbstractReduceOp) {
+    auto ReduceOp = dynamic_cast<const CudaReduceInfo*>(AbstractReduceOp);
+    
+    ResultT = StructType::create( TheContext_, "reduce" );
+    ResultT->setBody( ReduceOp->getVarTypes() );
+    IndataA = TheHelper_.createEntryBlockAlloca(VoidPtrType_);
+    auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_cuda_prepare_reduction",
+        VoidType_,
+        {IndataA, DataSizeV, IndexSpaceA});
+    ToFree.emplace_back(IndataA);
+    ArgAs.emplace_back( IndataA );
+  }
+  
+  //----------------------------------------------------------------------------
+  // Serialize args
+  
+  NumArgs = ArgAs.size();
   auto ArgsT = ArrayType::get(VoidPtrType_, NumArgs);
   auto ArgsA = TheHelper_.createEntryBlockAlloca(ArgsT);
 
@@ -349,38 +419,26 @@ Value* CudaTasker::launch(
 
   //----------------------------------------------------------------------------
   // Call function
+  auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
+  TheHelper_.callFunction(
+    TheModule,
+    "contra_cuda_launch_kernel",
+    VoidType_,
+    {TaskStr, RangeA, ArgsA});
 
-  //------------------------------------
+  //----------------------------------------------------------------------------
   // Call function with reduction
-  if (ResultA && AbstractReduceOp) {
-    auto ResultT = ResultA->getAllocatedType();
-    auto ResultV = TheHelper_.callFunction(
-        TheModule,
-        TaskI.getName(),
-        ResultT,
-        ArgAs);
-    auto ReduceOp = dynamic_cast<const CudaReduceInfo*>(AbstractReduceOp);
-    auto NumReduce = ReduceOp->getNumReductions();
-    for (unsigned i=0; i<NumReduce; ++i) {
-      auto VarV = TheHelper_.extractValue(ResultV, i);
-      auto ReduceV = TheHelper_.extractValue(ResultA, i);
-      auto Op = ReduceOp->getReduceOp(i);
-      ReduceV = applyReduce(TheModule, ReduceV, VarV, Op);
-      TheHelper_.insertValue(ResultA, ReduceV, i);
-    }
-  }
-  //------------------------------------
-  // Call function without reduction
-  else {
-    auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
+  AllocaInst* ResultA = nullptr;
+  if (ResultT && AbstractReduceOp) {
+    ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
+    auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
     TheHelper_.callFunction(
-      TheModule,
-      "contra_cuda_launch_kernel",
-      VoidType_,
-      {TaskStr, RangeA, ArgsA});
+        TheModule,
+        "contra_cuda_reduce",
+        VoidType_,
+        {IndataA, IndexSpaceA, OutDataV});
   }
-
-
+  
   //----------------------------------------------------------------------------
   // cleanup
 

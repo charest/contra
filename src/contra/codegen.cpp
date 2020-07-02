@@ -1307,7 +1307,7 @@ void CodeGen::visit(ForeachStmtAST& e)
           PartAs,
           RangeV,
           TaskI.getReduction());
-    
+      
       std::vector<VariableType> ReduceTypes;
       std::vector<Value*> ReduceAs;
       for (auto ReduceD : e.getReductionVars()) {

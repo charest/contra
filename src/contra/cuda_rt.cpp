@@ -599,5 +599,29 @@ void contra_cuda_accessor_free(contra_cuda_accessor_t * acc)
   check(err, "cudaFree");
 }
 
+//==============================================================================
+// prepare a reduction
+//==============================================================================
+void contra_cuda_prepare_reduction(
+  void ** indata,
+  size_t data_size,
+  contra_index_space_t * is)
+{
+  auto size = is->size();
+  auto bytes = data_size * size;
+  auto err = cudaMalloc(indata, bytes);
+  check(err, "cudaMalloc");
+}
+
+//==============================================================================
+// launch reduction
+//==============================================================================
+void contra_cuda_launch_reduction(
+    void ** indata,
+    size_t data_size,
+    contra_index_space_t * is)
+{
+}
+
 
 } // extern

@@ -5,6 +5,8 @@
 
 #include "tasking.hpp"
 
+#include <forward_list>
+
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,6 +49,12 @@ class CudaTasker : public AbstractTasker {
   llvm::Type* PartitionInfoType_ = nullptr;
 
   const TaskInfo * TopLevelTask_ = nullptr;
+  
+  struct TaskEntry {
+    llvm::AllocaInst* ResultAlloca = nullptr;
+  };
+
+  std::forward_list<TaskEntry> TaskAllocas_;
 
 public:
  
@@ -60,9 +68,19 @@ public:
   virtual PreambleResult taskPreamble(
       llvm::Module &,
       const std::string &,
+      llvm::Function*) override;
+  
+  virtual PreambleResult taskPreamble(
+      llvm::Module &,
+      const std::string &,
       const std::vector<std::string> &,
       const std::vector<llvm::Type*> &,
       llvm::Type*) override;
+  
+  virtual void taskPostamble(
+      llvm::Module &,
+      llvm::Value*,
+      bool) override;
   
   using AbstractTasker::launch;
   
@@ -139,6 +157,15 @@ protected:
 
   llvm::AllocaInst* createPartitionInfo(llvm::Module &);
   void destroyPartitionInfo(llvm::Module &, llvm::AllocaInst*);
+  
+  auto & getCurrentTask() { return TaskAllocas_.front(); }
+  const auto & getCurrentTask() const { return TaskAllocas_.front(); }
+
+  auto & startTask() { 
+    TaskAllocas_.push_front({});
+    return getCurrentTask();
+  }
+  void finishTask() { TaskAllocas_.pop_front(); }
 };
 
 } // namepsace

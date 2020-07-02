@@ -22,24 +22,24 @@ tsk top_level() {
     num_cells = len(cells)
 
     for j = 0:num_points-1 {
-      print("Point loop with partition %d and local id %d\n", i, j)
+      print("Point loop with partition %ld and local id %ld\n", i, j)
       point_id[j] = j
     }
     
     for j = 0:num_cells-1 {
-      print("Cell loop with partition %d and local id %d\n", i, j)
+      print("Cell loop with partition %ld and local id %ld\n", i, j)
       cell_id[j] = j
     }
   }
   
   foreach i = parts {
     for j = 0:len(cells)-1
-      print("Cell loop with partition %d and cell_id[%d]=%d\n", i, j, cell_id[j])
+      print("Cell loop with partition %ld and cell_id[%ld]=%ld\n", i, j, cell_id[j])
   }
   
   foreach i = parts {
     for j = 0:len(points)-1
-      print("Point loop with partition %d and point_id[%d]=%d\n", i, j, point_id[j])
+      print("Point loop with partition %ld and point_id[%ld]=%ld\n", i, j, point_id[j])
   }
 
 }
