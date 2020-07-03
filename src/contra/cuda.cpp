@@ -430,13 +430,17 @@ Value* CudaTasker::launch(
   // Call function with reduction
   AllocaInst* ResultA = nullptr;
   if (ResultT && AbstractReduceOp) {
+    auto ReduceOp = dynamic_cast<const CudaReduceInfo*>(AbstractReduceOp);
+
+    auto InitStr = llvmString(TheContext_, TheModule, ReduceOp->getInitName());
+
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
     auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
     TheHelper_.callFunction(
         TheModule,
-        "contra_cuda_reduce",
+        "contra_cuda_launch_reduction",
         VoidType_,
-        {IndataA, IndexSpaceA, OutDataV});
+        {TaskStr, InitStr, IndexSpaceA, IndataA, OutDataV});
   }
   
   //----------------------------------------------------------------------------
@@ -761,12 +765,163 @@ void CudaTasker::destroyPartition(
 // create a reduction op
 //==============================================================================
 std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
-    Module &,
-    const std::string &,
+    Module & TheModule,
+    const std::string &ReductionN,
     const std::vector<Type*> & VarTs,
     const std::vector<ReductionType> & ReduceTypes)
 {
-  return std::make_unique<CudaReduceInfo>(VarTs, ReduceTypes);
+
+
+  // generate id
+  auto RedOpId = makeReductionId();
+
+  // get var types
+
+  // get data size
+  std::size_t DataSize = 0;
+  std::vector<std::size_t> DataSizes;
+  for (auto VarT : VarTs) {
+    DataSizes.emplace_back( TheHelper_.getTypeSizeInBits(TheModule, VarT)/8 );
+    DataSize += DataSizes.back();
+  }
+
+#if 0
+  //----------------------------------------------------------------------------
+  // create apply
+  auto ApplyF = createReductionFunction(
+      TheModule,
+      ReductionN + "apply",
+      "apply",
+      DataSizes,
+      VarTs,
+      ReduceTypes);
+  
+  //----------------------------------------------------------------------------
+  // create fold
+  auto FoldF = createReductionFunction(
+      TheModule,
+      ReductionN + "fold",
+      "fold",
+      DataSizes,
+      VarTs,
+      ReduceTypes);
+#endif
+
+  //----------------------------------------------------------------------------
+  // create init
+  Function *InitF;
+  {
+
+    std::string InitN = ReductionN + "init";
+ 
+    std::vector<Type*> ArgTs = {VoidPtrType_};
+    FunctionType* InitT = FunctionType::get(VoidType_, None, false);
+    InitF = Function::Create(
+        InitT,
+        Function::ExternalLinkage,
+        InitN,
+        TheModule);
+  
+    auto BB = BasicBlock::Create(TheContext_, "entry", InitF);
+    Builder_.SetInsertPoint(BB);
+    
+    //auto PrintStr = llvmString(TheContext_, TheModule, "hererere\n");
+    //TheHelper_.callFunction(
+    //    TheModule,
+    //    "print",
+    //    llvmType<int>(TheContext_), 
+    //    {PrintStr, PrintStr});
+
+//    unsigned i=0;
+//    std::vector<AllocaInst*> ArgAs(ArgTs.size());
+//    for (auto &Arg : InitF->args()) {
+//      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
+//      Builder_.CreateStore(&Arg, ArgAs[i]);
+//      ++i;
+//    }
+//
+//    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+//    auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+//    Builder_.CreateStore(ZeroC, OffsetA);
+//
+//    for (unsigned i=0; i<VarTs.size(); ++i) {
+//      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
+//      auto OffsetV = TheHelper_.load(OffsetA);
+//      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+//      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarTs[i]->getPointerTo());
+//      auto VarT = VarTs[i];
+//      auto InitC = initReduce(VarT, ReduceTypes[i]);
+//      Builder_.CreateStore(InitC, LhsPtrV, true /*volatile*/);
+//      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+//      TheHelper_.increment( OffsetA, SizeC );
+//    }
+    
+    Builder_.CreateRetVoid();
+
+    auto InitV = new GlobalVariable(
+        TheModule, 
+        InitT->getPointerTo(),
+        false,
+        GlobalValue::InternalLinkage,
+        InitF, // has initializer, specified below
+        "test",
+        nullptr,
+        GlobalValue::NotThreadLocal,
+        1);
+  }
+
+#if 0
+  Function* GetFunF = nullptr;
+  {
+    auto F = InitF;
+    auto FTy = F->getFunctionType();
+    auto FName = F->getName();
+
+    FunctionType* GetFunT = FunctionType::get(VoidType_, VoidPtrType_, false);
+    GetFunF = Function::Create(
+        GetFunT,
+        Function::ExternalLinkage,
+        "__get__" + FName,
+        TheModule);
+    
+    auto Arg = GetFunF->getArg(0);
+  
+    auto BB = BasicBlock::Create(TheContext_, "entry", GetFunF);
+    Builder_.SetInsertPoint(BB);
+      
+    auto ArgA = TheHelper_.createEntryBlockAlloca(VoidPtrType_);
+    Builder_.CreateStore(Arg, ArgA);
+    Value* ArgV = TheHelper_.load(ArgA);
+    
+    auto FPtrT = FTy->getPointerTo();
+    FPtrT->print(outs()); outs()<<"\n";
+    ArgV = TheHelper_.createBitCast(ArgV, FPtrT->getPointerTo());
+
+    Value* FPtr = TheModule.getOrInsertFunction(FName, FTy).getCallee();
+    //auto PrintStr = llvmString(TheContext_, TheModule, "ptr %p %p\n");
+    //TheHelper_.callFunction(
+    //    TheModule,
+    //    "print",
+    //    llvmType<int>(TheContext_), 
+    //    {PrintStr, FPtr, ArgV});
+    Builder_.CreateStore(FPtr, ArgV);
+    
+    Builder_.CreateRetVoid();
+  
+    auto Annots = TheModule.getOrInsertNamedMetadata("nvvm.annotations");
+    std::vector<Metadata*> Meta = {
+      ValueAsMetadata::get(GetFunF),
+      MDString::get(TheContext_, "kernel"),
+      ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ) };
+    Annots->addOperand(MDNode::get(TheContext_, Meta));
+    TheModule.print(outs(), nullptr); outs()<<"\n";
+  }
+#endif
+ 
+  //----------------------------------------------------------------------------
+  // create reduction
+
+  return std::make_unique<CudaReduceInfo>(VarTs, ReduceTypes, InitF);
 }
 
 

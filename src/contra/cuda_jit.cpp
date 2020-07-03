@@ -41,7 +41,7 @@ CudaJIT::CudaJIT(BuilderHelper & TheHelper) :
   Trip.setOS(Triple::CUDA);
   TargetMachine_ = Tgt->createTargetMachine(
         Trip.getTriple(),
-        "sm_20",
+        "sm_35",
         "",
         TargetOptions(),
         None,
@@ -104,7 +104,7 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
 
   } // Function
 
-  //M->print(outs(), nullptr); outs() << "\n";
+  M->print(outs(), nullptr); outs() << "\n";
   auto KernelStr = compileKernel(
       *M,
       TargetMachine_);
@@ -149,7 +149,6 @@ CallInst* CudaJIT::replacePrint(Module &M, CallInst* CallI) {
   // No Args!
   if (NumArgs <= 1) {
     VarArgsV = Constant::getNullValue(VoidPtrT);
-
   }
   // Has Args
   else {

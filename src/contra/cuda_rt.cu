@@ -63,6 +63,7 @@ __device__ void contra_cuda_set_reduction_value(
 // temp reduction function
 //==============================================================================
 void contra_cuda_reduce(
+  init_t dev_init,
   void ** indata,
   contra_index_space_t * is,
   void * outdata)
@@ -70,13 +71,17 @@ void contra_cuda_reduce(
   size_t n = is->size();
   size_t data_size = sizeof(int_t) + sizeof(real_t);
  
-
+#if 0
   void * dev_outdata;
   cudaMalloc(&dev_outdata, data_size); // num blocks
   size_t bytes = data_size * n;
 
-  init_t InitPtr;
-  cudaMemcpyFromSymbol(&InitPtr, dev_InitPtr, sizeof(init_t));
+  //init_t InitPtr;
+  //cudaMemcpyFromSymbol(&InitPtr, dev_InitPtr, sizeof(init_t));
+
+  //void * dev_i;
+  //cudaMalloc(&dev_i, sizeof(init_t));
+  //getInit<<<1,1>>>(dev_i);
   
   apply_t ApplyPtr;
   cudaMemcpyFromSymbol(&ApplyPtr, dev_ApplyPtr, sizeof(apply_t));
@@ -84,14 +89,15 @@ void contra_cuda_reduce(
   fold_t FoldPtr;
   cudaMemcpyFromSymbol(&FoldPtr, dev_FoldPtr, sizeof(fold_t));
 
-  reduce6<1><<<1,n,bytes>>>(
+  reduce6<<<1,n,bytes>>>(
       (byte_t*)*indata,
       (byte_t*)dev_outdata,
       data_size,
       n,
-      InitPtr,
-      ApplyPtr,
-      FoldPtr); 
+      1,
+      dev_init);//,
+      //ApplyPtr,
+      //FoldPtr); 
   cudaError_t err = cudaDeviceSynchronize();
   if (err != cudaSuccess) {
     std::cerr << "reduce6 failed with error \""
@@ -102,6 +108,7 @@ void contra_cuda_reduce(
   cudaMemcpy(outdata, dev_outdata, data_size, cudaMemcpyDeviceToHost); 
 
   cudaFree(dev_outdata);
+#endif
 }
 
 } // extern
