@@ -4,7 +4,7 @@ set(HAVE_CUDA ${CUDA_FOUND})
 
 file (GENERATE
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/config.defs" 
-  CONTENT "#define CONTRA_CUDA_LIBRARY \"$<TARGET_FILE:contra_cuda_static>\"\n"
+  CONTENT "#define CONTRA_CUDA_LIBRARY \"$<TARGET_FILE:contra_cuda>\"\n"
   )
 
 

@@ -16,12 +16,6 @@ struct KernelData {
   CUmodule Module;
 };
 
-struct ReductionlData {
-  CUfunction InitFunction;
-  CUmodule *Module;
-};
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // Runtime definition
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,7 +27,6 @@ struct cuda_runtime_t {
   std::vector<std::string> Ptxs;
 
   std::map<std::string, KernelData> Kernels;
-  std::map<std::string, ReductionlData> Reductions;
 
   void init(int);
   void shutdown();

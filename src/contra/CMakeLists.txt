@@ -28,7 +28,6 @@ if (CUDA_FOUND)
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_rt.cpp )
   
   target_sources( contra_cuda        PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_rt.cu)
-  target_sources( contra_cuda_static PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_rt.cu)
 endif()
 if (Kokkos_FOUND)
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/kokkos.cpp )

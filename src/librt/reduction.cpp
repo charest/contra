@@ -7,6 +7,9 @@ extern "C" {
 //==============================================================================
 // Reduction ops for real
 //==============================================================================
+
+//--------------------------------------
+// Sum
 void contra_sum_apply_real(real_t * lhs, real_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -38,6 +41,8 @@ void contra_sum_fold_real(real_t * rhs1, real_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Sub
 void contra_sub_apply_real(real_t * lhs, real_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -69,6 +74,8 @@ void contra_sub_fold_real(real_t * rhs1, real_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Mul
 void contra_mul_apply_real(real_t * lhs, real_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -100,6 +107,8 @@ void contra_mul_fold_real(real_t * rhs1, real_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Div
 void contra_div_apply_real(real_t * lhs, real_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -131,6 +140,8 @@ void contra_div_fold_real(real_t * rhs1, real_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Min
 void contra_min_apply_real(real_t * lhs, real_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -166,6 +177,8 @@ void contra_min_fold_real(real_t * rhs1, real_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Max
 void contra_max_apply_real(real_t * lhs, real_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -204,6 +217,9 @@ void contra_max_fold_real(real_t * rhs1, real_t * rhs2, bool * exclusive)
 //==============================================================================
 // Reduction ops for int
 //==============================================================================
+
+//--------------------------------------
+// Sum
 void contra_sum_apply_int(int_t * lhs, int_t * rhs, bool * exclusive)
 {
   if (*exclusive)
@@ -219,6 +235,8 @@ void contra_sum_fold_int(int_t * rhs1, int_t * rhs2, bool * exclusive)
     __sync_fetch_and_add(rhs1, *rhs2);
 }
 
+//--------------------------------------
+// Sub
 void contra_sub_apply_int(int_t * lhs, int_t * rhs, bool * exclusive)
 {
   if (*exclusive)
@@ -234,6 +252,8 @@ void contra_sub_fold_int(int_t * rhs1, int_t * rhs2, bool * exclusive)
     __sync_fetch_and_add(rhs1, *rhs2);
 }
 
+//--------------------------------------
+// Mul
 void contra_mul_apply_int(int_t * lhs, int_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -263,6 +283,8 @@ void contra_mul_fold_int(int_t * rhs1, int_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Div
 void contra_div_apply_int(int_t * lhs, int_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -292,6 +314,8 @@ void contra_div_fold_int(int_t * rhs1, int_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Min
 void contra_min_apply_int(int_t * lhs, int_t * rhs, bool * exclusive)
 {
   if (*exclusive) {
@@ -322,6 +346,8 @@ void contra_min_fold_int(int_t * rhs1, int_t * rhs2, bool * exclusive)
   }
 }
 
+//--------------------------------------
+// Max
 void contra_max_apply_int(int_t * lhs, int_t * rhs, bool * exclusive)
 {
   if (*exclusive) {

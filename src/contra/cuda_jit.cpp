@@ -104,7 +104,7 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
 
   } // Function
 
-  M->print(outs(), nullptr); outs() << "\n";
+  //M->print(outs(), nullptr); outs() << "\n";
   auto KernelStr = compileKernel(
       *M,
       TargetMachine_);

@@ -99,16 +99,11 @@ find_package(CUDA)
 if (CUDA_FOUND)
   enable_language(CUDA)
   
-  add_library( contra_cuda )
+  add_library( contra_cuda STATIC )
+  target_compile_options(contra_cuda PUBLIC -lib -rdc=true )
   target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
-
-  add_library( contra_cuda_static STATIC )
-  target_compile_options(contra_cuda_static PUBLIC -lib -rdc=true )
-  target_include_directories(contra_cuda_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_include_directories(contra_cuda_static PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
   
-  target_link_libraries(contra PUBLIC contra_cuda )
   target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
   target_include_directories(contra PUBLIC ${CUDA_INCLUDE_DIRS})
   

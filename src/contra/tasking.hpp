@@ -267,6 +267,7 @@ protected:
   // reductions
   llvm::Constant* initReduce(llvm::Type*, ReductionType);
   llvm::Value* applyReduce(llvm::Module&, llvm::Value*, llvm::Value*, ReductionType);
+  llvm::Value* foldReduce(llvm::Module&, llvm::Value*, llvm::Value*, ReductionType);
 
 };
 

@@ -545,4 +545,68 @@ Value* AbstractTasker::applyReduce(
   return nullptr;
 }
 
+//==============================================================================
+Value* AbstractTasker::foldReduce(
+    Module& TheModule,
+    Value* LhsV,
+    Value* RhsV,
+    ReductionType Op)
+{
+  auto VarT = LhsV->getType();
+  // Floating point
+  if (VarT->isFloatingPointTy()) {
+    switch (Op) {
+    case ReductionType::Add:
+    case ReductionType::Sub:
+      return Builder_.CreateFAdd(LhsV, RhsV, "addtmp");
+    case ReductionType::Mult:
+    case ReductionType::Div:
+      return Builder_.CreateFMul(LhsV, RhsV, "multmp");
+    case ReductionType::Min:
+      return TheHelper_.callFunction(
+          TheModule,
+          "fmin",
+          RealType_,
+          {LhsV, RhsV});
+    case ReductionType::Max:
+      return TheHelper_.callFunction(
+          TheModule,
+          "fmax",
+          RealType_,
+          {LhsV, RhsV});
+    default :
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+  }
+  // Integer
+  else {
+    switch (Op) {
+    case ReductionType::Add:
+    case ReductionType::Sub:
+      return Builder_.CreateAdd(LhsV, RhsV, "addtmp");
+    case ReductionType::Mult:
+    case ReductionType::Div:
+      return Builder_.CreateMul(LhsV, RhsV, "multmp");
+    case ReductionType::Min:
+      return TheHelper_.callFunction(
+          TheModule,
+          "imin",
+          IntType_,
+          {LhsV, RhsV});
+    case ReductionType::Max:
+      return TheHelper_.callFunction(
+          TheModule,
+          "imax",
+          IntType_,
+          {LhsV, RhsV});
+    default:
+      std::cerr << "Unsupported reduction op." << std::endl;;
+      abort();
+    }
+  }
+    
+  return nullptr;
+}
+
 } // namespace

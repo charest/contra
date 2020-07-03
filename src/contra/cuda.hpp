@@ -17,19 +17,23 @@ class CudaReduceInfo : public AbstractReduceInfo {
   std::vector<llvm::Type*> VarTypes_;
   std::vector<ReductionType> ReduceTypes_;
   
-  llvm::FunctionType* InitT_ = nullptr;
   std::string InitN_;
+  std::string ApplyN_;
+  std::string FoldN_;
 
 public:
 
   CudaReduceInfo(
       const std::vector<llvm::Type*> & VarTypes,
       const std::vector<ReductionType> & ReduceTypes,
-      llvm::Function* Init) :
+      const std::string & InitN,
+      const std::string & ApplyN,
+      const std::string & FoldN) :
     VarTypes_(VarTypes),
     ReduceTypes_(ReduceTypes),
-    InitT_(Init->getFunctionType()),
-    InitN_(Init->getName())
+    InitN_(InitN),
+    ApplyN_(ApplyN),
+    FoldN_(FoldN)
   {}
 
   auto getNumReductions() const { return VarTypes_.size(); }
@@ -38,8 +42,9 @@ public:
   auto getVarType(unsigned i) const { return VarTypes_[i]; }
   auto getReduceOp(unsigned i) const { return ReduceTypes_[i]; }
 
-  auto getInitType() const { return InitT_; }
   const auto & getInitName() const { return InitN_; }
+  const auto & getApplyName() const { return ApplyN_; }
+  const auto & getFoldName() const { return FoldN_; }
 
 };
 

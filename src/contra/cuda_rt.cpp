@@ -599,7 +599,7 @@ void contra_cuda_accessor_free(contra_cuda_accessor_t * acc)
   err = cudaFree(acc->offsets);
   check(err, "cudaFree");
 }
-
+  
 //==============================================================================
 // prepare a reduction
 //==============================================================================
@@ -615,107 +615,102 @@ void contra_cuda_prepare_reduction(
 }
 
 //==============================================================================
+// Get a global symbol
+//==============================================================================
+void contra_cuda_get_symbol(
+    const char * name,
+    CUmodule * CuModule,
+    void * ptr,
+    size_t size)
+{
+    
+  CUdeviceptr dev_ptr;
+  auto err = cuModuleGetGlobal(
+    &dev_ptr,
+    0,
+    *CuModule,
+    name);
+  check(err);
+
+  auto cuerr = cudaMemcpy(
+      ptr,
+      (const void *)dev_ptr,
+      size,
+      cudaMemcpyDeviceToHost);
+  check(cuerr, "cudaMemcpyDeviceToHost");
+}
+
+//==============================================================================
 // launch a kernel
 //==============================================================================
 void contra_cuda_launch_reduction(
     char * kernel_name,
     char * init_name,
+    char * apply_name,
+    char * fold_name,
     contra_index_space_t * is,
     void ** dev_indata,
-    void * outdata)
+    void * outdata,
+    size_t data_size)
 {
 
-  ReductionlData* Reduction;
   KernelData* Kernel;
-
-  init_t hptr;
-  
-  //------------------------------------
-  // Reductions already setup
-  auto it = CudaRuntime.Reductions.find(kernel_name);
-  if (it != CudaRuntime.Reductions.end()) {
-    Reduction = &it->second;
+  auto it = CudaRuntime.Kernels.find(kernel_name);
+  if (it != CudaRuntime.Kernels.end()) {
+    Kernel = &it->second;
   }
-  //------------------------------------
-  // Need to sort them out first
   else {
-
-    auto it = CudaRuntime.Kernels.find(kernel_name);
-    if (it != CudaRuntime.Kernels.end()) {
-      Kernel = &it->second;
-    }
-    else {
-      std::cerr << "Could not find kernel '" << kernel_name << "'. Reduction "
-        << "functions should be packed with it." << std::endl; 
-      abort();
-    }
-
-    auto res = CudaRuntime.Reductions.emplace(
-        kernel_name,
-        ReductionlData{} );
-    Reduction = &res.first->second;
-
-    auto err = cuModuleGetFunction(&Reduction->InitFunction, Kernel->Module, init_name);
-    check(err);
-
-
-    CUdeviceptr dptr;
-    size_t bytes;
-    auto cuerr = cuModuleGetGlobal(
-      &dptr,
-      &bytes,
-      Kernel->Module,
-      "test");
-    check(cuerr);
-
-    auto er = cudaMemcpy((void*)(&hptr), (const void *)dptr, bytes, cudaMemcpyDeviceToHost);
-    check(er, "cudaMemcpyDeviceToHost");
+    std::cerr << "Could not find kernel '" << kernel_name << "'. Reduction "
+      << "functions should be packed with it." << std::endl; 
+    abort();
   }
 
-  //void * dev_init;
-  //auto err = cudaGetSymbolAddress(&dev_init, "test");
-  //check(err, "cudaSymbolAddress");
+  // get device pointers
+  init_t init_ptr;
+  contra_cuda_get_symbol(
+    init_name,
+    &Kernel->Module,
+    &init_ptr,
+    sizeof(init_t));
 
-#if 0
-  auto err = cudaMalloc(&dev_init, sizeof(init_t));
-  std::cout << "device ptr " << dev_init << std::endl;
+  apply_t apply_ptr;
+  contra_cuda_get_symbol(
+    apply_name,
+    &Kernel->Module,
+    &apply_ptr,
+    sizeof(apply_t));
 
-  void* params[] = {&dev_init};
+  fold_t fold_ptr;
+  contra_cuda_get_symbol(
+    fold_name,
+    &Kernel->Module,
+    &fold_ptr,
+    sizeof(fold_t));
 
-  auto cuerr = cuLaunchKernel(
-      Reduction->InitFunction,
-      1, 1, 1,
-      1, 1, 1,
-      0,
-      nullptr,
-      params,
-      nullptr);
-  check(cuerr);
- 
-  cudaError_t cudaerr = cudaDeviceSynchronize();
-  check(cudaerr, "Init reduction launch");
-#endif
-
+  // some dimensinos
   size_t size = is->size();
   size_t block_size = 1;
-  size_t data_size = sizeof(int_t) + sizeof(real_t);
 
+  // block level storage for result
   void * dev_outdata;
   cudaMalloc(&dev_outdata, data_size); // num blocks
   size_t bytes = data_size * size;
   
+  // Get the reduction function
   CUfunction ReduceFunction;
   auto err = cuModuleGetFunction(&ReduceFunction, Kernel->Module, "reduce6");
   check(err);
-  std::cout << "HERHREHREHER" << std::endl;
 
+  // launch the final reduction
   void * params[] = {
     dev_indata,
     &dev_outdata,
     &data_size,
     &size,
     &block_size,
-    &hptr
+    &init_ptr,
+    &apply_ptr,
+    &fold_ptr
   };
 
   err = cuLaunchKernel(
@@ -728,14 +723,12 @@ void contra_cuda_launch_reduction(
       nullptr);
   check(err);
   
-  auto cudaerr = cudaDeviceSynchronize();
-  check(cudaerr, "Reduction launch");
+  auto cuerr = cudaDeviceSynchronize();
+  check(cuerr, "Reduction launch");
 
+  // copy over data
   cudaMemcpy(outdata, dev_outdata, data_size, cudaMemcpyDeviceToHost); 
   cudaFree(dev_outdata);
-
-  //err = cudaFree(dev_init);
-  //check(err, "cudaFree");
 
 }
 
