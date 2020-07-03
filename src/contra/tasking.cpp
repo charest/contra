@@ -497,17 +497,9 @@ Value* AbstractTasker::applyReduce(
     case ReductionType::Div:
       return Builder_.CreateFDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
-      return TheHelper_.callFunction(
-          TheModule,
-          "fmin",
-          RealType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMinimum(LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.callFunction(
-          TheModule,
-          "fmax",
-          RealType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMaximum(LhsV, RhsV, "max");
     default :
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -525,17 +517,9 @@ Value* AbstractTasker::applyReduce(
     case ReductionType::Div:
       return Builder_.CreateSDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
-      return TheHelper_.callFunction(
-          TheModule,
-          "imin",
-          IntType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMinimum(LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.callFunction(
-          TheModule,
-          "imax",
-          IntType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMaximum(LhsV, RhsV, "max");
     default:
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -563,17 +547,9 @@ Value* AbstractTasker::foldReduce(
     case ReductionType::Div:
       return Builder_.CreateFMul(LhsV, RhsV, "multmp");
     case ReductionType::Min:
-      return TheHelper_.callFunction(
-          TheModule,
-          "fmin",
-          RealType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMinimum(LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.callFunction(
-          TheModule,
-          "fmax",
-          RealType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMaximum(LhsV, RhsV, "max");
     default :
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -589,17 +565,9 @@ Value* AbstractTasker::foldReduce(
     case ReductionType::Div:
       return Builder_.CreateMul(LhsV, RhsV, "multmp");
     case ReductionType::Min:
-      return TheHelper_.callFunction(
-          TheModule,
-          "imin",
-          IntType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMinimum(LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.callFunction(
-          TheModule,
-          "imax",
-          IntType_,
-          {LhsV, RhsV});
+      return TheHelper_.createMaximum(LhsV, RhsV, "max");
     default:
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();

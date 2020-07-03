@@ -94,6 +94,8 @@ public:
   CallInst* memCopy(Value* Dest, Value* Src, Value* Size);
   CallInst* memSet(Value* Dest, Value* Src, unsigned);
 
+  Value* createMinimum(Value*, Value*, const std::string & = "");
+  Value* createMaximum(Value*, Value*, const std::string & = "");
 };
 
 } // namespace

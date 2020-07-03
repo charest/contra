@@ -784,10 +784,6 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     const std::vector<ReductionType> & ReduceTypes)
 {
 
-
-  // generate id
-  auto RedOpId = makeReductionId();
-
   // get var types
 
   // get data size
@@ -853,7 +849,7 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     
     // device pointer
     ApplyPtrN = FunN + "_ptr";
-    auto InitV = new GlobalVariable(
+    new GlobalVariable(
         TheModule, 
         FunT->getPointerTo(),
         false,
@@ -931,7 +927,7 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     
     // device pointer
     FoldPtrN = FunN + "_ptr";
-    auto InitV = new GlobalVariable(
+    new GlobalVariable(
         TheModule, 
         FunT->getPointerTo(),
         false,
@@ -990,7 +986,7 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
   
     // device pointer
     InitPtrN = InitN + "_ptr";
-    auto InitV = new GlobalVariable(
+    new GlobalVariable(
         TheModule, 
         InitT->getPointerTo(),
         false,

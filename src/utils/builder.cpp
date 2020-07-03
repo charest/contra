@@ -331,4 +331,83 @@ CallInst* BuilderHelper::memSet(
   return Builder_.CreateMemSet(Dest, Src, Size, MaybeAlign(1));
 }
 
+//==============================================================================
+// create a minimum instruction
+//==============================================================================
+Value* BuilderHelper::createMinimum(
+    Value* LHS,
+    Value* RHS,
+    const std::string & Name)
+{
+  assert(LHS->getType() == RHS->getType());
+  
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+
+  auto Ty = LHS->getType();
+  auto ResultA = createEntryBlockAlloca(Ty, "min");
+
+  Value* CondV = nullptr;
+  if (Ty->isFloatingPointTy())
+    CondV = Builder_.CreateFCmpULT(LHS, RHS, "cmptmp");
+  else if (Ty->isIntegerTy())
+    CondV = Builder_.CreateICmpSLT(LHS, RHS, "cmptmp");
+
+  // Create blocks for the then and else cases.  Insert the 'then' block at the
+  // end of the function.
+  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
+  BasicBlock *ElseBB = BasicBlock::Create(TheContext_, "else");
+  BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
+  Builder_.CreateCondBr(CondV, ThenBB, ElseBB);
+  Builder_.SetInsertPoint(ThenBB);
+  Builder_.CreateStore(LHS, ResultA); // then
+  Builder_.CreateBr(MergeBB);
+  TheFunction->getBasicBlockList().push_back(ElseBB);
+  Builder_.SetInsertPoint(ElseBB);
+  Builder_.CreateStore(RHS, ResultA); // else
+  TheFunction->getBasicBlockList().push_back(MergeBB);
+  Builder_.CreateBr(MergeBB);
+  Builder_.SetInsertPoint(MergeBB);
+
+  return Builder_.CreateLoad(Ty, ResultA);
+}
+
+//==============================================================================
+// create a minimum instruction
+//==============================================================================
+Value* BuilderHelper::createMaximum(
+    Value* LHS,
+    Value* RHS,
+    const std::string & Name)
+{
+  assert(LHS->getType() == RHS->getType());
+  
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+
+  auto Ty = LHS->getType();
+  auto ResultA = createEntryBlockAlloca(Ty, "max");
+
+  Value* CondV = nullptr;
+  if (Ty->isFloatingPointTy())
+    CondV = Builder_.CreateFCmpUGT(LHS, RHS, "cmptmp");
+  else if (Ty->isIntegerTy())
+    CondV = Builder_.CreateICmpSGT(LHS, RHS, "cmptmp");
+
+  // Create blocks for the then and else cases.  Insert the 'then' block at the
+  // end of the function.
+  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
+  BasicBlock *ElseBB = BasicBlock::Create(TheContext_, "else");
+  BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
+  Builder_.CreateCondBr(CondV, ThenBB, ElseBB);
+  Builder_.SetInsertPoint(ThenBB);
+  Builder_.CreateStore(LHS, ResultA); // then
+  Builder_.CreateBr(MergeBB);
+  TheFunction->getBasicBlockList().push_back(ElseBB);
+  Builder_.SetInsertPoint(ElseBB);
+  Builder_.CreateStore(RHS, ResultA); // else
+  TheFunction->getBasicBlockList().push_back(MergeBB);
+  Builder_.CreateBr(MergeBB);
+  Builder_.SetInsertPoint(MergeBB);
+
+  return Builder_.CreateLoad(Ty, ResultA);
+}
 } // namespace
