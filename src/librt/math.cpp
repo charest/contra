@@ -22,7 +22,7 @@ Function *installDoubleFun(LLVMContext & TheContext, Module & TheModule,
       llvmType<real_t>(TheContext),
       llvmType<real_t>(TheContext) );
 
-  auto Fun = Function::Create(FunType, Function::InternalLinkage,
+  auto Fun = Function::Create(FunType, Function::ExternalLinkage,
       name, TheModule);
   return Fun;
 }
@@ -73,7 +73,7 @@ Function *CMax::install(LLVMContext & TheContext, Module & TheModule)
   std::vector<Type*> Args = {RealType, RealType};
   auto FunType = FunctionType::get( RealType, Args, false );
 
-  auto Fun = Function::Create(FunType, Function::InternalLinkage,
+  auto Fun = Function::Create(FunType, Function::ExternalLinkage,
       Name, TheModule);
   return Fun;
 }
@@ -97,7 +97,7 @@ Function *CMin::install(LLVMContext & TheContext, Module & TheModule)
   std::vector<Type*> Args = {RealType, RealType};
   auto FunType = FunctionType::get( RealType, Args, false );
 
-  auto Fun = Function::Create(FunType, Function::InternalLinkage,
+  auto Fun = Function::Create(FunType, Function::ExternalLinkage,
       Name, TheModule);
   return Fun;
 }

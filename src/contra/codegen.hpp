@@ -60,6 +60,8 @@ class CodeGen : public RecursiveAstVisiter {
   std::forward_list< VariableTable > VariableTable_;
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionTable_;
 
+  std::map< std::vector<llvm::Type*>, llvm::StructType* > StructTable_;
+
   // defined types
   Type* I64Type_ = nullptr;
   Type* F64Type_ = nullptr;
@@ -205,22 +207,7 @@ private:
   // Type interface
   //============================================================================
 
-  Type* getLLVMType(const VariableType & Ty)
-  {
-    if (Ty.isStruct()) {
-      std::vector<llvm::Type*> Members;
-      for (const auto & M : Ty.getMembers())
-        Members.emplace_back( getLLVMType(M) );
-      return llvm::StructType::create(Members, "struct.t");
-    }
-    auto VarT = TypeTable_.at(Ty.getBaseType()->getName());
-    if (Ty.isArray()) return ArrayType_;
-    if (Ty.isRange()) return Tasker_->getRangeType(VarT);
-    if (Ty.isField()) return Tasker_->getFieldType(VarT);
-    if (Ty.isFuture()) return Tasker_->getFutureType(VarT);
-    if (Ty.isPartition()) return Tasker_->getPartitionType(VarT);
-    return VarT; 
-  }
+  Type* getLLVMType(const VariableType & Ty);
   
   Type* getLLVMType(const Identifier & Id)
   { return TypeTable_.at(Id.getName()); }
