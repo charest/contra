@@ -6,6 +6,7 @@
 #include "utils/llvm_utils.hpp"
 
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -41,7 +42,7 @@ CudaJIT::CudaJIT(BuilderHelper & TheHelper) :
   Trip.setOS(Triple::CUDA);
   TargetMachine_ = Tgt->createTargetMachine(
         Trip.getTriple(),
-        "sm_35",
+        "sm_20",
         "",
         TargetOptions(),
         None,
@@ -87,6 +88,14 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
 
           if (CallF->getName().str() == "print")
             NewI = replacePrint(*M, CallI);
+          else if (CallF->getName().str() == "sqrt")
+            NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_sqrt_rn_d); 
+          else if (CallF->getName().str() == "fabs")
+            NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_fabs_d);
+          else if (CallF->getName().str() == "fmax")
+            NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_fmax_d);
+          else if (CallF->getName().str() == "fmin")
+            NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_fmin_d);
 
         } // call
         // Done Replacements
@@ -199,5 +208,18 @@ CallInst* CudaJIT::replacePrint(Module &M, CallInst* CallI) {
   auto TmpB = IRBuilder<>(TheContext_);
   return TmpB.CreateCall(PrintF, ArgVs, CallI->getName());
 }
+
+//==============================================================================
+// Helper to replace math
+//==============================================================================
+CallInst* CudaJIT::replaceIntrinsic(Module &M, CallInst* CallI, unsigned Intr)
+{
+  std::vector<Value*> ArgVs;
+  for (auto & Arg : CallI->args()) ArgVs.push_back(Arg.get());
+  auto IntrinsicF = Intrinsic::getDeclaration(&M, Intr);
+  auto TmpB = IRBuilder<>(TheContext_);
+  return TmpB.CreateCall(IntrinsicF, ArgVs, CallI->getName());
+}
+
 
 } // namepsace

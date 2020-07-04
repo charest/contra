@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <vector>
 
 //==============================================================================
@@ -113,22 +115,51 @@ void cuda_runtime_t::link(CUmodule &CuModule) {
 
   // link any ptx
   for (auto & ptx : Ptxs) {
+
+    // compile
     err = cuLinkAddData(
         CuLinkState,
         CU_JIT_INPUT_PTX,
         (void*)ptx.c_str(),
         ptx.size()+1,
         0, 0, 0, 0);
-    check(err);
-  }
 
+    // check for errors
+    if(err != CUDA_SUCCESS){
+      const char* s;
+      cuGetErrorString(err, &s);
+      std::cerr << "cuLinkAddData error: " << s << std::endl;
+      std::cerr << std::endl;
+      std::cerr << error_log << std::endl;
+      std::cerr << std::endl;
+      std::istringstream iss(ptx); 
+      size_t cnt = 1;
+      for (std::string line; std::getline(iss, line); )
+      {
+        std::cerr << std::setw(6) << cnt++ << " - " << line << std::endl;
+      }
+      std::cerr << std::endl;
+      abort();
+    } // error report
+
+  } // ptx
 
   //------------------------------------
   // finish link
   void* cubin; 
   size_t cubin_size; 
   err = cuLinkComplete(CuLinkState, &cubin, &cubin_size);
-  check(err);
+    
+  // check for errors
+  if(err != CUDA_SUCCESS){
+    const char* s;
+    cuGetErrorString(err, &s);
+    std::cerr << "cuLinkComplete error: " << s << std::endl;
+    std::cerr << std::endl;
+    std::cerr << error_log << std::endl;
+    std::cerr << std::endl;
+    abort();
+  } // error report
 
   err = cuModuleLoadData(&CuModule, cubin);
   check(err);
@@ -507,8 +538,9 @@ contra_cuda_partition_t contra_cuda_partition2dev(
   
   auto part_size = part->size;
   void* indices = nullptr;
-  if (part->indices)
+  if (part->indices) {
     indices = contra_cuda_2dev(part->indices, part_size*int_size);
+  }
 
   (*info)->register_partition(host_is, part);
 
@@ -553,16 +585,15 @@ contra_cuda_accessor_t contra_cuda_field2dev(
   void* dev_data = nullptr;
   auto data_size = fld->data_size;
   
-  if (part->indices) {
+  if (auto indices = part->indices) {
     auto size = part->size;
     auto bytes = data_size * size;
     auto src = static_cast<byte_t*>(fld->data);
     auto tmp = new byte_t[bytes];
     auto dest = tmp;
     for (int_t i=0; i<size; ++i) {
-      memcpy(dest, src, data_size);
+      memcpy(dest, src+indices[i]*data_size, data_size);
       dest += data_size;
-      src += data_size;
     }
     dev_data = contra_cuda_2dev(tmp, bytes);
     delete [] tmp;

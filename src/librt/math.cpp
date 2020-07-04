@@ -20,7 +20,8 @@ Function *installDoubleFun(LLVMContext & TheContext, Module & TheModule,
 {
   auto FunType = FunctionType::get(
       llvmType<real_t>(TheContext),
-      llvmType<real_t>(TheContext) );
+      llvmType<real_t>(TheContext),
+      false);
 
   auto Fun = Function::Create(FunType, Function::ExternalLinkage,
       name, TheModule);

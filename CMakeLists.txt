@@ -105,6 +105,8 @@ if (CUDA_FOUND)
   target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
   
   target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
+  #target_link_libraries(contra PUBLIC /projects/opt/centos7/cuda/10.2/lib64/libnvrtc-builtins.so.10.2)
+  #target_link_libraries(contra PUBLIC /projects/opt/centos7/cuda/10.2/lib64/libnvrtc.so.10.2.89)
   target_include_directories(contra PUBLIC ${CUDA_INCLUDE_DIRS})
   
   list(APPEND SUPPORTED_BACKENDS "cuda")
