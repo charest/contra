@@ -1066,6 +1066,13 @@ void CodeGen::visit(IfStmtAST & e) {
   }
 
   Value *CondV = runExprVisitor(*e.getCondExpr());
+  CondV = TheHelper_.getAsValue(CondV);
+  auto CondT = CondV->getType();
+  if (CondT->isIntegerTy()) {
+    auto ZeroC = llvmValue(TheContext_, CondT, 0);
+    CondV = Builder_.CreateICmpNE(CondV, ZeroC, "cmptmp");
+  }
+
 
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
 

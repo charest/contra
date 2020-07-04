@@ -643,8 +643,10 @@ void Analyzer::visit(BreakStmtAST&)
 void Analyzer::visit(IfStmtAST& e)
 {
   auto CondType = runExprVisitor(*e.getCondExpr());
-  if (CondType != BoolType_ )
-    THROW_NAME_ERROR( "If condition must result in boolean type.", e.getCondExpr()->getLoc() );
+  if (CondType != BoolType_ && CondType != I64Type_)
+    THROW_NAME_ERROR(
+        "If condition must result in boolean or integer type.",
+        e.getCondExpr()->getLoc() );
 
   createScope();
   for ( const auto & stmt : e.getThenExprs() ) runStmtVisitor(*stmt);

@@ -199,7 +199,7 @@ std::ostream & Lexer::barf(std::ostream& out, const LocationRange & Loc)
   if (BegLine == EndLoc.getLine()) {
     auto EndCol = EndLoc.getCol();
     auto Len = std::max(EndCol-1 - PrevCol-1, 0);
-    out << std::string(Len, '~');
+    out << std::string(Len-1, '~');
   }
   out << std::endl;
   return out;
