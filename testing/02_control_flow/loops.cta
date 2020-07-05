@@ -1,19 +1,19 @@
 fn main() {
 
-##  # this is a regular for loop
-##  for i = 1:2
-##    print("For loop with counter = %d\n", i)
-##  
-##
-##  # should not execute
-##  for i = 2:1 {
-##    print("Should not execute\n")
-##  }
-##  # this is a for loop with a larger counter
-##  for i = 1:4:2 {
-##    print("For loop step by 2 with counter = %d\n", i)
-##  }
-##
+  # this is a regular for loop
+  for i = 1:2
+    print("For loop with counter = %d\n", i)
+  
+
+  # should not execute
+  for i = 2:1 {
+    print("Should not execute\n")
+  }
+  # this is a for loop with a larger counter
+  for i = 1:4:2 {
+    print("For loop step by 2 with counter = %d\n", i)
+  }
+
   # this is a nested for loop
   k = 1
   for i = 1:2
