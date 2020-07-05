@@ -56,7 +56,6 @@ void cuda_runtime_t::init(int dev_id) {
   cudaDeviceProp props;
   cudaGetDeviceProperties(&props, dev_id);
   MaxThreadsPerBlock = props.maxThreadsPerBlock;
-  MaxThreadsPerBlock = 256;
 
   err = cuCtxCreate(&CuContext, 0, CuDevice);
   check(err);
