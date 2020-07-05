@@ -1868,11 +1868,22 @@ void CodeGen::visit(IndexTaskAST& e)
     auto ReturnType = VariableType(ReduceTypes);
     ResultT = getLLVMType(ReturnType);
 
+    auto ModulePtr = (DeviceJIT_) ?
+      new Module("temporary module", TheContext_) : TheModule_.get(); 
+
     RedopInfo = Tasker_->createReductionOp(
-          *TheModule_,
+          *ModulePtr,
           TaskN,
           ReduceTs,
           ReduceOps);
+
+    if (DeviceJIT_) {
+      utils::insert(*ModulePtr, *TheModule_);
+      utils::insert(*ModulePtr, *OldModule);
+      delete ModulePtr;
+    }
+
+
   }
 
   //----------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 
 #include <cuda.h>
 
+#include <iostream>
 #include <map>
 #include <vector>
 
@@ -28,11 +29,27 @@ struct cuda_runtime_t {
 
   std::map<std::string, KernelData> Kernels;
 
+  size_t MaxThreadsPerBlock = 0;
+
   void init(int);
   void shutdown();
 
   void link(CUmodule &);
   void link_start();
+  
+  std::pair<size_t, size_t> threadDims(size_t NumThreads)
+  {
+    size_t NumBlocks = 1;
+    size_t ThreadsPerBlock = NumThreads;
+
+    if (NumThreads > MaxThreadsPerBlock) {
+      ThreadsPerBlock = MaxThreadsPerBlock;
+      NumBlocks = NumThreads / ThreadsPerBlock;
+      if (NumThreads % ThreadsPerBlock) NumBlocks++;
+    }
+
+    return {NumBlocks, ThreadsPerBlock};
+  }
 
 };
 

@@ -48,10 +48,11 @@ tsk main() {
 
   # input parameters
   num_parts = 3
-  num_cells = 100*3
+  num_cells = 100*num_parts
   num_ghost = 1
   f64 xleft = 0
   f64 xright = 1
+  do_output = 1
 
   f64 cfl = 1.0
   f64 max_time = 0.2
@@ -351,14 +352,16 @@ tsk main() {
   #============================================================================
   # output
   
-  foreach i = 0:0 {
+  if do_output {
+    foreach i = 0:0 {
  
-    print("--BEGIN SOLUTION--\n")
-    print("i x d v p e\n")
-    for j = cells 
-      print("%d %e %e %e %e %e\n", j, centroids[j], density[j], velocity[j], pressure[j], energy[j])
-    print("--END SOLUTION--\n")
+      print("--BEGIN SOLUTION--\n")
+      print("i x d v p e\n")
+      for j = cells 
+        print("%d %e %e %e %e %e\n", j, centroids[j], density[j], velocity[j], pressure[j], energy[j])
+      print("--END SOLUTION--\n")
 
+    }
   }
 
 

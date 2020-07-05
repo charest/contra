@@ -17,23 +17,37 @@ class CudaReduceInfo : public AbstractReduceInfo {
   std::vector<llvm::Type*> VarTypes_;
   std::vector<ReductionType> ReduceTypes_;
   
-  std::string InitN_;
-  std::string ApplyN_;
-  std::string FoldN_;
+  std::string InitN_,  InitPtrN_;
+  llvm::FunctionType * InitT_;
+
+  std::string ApplyN_, ApplyPtrN_;
+  llvm::FunctionType * ApplyT_;
+
+  std::string FoldN_,  FoldPtrN_;
+  llvm::FunctionType * FoldT_;
 
 public:
 
   CudaReduceInfo(
       const std::vector<llvm::Type*> & VarTypes,
       const std::vector<ReductionType> & ReduceTypes,
-      const std::string & InitN,
-      const std::string & ApplyN,
-      const std::string & FoldN) :
+      llvm::Function * InitF,
+      const std::string & InitPtrN,
+      llvm::Function * ApplyF,
+      const std::string & ApplyPtrN,
+      llvm::Function * FoldF,
+      const std::string & FoldPtrN) :
     VarTypes_(VarTypes),
     ReduceTypes_(ReduceTypes),
-    InitN_(InitN),
-    ApplyN_(ApplyN),
-    FoldN_(FoldN)
+    InitN_(InitF->getName()),
+    InitPtrN_(InitPtrN),
+    InitT_(InitF->getFunctionType()),
+    ApplyN_(ApplyF->getName()),
+    ApplyPtrN_(ApplyPtrN),
+    ApplyT_(ApplyF->getFunctionType()),
+    FoldN_(FoldF->getName()),
+    FoldPtrN_(FoldPtrN),
+    FoldT_(FoldF->getFunctionType())
   {}
 
   auto getNumReductions() const { return VarTypes_.size(); }
@@ -43,8 +57,16 @@ public:
   auto getReduceOp(unsigned i) const { return ReduceTypes_[i]; }
 
   const auto & getInitName() const { return InitN_; }
+  const auto & getInitPtrName() const { return InitPtrN_; }
+  auto getInitType() const { return InitT_; }
+
   const auto & getApplyName() const { return ApplyN_; }
+  const auto & getApplyPtrName() const { return ApplyPtrN_; }
+  auto getApplyType() const { return ApplyT_; }
+
   const auto & getFoldName() const { return FoldN_; }
+  const auto & getFoldPtrName() const { return FoldPtrN_; }
+  auto getFoldType() const { return FoldT_; }
 
 };
 
@@ -66,6 +88,7 @@ class CudaTasker : public AbstractTasker {
   
   struct TaskEntry {
     llvm::AllocaInst* ResultAlloca = nullptr;
+    llvm::BasicBlock* MergeBlock = nullptr;
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;

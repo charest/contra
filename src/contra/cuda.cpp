@@ -137,7 +137,7 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
     llvm::Type* ResultT)
 {
 
-  startTask();
+  auto & TaskI = startTask();
 
   //----------------------------------------------------------------------------
   // Create function header
@@ -148,6 +148,9 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
     if (isRange(ArgT)) ArgT = IndexPartitionType_;
     WrapperArgTs.emplace_back(ArgT);
   }
+    
+  WrapperArgTs.emplace_back(IntType_);
+  WrapperArgNs.emplace_back("size");
 
   if (ResultT) {
     WrapperArgTs.emplace_back(VoidPtrType_);
@@ -196,14 +199,45 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
   
   //----------------------------------------------------------------------------
   // determine my index
-  
+ 
+  // tid = threadIdx.x + blockIdx.x * blockDim.x;
   auto TidF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::nvvm_read_ptx_sreg_tid_x);
   Value* IndexV = Builder_.CreateCall(TidF);
+  auto BidF = Intrinsic::getDeclaration(
+      &TheModule,
+      Intrinsic::nvvm_read_ptx_sreg_ctaid_x);
+  Value* BlockIdV = Builder_.CreateCall(BidF);
+  auto BdimF = Intrinsic::getDeclaration(
+      &TheModule,
+      Intrinsic::nvvm_read_ptx_sreg_ntid_x);
+  Value* BlockDimV = Builder_.CreateCall(BdimF);
+
+  Value* TmpV = Builder_.CreateMul(BlockIdV, BlockDimV);
+  IndexV = Builder_.CreateAdd(IndexV, TmpV);
+
+  // cast and store
   IndexV = TheHelper_.createCast(IndexV, IntType_);
   auto IndexA = TheHelper_.createEntryBlockAlloca(WrapperF, IntType_, "index");
   Builder_.CreateStore(IndexV, IndexA);
+  
+  //----------------------------------------------------------------------------
+  // If tid < total size
+
+  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
+  TaskI.MergeBlock = BasicBlock::Create(TheContext_, "ifcont");
+
+  auto IndexSizeA = WrapperArgAs[TaskArgNs.size()];
+  auto IndexSizeV = TheHelper_.load(IndexSizeA);
+
+  IndexV = TheHelper_.load(IndexA); 
+  auto CondV = Builder_.CreateICmpSLT(IndexV, IndexSizeV, "threadcond");
+  Builder_.CreateCondBr(CondV, ThenBB, TaskI.MergeBlock);
+  
+  // Emit then value.
+  Builder_.SetInsertPoint(ThenBB);
 
   //----------------------------------------------------------------------------
   // partition any ranges
@@ -229,10 +263,12 @@ CudaTasker::PreambleResult CudaTasker::taskPreamble(
   }
 
   if (ResultT) {
-    auto & TaskI = getCurrentTask();
     TaskI.ResultAlloca = WrapperArgAs.back();
     WrapperArgAs.pop_back();
   }
+
+  // Index size
+  WrapperArgAs.pop_back();
   
   return {WrapperF, WrapperArgAs, IndexA};
 }
@@ -245,14 +281,14 @@ void CudaTasker::taskPostamble(
     Value* ResultV,
     bool IsIndex)
 {
-
   //----------------------------------------------------------------------------
-  // Have return value
-  if (ResultV && !ResultV->getType()->isVoidTy()) {
+  // Index task
+  if (IsIndex) {
+      
+    const auto & TaskI = getCurrentTask();
 
-    // Index task
-    if (IsIndex) {
-      const auto & TaskI = getCurrentTask();
+    // Call the reduction
+    if (ResultV && !ResultV->getType()->isVoidTy()) {
       auto IndataA = TaskI.ResultAlloca;
       
       auto ResultA = TheHelper_.getAsAlloca(ResultV);
@@ -265,21 +301,35 @@ void CudaTasker::taskPostamble(
           "contra_cuda_set_reduction_value",
           VoidType_,
           {IndataA, ResultA, DataSizeV});
-
-      Builder_.CreateRetVoid();
     }
-    // Regular task
-    else {
+  
+    // finish If
+    auto MergeBB = TaskI.MergeBlock;
+    Builder_.CreateBr(MergeBB);
+    auto TheFunction = Builder_.GetInsertBlock()->getParent();
+    TheFunction->getBasicBlockList().push_back(MergeBB);
+    Builder_.SetInsertPoint(MergeBB);
+
+    Builder_.CreateRetVoid();
+  }
+  //----------------------------------------------------------------------------
+  // Single task
+  else {
+
+    // Have return value
+    if (ResultV && !ResultV->getType()->isVoidTy()) {
       ResultV = TheHelper_.getAsValue(ResultV);
       Builder_.CreateRet(ResultV);
     }
-  }
-  //----------------------------------------------------------------------------
-  // No return value
-  else {
-    Builder_.CreateRetVoid();
+    // no return value
+    else {
+      Builder_.CreateRetVoid();
+    }
+
   }
 
+  //----------------------------------------------------------------------------
+  // Finish
   finishTask();
 }
  
@@ -380,6 +430,11 @@ Value* CudaTasker::launch(
       ArgAs[i] = TheHelper_.getAsAlloca(ArgA);
     }
   }
+
+  // add index size
+  auto IndexSpaceSizeA = TheHelper_.createEntryBlockAlloca(IntType_);
+  Builder_.CreateStore( getRangeSize(IndexSpaceA), IndexSpaceSizeA );
+  ArgAs.emplace_back( IndexSpaceSizeA );
   
   //----------------------------------------------------------------------------
   // Do reductions
@@ -432,9 +487,13 @@ Value* CudaTasker::launch(
   if (ResultT && AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const CudaReduceInfo*>(AbstractReduceOp);
 
-    auto InitStr = llvmString(TheContext_, TheModule, ReduceOp->getInitName());
-    auto ApplyStr = llvmString(TheContext_, TheModule, ReduceOp->getApplyName());
-    auto FoldStr = llvmString(TheContext_, TheModule, ReduceOp->getFoldName());
+    auto InitStr = llvmString(TheContext_, TheModule, ReduceOp->getInitPtrName());
+    auto ApplyStr = llvmString(TheContext_, TheModule, ReduceOp->getApplyPtrName());
+    auto FoldStr = llvmString(TheContext_, TheModule, ReduceOp->getFoldPtrName());
+
+    const auto & ApplyN = ReduceOp->getApplyName();
+    auto ApplyT = ReduceOp->getApplyType();
+    auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
 
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
     auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
@@ -447,7 +506,8 @@ Value* CudaTasker::launch(
       IndexSpaceA,
       IndataA,
       OutDataV,
-      DataSizeV
+      DataSizeV,
+      ApplyF
     };
     TheHelper_.callFunction(
         TheModule,
@@ -796,27 +856,28 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
 
   //----------------------------------------------------------------------------
   // create apply
+  Function * ApplyF;
   std::string ApplyPtrN;
   {
-    std::string FunN = ReductionN + "apply";
+    std::string ApplyN = ReductionN + "apply";
 
     std::vector<Type*> ArgTs = {
       VoidPtrType_,
       VoidPtrType_
     };
     FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
-    auto FunF = Function::Create(
+    ApplyF = Function::Create(
         FunT,
         Function::ExternalLinkage,
-        FunN,
+        ApplyN,
         TheModule);
 
-    auto BB = BasicBlock::Create(TheContext_, "entry", FunF);
+    auto BB = BasicBlock::Create(TheContext_, "entry", ApplyF);
     Builder_.SetInsertPoint(BB);
 
     unsigned i=0;
     std::vector<AllocaInst*> ArgAs(ArgTs.size());
-    for (auto &Arg : FunF->args()) {
+    for (auto &Arg : ApplyF->args()) {
       ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
       Builder_.CreateStore(&Arg, ArgAs[i]);
       ++i;
@@ -848,13 +909,13 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     Builder_.CreateRetVoid();
     
     // device pointer
-    ApplyPtrN = FunN + "_ptr";
+    ApplyPtrN = ApplyN + "_ptr";
     new GlobalVariable(
         TheModule, 
         FunT->getPointerTo(),
         false,
         GlobalValue::InternalLinkage,
-        FunF, // has initializer, specified below
+        ApplyF, // has initializer, specified below
         ApplyPtrN,
         nullptr,
         GlobalValue::NotThreadLocal,
@@ -863,9 +924,10 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
 
   //----------------------------------------------------------------------------
   // create fold
+  Function * FoldF;
   std::string FoldPtrN;
   {
-    std::string FunN = ReductionN + "fold";
+    std::string FoldN = ReductionN + "fold";
 
     std::vector<Type*> ArgTs = {
       VoidPtrType_,
@@ -873,18 +935,18 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
       VoidPtrType_
     };
     FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
-    auto FunF = Function::Create(
+    FoldF = Function::Create(
         FunT,
         Function::ExternalLinkage,
-        FunN,
+        FoldN,
         TheModule);
 
-    auto BB = BasicBlock::Create(TheContext_, "entry", FunF);
+    auto BB = BasicBlock::Create(TheContext_, "entry", FoldF);
     Builder_.SetInsertPoint(BB);
 
     unsigned i=0;
     std::vector<AllocaInst*> ArgAs(ArgTs.size());
-    for (auto &Arg : FunF->args()) {
+    for (auto &Arg : FoldF->args()) {
       ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
       Builder_.CreateStore(&Arg, ArgAs[i]);
       ++i;
@@ -926,13 +988,13 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     Builder_.CreateRetVoid();
     
     // device pointer
-    FoldPtrN = FunN + "_ptr";
+    FoldPtrN = FoldN + "_ptr";
     new GlobalVariable(
         TheModule, 
         FunT->getPointerTo(),
         false,
         GlobalValue::InternalLinkage,
-        FunF, // has initializer, specified below
+        FoldF, // has initializer, specified below
         FoldPtrN,
         nullptr,
         GlobalValue::NotThreadLocal,
@@ -942,6 +1004,7 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
 
   //----------------------------------------------------------------------------
   // create init
+  Function * InitF;
   std::string InitPtrN;
   {
 
@@ -949,7 +1012,7 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
  
     std::vector<Type*> ArgTs = {VoidPtrType_};
     FunctionType* InitT = FunctionType::get(VoidType_, ArgTs, false);
-    auto InitF = Function::Create(
+    InitF = Function::Create(
         InitT,
         Function::ExternalLinkage,
         InitN,
@@ -1004,8 +1067,11 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
   return std::make_unique<CudaReduceInfo>(
       VarTs,
       ReduceTypes,
+      InitF,
       InitPtrN,
+      ApplyF,
       ApplyPtrN,
+      FoldF,
       FoldPtrN);
 }
 

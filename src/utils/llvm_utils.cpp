@@ -8,6 +8,8 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/ValueMapper.h"
 
 using namespace llvm;
 
@@ -96,6 +98,186 @@ void startLLVM() {
   InitializeNativeTargetAsmPrinter();
   InitializeNativeTargetAsmParser();
   
+}
+
+//==============================================================================
+void copyComdat(GlobalObject *Dst, const GlobalObject *Src) {
+  const Comdat *SC = Src->getComdat();
+  if (!SC) return;
+  Comdat *DC = Dst->getParent()->getOrInsertComdat(SC->getName());
+  DC->setSelectionKind(SC->getSelectionKind());
+  Dst->setComdat(DC);
+}
+
+//==============================================================================
+void insert(
+    Module &SrcM,
+    Module & TgtM)
+{
+  ValueToValueMapTy VMap;
+  auto ShouldCloneDefinition = [](const GlobalValue *GV) { return true; };
+
+  // Loop over all of the global variables, making corresponding globals in the
+  // new module.  Here we add them to the VMap and to the new Module.  We
+  // don't worry about attributes or initializers, they will come later.
+  //
+  for (auto I = SrcM.global_begin(), E = SrcM.global_end(); I != E; ++I)
+  {
+    auto GV = new GlobalVariable(
+        TgtM,
+        I->getValueType(),
+        I->isConstant(), I->getLinkage(),
+        (Constant*) nullptr, I->getName(),
+        (GlobalVariable*) nullptr,
+        I->getThreadLocalMode(),
+        I->getType()->getAddressSpace());
+    
+    GV->copyAttributesFrom(&*I);
+    VMap[&*I] = GV;
+  }
+ 
+  // Loop over the functions in the module, making external functions as before
+  for (const auto &I : SrcM) {
+    auto NF = Function::Create(
+        cast<FunctionType>(I.getValueType()),
+        I.getLinkage(),
+        I.getAddressSpace(),
+        I.getName(),
+        &TgtM);
+    NF->copyAttributesFrom(&I);
+    VMap[&I] = NF;
+  }
+
+  // Loop over the aliases in the module
+  for (auto I = SrcM.alias_begin(), E = SrcM.alias_end(); I != E; ++I) 
+  {
+    if (!ShouldCloneDefinition(&*I)) {
+      // An alias cannot act as an external reference, so we need to create
+      // either a function or a global variable depending on the value type.
+      // FIXME: Once pointee types are gone we can probably pick one or the
+      // other.
+      GlobalValue *GV;
+      if (I->getValueType()->isFunctionTy())
+        GV = Function::Create(
+            cast<FunctionType>(I->getValueType()),
+            GlobalValue::ExternalLinkage,
+            I->getAddressSpace(),
+            I->getName(),
+            &TgtM);
+      else
+        GV = new GlobalVariable(
+            TgtM,
+            I->getValueType(),
+            false,
+            GlobalValue::ExternalLinkage,
+            nullptr,
+            I->getName(),
+            nullptr,
+            I->getThreadLocalMode(),
+            I->getType()->getAddressSpace());
+      VMap[&*I] = GV;
+      // We do not copy attributes (mainly because copying between different
+      // kinds of globals is forbidden), but this is generally not required for
+      // correctness.
+      continue;
+    }
+    auto *GA = GlobalAlias::create(
+        I->getValueType(),
+        I->getType()->getPointerAddressSpace(),
+        I->getLinkage(),
+        I->getName(),
+        &TgtM);
+    GA->copyAttributesFrom(&*I);
+    VMap[&*I] = GA;
+  }
+ 
+  // Now that all of the things that global variable initializer can refer to
+  // have been created, loop through and copy the global variable referrers
+  // over...  We also set the attributes on the global now.
+  //
+  for (auto I = SrcM.global_begin(), E = SrcM.global_end(); I != E; ++I) 
+  {
+    if (I->isDeclaration()) continue;
+ 
+    auto GV = cast<GlobalVariable>(VMap[&*I]);
+    if (!ShouldCloneDefinition(&*I)) {
+      // Skip after setting the correct linkage for an external reference.
+      GV->setLinkage(GlobalValue::ExternalLinkage);
+      continue;
+    }
+    if (I->hasInitializer())
+      GV->setInitializer(MapValue(I->getInitializer(), VMap));
+ 
+    SmallVector<std::pair<unsigned, MDNode *>, 1> MDs;
+    I->getAllMetadata(MDs);
+    for (auto MD : MDs)
+      GV->addMetadata(
+          MD.first,
+          *MapMetadata(MD.second, VMap, RF_MoveDistinctMDs));
+ 
+    copyComdat(GV, &*I);
+  }
+ 
+  // Similarly, copy over function bodies now...
+  //
+  for (const auto &I : SrcM) {
+    if (I.isDeclaration()) continue;
+ 
+    auto F = cast<Function>(VMap[&I]);
+    if (!ShouldCloneDefinition(&I)) {
+      // Skip after setting the correct linkage for an external reference.
+      F->setLinkage(GlobalValue::ExternalLinkage);
+      // Personality function is not valid on a declaration.
+      F->setPersonalityFn(nullptr);
+      continue;
+    }
+ 
+    auto DestI = F->arg_begin();
+    for (auto J = I.arg_begin(); J != I.arg_end(); ++J) {
+      DestI->setName(J->getName());
+      VMap[&*J] = &*DestI++;
+    }
+ 
+    SmallVector<ReturnInst *, 8> Returns; // Ignore returns cloned.
+    CloneFunctionInto(F, &I, VMap, /*ModuleLevelChanges=*/true, Returns);
+ 
+    if (I.hasPersonalityFn())
+      F->setPersonalityFn(MapValue(I.getPersonalityFn(), VMap));
+ 
+    copyComdat(F, &I);
+  }
+
+  // And aliases
+  for (auto I = SrcM.alias_begin(), E = SrcM.alias_end(); I != E; ++I) 
+  {
+    // We already dealt with undefined aliases above.
+    if (!ShouldCloneDefinition(&*I)) continue;
+    auto GA = cast<GlobalAlias>(VMap[&*I]);
+    if (const auto C = I->getAliasee())
+      GA->setAliasee(MapValue(C, VMap));
+  }
+ 
+  // And named metadata....
+  const auto* LLVM_DBG_CU = SrcM.getNamedMetadata("llvm.dbg.cu");
+  for (auto I = SrcM.named_metadata_begin(), E = SrcM.named_metadata_end(); I != E; ++I)
+  {
+    const auto &NMD = *I;
+    auto NewNMD = TgtM.getOrInsertNamedMetadata(NMD.getName());
+    if (&NMD == LLVM_DBG_CU) {
+      // Do not insert duplicate operands.
+      SmallPtrSet<const void*, 8> Visited;
+      for (const auto* Operand : NewNMD->operands())
+        Visited.insert(Operand);
+      for (const auto* Operand : NMD.operands()) {
+        auto* MappedOperand = MapMetadata(Operand, VMap);
+        if (Visited.insert(MappedOperand).second)
+          NewNMD->addOperand(MappedOperand);
+      }
+    } else
+      for (unsigned i = 0, e = NMD.getNumOperands(); i != e; ++i)
+        NewNMD->addOperand(MapMetadata(NMD.getOperand(i), VMap));
+  }
+
 }
 
 } // namespace

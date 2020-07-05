@@ -27,7 +27,8 @@ __device__ void contra_cuda_accessor_write(
     const void * data,
     int_t index)
 {
-  auto pos = (acc->offsets[threadIdx.x] + index) * acc->data_size;
+  auto tid = threadIdx.x + blockIdx.x * blockDim.x;
+  auto pos = (acc->offsets[tid] + index) * acc->data_size;
   byte_t * offset = static_cast<byte_t*>(acc->data) + pos;
   memcpy(offset, data, acc->data_size);
 }
@@ -40,10 +41,10 @@ __device__ void contra_cuda_accessor_read(
     void * data,
     int_t index)
 {
-  auto pos = (acc->offsets[threadIdx.x] + index) * acc->data_size;
+  auto tid = threadIdx.x + blockIdx.x * blockDim.x;
+  auto pos = (acc->offsets[tid] + index) * acc->data_size;
   const byte_t * offset = static_cast<const byte_t*>(acc->data) + pos;
   memcpy(data, offset, acc->data_size);
-  //printf("%d accessing %ld\n", threadIdx.x, acc->offsets[threadIdx.x] + index);
 }
 
 //==============================================================================
@@ -54,7 +55,8 @@ __device__ void contra_cuda_set_reduction_value(
   void * data,
   size_t data_size)
 {
-  auto pos = data_size*threadIdx.x;
+  auto tid = threadIdx.x + blockIdx.x * blockDim.x;
+  auto pos = data_size*tid;
   byte_t * offset = static_cast<byte_t*>(*indata) + pos;
   memcpy(offset, data, data_size);
 }

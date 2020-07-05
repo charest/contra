@@ -124,12 +124,7 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
 // Compile a module by cloning it first
 //==============================================================================
 void CudaJIT::addModule(const Module * M) {
-    std::set<GlobalValue *> ClonedDefsInSrc;
-    ValueToValueMapTy VMap;
-    auto ClonedModule = CloneModule(
-        *M,
-        VMap,
-        [](const GlobalValue *GV) { return true; });
+    auto ClonedModule = CloneModule(*M);
 
     ClonedModule->setSourceFileName("device jit");
     ClonedModule->setDataLayout(TargetMachine_->createDataLayout());

@@ -52,6 +52,11 @@ void cuda_runtime_t::init(int dev_id) {
   err = cuDeviceGet(&CuDevice, dev_id);
   check(err);
   printf( "Selected Device: %d\n", dev_id);
+    
+  cudaDeviceProp props;
+  cudaGetDeviceProperties(&props, dev_id);
+  MaxThreadsPerBlock = props.maxThreadsPerBlock;
+  MaxThreadsPerBlock = 256;
 
   err = cuCtxCreate(&CuContext, 0, CuDevice);
   check(err);
@@ -77,10 +82,10 @@ void cuda_runtime_t::link(CUmodule &CuModule) {
   //------------------------------------
   // Start linker
   
-  static constexpr auto log_size = 8192;
+  static constexpr auto log_size = 8*1024;
   float walltime = 0;
   char error_log[log_size];
-  char info_log[8192];
+  char info_log[log_size];
 
   
   CUjit_option options[6];
@@ -255,11 +260,12 @@ void contra_cuda_launch_kernel(
   
 
   auto size = is->size();
+  auto Dims = CudaRuntime.threadDims(size);
 
   auto err = cuLaunchKernel(
       Kernel->Function,
-      1, 1, 1,
-      size, 1, 1,
+      Dims.first, 1, 1,
+      Dims.second, 1, 1,
       0,
       nullptr,
       params,
@@ -681,8 +687,9 @@ void contra_cuda_launch_reduction(
     char * fold_name,
     contra_index_space_t * is,
     void ** dev_indata,
-    void * outdata,
-    size_t data_size)
+    void * result,
+    size_t data_size,
+    apply_t host_apply)
 {
 
   KernelData* Kernel;
@@ -720,12 +727,16 @@ void contra_cuda_launch_reduction(
 
   // some dimensinos
   size_t size = is->size();
-  size_t block_size = 1;
+  size_t bytes = data_size * size;
+  
+  // block dimensinos
+  auto Dims = CudaRuntime.threadDims(size);
+  size_t block_size = Dims.first;
+  size_t threads_per_block = Dims.second;
 
   // block level storage for result
   void * dev_outdata;
-  cudaMalloc(&dev_outdata, data_size); // num blocks
-  size_t bytes = data_size * size;
+  cudaMalloc(&dev_outdata, block_size*data_size); // num blocks
   
   // Get the reduction function
   CUfunction ReduceFunction;
@@ -746,8 +757,8 @@ void contra_cuda_launch_reduction(
 
   err = cuLaunchKernel(
       ReduceFunction,
-      1, 1, 1,
-      size, 1, 1,
+      block_size, 1, 1,
+      threads_per_block, 1, 1,
       bytes,
       nullptr,
       params,
@@ -758,8 +769,23 @@ void contra_cuda_launch_reduction(
   check(cuerr, "Reduction launch");
 
   // copy over data
-  cudaMemcpy(outdata, dev_outdata, data_size, cudaMemcpyDeviceToHost); 
+  if (block_size > 1) {
+    auto outdata = malloc(block_size*data_size);
+    auto err = cudaMemcpy(outdata, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost);
+    check(err, "cudaMemcpy");
+    auto outdata_bytes = static_cast<byte_t*>(outdata);
+    for (unsigned i=1; i<block_size; ++i)
+      (host_apply)( outdata_bytes, outdata_bytes+data_size*i );
+    memcpy(result, outdata, data_size);
+    free(outdata);
+  }
+  else {
+    cudaMemcpy(result, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost); 
+  }
   cudaFree(dev_outdata);
+
+  // final reduce
+  
 
 }
 
