@@ -24,9 +24,7 @@ namespace contra {
 // The constructor
 //==============================================================================
 CudaJIT::CudaJIT(BuilderHelper & TheHelper) :
-  TheHelper_(TheHelper),
-  Builder_(TheHelper.getBuilder()),
-  TheContext_(TheHelper.getContext())
+  DeviceJIT(TheHelper)
 {
   LLVMInitializeNVPTXTargetInfo();
   LLVMInitializeNVPTXTarget();

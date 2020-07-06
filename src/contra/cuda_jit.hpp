@@ -2,6 +2,7 @@
 #define CONTRA_CUDA_JIT_H
 
 #include "config.hpp"
+#include "device_jit.hpp"
 
 #include "utils/builder.hpp"
 
@@ -13,30 +14,22 @@
 
 namespace contra {
 
-class CudaJIT {
+class CudaJIT : public DeviceJIT {
 public:
   
   CudaJIT(utils::BuilderHelper &);
   ~CudaJIT();
 
-  std::unique_ptr<llvm::Module> createModule();
+  virtual std::unique_ptr<llvm::Module> createModule() override;
 
-  auto getTargetMachine() { return TargetMachine_; }
-  
-  void addModule(std::unique_ptr<llvm::Module> M);
-  void addModule(const llvm::Module * M);
+  virtual void addModule(std::unique_ptr<llvm::Module> M) override;
+  virtual void addModule(const llvm::Module * M) override;
 
 
 private:
 
   llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);
   llvm::CallInst* replaceIntrinsic(llvm::Module &, llvm::CallInst*, unsigned);
-
-  utils::BuilderHelper & TheHelper_;
-
-  llvm::IRBuilder<> & Builder_;
-  llvm::LLVMContext & TheContext_;
-
 
   llvm::TargetMachine * TargetMachine_ = nullptr;
 };
