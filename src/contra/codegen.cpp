@@ -5,6 +5,7 @@
 #include "codegen.hpp"
 #include "compiler.hpp"
 #include "cuda.hpp"
+#include "cuda_jit.hpp"
 #include "errors.hpp"
 #include "kokkos.hpp"
 #include "legion.hpp"

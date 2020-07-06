@@ -1,5 +1,5 @@
-#ifndef CONTRA_CUDA_JIT_H
-#define CONTRA_CUDA_JIT_H
+#ifndef CONTRA_DEVICE_JIT_H
+#define CONTRA_DEVICE_JIT_H
 
 #include "config.hpp"
 
@@ -40,4 +40,4 @@ protected:
 
 } // end namespace
 
-#endif // CONTRA_CONTRAJIT_H
+#endif // CONTRA_DEVICE_JIT_H
