@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
   if (args.count("i")) Interp.setDumpIR(args.at("i"));
   if (args.count("d")) Interp.setDumpDot(args.at("d"));
   if (args.count("b")) Interp.setBackend(args.at("b"));
+  if (args.count("backend-args")) Interp.setArgs(args.at("backend-args"));
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;

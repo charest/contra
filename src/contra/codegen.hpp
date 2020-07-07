@@ -83,7 +83,7 @@ public:
   //============================================================================
 
   // Constructor
-  CodeGen(SupportedBackends, bool);
+  CodeGen(SupportedBackends, bool, const std::string &);
 
   // destructor
   virtual ~CodeGen();

@@ -79,6 +79,7 @@ int processArguments(
               << " [--dump-ir,-i IR_FILE]"
               << " [--dump-dot,-d DOT_FILE]"
               << " [--force,-f]"
+              << " [-n CPUS/THREADS]"
               << " [--help,-h]"
               << " [--optimize,-O]"
               << " [--output,-o OUTPUT_FILE]"
@@ -90,7 +91,7 @@ int processArguments(
     std::cout << "\t--debug:\t Turn off optimizations." << std::endl;
     std::cout << "\t--dump-ir:\t Dump IR." << std::endl;
     std::cout << "\t--dump-dot:\t Dump AST." << std::endl;
-    std::cout << "\t--force:\t\t Overrite output files." << std::endl;
+    std::cout << "\t--force:\t Overrite output files." << std::endl;
     std::cout << "\t--help:\t\t Print a help message." << std::endl;
     std::cout << "\t--optimize:\t Optimize." << std::endl;
     std::cout << "\t--output:\t Output object file to OUTPUT_FILE." << std::endl;
@@ -110,6 +111,7 @@ int processArguments(
       {"output",    required_argument, 0, 'o'},
       {"optimize",        no_argument, 0, 'O'},
       {"verbose",         no_argument, 0, 'v'},
+      {"backend-args",required_argument, 0, 0},
       {0, 0, 0, 0}
     };
 

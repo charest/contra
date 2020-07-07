@@ -1108,7 +1108,7 @@ void LegionTasker::taskPostamble(Module &TheModule, Value* ResultV, bool)
   Value* RetvalV = Constant::getNullValue(VoidPtrType_);
   Value* RetsizeV = llvmValue<std::size_t>(TheContext_, 0);
 
-  AllocaInst* RetvalA;
+  AllocaInst* RetvalA = nullptr;
   auto RetvalT = VoidPtrType_;
 
   

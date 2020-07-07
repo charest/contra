@@ -23,7 +23,10 @@ std::string file_extension(const std::string & str);
 std::string remove_extension(const std::string & str);
 
 //! Split a string s by a delimeter
-std::vector<std::string> split(const std::string& s, char delimiter);
+std::vector<std::string> split(
+    const std::string& s,
+    char delimiter,
+    bool skip_empty = true);
 
 //! remove the extra \ in quoted strings
 std::string unescape(const std::string& s);

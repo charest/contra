@@ -18,6 +18,7 @@
 #include "librt/dopevector.hpp"
 
 #include "utils/llvm_utils.hpp"
+#include "utils/string_utils.hpp"
 
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
@@ -44,7 +45,10 @@ namespace contra {
 //==============================================================================
 // Constructor
 //==============================================================================
-CodeGen::CodeGen (SupportedBackends Backend, bool) :
+CodeGen::CodeGen (
+    SupportedBackends Backend,
+    bool,
+    const std::string & SuppliedArgs) :
   TheContext_(TheHelper_.getContext()),
   Builder_(TheHelper_.getBuilder())
 {
@@ -52,12 +56,15 @@ CodeGen::CodeGen (SupportedBackends Backend, bool) :
   // setup backend args
   std::vector<std::string> Args = {
     "./contra",
-    "-ll:gsize", "0",
-    "-ll:csize", "2048",
+    "-ll:gsize", "0"};
+    //"-ll:csize", "2048",
     //"-ll:cpu", "2",
     //"-lg:prof", "1",
     //"-lg:prof_logfile", "prof_%.gz"
-  };
+  
+  auto SplitArgs = utils::split(SuppliedArgs, ' ');
+  for (const auto & A : SplitArgs) 
+    Args.emplace_back(A);
 
   Argc_ = Args.size();
   Argv_ = new char *[Argc_];
