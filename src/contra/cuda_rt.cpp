@@ -115,6 +115,13 @@ void cuda_runtime_t::link(CUmodule &CuModule) {
       CU_JIT_INPUT_LIBRARY,
       CONTRA_CUDA_LIBRARY,
       0, 0, 0);
+  if (err != CUDA_SUCCESS) {
+    err = cuLinkAddFile(
+        CuLinkState,
+        CU_JIT_INPUT_LIBRARY,
+        CONTRA_CUDA_LIBRARY_INSTALLED,
+        0, 0, 0);
+  }
   check(err);
 
   // link any ptx

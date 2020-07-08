@@ -10,7 +10,7 @@ include(ExternalProject)
 # Setup the project
 #------------------------------------------------------------------------------#
 
-project(CONTRA VERSION 0.1.0)
+project(Contra VERSION 0.1.0)
 
 # We need C++ 14
 set(CMAKE_CXX_STANDARD 14)
@@ -101,8 +101,8 @@ if (CUDA_FOUND)
   
   add_library( contra_cuda STATIC )
   target_compile_options(contra_cuda PUBLIC -lib -rdc=true )
-  target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_include_directories(contra_cuda PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
+  target_include_directories(contra_cuda PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_include_directories(contra_cuda PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
   
   target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
   #target_link_libraries(contra PUBLIC /projects/opt/centos7/cuda/10.2/lib64/libnvrtc-builtins.so.10.2)
@@ -118,8 +118,8 @@ endif()
 
 MESSAGE(STATUS "Supported backends: ${SUPPORTED_BACKENDS}")
 
-target_include_directories(contra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_include_directories(contra PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/src)
+target_include_directories(contra PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(contra PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
 
 add_subdirectory(src)
 
@@ -149,3 +149,43 @@ if (BUILD_TESTING)
   add_subdirectory(testing)
   add_subdirectory(examples)
 endif()
+
+
+
+
+#------------------------------------------------------------------------------#
+# Export targets and package.
+#------------------------------------------------------------------------------#
+
+install( TARGETS contra contra_cuda
+  EXPORT ${PROJECT_NAME}Targets
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include) 
+
+file(GLOB_RECURSE test_files testing "*.cta")
+file(GLOB_RECURSE sample_files examples/contra "*.cta")
+install( FILES ${test_files} ${sample_files} DESTINATION share/examples )
+
+
+install( EXPORT ${PROJECT_NAME}Targets
+  FILE ${PROJECT_NAME}Targets.cmake
+  NAMESPACE Contra::
+  DESTINATION lib/cmake/${PROJECT_NAME}
+)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file("${PROJECT_NAME}ConfigVersion.cmake"
+  VERSION ${${PROJECT_NAME}_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+
+configure_file(${PROJECT_SOURCE_DIR}/${PROJECT_NAME}Config.cmake.in
+  ${PROJECT_NAME}Config.cmake @ONLY)
+
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  DESTINATION lib/cmake/${PROJECT_NAME}
+)
