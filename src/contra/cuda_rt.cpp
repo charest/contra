@@ -1,4 +1,5 @@
 #include "cuda_rt.hpp"
+#include "cuda_reduce.hpp"
 #include "cuda_utils.hpp"
 #include "tasking_rt.hpp"
 
@@ -43,6 +44,120 @@ extern "C" {
 cuda_runtime_t CudaRuntime;
 
 //==============================================================================
+// Get/create memory for an index partition
+//==============================================================================
+std::pair<contra_cuda_partition_t*, bool>
+  contra_cuda_task_info_t::getOrCreatePartition(contra_cuda_partition_t* host)
+{
+  // found
+  auto it = Host2DevPart.find(host);
+  if (it!=Host2DevPart.end()) {
+    return std::make_pair(&it->second, true);
+  }
+  // not found
+  auto res = Host2DevPart.emplace(host, contra_cuda_partition_t{});
+  auto dev_ptr = &res.first->second;
+  Dev2HostPart.emplace(dev_ptr, host);
+  return std::make_pair(dev_ptr, false);
+}
+
+//==============================================================================
+// Free a partition
+//==============================================================================
+void contra_cuda_task_info_t::freePartition(contra_cuda_partition_t* dev)
+{
+  auto it = Dev2HostPart.find(dev);
+  if (it != Dev2HostPart.end()) {
+    contra_cuda_partition_free(dev);
+    auto host = it->second;
+    Dev2HostPart.erase(it);
+    Host2DevPart.erase(host);
+  }
+}
+  
+//==============================================================================
+// create an accessor
+//==============================================================================
+std::pair<contra_cuda_accessor_t*, bool> 
+contra_cuda_task_info_t::getOrCreateAccessor(
+    contra_cuda_partition_t* part,
+    contra_cuda_field_t* field,
+    bool IsTemporary)
+{
+  // found
+  auto it = Host2DevAcc.find({part, field});
+  if (it!=Host2DevAcc.end()) {
+    return std::make_pair(&it->second, true);
+  }
+  // not found
+  auto res = Host2DevAcc.emplace(
+      std::make_pair(part, field),
+      contra_cuda_accessor_t{});
+  auto dev_ptr = &res.first->second;
+  if (IsTemporary) TempDev2HostAcc.emplace(dev_ptr, std::make_pair(part,field));
+  return std::make_pair(dev_ptr, false);
+}
+
+//==============================================================================
+// get an accessor
+//==============================================================================
+std::pair<contra_cuda_accessor_t*, bool> 
+contra_cuda_task_info_t::getAccessor(
+    contra_cuda_partition_t* part,
+    contra_cuda_field_t* field)
+{
+  // found
+  auto it = Host2DevAcc.find({part, field});
+  if (it!=Host2DevAcc.end()) {
+    return std::make_pair(&it->second, true);
+  }
+  return std::make_pair(nullptr, false);
+  // not found
+}
+
+//==============================================================================
+// Free a temporary accessor
+//==============================================================================
+void contra_cuda_task_info_t::freeTempAccessor(contra_cuda_accessor_t* dev)
+{
+  auto it = TempDev2HostAcc.find(dev);
+  if (it != TempDev2HostAcc.end()) {
+    contra_cuda_accessor_free(dev);
+    auto host = it->second;
+    TempDev2HostAcc.erase(it);
+    Host2DevAcc.erase(host);
+    contra_cuda_accessor_free(dev);
+  }
+}
+  
+//==============================================================================
+// create field data
+//==============================================================================
+std::pair<void**, bool> 
+contra_cuda_task_info_t::getOrCreateField(void* host)
+{
+  // found
+  auto it = Host2DevField.find(host);
+  if (it!=Host2DevField.end()) {
+    return std::make_pair(&it->second, true);
+  }
+  // not found
+  auto res = Host2DevField.emplace(host, nullptr);
+  auto dev_ptr = &res.first->second;
+  return std::make_pair(dev_ptr, false);
+}
+
+
+//==============================================================================
+// Destructor for task info
+//==============================================================================
+contra_cuda_task_info_t::~contra_cuda_task_info_t() {
+  for (auto & DevPart : Host2DevPart)
+    contra_cuda_partition_free(&DevPart.second);
+}
+  
+
+//==============================================================================
 // start runtime
 //==============================================================================
 void cuda_runtime_t::init(int dev_id) {
@@ -56,6 +171,7 @@ void cuda_runtime_t::init(int dev_id) {
   cudaDeviceProp props;
   cudaGetDeviceProperties(&props, dev_id);
   MaxThreadsPerBlock = props.maxThreadsPerBlock;
+  MaxThreadsPerBlock = 256;
 
   err = cuCtxCreate(&CuContext, 0, CuDevice);
   check(err);
@@ -326,19 +442,18 @@ dopevector_t contra_cuda_array2dev(dopevector_t * arr)
 //==============================================================================
 // free an array
 //==============================================================================
-void contra_cuda_array_free(dopevector_t * arr)
+void contra_cuda_free(void ** ptr)
 {
-  auto err = cudaFree(arr->data);
+  auto err = cudaFree(*ptr);
   check(err, "cudaFree");
 }
-
 
 //==============================================================================
 // free an array
 //==============================================================================
-void contra_cuda_free(void ** ptr)
+void contra_cuda_array_free(dopevector_t * arr)
 {
-  auto err = cudaFree(*ptr);
+  auto err = cudaFree(arr->data);
   check(err, "cudaFree");
 }
 
@@ -358,6 +473,16 @@ void contra_cuda_partition_free(contra_cuda_partition_t * part)
 }
 
 //==============================================================================
+// free an array
+//==============================================================================
+void contra_cuda_partition_free_and_deregister(
+    contra_cuda_partition_t * part,
+    contra_cuda_task_info_t ** task_info)
+{
+  (*task_info)->freePartition(part);
+}
+
+//==============================================================================
 // Destroy a partition
 //==============================================================================
 void contra_cuda_partition_destroy(contra_cuda_partition_t * part)
@@ -374,6 +499,18 @@ void contra_cuda_partition_info_create(contra_cuda_partition_info_t** info)
 // destroy partition info
 //==============================================================================
 void contra_cuda_partition_info_destroy(contra_cuda_partition_info_t** info)
+{ delete (*info); }
+
+//==============================================================================
+/// create partition info
+//==============================================================================
+void contra_cuda_task_info_create(contra_cuda_task_info_t** info)
+{ *info = new contra_cuda_task_info_t; }
+
+//==============================================================================
+// destroy partition info
+//==============================================================================
+void contra_cuda_task_info_destroy(contra_cuda_task_info_t** info)
 { delete (*info); }
 
 
@@ -496,7 +633,8 @@ void contra_cuda_partition_from_field(
     contra_cuda_field_t *fld,
     contra_index_space_t * is,
     contra_cuda_partition_t * fld_part,
-    contra_cuda_partition_t * part)
+    contra_cuda_partition_t * part,
+    contra_cuda_task_info_t ** task_info)
 {
   auto num_parts = fld_part->num_parts;
   auto expanded_size = fld->size;
@@ -504,6 +642,12 @@ void contra_cuda_partition_from_field(
   auto indices = new int_t[expanded_size];
   auto offsets = new int_t[num_parts+1];
   offsets[0] = 0;
+    
+  auto acc_res = (*task_info)->getAccessor(fld_part, fld);
+  if (acc_res.second) {
+    auto acc = acc_res.first;
+    contra_cuda_2host(acc->data, fld->data, fld->bytes());
+  }
   
   auto fld_ptr = static_cast<int_t*>(fld->data);
 
@@ -542,28 +686,52 @@ void contra_cuda_partition_from_field(
 contra_cuda_partition_t contra_cuda_partition2dev(
     contra_index_space_t * host_is,
     contra_cuda_partition_t * part,
-    contra_cuda_partition_info_t ** info)
+    contra_cuda_partition_info_t ** part_info,
+    contra_cuda_task_info_t ** task_info)
 {
-  auto num_parts = part->num_parts;
-  auto int_size = sizeof(int_t);
-  auto offsets = contra_cuda_2dev(part->offsets, (num_parts+1)*int_size);
+  // link index space to partition
+  (*part_info)->register_partition(host_is, part);
+
+  // is this already on the device
+  auto res = (*task_info)->getOrCreatePartition(part);
+  auto dev_part = res.first;
+
+  // not on device, create
+  if (!res.second) {
   
-  auto part_size = part->size;
-  void* indices = nullptr;
-  if (part->indices) {
+    auto num_parts = part->num_parts;
+    auto int_size = sizeof(int_t);
+    auto offsets = contra_cuda_2dev(part->offsets, (num_parts+1)*int_size);
+  
+    auto part_size = part->size;
+    void* indices = nullptr;
+    if (part->indices)
     indices = contra_cuda_2dev(part->indices, part_size*int_size);
+
+    dev_part->setup(
+        part_size,
+        num_parts,
+        static_cast<int_t*>(indices),
+        static_cast<int_t*>(offsets));
+  
   }
 
-  (*info)->register_partition(host_is, part);
-
-  contra_cuda_partition_t dev_part;
-  dev_part.setup(
-      part_size,
-      num_parts,
-      static_cast<int_t*>(indices),
-      static_cast<int_t*>(offsets));
-
-  return dev_part;
+  return *dev_part;
+}
+        
+//==============================================================================
+/// create an accessor
+//==============================================================================
+void contra_cuda_accessor_2dev(
+    contra_cuda_partition_t * part,
+    contra_cuda_field_t * fld,
+    contra_cuda_partition_t dev_part,
+    void * dev_data,
+    contra_cuda_accessor_t *acc)
+{
+  auto data_size = fld->data_size;
+  contra_cuda_field_t * fld_ptr = part->indices ? nullptr : fld;
+  acc->setup(data_size, dev_data, dev_part, fld_ptr);
 }
 
 //==============================================================================
@@ -573,56 +741,82 @@ contra_cuda_accessor_t contra_cuda_field2dev(
     contra_index_space_t * cs,
     contra_cuda_partition_t * part,
     contra_cuda_field_t * fld,
-    contra_cuda_partition_info_t **info)
+    contra_cuda_partition_info_t **part_info,
+    contra_cuda_task_info_t **task_info)
 {
-  //------------------------------------
+  bool is_temporary = part;
+
+  //----------------------------------------------------------------------------
   // Create a partition
   if (!part) {
 
     // no partitioning specified
-    auto res = (*info)->getOrCreatePartition(fld->index_space);
+    auto res = (*part_info)->getOrCreatePartition(fld->index_space);
     part = res.first;
     if (!res.second) {
       contra_cuda_partition_from_index_space(
           cs,
           fld->index_space,
           part);
-      (*info)->register_partition(fld->index_space, part);
+      (*part_info)->register_partition(fld->index_space, part);
     }
 
   } // specified part
+
+  // move it onto the device
+  auto dev_part = contra_cuda_partition2dev(
+      fld->index_space,
+      part,
+      part_info,
+      task_info);
+  
+  //----------------------------------------------------------------------------
+  // copy field over
+    
+  // get field
+  auto fld_res = (*task_info)->getOrCreateField(fld->data);
+  auto dev_data = fld_res.first;
+  if (!fld_res.second)
+    *dev_data = contra_cuda_2dev(fld->data, fld->bytes());
+  
+  // look for a partition/field combo
+  auto acc_res = (*task_info)->getOrCreateAccessor(part, fld, is_temporary);
+  auto dev_acc = acc_res.first;
   
   //------------------------------------
-  // copy field over
-  void* dev_data = nullptr;
-  auto data_size = fld->data_size;
-  
+  // overlapping part
   if (auto indices = part->indices) {
+    auto data_size = fld->data_size;
     auto size = part->size;
     auto bytes = data_size * size;
-    auto src = static_cast<byte_t*>(fld->data);
-    auto tmp = new byte_t[bytes];
-    auto dest = tmp;
-    for (int_t i=0; i<size; ++i) {
-      memcpy(dest, src+indices[i]*data_size, data_size);
-      dest += data_size;
+    if (!acc_res.second) {
+      auto err = cudaMalloc(&(dev_acc->data), bytes);
+      check(err, "cudaMalloc");
     }
-    dev_data = contra_cuda_2dev(tmp, bytes);
-    delete [] tmp;
+    auto Dims = CudaRuntime.threadDims(size);
+    cuda_copy(
+      static_cast<byte_t*>(*dev_data),
+      static_cast<byte_t*>(dev_acc->data),
+      dev_part.indices,
+      data_size,
+      size,
+      Dims.first,
+      Dims.second);
+    
+    // move accessor over
+    if (!acc_res.second)
+        contra_cuda_accessor_2dev(part, fld, dev_part, dev_acc->data, dev_acc);
   }
+  //------------------------------------
+  // Disjoint partitiong
   else {
-    dev_data = contra_cuda_2dev(fld->data, fld->bytes());
+    // move accessor over
+    if (!acc_res.second)
+        contra_cuda_accessor_2dev(part, fld, dev_part, *dev_data, dev_acc);
   }
 
-  auto num_parts = part->num_parts;
-  auto int_size = sizeof(int_t);
-  auto dev_off = (int_t*)contra_cuda_2dev(part->offsets, (num_parts+1)*int_size);
-  
-  contra_cuda_field_t * fld_ptr = part->indices ? nullptr : fld;
 
-  contra_cuda_accessor_t dev_acc;
-  dev_acc.setup(data_size, dev_data, dev_off, fld_ptr);
-  return dev_acc;
+  return *dev_acc;
 }
 
 //==============================================================================
@@ -637,11 +831,22 @@ void contra_cuda_accessor_free(contra_cuda_accessor_t * acc)
     contra_cuda_2host(acc->data, fld->data, fld->bytes());
   }
 
-  auto err = cudaFree(acc->data);
-  check(err, "cudaFree");
-  err = cudaFree(acc->offsets);
-  check(err, "cudaFree");
+  //auto err = cudaFree(acc->data);
+  //check(err, "cudaFree");
+  //auto err = cudaFree(acc->offsets);
+  //check(err, "cudaFree");
 }
+
+//==============================================================================
+// free an array
+//==============================================================================
+void contra_cuda_accessor_free_temp(
+    contra_cuda_accessor_t * acc,
+    contra_cuda_task_info_t ** task_info)
+{
+  (*task_info)->freeTempAccessor(acc);
+}
+  
   
 //==============================================================================
 // prepare a reduction

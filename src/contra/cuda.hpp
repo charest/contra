@@ -83,12 +83,14 @@ class CudaTasker : public AbstractTasker {
   llvm::StructType* IndexPartitionType_ = nullptr;
 
   llvm::Type* PartitionInfoType_ = nullptr;
+  llvm::Type* TaskInfoType_ = nullptr;
 
   const TaskInfo * TopLevelTask_ = nullptr;
   
   struct TaskEntry {
     llvm::AllocaInst* ResultAlloca = nullptr;
     llvm::BasicBlock* MergeBlock = nullptr;
+    llvm::AllocaInst* TaskInfoAlloca = nullptr;
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;
@@ -194,6 +196,9 @@ protected:
 
   llvm::AllocaInst* createPartitionInfo(llvm::Module &);
   void destroyPartitionInfo(llvm::Module &, llvm::AllocaInst*);
+  
+  llvm::AllocaInst* createTaskInfo(llvm::Module &);
+  void destroyTaskInfo(llvm::Module &, llvm::AllocaInst*);
   
   auto & getCurrentTask() { return TaskAllocas_.front(); }
   const auto & getCurrentTask() const { return TaskAllocas_.front(); }

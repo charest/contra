@@ -1,8 +1,5 @@
 #include "config.hpp"
 #include "cuda_rt.hpp"
-#include "tasking_rt.hpp"
-
-#include "cuda_utils.hpp"
 
 #include <stdio.h>
 #include <iostream>
@@ -28,7 +25,7 @@ __device__ void contra_cuda_accessor_write(
     int_t index)
 {
   auto tid = threadIdx.x + blockIdx.x * blockDim.x;
-  auto pos = (acc->offsets[tid] + index) * acc->data_size;
+  auto pos = (acc->partition.offsets[tid] + index) * acc->data_size;
   byte_t * offset = static_cast<byte_t*>(acc->data) + pos;
   memcpy(offset, data, acc->data_size);
 }
@@ -42,7 +39,7 @@ __device__ void contra_cuda_accessor_read(
     int_t index)
 {
   auto tid = threadIdx.x + blockIdx.x * blockDim.x;
-  auto pos = (acc->offsets[tid] + index) * acc->data_size;
+  auto pos = (acc->partition.offsets[tid] + index) * acc->data_size;
   const byte_t * offset = static_cast<const byte_t*>(acc->data) + pos;
   memcpy(data, offset, acc->data_size);
 }

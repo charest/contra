@@ -95,7 +95,14 @@ endif()
 #------------------------------------------------------------------------------#
 # Cuda toolkit
 #------------------------------------------------------------------------------#
-find_package(CUDA)
+IF (CMAKE_VERSION VERSION_GREATER_EQUAL "3.17.0")
+  find_package(CUDAToolkit)
+  set(CUDA_FOUND ${CUDAToolkit_FOUND})
+else()
+  find_package(CUDA)
+endif()
+
+
 if (CUDA_FOUND)
   enable_language(CUDA)
   
@@ -104,10 +111,17 @@ if (CUDA_FOUND)
   target_include_directories(contra_cuda PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_include_directories(contra_cuda PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
   
-  target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
-  #target_link_libraries(contra PUBLIC /projects/opt/centos7/cuda/10.2/lib64/libnvrtc-builtins.so.10.2)
-  #target_link_libraries(contra PUBLIC /projects/opt/centos7/cuda/10.2/lib64/libnvrtc.so.10.2.89)
-  target_include_directories(contra PUBLIC ${CUDA_INCLUDE_DIRS})
+  add_library( contra_cuda_rt )
+  target_include_directories(contra_cuda_rt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_include_directories(contra_cuda_rt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
+  target_link_libraries(contra PRIVATE contra_cuda_rt)  
+  
+  if (TARGET CUDA::cudart)
+    target_link_libraries(contra PUBLIC CUDA::cudart CUDA::cuda_driver)
+  else()
+    target_link_libraries(contra PUBLIC ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY})
+    target_include_directories(contra PUBLIC ${CUDA_INCLUDE_DIRS})
+  endif()
   
   list(APPEND SUPPORTED_BACKENDS "cuda")
 endif()
@@ -157,17 +171,18 @@ endif()
 # Export targets and package.
 #------------------------------------------------------------------------------#
 
-install( TARGETS contra contra_cuda
-  EXPORT ${PROJECT_NAME}Targets
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  RUNTIME DESTINATION bin
-  INCLUDES DESTINATION include) 
+if (CUDA_FOUND)
+  install( TARGETS contra contra_cuda
+    EXPORT ${PROJECT_NAME}Targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include) 
+endif()
 
 file(GLOB_RECURSE test_files testing "*.cta")
 file(GLOB_RECURSE sample_files examples/contra "*.cta")
 install( FILES ${test_files} ${sample_files} DESTINATION share/examples )
-
 
 install( EXPORT ${PROJECT_NAME}Targets
   FILE ${PROJECT_NAME}Targets.cmake

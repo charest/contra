@@ -137,14 +137,18 @@ struct contra_cuda_field_t {
 struct contra_cuda_accessor_t {
   int_t data_size;
   void *data;
-  int_t *offsets;
+  contra_cuda_partition_t partition;
   contra_cuda_field_t * field;
   
-  void setup(int_t data_sz, void *dat, int_t * off, contra_cuda_field_t * f)
+  void setup(
+    int_t data_sz,
+    void *dat,
+    contra_cuda_partition_t pt,
+    contra_cuda_field_t * f)
   {
     data_size = data_sz;
     data = dat;
-    offsets = off;
+    partition = pt;
     field = f;
   }
 };
@@ -180,6 +184,45 @@ struct contra_cuda_partition_info_t {
   }
 };
 
+//==============================================================================
+struct contra_cuda_task_info_t {
+
+  std::map<contra_cuda_partition_t*, contra_cuda_partition_t> Host2DevPart;
+  std::map<contra_cuda_partition_t*, contra_cuda_partition_t*> Dev2HostPart;
+  
+  std::map<void*, void*> Host2DevField;
+  
+  std::map<
+    std::pair<contra_cuda_partition_t*, contra_cuda_field_t*>,
+    contra_cuda_accessor_t> Host2DevAcc;
+  std::map<
+    contra_cuda_accessor_t*,
+    std::pair<contra_cuda_partition_t*, contra_cuda_field_t*> > TempDev2HostAcc;
+
+  std::pair<contra_cuda_partition_t*, bool> 
+    getOrCreatePartition(contra_cuda_partition_t*);
+  
+  std::pair<contra_cuda_accessor_t*, bool> 
+    getOrCreateAccessor(contra_cuda_partition_t*, contra_cuda_field_t*, bool);
+  
+  std::pair<contra_cuda_accessor_t*, bool> 
+    getAccessor(contra_cuda_partition_t*, contra_cuda_field_t*);
+  
+  std::pair<void**, bool> 
+    getOrCreateField(void*);
+
+
+  void freePartition(contra_cuda_partition_t*);
+  void freeTempAccessor(contra_cuda_accessor_t*);
+
+  bool isOnDevice(contra_cuda_partition_t* part)
+  { return Host2DevPart.count(part); }
+
+  bool isOnDevice(void* data)
+  { return Host2DevField.count(data); }
+
+  ~contra_cuda_task_info_t();
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // public functions
@@ -188,6 +231,9 @@ struct contra_cuda_partition_info_t {
 void contra_cuda_startup();
 void contra_cuda_shutdown();
 void contra_cuda_register_kernel(const char * kernel);
+
+void contra_cuda_partition_free(contra_cuda_partition_t *);
+void contra_cuda_accessor_free(contra_cuda_accessor_t *);
 
 } // extern
 

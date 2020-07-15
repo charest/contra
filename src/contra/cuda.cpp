@@ -26,6 +26,7 @@ CudaTasker::CudaTasker(utils::BuilderHelper & TheHelper)
   IndexSpaceType_ = DefaultIndexSpaceType_;
   IndexPartitionType_ = createIndexPartitionType();
   PartitionInfoType_ = VoidPtrType_->getPointerTo();
+  TaskInfoType_ = VoidPtrType_->getPointerTo();
   FieldType_ = createFieldType();
   AccessorType_ = createAccessorType();
 }
@@ -69,7 +70,7 @@ StructType * CudaTasker::createAccessorType()
   std::vector<Type*> members = {
     IntType_,
     VoidPtrType_,
-    IntType_->getPointerTo(),
+    IndexPartitionType_,
     FieldType_->getPointerTo() };
   auto NewType = StructType::create( TheContext_, members, "contra_cuda_accessor_t" );
   return NewType;
@@ -98,6 +99,32 @@ void CudaTasker::destroyPartitionInfo(Module & TheModule, AllocaInst* PartA)
   TheHelper_.callFunction(
       TheModule,
       "contra_cuda_partition_info_destroy",
+      VoidType_,
+      {PartA});
+}
+
+//==============================================================================
+// Create partitioninfo
+//==============================================================================
+AllocaInst* CudaTasker::createTaskInfo(Module & TheModule)
+{
+  auto Alloca = TheHelper_.createEntryBlockAlloca(TaskInfoType_);
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_cuda_task_info_create",
+      VoidType_,
+      {Alloca});
+  return Alloca;
+}
+
+//==============================================================================
+// destroy partition info
+//==============================================================================
+void CudaTasker::destroyTaskInfo(Module & TheModule, AllocaInst* PartA)
+{
+  TheHelper_.callFunction(
+      TheModule,
+      "contra_cuda_task_info_destroy",
       VoidType_,
       {PartA});
 }
@@ -281,11 +308,16 @@ void CudaTasker::taskPostamble(
     Value* ResultV,
     bool IsIndex)
 {
+      
+  auto & TaskI = getCurrentTask();
+  
+  // destroy existing task info if it was created
+  if (TaskI.TaskInfoAlloca) destroyTaskInfo(TheModule, TaskI.TaskInfoAlloca);
+  TaskI.TaskInfoAlloca = nullptr;
+
   //----------------------------------------------------------------------------
   // Index task
   if (IsIndex) {
-      
-    const auto & TaskI = getCurrentTask();
 
     // Call the reduction
     if (ResultV && !ResultV->getType()->isVoidTy()) {
@@ -329,7 +361,8 @@ void CudaTasker::taskPostamble(
   }
 
   //----------------------------------------------------------------------------
-  // Finish
+  // Finish 
+
   finishTask();
 }
  
@@ -347,12 +380,17 @@ Value* CudaTasker::launch(
 {
 
   std::vector<AllocaInst*> ToFree;
+  
+  auto & TaskE = getCurrentTask();
+  auto & TaskInfoA = TaskE.TaskInfoAlloca;
+  if (!TaskInfoA) TaskInfoA = createTaskInfo(TheModule);
+
 
   //----------------------------------------------------------------------------
   // Swap ranges for partitions
   
   auto PartInfoA = createPartitionInfo(TheModule);
-
+  
   std::vector<Value*> TempParts;
 
   auto NumArgs = ArgAs.size();
@@ -376,14 +414,15 @@ Value* CudaTasker::launch(
       std::vector<Value*> FunArgVs = {
         IndexSpaceA,
         IndexPartitionA,
-        PartInfoA};
+        PartInfoA,
+        TaskInfoA};
       auto DevIndexPartitionPtr = TheHelper_.callFunction(
           TheModule,
           "contra_cuda_partition2dev",
           IndexPartitionType_,
           FunArgVs);
       auto DevIndexPartitionA = TheHelper_.getAsAlloca(DevIndexPartitionPtr);
-      ToFree.emplace_back(DevIndexPartitionA);
+      if (!PartAs[i]) ToFree.emplace_back(DevIndexPartitionA);
       ArgAs[i] = DevIndexPartitionA;
     }
   }
@@ -419,7 +458,7 @@ Value* CudaTasker::launch(
             TheModule,
             "contra_cuda_field2dev",
             AccessorType_,
-            {IndexSpaceA, PartA, FieldA, PartInfoA});
+            {IndexSpaceA, PartA, FieldA, PartInfoA, TaskInfoA});
       auto DevFieldA = TheHelper_.getAsAlloca(DevFieldV);
       ToFree.emplace_back( DevFieldA );
       ArgAs[i] = DevFieldA;
@@ -523,16 +562,16 @@ Value* CudaTasker::launch(
     if (isPartition(AllocA)) {
       TheHelper_.callFunction(
           TheModule,
-          "contra_cuda_partition_free",
+          "contra_cuda_partition_free_and_deregister",
           VoidType_,
-          {AllocA});
+          {AllocA, TaskInfoA});
     }
     else if (isAccessor(AllocA)) {
       TheHelper_.callFunction(
           TheModule,
-          "contra_cuda_accessor_free",
+          "contra_cuda_accessor_free_temp",
           VoidType_,
-          {AllocA});
+          {AllocA, TaskInfoA});
     }
     else if (librt::DopeVector::isDopeVector(AllocA)) {
       TheHelper_.callFunction(
@@ -636,13 +675,16 @@ AllocaInst* CudaTasker::createPartition(
 
   //------------------------------------
   if (isField(ValueA)) {
+    const auto & TaskI = getCurrentTask();
+   
     ValueA = TheHelper_.getAsAlloca(ValueA);
     IndexPartitionA = TheHelper_.getAsAlloca(IndexPartitionA);
     std::vector<Value*> FunArgVs = {
       ValueA,
       IndexSpaceA,
       IndexPartitionA,
-      IndexPartA};
+      IndexPartA,
+      TaskI.TaskInfoAlloca};
     
     TheHelper_.callFunction(
         TheModule,
