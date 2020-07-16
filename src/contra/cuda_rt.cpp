@@ -1,9 +1,9 @@
 #include "cuda_rt.hpp"
 #include "cuda_reduce.hpp"
-#include "cuda_utils.hpp"
 #include "tasking_rt.hpp"
 
 #include "librt/dopevector.hpp"
+#include "librtcuda/cuda_utils.hpp"
 
 #include <cuda_runtime_api.h>
 

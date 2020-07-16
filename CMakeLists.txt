@@ -35,7 +35,9 @@ set(SUPPORTED_BACKENDS "serial")
 #------------------------------------------------------------------------------#
 
 add_executable( contra )
-
+install( TARGETS contra
+  EXPORT ${PROJECT_NAME}Targets
+  RUNTIME DESTINATION bin)
 
 #------------------------------------------------------------------------------#
 # LLVM
@@ -106,15 +108,21 @@ endif()
 if (CUDA_FOUND)
   enable_language(CUDA)
   
-  add_library( contra_cuda STATIC )
-  target_compile_options(contra_cuda PUBLIC -lib -rdc=true )
-  target_include_directories(contra_cuda PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_include_directories(contra_cuda PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
-  
-  add_library( contra_cuda_rt )
+  add_library( contra_cuda_rt STATIC )
+  target_compile_options(contra_cuda_rt PRIVATE -rdc=true )
   target_include_directories(contra_cuda_rt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_include_directories(contra_cuda_rt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
-  target_link_libraries(contra PRIVATE contra_cuda_rt)  
+  
+  add_library( rtcuda )
+  target_include_directories(rtcuda PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_include_directories(rtcuda PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
+  target_link_libraries(contra PRIVATE rtcuda)  
+  
+  install( TARGETS contra_cuda_rt rtcuda
+    EXPORT ${PROJECT_NAME}Targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib)
+
   
   if (TARGET CUDA::cudart)
     target_link_libraries(contra PUBLIC CUDA::cudart CUDA::cuda_driver)
@@ -170,15 +178,6 @@ endif()
 #------------------------------------------------------------------------------#
 # Export targets and package.
 #------------------------------------------------------------------------------#
-
-if (CUDA_FOUND)
-  install( TARGETS contra contra_cuda
-    EXPORT ${PROJECT_NAME}Targets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-    INCLUDES DESTINATION include) 
-endif()
 
 file(GLOB_RECURSE test_files testing "*.cta")
 file(GLOB_RECURSE sample_files examples/contra "*.cta")
