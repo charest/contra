@@ -2,6 +2,7 @@
 
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -278,6 +279,15 @@ void insertModule(
         NewNMD->addOperand(MapMetadata(NMD.getOperand(i), VMap));
   }
 
+}
+
+//==============================================================================
+std::string verifyModule(llvm::Module& M){
+  SmallString<SmallVectorLength> SmallStr;
+  raw_svector_ostream Stream(SmallStr);
+  std::string error_message;
+  verifyModule(M, &Stream);
+  return Stream.str();
 }
 
 } // namespace

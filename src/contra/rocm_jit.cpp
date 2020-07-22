@@ -11,12 +11,12 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Utils/AMDGPUEmitPrintf.h"
 
 #include <fstream>
 #include <set>
@@ -135,10 +135,7 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
           auto CallF = CallI->getCalledFunction();
 
           if (CallF->getName().str() == "print") {
-            //auto BB = replacePrint(*M, CallI);
-            //BlockIt = Function::iterator(BB);
-            //break;
-            NewI = replacePrint2(*M, CallI);
+            NewI = replacePrint(*M, CallI);
           }
 
         } // call
@@ -164,7 +161,7 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
  
   runOnModule(*M);
   
-  auto NewM = insertBitcode(*M, temp_name);
+  auto NewM = insertBitcode(std::move(M), temp_name);
   
   auto Hsaco = compileAndLink(*NewM, temp_name);
 
@@ -327,76 +324,41 @@ std::vector<char> ROCmJIT::compileAndLink(
 // Compile a module
 //==============================================================================
 std::unique_ptr<Module> ROCmJIT::insertBitcode(
-    Module & M,
+    std::unique_ptr<Module> M,
     std::string file_name)
 {
-  auto orig_name = file_name + ".bc";
-  auto new_name = file_name + ".linked.bc";
 
-  std::error_code EC;
-  raw_fd_ostream File(orig_name, EC, sys::fs::OF_None);
-  WriteBitcodeToFile(M, File);
-  File.flush();
-  File.close();
+  auto Composite = std::make_unique<Module>("llvm-link", TheContext_);
+  Linker L(*Composite);
 
-  std::stringstream ss;
-  ss << ROCM_LLVM_LINK_PATH << " "
-    << orig_name 
-    << " /opt/rocm-3.5.0/lib/ockl.amdgcn.bc "
-       "/opt/rocm-3.5.0/lib/opencl.amdgcn.bc -o "
-    << new_name;
-
-  auto res = system( ss.str().c_str() );
-  if (res) THROW_CONTRA_ERROR("Error linking bitcode.");
-
+  unsigned Flags = Linker::Flags::None & Linker::Flags::OverrideFromSrc;
+  auto err = L.linkInModule(std::move(M), Flags);
+  if (err)
+    THROW_CONTRA_ERROR("Error linking in contra module.");
+  
   SMDiagnostic Diag;
-  auto NewM = parseIRFile(
-      new_name,
+  auto DeviceM = parseIRFile(
+      "/opt/rocm-3.5.0/lib/opencl.amdgcn.bc",
       Diag,
       TheContext_);
-  if (!NewM) 
-    THROW_CONTRA_ERROR("Error reading new bitcode file.");
+  if (!DeviceM)
+    THROW_CONTRA_ERROR("Error reading device bitcode file.");
 
-  return NewM;
+  err = L.linkInModule(std::move(DeviceM), Flags);
+  if (err)
+    THROW_CONTRA_ERROR("Error linking in device module.");
+
+  auto error_message = verifyModule(*Composite);
+  if (!error_message.empty())
+    THROW_CONTRA_ERROR("inked module is broken: " << error_message);
+
+  return Composite;
 }
 
 //==============================================================================
 // Helper to replace print function
 //==============================================================================
-BasicBlock* ROCmJIT::replacePrint(Module &M, CallInst* CallI) {
-
-  // some types
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto Int32T = Type::getInt32Ty(TheContext_);
-
-  // create new print function
-  auto PrintT = FunctionType::get(
-      Int32T,
-      VoidPtrT,
-      true /* var args */ );
-  auto PrintF = M.getOrInsertFunction("printf", PrintT).getCallee();
-
-  // gather args
-  std::vector<Value*> ArgVs;
-  for (auto & A : CallI->args())
-    ArgVs.push_back(A);
-
-
-  // create new instruction            
-  auto TmpB = IRBuilder<>(CallI);
-  emitAMDGPUPrintfCall(TmpB, ArgVs);
-
-  // erase old
-  CallI->eraseFromParent();
-
-  return TmpB.GetInsertBlock();
-  
-}
-
-//==============================================================================
-// Helper to replace print function
-//==============================================================================
-CallInst* ROCmJIT::replacePrint2(Module &M, CallInst* CallI) {
+CallInst* ROCmJIT::replacePrint(Module &M, CallInst* CallI) {
 
   // some types
   auto VoidPtrT = llvmType<void*>(TheContext_);

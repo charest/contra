@@ -17,7 +17,6 @@
 
 #cmakedefine HAVE_ROCM
 #define ROCM_LD_LLD_PATH "@ROCM_LD_LLD_EXE@"
-#define ROCM_LLVM_LINK_PATH "@ROCM_LLVM_LINK_EXE@"
 
 #ifdef __CUDACC__
 #define CONTRA_INLINE_TARGET __host__ __device__

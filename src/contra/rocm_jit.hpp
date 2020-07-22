@@ -27,8 +27,7 @@ public:
 
 private:
 
-  llvm::BasicBlock* replacePrint(llvm::Module &, llvm::CallInst*);
-  llvm::CallInst* replacePrint2(llvm::Module &, llvm::CallInst*);
+  llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);
 
   void runOnModule(llvm::Module &);
 
@@ -38,7 +37,7 @@ private:
       llvm::CodeGenFileType);
 
   std::unique_ptr<llvm::Module> insertBitcode(
-      llvm::Module&,
+      std::unique_ptr<llvm::Module>,
       std::string);
 
   std::vector<char> compileAndLink(llvm::Module &, const std::string&);

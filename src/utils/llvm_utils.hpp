@@ -156,6 +156,8 @@ const llvm::Target* findTarget(const std::string&);
 
 void insertModule(llvm::Module &, llvm::Module &);
 
+std::string verifyModule(llvm::Module&);
+
 } // namespace
 
 #endif // CONFIG_HPP
