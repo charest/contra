@@ -38,6 +38,7 @@ public:
   AllocaInst* getAsAlloca(Value*);
 
   Value* getElementPointer(AllocaInst*, unsigned);
+  Value* getElementPointer(Value*, const std::vector<unsigned> &);
   Value* extractValue(Value*, unsigned);
   void insertValue(Value*, Value*, unsigned);
 

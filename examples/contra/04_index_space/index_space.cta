@@ -5,22 +5,22 @@ tsk top_level() {
   parts = 0 : num_parts-1
   points = 0 : num_points-1
 
-  myid[points] = -1
+  #myid[points] = -1
 
   foreach i = parts {
-    for j = 0:len(points)-1 {
-      print("Loop with parition %ld and local id %ld\n", i, j)
-      myid[j] = j
-    }
+    #for j = 0:len(points)-1 {
+    #  print("Loop with parition %ld and local id %ld\n", i, j)
+    #  myid[j] = j
+    #}
   }
   
-  foreach i = parts {
-    for j = 0:len(points)-1
-      print("Loop with parition %ld and local id %ld\n", i, myid[j])
-  }
-  
-  foreach i = points 
-    print("Loop with counter %ld and myid is now %ld\n", i, myid)
+  #foreach i = parts {
+  #  for j = 0:len(points)-1
+  #    print("Loop with parition %ld and local id %ld\n", i, myid[j])
+  #}
+  #
+  #foreach i = points 
+  #  print("Loop with counter %ld and myid is now %ld\n", i, myid)
 
 }
 

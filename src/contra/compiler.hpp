@@ -3,6 +3,8 @@
 
 #include "config.hpp"
 
+#include "llvm/Support/CodeGen.h"
+
 #include <string>
 
 namespace llvm {
@@ -17,7 +19,8 @@ void compile(llvm::Module &, const std::string &);
 std::string compileKernel(
     llvm::Module & TheModule,
     llvm::TargetMachine * TM,
-    const std::string & Filename = "");
+    const std::string & Filename = "",
+    llvm::CodeGenFileType FileType = llvm::CGFT_AssemblyFile);
 
 } // namespace
 

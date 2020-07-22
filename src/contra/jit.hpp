@@ -98,6 +98,8 @@ public:
     return findMangledSymbol(mangle(Name));
   }
 
+  void addDeviceJIT(JIT * DevJIT) { DeviceJIT_ = DevJIT; }
+
 private:
 
   std::string mangle(const std::string &Name);
@@ -112,6 +114,8 @@ private:
   CompileLayerT CompileLayer_;
   std::vector<VModuleKey> ModuleKeys_;
   //std::unique_ptr<llvm::ExecutionEngine> EE;
+  
+  JIT* DeviceJIT_ = nullptr;
 };
 
 } // end namespace

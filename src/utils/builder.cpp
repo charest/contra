@@ -90,6 +90,18 @@ Value* BuilderHelper::getElementPointer(AllocaInst* ValA, unsigned i)
   return Builder_.CreateGEP(ValT, ValA, MemberIndices);
 }
   
+Value* BuilderHelper::getElementPointer(
+    Value* Val,
+    const std::vector<unsigned> & Indices)
+{
+  std::vector<Value*> MemberIndices;
+  for (auto i : Indices)
+    MemberIndices.emplace_back(
+        ConstantInt::get(TheContext_, APInt(32, i, true)));
+
+  return Builder_.CreateGEP(Val, MemberIndices);
+}
+  
   
 //==============================================================================
 // Get pointer to struct member

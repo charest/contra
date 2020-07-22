@@ -110,7 +110,7 @@ void copyComdat(GlobalObject *Dst, const GlobalObject *Src) {
 }
 
 //==============================================================================
-void insert(
+void insertModule(
     Module &SrcM,
     Module & TgtM)
 {

@@ -134,6 +134,52 @@ if (CUDA_FOUND)
   list(APPEND SUPPORTED_BACKENDS "cuda")
 endif()
 
+find_package(HIP)
+if (HIP_FOUND)
+  target_link_libraries(contra PUBLIC hip::host)
+  target_compile_options(contra PRIVATE -D__HIP_HCC_COMPAT_MODE__=1)
+  #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${ROCM_DIR}/cmake")  
+  list(APPEND SUPPORTED_BACKENDS "rocm")
+
+  find_program(ROCM_LD_LLD_EXE 
+    NAMES 
+      ld.lld  
+    HINTS
+      $ENV{ROCM_PATH}/llvm/bin
+      $ENV{HIP_PATH}/../llvm/bin
+      ENV ROCM_CLANG_PATH
+      ENV HIP_CLANG_PATH
+      ENV ROCM_LLVM_PATH
+      ENV HIP_LLVM_PATH
+    PATH_SUFFIXES
+        bin
+  )
+  if (NOT ROCM_LD_LLD_EXE)
+    MESSAGE(FATAL_ERROR "Could not find ld.lld.  Please set ROCM_LLVM_PATH")
+  else ()
+    MESSAGE(STATUS "Found ld.lld: ${ROCM_LD_LLD_EXE}")
+  endif()
+  
+  find_program(ROCM_LLVM_LINK_EXE
+    NAMES 
+      llvm-link
+    HINTS
+      $ENV{ROCM_PATH}/llvm/bin
+      $ENV{HIP_PATH}/../llvm/bin
+      ENV ROCM_CLANG_PATH
+      ENV HIP_CLANG_PATH
+      ENV ROCM_LLVM_PATH
+      ENV HIP_LLVM_PATH
+    PATH_SUFFIXES
+        bin
+  )
+  if (NOT ROCM_LLVM_LINK_EXE)
+    MESSAGE(FATAL_ERROR "Could not find llvm-link.  Please set ROCM_LLVM_PATH")
+  else ()
+    MESSAGE(STATUS "Found llvm-link: ${ROCM_LLVM_LINK_EXE}")
+  endif()
+endif()
+
 #------------------------------------------------------------------------------#
 # build library
 #------------------------------------------------------------------------------#

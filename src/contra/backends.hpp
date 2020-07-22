@@ -15,6 +15,9 @@ enum class SupportedBackends {
 #ifdef HAVE_CUDA
   Cuda,
 #endif
+#ifdef HAVE_ROCM
+  ROCm,
+#endif
   Serial,
   Size
 };

@@ -1,6 +1,7 @@
 set(HAVE_LEGION ${Legion_FOUND})
 set(HAVE_KOKKOS ${Kokkos_FOUND})
 set(HAVE_CUDA ${CUDA_FOUND})
+set(HAVE_ROCM ${HIP_FOUND})
 
 if (CUDA_FOUND)
   set(_path "$<TARGET_FILE:contra_cuda_rt>")
@@ -19,4 +20,5 @@ configure_file(config.hpp.in config.hpp @ONLY)
 add_subdirectory(utils)
 add_subdirectory(librt)
 add_subdirectory(librtcuda)
+add_subdirectory(llvm)
 add_subdirectory(contra)

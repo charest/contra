@@ -10,6 +10,8 @@
 #include "kokkos.hpp"
 #include "legion.hpp"
 #include "precedence.hpp"
+#include "rocm.hpp"
+#include "rocm_jit.hpp"
 #include "serial.hpp"
 #include "token.hpp"
 #include "variable.hpp"
@@ -52,29 +54,11 @@ CodeGen::CodeGen (
   TheContext_(TheHelper_.getContext()),
   Builder_(TheHelper_.getBuilder())
 {
+  HostJIT_ = std::make_unique<JIT>();
 
   // setup backend args
-  std::vector<std::string> Args = {
-    "./contra",
-    "-ll:gsize", "0"};
-    //"-ll:csize", "2048",
-    //"-ll:cpu", "2",
-    //"-lg:prof", "1",
-    //"-lg:prof_logfile", "prof_%.gz"
+  std::vector<std::string> Args = {"./contra"};
   
-  auto SplitArgs = utils::split(SuppliedArgs, ' ');
-  for (const auto & A : SplitArgs) 
-    Args.emplace_back(A);
-
-  Argc_ = Args.size();
-  Argv_ = new char *[Argc_];
-
-  for ( unsigned i=0; i<Args.size(); ++i ) {
-    auto len = Args[i].size();
-    Argv_[i] = new char[len+1];
-    strcpy(Argv_[i], Args[i].data());
-  }
-
   // setup runtime
   librt::RunTimeLib::setup(TheContext_);
   
@@ -87,25 +71,38 @@ CodeGen::CodeGen (
   // setup tasker
   Tasker_ = nullptr;
 
-#ifdef HAVE_LEGION
-  if (Backend == SupportedBackends::Legion)
-    Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
-#endif
-#ifdef HAVE_KOKKOS
-  if (Backend == SupportedBackends::Kokkos)
-    Tasker_ = std::make_unique<KokkosTasker>(TheHelper_);
-#endif
   if (Backend == SupportedBackends::Serial)
     Tasker_ = std::make_unique<SerialTasker>(TheHelper_);
 
+#ifdef HAVE_LEGION
+  else if (Backend == SupportedBackends::Legion) {
+    Args.emplace_back("-ll:gsize");
+    Args.emplace_back("0");
+    Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
+  }
+#endif
+
+#ifdef HAVE_KOKKOS
+  else if (Backend == SupportedBackends::Kokkos)
+    Tasker_ = std::make_unique<KokkosTasker>(TheHelper_);
+#endif
+
 #ifdef HAVE_CUDA
-  if (Backend == SupportedBackends::Cuda) {
+  else if (Backend == SupportedBackends::Cuda) {
     DeviceJIT_ = std::make_unique<CudaJIT>(TheHelper_);
     Tasker_ = std::make_unique<CudaTasker>(TheHelper_);
   }     
 #endif
   
-  if (!Tasker_) THROW_CONTRA_ERROR("No backend selected!");
+#ifdef HAVE_ROCM
+  else if (Backend == SupportedBackends::ROCm) {
+    Tasker_ = std::make_unique<ROCmTasker>(TheHelper_);
+    DeviceJIT_ = std::make_unique<ROCmJIT>(TheHelper_);
+  }     
+#endif
+  
+  else 
+    THROW_CONTRA_ERROR("No viable backend selected!");
 
   Tasker_->registerSerializer<ArraySerializer>(
       ArrayType_,
@@ -124,6 +121,20 @@ CodeGen::CodeGen (
 
   // init function optimizer
   initializeModuleAndPassManager();
+  
+  // finish arg setup
+  auto SplitArgs = utils::split(SuppliedArgs, ' ');
+  for (const auto & A : SplitArgs) 
+    Args.emplace_back(A);
+
+  Argc_ = Args.size();
+  Argv_ = new char *[Argc_];
+
+  for ( unsigned i=0; i<Args.size(); ++i ) {
+    auto len = Args[i].size();
+    Argv_[i] = new char[len+1];
+    strcpy(Argv_[i], Args[i].data());
+  }
 
 }
   
@@ -158,7 +169,7 @@ void CodeGen::initializeModule()
 {
   // Open a new module.
   TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
-  TheModule_->setDataLayout(HostJIT_.getTargetMachine()->createDataLayout());
+  TheModule_->setDataLayout(HostJIT_->getTargetMachine()->createDataLayout());
 }
 
 //==============================================================================
@@ -191,7 +202,8 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 JIT::VModuleKey CodeGen::doJIT()
 {
-  auto H = HostJIT_.addModule(std::move(TheModule_));
+  //TheModule_->print(outs(), nullptr); outs()<<"\n";
+  auto H = HostJIT_->addModule(std::move(TheModule_));
   initializeModuleAndPassManager();
   return H;
 }
@@ -200,13 +212,13 @@ JIT::VModuleKey CodeGen::doJIT()
 // Search the JIT for a symbol
 //==============================================================================
 JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
-{ return HostJIT_.findSymbol(Symbol); }
+{ return HostJIT_->findSymbol(Symbol); }
 
 //==============================================================================
 // Delete a JITed module
 //==============================================================================
 void CodeGen::removeJIT( JIT::VModuleKey H )
-{ HostJIT_.removeModule(H); }
+{ HostJIT_->removeModule(H); }
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1886,8 +1898,8 @@ void CodeGen::visit(IndexTaskAST& e)
           ReduceOps);
 
     if (DeviceJIT_) {
-      utils::insert(*ModulePtr, *TheModule_);
-      utils::insert(*ModulePtr, *OldModule);
+      utils::insertModule(*ModulePtr, *TheModule_);
+      utils::insertModule(*ModulePtr, *OldModule);
       delete ModulePtr;
     }
 
@@ -1936,16 +1948,16 @@ void CodeGen::visit(IndexTaskAST& e)
     auto VarE = insertVariable(TaskArgNs[ArgIdx], VarA, VarT);
     VarE->setOwner(IsOwner);
   }
-
+  
   // and the index
   auto IndexA = Wrapper.Index;
   auto IndexT = IndexA->getType()->getPointerElementType();
   auto IndexE = insertVariable(e.getLoopVariableName(), IndexA, IndexT);
   IndexE->setOwner(false);
 
-  // function body
+  //// function body
   for ( auto & stmt : e.getBodyExprs() ) runStmtVisitor(*stmt);
-
+  
   // if reductions
   Value* ResultA = nullptr;
   if (ResultT) {

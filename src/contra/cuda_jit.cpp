@@ -72,7 +72,6 @@ std::unique_ptr<Module> CudaJIT::createModule()
 // Compile a module
 //==============================================================================
 void CudaJIT::addModule(std::unique_ptr<Module> M) {
-  auto DL = TargetMachine_->createDataLayout();
 
   for (auto & Func : M->getFunctionList()) {
     for (auto & Block : Func.getBasicBlockList()) {

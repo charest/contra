@@ -73,7 +73,8 @@ void compile(Module & TheModule, const std::string & Filename) {
 std::string compileKernel(
     Module & TheModule,
     TargetMachine * TM,
-    const std::string & Filename) 
+    const std::string & Filename,
+    CodeGenFileType FileType)
 {
 
   if (!TheModule.getInstructionCount()) return "";
@@ -107,7 +108,7 @@ std::string compileKernel(
       PassMan,
       *Dest,
       nullptr,
-      CGFT_AssemblyFile,
+      FileType,
       false);
   if (fail)
     THROW_CONTRA_ERROR( "Error generating PTX");

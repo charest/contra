@@ -31,7 +31,7 @@ public:
 
 
 protected:
-
+  
   utils::BuilderHelper & TheHelper_;
 
   llvm::IRBuilder<> & Builder_;

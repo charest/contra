@@ -42,6 +42,17 @@ JIT::JITSymbol JIT::findMangledSymbol(const std::string &Name) {
   if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
     return JITSymbol(SymAddr, JITSymbolFlags::Exported);
 
+  if (DeviceJIT_) {
+    auto DevSym = DeviceJIT_->findMangledSymbol(Name);
+    if (DevSym) {
+      std::cout << "using device fun " << Name << std::endl;
+
+      auto res = llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(Name);
+      std::cout << "res " << res << std::endl;
+      return DevSym;
+    }
+  }
+
 #ifdef _WIN32
   // For Windows retry without "_" at beginning, as RTDyldMemoryManager uses
   // GetProcAddress and standard libraries like msvcrt.dll use names

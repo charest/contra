@@ -94,6 +94,9 @@ public:
 #ifdef HAVE_CUDA
     if (lower == "cuda") BackendType_ = SupportedBackends::Cuda;
 #endif
+#ifdef HAVE_ROCM
+    if (lower == "rocm") BackendType_ = SupportedBackends::ROCm;
+#endif
     if (lower == "serial") BackendType_ = SupportedBackends::Serial;
     if (BackendType_ == SupportedBackends::Size)
       THROW_CONTRA_ERROR("Unsupported backend requested: '" << Backend << "'.");

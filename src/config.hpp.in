@@ -11,7 +11,13 @@
 #cmakedefine HAVE_KOKKOS
 #cmakedefine HAVE_CUDA
 
+#ifdef HAVE_CUDA
 #include "config.defs"
+#endif
+
+#cmakedefine HAVE_ROCM
+#define ROCM_LD_LLD_PATH "@ROCM_LD_LLD_EXE@"
+#define ROCM_LLVM_LINK_PATH "@ROCM_LLVM_LINK_EXE@"
 
 #ifdef __CUDACC__
 #define CONTRA_INLINE_TARGET __host__ __device__
@@ -25,8 +31,6 @@ namespace {
   using uint_t = std::uint64_t;
   using real_t = double;
   using byte_t = unsigned char;
-
-  constexpr char TargetNvptxString[] = "nvptx64";
 
   constexpr size_t SmallVectorLength = 10240;
 
