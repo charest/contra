@@ -5,7 +5,7 @@
 #include "librt/dopevector.hpp"
 #include "utils/llvm_utils.hpp"
 
-#include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/Support/raw_ostream.h"
   
 ////////////////////////////////////////////////////////////////////////////////
@@ -171,6 +171,26 @@ void ROCmTasker::destroyTaskInfo(Module & TheModule, AllocaInst* PartA)
       VoidType_,
       {PartA});
 }
+      
+//==============================================================================
+// Create an index space from a partition
+//==============================================================================
+void ROCmTasker::createIndexSpaceFromPartition(
+    Value* IndexV,
+    AllocaInst* PartA,
+    AllocaInst* IndexA)
+{
+  auto OffsetsPtrV = TheHelper_.extractValue(PartA, 2);
+  auto StartPtrV = TheHelper_.offsetPointer(OffsetsPtrV, IndexV);
+  auto StartV  = TheHelper_.load(StartPtrV);
+  auto OneC = llvmValue<int_t>(TheContext_, 1);
+  auto IndexPlusOneV = Builder_.CreateAdd(IndexV, OneC);
+  auto EndPtrV = TheHelper_.offsetPointer(OffsetsPtrV, IndexPlusOneV);
+  auto EndV = TheHelper_.load(EndPtrV);
+  TheHelper_.insertValue(IndexA, StartV, 0);
+  TheHelper_.insertValue(IndexA, EndV, 1);
+  TheHelper_.insertValue(IndexA, OneC, 2);
+}
 
 //==============================================================================
 // start runtime
@@ -219,8 +239,8 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
     WrapperArgTs.emplace_back(ArgT);
   }
   
-  //WrapperArgTs.emplace_back(IntType_);
-  //WrapperArgNs.emplace_back("size");
+  WrapperArgTs.emplace_back(IntType_);
+  WrapperArgNs.emplace_back("size");
 
   if (ResultT) {
     WrapperArgTs.emplace_back(VoidPtrType_);
@@ -240,26 +260,26 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   WrapperF->setCallingConv(CallingConv::AMDGPU_KERNEL);
 
   std::vector< std::pair<std::string,std::string> > Annotes = {
-    //{"rocdl.hsaco", "HSACO"},
-    {"amdgpu-flat-work-group-size", "1,256"},
+    //{"amdgpu-flat-work-group-size", "1,256"},
     {"amdgpu-implicitarg-num-bytes", "56"},
-    {"correctly-rounded-divide-sqrt-fp-math", "false"},
-    {"denormal-fp-math-f32", "preserve-sign,preserve-sign"},
-    {"disable-tail-calls", "false"},
-    {"frame-pointer", "none"},
-    {"less-precise-fpmad", "false"},
-    {"min-legal-vector-width", "0"},
-    {"no-infs-fp-math", "false"},
-    {"no-jump-tables", "false"},
-    {"no-nans-fp-math", "false"},
-    {"no-signed-zeros-fp-math", "false"},
-    {"no-trapping-math", "false"},
-    {"stack-protector-buffer-size", "8"},
-    {"target-cpu", "gfx900"},
-    {"target-features", "+16-bit-insts,+ci-insts,+dpp,+flat-address-space,+gfx8-insts,+gfx9-insts,+s-memrealtime"},
-    {"uniform-work-group-size", "true"},
-    {"unsafe-fp-math", "false"},
-    {"use-soft-float", "false"} };
+    //{"correctly-rounded-divide-sqrt-fp-math", "false"},
+    //{"denormal-fp-math-f32", "preserve-sign,preserve-sign"},
+    //{"disable-tail-calls", "false"},
+    //{"frame-pointer", "none"},
+    //{"less-precise-fpmad", "false"},
+    //{"min-legal-vector-width", "0"},
+    //{"no-infs-fp-math", "false"},
+    //{"no-jump-tables", "false"},
+    //{"no-nans-fp-math", "false"},
+    //{"no-signed-zeros-fp-math", "false"},
+    //{"no-trapping-math", "false"},
+    //{"stack-protector-buffer-size", "8"},
+    //{"target-cpu", "gfx900"},
+    //{"target-features", "+16-bit-insts,+ci-insts,+dpp,+flat-address-space,+gfx8-insts,+gfx9-insts,+s-memrealtime"},
+    //{"uniform-work-group-size", "true"},
+    //{"unsafe-fp-math", "false"},
+    //{"use-soft-float", "false"}
+  };
 
   for ( const auto & Ann : Annotes ) {
     WrapperF->addFnAttr(Ann.first, Ann.second);
@@ -293,30 +313,11 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   //----------------------------------------------------------------------------
   // determine my index
  
-  // tid = threadIdx.x + blockIdx.x * blockDim.x;
-  // __ockl_get_global_id
-  //auto TidF = Intrinsic::getDeclaration(
-  //    &TheModule,
-  //    Intrinsic::nvvm_read_ptx_sreg_tid_x);
-  //Value* IndexV = Builder_.CreateCall(TidF);
-  //auto BidF = Intrinsic::getDeclaration(
-  //    &TheModule,
-  //    Intrinsic::nvvm_read_ptx_sreg_ctaid_x);
-  //Value* BlockIdV = Builder_.CreateCall(BidF);
-  //auto BdimF = Intrinsic::getDeclaration(
-  //    &TheModule,
-  //    Intrinsic::nvvm_read_ptx_sreg_ntid_x);
-  //Value* BlockDimV = Builder_.CreateCall(BdimF);
-
-  //Value* TmpV = Builder_.CreateMul(BlockIdV, BlockDimV);
-  //IndexV = Builder_.CreateAdd(IndexV, TmpV);
+  auto IndexV = getThreadID(TheModule);
 
   // cast and store
-  //IndexV = TheHelper_.createCast(IndexV, IntType_);
-  Value* IndexV = llvmValue(TheContext_, IntType_, 0);
   auto IndexA = TheHelper_.createEntryBlockAlloca(WrapperF, IntType_, "index");
   Builder_.CreateStore(IndexV, IndexA);
-#if 0
   
   //----------------------------------------------------------------------------
   // If tid < total size
@@ -325,12 +326,8 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
   TaskI.MergeBlock = BasicBlock::Create(TheContext_, "ifcont");
 
-#if 0
   auto IndexSizeA = WrapperArgAs[TaskArgNs.size()];
   auto IndexSizeV = TheHelper_.load(IndexSizeA);
-#else
-  auto IndexSizeV = llvmValue(TheContext_, IntType_, 1);
-#endif
 
   IndexV = TheHelper_.load(IndexA); 
   auto CondV = Builder_.CreateICmpSLT(IndexV, IndexSizeV, "threadcond");
@@ -341,27 +338,15 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
 
   //----------------------------------------------------------------------------
   // partition any ranges
-  std::vector<Type*> GetRangeArgTs = {
-    IntType_,
-    IndexPartitionType_->getPointerTo(),
-    IndexSpaceType_->getPointerTo()
-  };
-
-  auto GetRangeF = TheHelper_.createFunction(
-      TheModule,
-      "contra_rocm_index_space_create_from_partition",
-      VoidType_,
-      GetRangeArgTs);
   
   for (unsigned i=0; i<TaskArgNs.size(); i++) {
     if (isRange(TaskArgTs[i])) {
       auto ArgN = TaskArgNs[i];
       auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
-      Builder_.CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
+      createIndexSpaceFromPartition(IndexV, WrapperArgAs[i], ArgA);
       WrapperArgAs[i] = ArgA;
     }
   }
-#endif
 
   if (ResultT) {
     TaskI.ResultAlloca = WrapperArgAs.back();
@@ -369,7 +354,7 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   }
 
   // Index size
-  //WrapperArgAs.pop_back();
+  WrapperArgAs.pop_back();
   
   return {WrapperF, WrapperArgAs, IndexA};
 }
@@ -402,19 +387,19 @@ void ROCmTasker::taskPostamble(
       
       auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
       
-      TheHelper_.callFunction(
-          TheModule,
-          "contra_rocm_set_reduction_value",
-          VoidType_,
-          {IndataA, ResultA, DataSizeV});
+      auto TidV = getThreadID(TheModule);
+      auto PosV = Builder_.CreateMul(TidV, DataSizeV);
+      auto IndataV = TheHelper_.load(IndataA);
+      auto OffsetV = TheHelper_.offsetPointer(IndataV, PosV);
+      TheHelper_.memCopy(OffsetV, ResultA, DataSizeV);
     }
   
     // finish If
-    //auto MergeBB = TaskI.MergeBlock;
-    //Builder_.CreateBr(MergeBB);
-    //auto TheFunction = Builder_.GetInsertBlock()->getParent();
-    //TheFunction->getBasicBlockList().push_back(MergeBB);
-    //Builder_.SetInsertPoint(MergeBB);
+    auto MergeBB = TaskI.MergeBlock;
+    Builder_.CreateBr(MergeBB);
+    auto TheFunction = Builder_.GetInsertBlock()->getParent();
+    TheFunction->getBasicBlockList().push_back(MergeBB);
+    Builder_.SetInsertPoint(MergeBB);
 
     Builder_.CreateRetVoid();
   }
@@ -513,12 +498,13 @@ Value* ROCmTasker::launch(
     // Array
     if (librt::DopeVector::isDopeVector(ArgA)) {
       auto ArrayA = TheHelper_.getAsAlloca(ArgA);
+      auto ArrayT = librt::DopeVector::DopeVectorType;
+      auto DevPtrA = TheHelper_.createEntryBlockAlloca(ArrayT);
       auto DevPtr = TheHelper_.callFunction(
           TheModule,
           "contra_rocm_array2dev",
-          librt::DopeVector::DopeVectorType,
-          {ArrayA});
-      auto DevPtrA = TheHelper_.getAsAlloca(DevPtr);
+          VoidType_,
+          {ArrayA, DevPtrA});
       ToFree.emplace_back( DevPtrA );
       ArgAs[i] = DevPtrA;
     }
@@ -573,148 +559,50 @@ Value* ROCmTasker::launch(
   //----------------------------------------------------------------------------
   // Serialize args
   
-  NumArgs = ArgAs.size();
-  auto ArgsT = ArrayType::get(VoidPtrType_, NumArgs);
-  auto ArgsA = TheHelper_.createEntryBlockAlloca(ArgsT);
+  auto TotArgs = ArgAs.size();
 
-  for (unsigned i=0; i<NumArgs; ++i) {
-    auto ArgV = TheHelper_.createBitCast(ArgAs[i], VoidPtrType_);
+  std::vector<Type*> ArgTs;
+  for (auto A : ArgAs) ArgTs.emplace_back( TheHelper_.getAllocatedType(A) );
+
+  auto ArgsT = StructType::create( TheContext_, ArgTs, "args_t" );
+  auto ArgsA = TheHelper_.createEntryBlockAlloca(ArgsT, "args.alloca");
+
+  for (unsigned i=0; i<TotArgs; ++i) {
+    auto ArgV = TheHelper_.getAsValue(ArgAs[i]);
     TheHelper_.insertValue(ArgsA, ArgV, i);
   }
+
+  auto ArgsSizeV = TheHelper_.getTypeSize(ArgsT, SizeType_);
     
   auto RangeA = TheHelper_.getAsAlloca(RangeV);
   
   //----------------------------------------------------------------------------
   // Register function
   
-#if 0
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  //TaskF->setCallingConv(CallingConv::AMDGPU_KERNEL);
-  auto TaskPtr = TheHelper_.createBitCast(TheFunction, VoidPtrType_);
-  auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
-
-  // declare dso_local i32 @__hipRegisterFunction(i8**, i8*, i8*, i8*, i32, i8*, i8*, i8*, i8*, i32*) local_unnamed_addr
-  
-  std::vector<Type*> LaunchArgsT = {
-    VoidPtrType_,
-    UInt64Type_, UInt32Type_,
-    UInt64Type_, UInt32Type_,
-    VoidPtrPtrT,
-    SizeType_,
-    StreamPtrT};
-  auto LaunchT = FunctionType::get(Int32Type_, LaunchArgsT, false);
-  auto LaunchF = Function::Create(
-      LaunchT,
-      Function::ExternalLinkage,
-      "hipLaunchKernel",
-      &TheModule);
-    
-  //TheModule.print(outs(), nullptr);
-  std::vector<Value*> LaunchArgsV = {
-    TaskPtr,
-    NumBlocks1V, NumBlocks2V,
-    DimBlocks1V, DimBlocks2V,
-    ParamsV,
-    SharedMemBytesV,
-    StreamV};
-  Builder_.CreateCall(LaunchF, LaunchArgsV);
-  
-  //----------------------------------------------------------------------------
-  // Call function
-
-  auto ZeroC = llvmValue(TheContext_, UInt32Type_, 0);
-  auto OneC = llvmValue(TheContext_, UInt32Type_, 1);
-
-  auto NumBlocksA = TheHelper_.createEntryBlockAlloca(Dim3Type_);
-  TheHelper_.insertValue(NumBlocksA, OneC, 0);
-  TheHelper_.insertValue(NumBlocksA, ZeroC, 1);
-  TheHelper_.insertValue(NumBlocksA, ZeroC, 2);
-
-  auto DimBlocksA = TheHelper_.createEntryBlockAlloca(Dim3Type_);
-  TheHelper_.insertValue(DimBlocksA, OneC, 0);
-  TheHelper_.insertValue(DimBlocksA, ZeroC, 1);
-  TheHelper_.insertValue(DimBlocksA, ZeroC, 2);
-
-  auto ReducedDim3PtrT = ReducedDim3Type_->getPointerTo();
-  Value* NumBlocksPtr = TheHelper_.createBitCast(NumBlocksA, ReducedDim3PtrT);
-  auto NumBlocks1V = TheHelper_.getElementPointer(NumBlocksPtr, {0, 0});
-  auto NumBlocks2V = TheHelper_.getElementPointer(NumBlocksPtr, {0, 1});
-  NumBlocks1V = TheHelper_.load(NumBlocks1V);
-  NumBlocks2V = TheHelper_.load(NumBlocks2V);
-  
-  Value* DimBlocksPtr = TheHelper_.createBitCast(DimBlocksA, ReducedDim3PtrT);
-  auto DimBlocks1V = TheHelper_.getElementPointer(DimBlocksPtr, {0, 0});
-  auto DimBlocks2V = TheHelper_.getElementPointer(DimBlocksPtr, {0, 1});
-  DimBlocks1V = TheHelper_.load(DimBlocks1V);
-  DimBlocks2V = TheHelper_.load(DimBlocks2V);
-
-  auto VoidPtrPtrT = VoidPtrType_->getPointerTo();
-  auto ParamsV = Constant::getNullValue(VoidPtrPtrT);
-  auto SharedMemBytesV = llvmValue(TheContext_, SizeType_, 0);
-
-  auto StreamPtrT = StreamType_->getPointerTo();
-  auto StreamV = Constant::getNullValue(StreamPtrT);
-
-  std::vector<Type*> LaunchArgsT = {
-    VoidPtrType_,
-    UInt64Type_, UInt32Type_,
-    UInt64Type_, UInt32Type_,
-    VoidPtrPtrT,
-    SizeType_,
-    StreamPtrT};
-  auto LaunchT = FunctionType::get(Int32Type_, LaunchArgsT, false);
-  auto LaunchF = Function::Create(
-      LaunchT,
-      Function::ExternalLinkage,
-      "hipLaunchKernel",
-      &TheModule);
-    
-  //TheModule.print(outs(), nullptr);
-  std::vector<Value*> LaunchArgsV = {
-    TaskPtr,
-    NumBlocks1V, NumBlocks2V,
-    DimBlocks1V, DimBlocks2V,
-    ParamsV,
-    SharedMemBytesV,
-    StreamV};
-  //Builder_.CreateCall(LaunchF, LaunchArgsV);
-#endif
   
   auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
   TheHelper_.callFunction(
     TheModule,
     "contra_rocm_launch_kernel",
     VoidType_,
-    {TaskStr, RangeA/*, ArgsA*/});
+    {TaskStr, RangeA, ArgsA, ArgsSizeV} );
 
   //----------------------------------------------------------------------------
   // Call function with reduction
   AllocaInst* ResultA = nullptr;
-#if 0
   if (ResultT && AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const ROCmReduceInfo*>(AbstractReduceOp);
-
-    auto InitStr = llvmString(TheContext_, TheModule, ReduceOp->getInitPtrName());
-    auto ApplyStr = llvmString(TheContext_, TheModule, ReduceOp->getApplyPtrName());
-    auto FoldStr = llvmString(TheContext_, TheModule, ReduceOp->getFoldPtrName());
-
-    const auto & ApplyN = ReduceOp->getApplyName();
-    auto ApplyT = ReduceOp->getApplyType();
-    auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
 
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
     auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
     auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
     std::vector<Value*> ArgVs = {
       TaskStr,
-      InitStr,
-      ApplyStr,
-      FoldStr,
-      IndexSpaceA,
-      IndataA,
-      OutDataV,
-      DataSizeV,
-      ApplyF
+      //IndexSpaceA,
+      //IndataA,
+      //OutDataV,
+      //DataSizeV//,
+    //  ApplyF
     };
     TheHelper_.callFunction(
         TheModule,
@@ -722,7 +610,6 @@ Value* ROCmTasker::launch(
         VoidType_,
         ArgVs);
   }
-#endif
   
   //----------------------------------------------------------------------------
   // cleanup
@@ -945,30 +832,67 @@ bool ROCmTasker::isAccessor(Value* AccessorA) const
 //==============================================================================
 // Store a value into an accessor
 //==============================================================================
+std::pair<Value*, Value*> ROCmTasker::offsetAccessor(
+    Module & TheModule,
+    Value* AccessorV,
+    Value* IndexV) const
+{
+  // get offsets
+  std::vector<unsigned> Members;
+  if (isa<AllocaInst>(AccessorV)) Members.emplace_back(0);
+  Members.emplace_back(2); // partition
+  Members.emplace_back(2); // offsets
+  auto OffsetsPtrV = TheHelper_.getElementPointer(AccessorV, Members);
+  OffsetsPtrV = TheHelper_.load(OffsetsPtrV);
+
+  // get offsets[tid]
+  auto TidV = getThreadID(TheModule);
+  auto OffsetV = TheHelper_.offsetPointer(OffsetsPtrV, TidV);
+  OffsetV = TheHelper_.load(OffsetV);
+
+  // offsets[tid] + index
+  if (IndexV) IndexV = TheHelper_.getAsValue(IndexV);
+  else        IndexV = llvmValue<int_t>(TheContext_, 0);
+  auto PosV = Builder_.CreateAdd(OffsetV, IndexV);
+
+  // pos * data_size
+  Members.clear();
+  if (isa<AllocaInst>(AccessorV)) Members.emplace_back(0);
+  Members.emplace_back(0);
+  auto DataSizeV = TheHelper_.getElementPointer(AccessorV, Members);
+  DataSizeV = TheHelper_.load(DataSizeV);
+  PosV = Builder_.CreateMul(PosV, DataSizeV);
+  
+  // data
+  Members.clear();
+  if (isa<AllocaInst>(AccessorV)) Members.emplace_back(0);
+  Members.emplace_back(1);
+  auto DataPtrV = TheHelper_.getElementPointer(AccessorV, Members);
+  DataPtrV = TheHelper_.load(DataPtrV);
+  
+  // data + offset
+  auto OffsetDataPtrV = TheHelper_.offsetPointer(DataPtrV, PosV);
+
+  return {OffsetDataPtrV, DataSizeV};
+}
+
+//==============================================================================
+// Store a value into an accessor
+//==============================================================================
 void ROCmTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
     Value* IndexV) const
 {
-  auto ValueA = TheHelper_.getAsAlloca(ValueV);
+  auto res = offsetAccessor(TheModule, AccessorV, IndexV);
+  auto OffsetDataPtrV = res.first;
+  auto DataSizeV = res.second;
 
-  Value* AccessorA = TheHelper_.getAsAlloca(AccessorV);
-    
-  std::vector<Value*> FunArgVs = { AccessorA, ValueA };
-  
-  if (IndexV) {
-    FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
-  }
-  else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
-  }
-  
-  TheHelper_.callFunction(
-      TheModule,
-      "contra_rocm_accessor_write",
-      VoidType_,
-      FunArgVs);
+  auto ValueA = TheHelper_.getAsAlloca(ValueV);
+  ValueV = TheHelper_.createBitCast(ValueA, VoidPtrType_);
+
+  TheHelper_.memCopy(OffsetDataPtrV, ValueV, DataSizeV);
 }
 
 //==============================================================================
@@ -980,26 +904,19 @@ Value* ROCmTasker::loadAccessor(
     Value* AccessorV,
     Value* IndexV) const
 {
-  auto AccessorA = TheHelper_.getAsAlloca(AccessorV);
-    
-  auto ValueA = TheHelper_.createEntryBlockAlloca(ValueT);
+  // get pointer to data
+  auto res = offsetAccessor(TheModule, AccessorV, IndexV);
+  auto OffsetDataPtrV = res.first;
+  auto DataSizeV = res.second;
 
-  std::vector<Value*> FunArgVs = { AccessorA, ValueA };
+  // create result alloca
+  Value* ValueA = TheHelper_.createEntryBlockAlloca(ValueT);
+  auto ValuePtr = TheHelper_.createBitCast(ValueA, VoidPtrType_);
+
+  // memcopy
+  TheHelper_.memCopy(ValuePtr, OffsetDataPtrV, DataSizeV);
   
-  if (IndexV) {
-    FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
-  }
-  else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
-  }
-
-  TheHelper_.callFunction(
-      TheModule,
-      "contra_rocm_accessor_read",
-      VoidType_,
-      FunArgVs);
-
-  return TheHelper_.load(ValueA);
+  return ValueA;
 }
 
 //==============================================================================
@@ -1070,7 +987,7 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
   Function * ApplyF;
   std::string ApplyPtrN;
   {
-    std::string ApplyN = ReductionN + "apply";
+    std::string ApplyN = "apply";
 
     std::vector<Type*> ArgTs = {
       VoidPtrType_,
@@ -1119,18 +1036,6 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
         
     Builder_.CreateRetVoid();
     
-    // device pointer
-    ApplyPtrN = ApplyN + "_ptr";
-    new GlobalVariable(
-        TheModule, 
-        FunT->getPointerTo(),
-        false,
-        GlobalValue::InternalLinkage,
-        ApplyF, // has initializer, specified below
-        ApplyPtrN,
-        nullptr,
-        GlobalValue::NotThreadLocal,
-        1);
   }
 
   //----------------------------------------------------------------------------
@@ -1138,7 +1043,7 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
   Function * FoldF;
   std::string FoldPtrN;
   {
-    std::string FoldN = ReductionN + "fold";
+    std::string FoldN = "fold";
 
     std::vector<Type*> ArgTs = {
       VoidPtrType_,
@@ -1198,18 +1103,6 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
         
     Builder_.CreateRetVoid();
     
-    // device pointer
-    FoldPtrN = FoldN + "_ptr";
-    new GlobalVariable(
-        TheModule, 
-        FunT->getPointerTo(),
-        false,
-        GlobalValue::InternalLinkage,
-        FoldF, // has initializer, specified below
-        FoldPtrN,
-        nullptr,
-        GlobalValue::NotThreadLocal,
-        1);
   }
 
 
@@ -1219,7 +1112,7 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
   std::string InitPtrN;
   {
 
-    std::string InitN = ReductionN + "init";
+    std::string InitN = "init";
  
     std::vector<Type*> ArgTs = {VoidPtrType_};
     FunctionType* InitT = FunctionType::get(VoidType_, ArgTs, false);
@@ -1257,19 +1150,6 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
     }
     
     Builder_.CreateRetVoid();
-  
-    // device pointer
-    InitPtrN = InitN + "_ptr";
-    new GlobalVariable(
-        TheModule, 
-        InitT->getPointerTo(),
-        false,
-        GlobalValue::InternalLinkage,
-        InitF, // has initializer, specified below
-        InitPtrN,
-        nullptr,
-        GlobalValue::NotThreadLocal,
-        1);
   }
 
   //----------------------------------------------------------------------------
@@ -1287,4 +1167,42 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
 }
 
 
+//==============================================================================
+// Get the thread id
+//==============================================================================
+Value* ROCmTasker::getThreadID(Module & TheModule) const {
+  // tid = threadIdx.x + blockIdx.x * blockDim.x;
+  //Value* IndexV = TheHelper_.callFunction(
+  //    TheModule,
+  //    "__ockl_get_global_id",
+  //    SizeType_,
+  //    {llvmValue<uint>(TheContext_, 0)} );
+  auto TidF = Intrinsic::getDeclaration(
+      &TheModule,
+      Intrinsic::amdgcn_workitem_id_x);
+  Value* IndexV = Builder_.CreateCall(TidF);
+  auto BidF = Intrinsic::getDeclaration(
+      &TheModule,
+      Intrinsic::amdgcn_workgroup_id_x);
+  Value* BlockIdV = Builder_.CreateCall(BidF);
+  
+  auto DispatchPtrF = Intrinsic::getDeclaration(
+      &TheModule,
+      Intrinsic::amdgcn_dispatch_ptr);
+  Value* DispatchPtrV = Builder_.CreateCall(DispatchPtrF);
+  auto DispatchPtrGEP = TheHelper_.getElementPointer(DispatchPtrV, 4); 
+  auto Int16T = llvmType<uint16_t>(TheContext_);
+  auto AddrSpace = DispatchPtrGEP->getType()->getPointerAddressSpace();
+  auto Int16PtrT = Int16T->getPointerTo( AddrSpace );
+  auto BlockDimPtrV = TheHelper_.createBitCast(DispatchPtrGEP, Int16PtrT);
+  Value* BlockDimV = TheHelper_.load(BlockDimPtrV);
+  BlockDimV = TheHelper_.createCast(BlockDimV, BlockIdV->getType());
+  
+  Value* TmpV = Builder_.CreateMul(BlockIdV, BlockDimV);
+  IndexV = Builder_.CreateAdd(IndexV, TmpV);
+  IndexV = TheHelper_.createCast(IndexV, IntType_);
+
+  return IndexV;
 }
+
+} // namespace

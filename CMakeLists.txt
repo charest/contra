@@ -137,10 +137,10 @@ endif()
 find_package(HIP)
 if (HIP_FOUND)
   target_link_libraries(contra PUBLIC hip::host)
-  target_compile_options(contra PRIVATE -D__HIP_HCC_COMPAT_MODE__=1)
+  target_compile_options(contra PRIVATE -D__HIP_HCC_COMPAT_MODE__=1 -D__HIP_ARCH_GFX900__=1)
   #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${ROCM_DIR}/cmake")  
   list(APPEND SUPPORTED_BACKENDS "rocm")
-
+  
   find_program(ROCM_LD_LLD_EXE 
     NAMES 
       ld.lld  
@@ -158,6 +158,25 @@ if (HIP_FOUND)
     MESSAGE(FATAL_ERROR "Could not find ld.lld.  Please set ROCM_LLVM_PATH")
   else ()
     MESSAGE(STATUS "Found ld.lld: ${ROCM_LD_LLD_EXE}")
+  endif()
+
+  find_program(ROCM_CLANG_EXE 
+    NAMES 
+      clang
+    HINTS
+      $ENV{ROCM_PATH}/llvm/bin
+      $ENV{HIP_PATH}/../llvm/bin
+      ENV ROCM_CLANG_PATH
+      ENV HIP_CLANG_PATH
+      ENV ROCM_LLVM_PATH
+      ENV HIP_LLVM_PATH
+    PATH_SUFFIXES
+        bin
+  )
+if (NOT ROCM_CLANG_EXE)
+    MESSAGE(FATAL_ERROR "Could not find clang.  Please set ROCM_LLVM_PATH")
+  else ()
+    MESSAGE(STATUS "Found clang: ${ROCM_CLANG_EXE}")
   endif()
 endif()
 

@@ -652,7 +652,7 @@ Value* SerialTasker::loadAccessor(
       VoidType_,
       FunArgVs);
 
-  return TheHelper_.load(ValueA);
+  return ValueA;
 }
 
 //==============================================================================

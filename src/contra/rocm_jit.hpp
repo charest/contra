@@ -27,7 +27,10 @@ public:
 
 private:
 
-  llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);
+  llvm::CallInst*   replacePrint(llvm::Module &, llvm::CallInst*);
+  llvm::BasicBlock* replacePrint2(llvm::Module &, llvm::CallInst*);
+
+  std::unique_ptr<llvm::Module> cloneModule(const llvm::Module &);
 
   void runOnModule(llvm::Module &);
 
@@ -36,13 +39,17 @@ private:
       const std::string &,
       llvm::CodeGenFileType);
 
-  std::unique_ptr<llvm::Module> insertBitcode(
-      std::unique_ptr<llvm::Module>,
-      std::string);
+  void assemble(
+      llvm::Module &,
+      std::string,
+      bool IncludeDeviceLibs);
 
   std::vector<char> compileAndLink(llvm::Module &, const std::string&);
+  
+  std::unique_ptr<llvm::Module> splitOutReduce(llvm::Module &);
 
   llvm::TargetMachine * TargetMachine_ = nullptr;
+  std::vector<std::unique_ptr<llvm::Module>> DeviceModules_;
 };
 
 } // end namespace

@@ -65,7 +65,6 @@ public:
 class LegionTasker : public AbstractTasker {
 protected:
   
-  llvm::Type* ByteType_ = nullptr;
   llvm::Type* CharType_ = nullptr;
   llvm::Type* OffType_ = nullptr;
   llvm::Type* ProcIdType_ = nullptr;

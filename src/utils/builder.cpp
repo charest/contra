@@ -38,7 +38,28 @@ Value* BuilderHelper::createCast(Value* FromVal, Type* ToType)
 Value* BuilderHelper::createBitCast(Value* FromVal, Type* ToType)
 {
   auto TheBlock = Builder_.GetInsertBlock();
-  return CastInst::Create(Instruction::BitCast, FromVal, ToType, "cast", TheBlock);
+  auto FromT = FromVal->getType();
+  auto ToT = ToType;
+  if (FromT->isPointerTy()) {
+    ToT = PointerType::get(
+        ToT->getPointerElementType(),
+        FromT->getPointerAddressSpace());
+  }
+  return CastInst::Create(Instruction::BitCast, FromVal, ToT, "cast", TheBlock);
+}
+
+//==============================================================================
+// Cast utility
+//==============================================================================
+Value* BuilderHelper::createAddrSpaceCast(Value* FromVal, Type* ToType)
+{
+  auto ToAddr = ToType->getPointerAddressSpace();
+  auto FromAddr = FromVal->getType()->getPointerAddressSpace();
+  if (ToAddr != FromAddr) {
+    auto TheBlock = Builder_.GetInsertBlock();
+    return CastInst::Create(Instruction::AddrSpaceCast, FromVal, ToType, "cast", TheBlock);
+  }
+  return FromVal;
 }
 
 
@@ -80,14 +101,21 @@ AllocaInst* BuilderHelper::getAsAlloca(Value* ValueV)
 //==============================================================================
 // Get pointer to struct member
 //==============================================================================
-Value* BuilderHelper::getElementPointer(AllocaInst* ValA, unsigned i)
+Value* BuilderHelper::getElementPointer(Value* Val, unsigned i)
 {
   std::vector<Value*> MemberIndices = {
-    ConstantInt::get(TheContext_, APInt(32, 0, true)),
-    ConstantInt::get(TheContext_, APInt(32, i, true))
+    ConstantInt::get(TheContext_, APInt(32, i, true)),
   };
-  auto ValT = ValA->getAllocatedType();
-  return Builder_.CreateGEP(ValT, ValA, MemberIndices);
+  return Builder_.CreateGEP(Val, MemberIndices);
+}
+  
+Value* BuilderHelper::getElementPointer(Value* Val, unsigned i, unsigned j)
+{
+  std::vector<Value*> MemberIndices = {
+    ConstantInt::get(TheContext_, APInt(32, i, true)),
+    ConstantInt::get(TheContext_, APInt(32, j, true))
+  };
+  return Builder_.CreateGEP(Val, MemberIndices);
 }
   
 Value* BuilderHelper::getElementPointer(
@@ -118,7 +146,7 @@ Value* BuilderHelper::offsetPointer(Value* Ptr, Value* Offset)
 //==============================================================================
 Value* BuilderHelper::extractValue(Value* Val, unsigned i) {
   if (auto ValA = dyn_cast<AllocaInst>(Val)) {
-    auto ValGEP = getElementPointer(ValA, i);
+    auto ValGEP = getElementPointer(ValA, 0, i);
     auto MemberT = ValGEP->getType()->getPointerElementType();
     return Builder_.CreateLoad(MemberT, ValGEP);
   }
@@ -132,7 +160,7 @@ Value* BuilderHelper::extractValue(Value* Val, unsigned i) {
 //==============================================================================
 void BuilderHelper::insertValue(Value* Val, Value* Member, unsigned i) {
   if (auto ValA = dyn_cast<AllocaInst>(Val)) {
-    auto ValGEP = getElementPointer(ValA, i);
+    auto ValGEP = getElementPointer(ValA, 0, i);
     auto MemberV = getAsValue(Member);
     Builder_.CreateStore(MemberV, ValGEP);
   }

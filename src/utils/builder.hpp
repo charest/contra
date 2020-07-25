@@ -32,12 +32,14 @@ public:
   
   Value* createCast(Value* FromVal, Type* ToType); 
   Value* createBitCast(Value* FromVal, Type* ToType);
+  Value* createAddrSpaceCast(Value* FromVal, Type* ToType);
 
   Value* getAsValue(Value*);
   Value* getAsValue(Value*, Type*);
   AllocaInst* getAsAlloca(Value*);
 
-  Value* getElementPointer(AllocaInst*, unsigned);
+  Value* getElementPointer(Value*, unsigned);
+  Value* getElementPointer(Value*, unsigned, unsigned);
   Value* getElementPointer(Value*, const std::vector<unsigned> &);
   Value* extractValue(Value*, unsigned);
   void insertValue(Value*, Value*, unsigned);

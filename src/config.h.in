@@ -1,0 +1,10 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// these are for opencl kernels
+typedef long int_t;
+typedef unsigned long uint_t;
+typedef double real_t;
+typedef unsigned char byte_t;
+
+#endif // CONFIG_H

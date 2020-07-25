@@ -16,8 +16,11 @@ endif()
 
 
 configure_file(config.hpp.in config.hpp @ONLY)
+configure_file(config.h.in config.h @ONLY)
 
 add_subdirectory(utils)
 add_subdirectory(librt)
 add_subdirectory(librtcuda)
+add_subdirectory(librtrocm)
+add_subdirectory(llvm)
 add_subdirectory(contra)

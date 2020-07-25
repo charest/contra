@@ -25,7 +25,6 @@ using namespace utils;
 LegionTasker::LegionTasker(utils::BuilderHelper & TheHelper)
   : AbstractTasker(TheHelper)
 {
-  ByteType_ = VoidPtrType_->getPointerElementType();
   CharType_ = llvmType<char>(TheContext_);
   OffType_ = llvmType<off_t>(TheContext_);
   RealmIdType_ = llvmType<realm_id_t>(TheContext_);
@@ -327,14 +326,14 @@ AllocaInst* LegionTasker::createGlobalArguments(
 
   // count user argument sizes
   for (auto i : ValueArgId) {
-    auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 1);
+    auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
     auto ArgSizeV = TheHelper_.extractValue(ArgSizesA, i);
     TheHelper_.increment(ArgSizeGEP, ArgSizeV, "addoffset");
   }
   
   // add 8 bytes for each field argument
   auto NumFieldArgs = FieldArgId.size();
-  auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 1);
+  auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
   TheHelper_.increment(ArgSizeGEP, NumFieldArgs*8, "addoffset");
 
   //----------------------------------------------------------------------------
@@ -363,7 +362,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
     serialize(TheModule, ArgV, ArgDataPtrV, ArgSizeGEP);
     // increment
-    ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 1);
+    ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
     auto ArgSizeV = TheHelper_.extractValue(ArgSizesA, i);
     TheHelper_.increment(ArgSizeGEP, ArgSizeV, "addoffset");
   }
@@ -388,7 +387,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
     auto OffsetArgDataPtrV = TheHelper_.offsetPointer(ArgDataPtrV, ArgSizeV);
     // pack field info
-    auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 1);
+    auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
     std::vector<Value*> ArgVs = {
       ArgV,
       llvmValue(TheContext_, UnsignedT, regidx++),
@@ -1047,7 +1046,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
  
     Builder_.CreateCall(GetIndexF, GetIndexArgVs);
 
-    auto PointDataGEP = TheHelper_.getElementPointer(DomainPointA, 1);
+    auto PointDataGEP = TheHelper_.getElementPointer(DomainPointA, 0, 1);
     auto PointDataV = TheHelper_.load(PointDataGEP);
     auto IndexV = Builder_.CreateExtractValue(PointDataV, 0);
 
@@ -2169,7 +2168,7 @@ Value* LegionTasker::loadAccessor(
       VoidType_,
       FunArgVs);
 
-  return TheHelper_.load(ValueA);
+  return ValueA;
 }
 
 //==============================================================================

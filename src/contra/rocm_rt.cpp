@@ -4,6 +4,7 @@
 #include "tasking_rt.hpp"
 
 #include "librt/dopevector.hpp"
+#include "librtrocm/rocm_utils.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -24,21 +25,9 @@ void check(hipError_t err){
   }  
 }                                                                                               
 
-#if 0
-void check(cudaError_t err, const char * msg) {
-  if (err != cudaSuccess) {
-    std::cerr << msg << " failed with error \""
-      << cudaGetErrorString(err) << "\"." << std::endl;
-    abort();
-  }
-}
-#endif
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Runtime definition
 ////////////////////////////////////////////////////////////////////////////////
-
-extern "C" {
 
 /// global runtime for compiled cases
 rocm_runtime_t RocmRuntime;
@@ -168,9 +157,6 @@ void rocm_runtime_t::init(int dev_id) {
   hipDeviceProp_t props;
   hipGetDeviceProperties(&props, dev_id);
   MaxThreadsPerBlock = props.maxThreadsPerBlock;
-
-  //err = cuCtxCreate(&CuContext, 0, CuDevice);
-  //check(err);
   
   IsStarted = true;
 }
@@ -181,18 +167,55 @@ void rocm_runtime_t::init(int dev_id) {
 void rocm_runtime_t::shutdown() {
   if (!IsStarted) return;
 
-#if 0
-  auto err = cuCtxDestroy(CuContext);
-  check(err);
-#endif
-
   IsStarted = false;
 }
   
+//==============================================================================
+// load a kernel
+//==============================================================================
+void rocm_runtime_t::loadKernel(
+    const char * name,
+    hipModule_t * M,
+    hipFunction_t * F)
+{
+  auto KernelIt = RocmRuntime.KernelMap.find(name);
+  if (KernelIt == RocmRuntime.KernelMap.end()) {
+    std::cerr << "Did not find a compiled kernel for '" << name << "'";
+    abort();
+  }
+
+  auto KernelData = RocmRuntime.Kernels.at(KernelIt->second);
+  
+  auto err = hipModuleLoadData(M, (const void*)KernelData.data());
+  check(err);
+
+  err = hipModuleGetFunction(F, *M, name );
+  check(err);
+}
+
+//==============================================================================
+// Determine the number of threads/blocks
+//==============================================================================
+std::pair<size_t, size_t> rocm_runtime_t::threadDims(size_t NumThreads)
+{
+  size_t NumBlocks = 1;
+  size_t ThreadsPerBlock = NumThreads;
+
+  if (NumThreads > MaxThreadsPerBlock) {
+    ThreadsPerBlock = MaxThreadsPerBlock;
+    NumBlocks = NumThreads / ThreadsPerBlock;
+    if (NumThreads % ThreadsPerBlock) NumBlocks++;
+  }
+
+  return {NumBlocks, ThreadsPerBlock};
+}
+
   
 ////////////////////////////////////////////////////////////////////////////////
 /// Public c interface
 ////////////////////////////////////////////////////////////////////////////////
+extern "C" {
+
 
 //==============================================================================
 // start runtime
@@ -246,11 +269,12 @@ void contra_rocm_register_kernel(
     const char * names[],
     unsigned size_names)
 {
-  RocmRuntime.Kernels.emplace_back( kernel, kernel+size_kernel );
   auto KernelId = RocmRuntime.Kernels.size();
+  RocmRuntime.Kernels.emplace_back( kernel, kernel+size_kernel );
 
-  for (unsigned i=0; i<size_names; ++i)
-    RocmRuntime.KernelMap[names[i]] = i;
+  for (unsigned i=0; i<size_names; ++i) {
+    RocmRuntime.KernelMap[names[i]] = KernelId;
+  }
 }
 
 
@@ -259,58 +283,38 @@ void contra_rocm_register_kernel(
 //==============================================================================
 void contra_rocm_launch_kernel(
     char * name,
-    contra_index_space_t * is)
+    contra_index_space_t * is,
+    void * data,
+    size_t data_size)
 {
-  std::cout << "launching " << name << std::endl;
-  auto KernelIt = RocmRuntime.KernelMap.find(name);
-  if (KernelIt == RocmRuntime.KernelMap.end()) {
-    std::cerr << "Did not find a compiled kernel for '" << name << "'";
-    abort();
-  }
-
-  auto KernelData = RocmRuntime.Kernels[KernelIt->second];
-  
-  hipModule_t Module;
-  auto err = hipModuleLoadData(&Module, (const void*)KernelData.data());
-  check(err);
-
   hipFunction_t F;
-  err = hipModuleGetFunction(&F, Module, name);
-  check(err);
+  hipModule_t M;
+  RocmRuntime.loadKernel(name, &M, &F);
 
   auto size = is->size();
-  auto Dims = RocmRuntime.threadDims(size);
-
-  
-  int_t arg = 1;
-  size_t arg_size = sizeof(int_t);
-
+  //auto Dims = RocmRuntime.threadDims(size);
 
   void *config[] = {
-    HIP_LAUNCH_PARAM_BUFFER_POINTER, &arg,
-    HIP_LAUNCH_PARAM_BUFFER_SIZE, &arg_size,
+    HIP_LAUNCH_PARAM_BUFFER_POINTER, data,
+    HIP_LAUNCH_PARAM_BUFFER_SIZE, &data_size,
     HIP_LAUNCH_PARAM_END
   };
-
   hipModuleLaunchKernel(
       F,
-      Dims.first, 1, 1,
-      Dims.second, 1, 1,
+      size, 1, 1,
+      1, 1, 1,
       0,
       0,
       nullptr,
-      nullptr);
-      //config);
+      config);
   hipDeviceSynchronize();
 
-  err = hipGetLastError();
+  auto err = hipGetLastError();
   check(err);
 
-  err = hipModuleUnload(Module);
+  err = hipModuleUnload(M);
   check(err);
 
-  std::cout << "done " << name << std::endl;
- 
 }
 
 
@@ -319,16 +323,14 @@ void contra_rocm_launch_kernel(
 //==============================================================================
 void* contra_rocm_2dev(void * ptr, size_t size)
 {
-#if 0
   void* dev = nullptr;
-  auto err = cudaMalloc(&dev, size);
-  check(err, "cudaMalloc");
+  auto err = hipMalloc(&dev, size);
+  check(err);
 
-  err = cudaMemcpy(dev, ptr, size, cudaMemcpyHostToDevice);
-  check(err, "cudaMemcpy(Host2Dev)");
+  err = hipMemcpy(dev, ptr, size, hipMemcpyHostToDevice);
+  check(err);
 
   return dev;
-#endif
 }
 
 //==============================================================================
@@ -336,21 +338,19 @@ void* contra_rocm_2dev(void * ptr, size_t size)
 //==============================================================================
 void contra_rocm_2host(void * dev, void * host, size_t size)
 {
-  //auto err = cudaMemcpy(host, dev, size, cudaMemcpyDeviceToHost);
-  //check(err, "cudaMemcpy(Dev2Host)");
+  auto err = hipMemcpy(host, dev, size, hipMemcpyDeviceToHost);
+  check(err);
 }
 
 //==============================================================================
 // Copy array to device
 //==============================================================================
-dopevector_t contra_rocm_array2dev(dopevector_t * arr)
+void contra_rocm_array2dev(dopevector_t * arr, dopevector_t * dev_arr)
 {
   auto size = arr->bytes();
   auto dev_data = contra_rocm_2dev(arr->data, size);
 
-  dopevector_t dev_arr;
-  dev_arr.setup(arr->size, arr->data_size, dev_data);
-  return dev_arr;
+  dev_arr->setup(arr->size, arr->data_size, dev_data);
 }
 
 //==============================================================================
@@ -358,8 +358,8 @@ dopevector_t contra_rocm_array2dev(dopevector_t * arr)
 //==============================================================================
 void contra_rocm_free(void ** ptr)
 {
-  //auto err = cudaFree(*ptr);
-  //check(err, "cudaFree");
+  auto err = hipFree(*ptr);
+  check(err);
 }
 
 //==============================================================================
@@ -367,8 +367,8 @@ void contra_rocm_free(void ** ptr)
 //==============================================================================
 void contra_rocm_array_free(dopevector_t * arr)
 {
-  //auto err = cudaFree(arr->data);
-  //check(err, "cudaFree");
+  auto err = hipFree(arr->data);
+  check(err);
 }
 
 //==============================================================================
@@ -376,15 +376,13 @@ void contra_rocm_array_free(dopevector_t * arr)
 //==============================================================================
 void contra_rocm_partition_free(contra_rocm_partition_t * part)
 {
-#if 0
-  auto err = cudaFree(part->offsets);
-  check(err, "cudaFree");
+  auto err = hipFree(part->offsets);
+  check(err);
 
   if (part->indices) {
-    auto err = cudaFree(part->indices);
-    check(err, "cudaFree");
+    auto err = hipFree(part->indices);
+    check(err);
   }
-#endif
 }
 
 //==============================================================================
@@ -451,17 +449,6 @@ void contra_rocm_field_create(
 //==============================================================================
 void contra_rocm_field_destroy(contra_rocm_field_t * fld)
 { fld->destroy(); }
-
-//==============================================================================
-/// index space partitioning
-//==============================================================================
-void contra_rocm_index_space_create_from_partition(
-    int_t i,
-    contra_rocm_partition_t * part,
-    contra_index_space_t * is)
-{
-  is->setup(part->offsets[i], part->offsets[i+1]);
-}
 
 //==============================================================================
 /// index space creation
@@ -660,7 +647,6 @@ contra_rocm_accessor_t contra_rocm_field2dev(
     contra_rocm_task_info_t **task_info)
 {
   bool is_temporary = part;
-#if 0
 
   //----------------------------------------------------------------------------
   // Create a partition
@@ -706,18 +692,16 @@ contra_rocm_accessor_t contra_rocm_field2dev(
     auto size = part->size;
     auto bytes = data_size * size;
     if (!acc_res.second) {
-      //auto err = cudaMalloc(&(dev_acc->data), bytes);
-      //check(err, "cudaMalloc");
+      auto err = hipMalloc(&(dev_acc->data), bytes);
+      check(err);
     }
-    auto Dims = CudaRuntime.threadDims(size);
-    rocm_copy(
+    auto Dims = RocmRuntime.threadDims(size);
+    rocm_copy_kernel<<<Dims.first, Dims.second>>>(
       static_cast<byte_t*>(*dev_data),
       static_cast<byte_t*>(dev_acc->data),
       dev_part.indices,
       data_size,
-      size,
-      Dims.first,
-      Dims.second);
+      size);
     
     // move accessor over
     if (!acc_res.second)
@@ -733,7 +717,6 @@ contra_rocm_accessor_t contra_rocm_field2dev(
 
 
   return *dev_acc;
-#endif
 }
 
 //==============================================================================
@@ -775,85 +758,29 @@ void contra_rocm_prepare_reduction(
 {
   auto size = is->size();
   auto bytes = data_size * size;
-  //auto err = cudaMalloc(indata, bytes);
-  //check(err, "cudaMalloc");
-}
-
-//==============================================================================
-// Get a global symbol
-//==============================================================================
-#if 0  
-void contra_rocm_get_symbol(
-    const char * name,
-    CUmodule * CuModule,
-    void * ptr,
-    size_t size)
-{
-  CUdeviceptr dev_ptr;
-  auto err = cuModuleGetGlobal(
-    &dev_ptr,
-    0,
-    *CuModule,
-    name);
+  auto err = hipMalloc(indata, bytes);
   check(err);
-
-  auto cuerr = cudaMemcpy(
-      ptr,
-      (const void *)dev_ptr,
-      size,
-      cudaMemcpyDeviceToHost);
-  check(cuerr, "cudaMemcpyDeviceToHost");
 }
-#endif
 
 //==============================================================================
 // launch a kernel
 //==============================================================================
 void contra_rocm_launch_reduction(
-    char * kernel_name,
-    char * init_name,
-    char * apply_name,
-    char * fold_name,
-    contra_index_space_t * is,
-    void ** dev_indata,
-    void * result,
-    size_t data_size)//,
-    //apply_t host_apply)
+    char * kernel_name//,
+    //contra_index_space_t * is,
+    //void ** dev_indata,
+    //void * result,
+    //size_t data_size)//,
+    //apply_t host_apply
+)
 {
+  
+  std::cout << kernel_name << std::endl;
+  abort();
+  hipFunction_t F;
+  hipModule_t M;
+  RocmRuntime.loadKernel(kernel_name, &M, &F);
 #if 0
-  KernelData* Kernel;
-  auto it = CudaRuntime.Kernels.find(kernel_name);
-  if (it != CudaRuntime.Kernels.end()) {
-    Kernel = &it->second;
-  }
-  else {
-    std::cerr << "Could not find kernel '" << kernel_name << "'. Reduction "
-      << "functions should be packed with it." << std::endl; 
-    abort();
-  }
-
-  // get device pointers
-  init_t init_ptr;
-  contra_rocm_get_symbol(
-    init_name,
-    &Kernel->Module,
-    &init_ptr,
-    sizeof(init_t));
-
-  apply_t apply_ptr;
-  contra_rocm_get_symbol(
-    apply_name,
-    &Kernel->Module,
-    &apply_ptr,
-    sizeof(apply_t));
-
-  fold_t fold_ptr;
-  contra_rocm_get_symbol(
-    fold_name,
-    &Kernel->Module,
-    &fold_ptr,
-    sizeof(fold_t));
-
   // some dimensinos
   size_t size = is->size();
   size_t bytes = data_size * size;
@@ -896,6 +823,9 @@ void contra_rocm_launch_reduction(
   
   auto cuerr = cudaDeviceSynchronize();
   check(cuerr, "Reduction launch");
+
+  err = hipModuleUnload(*M);
+  check(err);
 
   // copy over data
   if (block_size > 1) {

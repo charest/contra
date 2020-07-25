@@ -140,7 +140,6 @@ void Contra::handleTopLevelExpression()
       // Search the JIT for the __anon_expr symbol.
       auto ExprSymbol = TheCG_->findSymbol(Name.c_str());
       assert(ExprSymbol && "Function not found");
-      std::cout << "EXECUTING " << Name << std::endl;
 
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.

@@ -212,6 +212,11 @@ protected:
   
   llvm::AllocaInst* createTaskInfo(llvm::Module &);
   void destroyTaskInfo(llvm::Module &, llvm::AllocaInst*);
+
+  void createIndexSpaceFromPartition(
+      llvm::Value*,
+      llvm::AllocaInst*,
+      llvm::AllocaInst*);
   
   auto & getCurrentTask() { return TaskAllocas_.front(); }
   const auto & getCurrentTask() const { return TaskAllocas_.front(); }
@@ -221,6 +226,13 @@ protected:
     return getCurrentTask();
   }
   void finishTask() { TaskAllocas_.pop_front(); }
+
+  llvm::Value* getThreadID(llvm::Module &) const;
+
+  std::pair<llvm::Value*, llvm::Value*> offsetAccessor(
+      llvm::Module &,
+      llvm::Value*,
+      llvm::Value*) const;
 };
 
 } // namepsace

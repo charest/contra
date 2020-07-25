@@ -17,6 +17,10 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Scalar.h"
+
+#include "llvm/Target/AMDGPU/AMDGPU.h"
+#include "llvm/Transforms/Utils/AMDGPUEmitPrintf.h"
 
 #include <fstream>
 #include <set>
@@ -70,100 +74,34 @@ std::unique_ptr<Module> ROCmJIT::createModule()
 // Compile a module
 //==============================================================================
 void ROCmJIT::addModule(std::unique_ptr<Module> M) {
-
-  //----------------------------------------------------------------------------
-  // Add annotations
-  
-  //auto Annots = M->getOrInsertNamedMetadata("llvm.module.flags");
-  //std::vector<Metadata*> Meta = {
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ),
-  //  MDString::get(TheContext_, "wchar_size"),
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 4) ) };
-  //Annots->addOperand(MDNode::get(TheContext_, Meta));
-  //Meta = {
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 7) ),
-  //  MDString::get(TheContext_, "PIC Level"),
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ) };
-  //Annots->addOperand(MDNode::get(TheContext_, Meta));
-
-  //Annots = M->getOrInsertNamedMetadata("opencl.ocl.version");
-  //Meta = {
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 2) ),
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 0) ) };
-  //Annots->addOperand(MDNode::get(TheContext_, Meta));
   
   //----------------------------------------------------------------------------
-  // Fix globals
-  for (auto & GV : M->getGlobalList()) {
-    auto Ty = GV.getType()->getPointerElementType();
-    //GV.mutateType(PointerType::get(Ty, 4));
-    //GV.setLinkage(GlobalValue::InternalLinkage);
-    //GV.setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
-    //auto NewGV = new GlobalVariable(
-    //  *M,
-    //  Ty,
-    //  true,
-    //  GlobalValue::PrivateLinkage,
-    //  GV.getInitializer(),
-    //  "",
-    //  &GV,
-    //  GlobalValue::NotThreadLocal,
-    //  4);
-    //GV.getType()->print(outs()); outs()<<" ";
-    //NewGV->getType()->print(outs()); outs()<<"\n";
-    //GV.replaceAllUsesWith(NewGV); 
-  }
+  // Sanitize
 
+  runOnModule(*M);
   
-  //----------------------------------------------------------------------------
-  // Replace calls/intrinsics
-
   std::vector<std::string> KernelNames;
-
   for (auto & Func : M->getFunctionList()) {
-    
-    if (Func.getInstructionCount())
+    if (Func.getInstructionCount() &&
+        Func.getCallingConv() == CallingConv::AMDGPU_KERNEL )
       KernelNames.emplace_back(Func.getName());
-
-    for (auto BlockIt=Func.begin(); BlockIt!=Func.end(); ++BlockIt) {
-      for (auto InstIt=BlockIt->begin(); InstIt!=BlockIt->end(); ++InstIt) {
-        Instruction* NewI = nullptr;
-
-        //------------------------------
-        // Replace Calls
-        if (auto CallI = dyn_cast<CallInst>(InstIt)) {
-          auto CallF = CallI->getCalledFunction();
-
-          if (CallF->getName().str() == "print") {
-            NewI = replacePrint(*M, CallI);
-          }
-
-        } // call
-        // Done Replacements
-        //------------------------------
-            
-        // replace instruction
-        if (NewI) {
-          ReplaceInstWithInst(&(*InstIt), NewI);
-          InstIt = BasicBlock::iterator(NewI);
-        }
-      } // Instruction
-    } // Block
-  
-    verifyFunction(Func);
-
-  } // Function
+  }
 
   //----------------------------------------------------------------------------
   // Compile
   
+  auto ReduceM = splitOutReduce(*M);
+  
   std::string temp_name = std::tmpnam(nullptr);
- 
-  runOnModule(*M);
+  assemble(*M, temp_name, true);
+  auto Hsaco = compileAndLink(*M, temp_name);
   
-  auto NewM = insertBitcode(std::move(M), temp_name);
-  
-  auto Hsaco = compileAndLink(*NewM, temp_name);
+  decltype(Hsaco) ReduceHsaco;
+  if (ReduceM) {
+    std::string temp_name = std::tmpnam(nullptr);  
+    assemble(*ReduceM, temp_name, false);
+    ReduceHsaco = compileAndLink(*ReduceM, temp_name);
+  }
 
   //----------------------------------------------------------------------------
   // Register
@@ -187,28 +125,131 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
 // Compile a module by cloning it first
 //==============================================================================
 void ROCmJIT::addModule(const Module * M) {
-  auto ClonedModule = CloneModule(*M);
+  auto ClonedModule = cloneModule(*M);
+
+  runOnModule(*ClonedModule);
+
+  // must be just a function since we are not given
+  // ownership of module
+  DeviceModules_.emplace_back(std::move(ClonedModule));
+}
+
+//==============================================================================
+// Compile a module by cloning it first
+//==============================================================================
+std::unique_ptr<Module> ROCmJIT::cloneModule(const Module & M) {
+  auto ClonedModule = CloneModule(M);
 
   ClonedModule->setSourceFileName("device jit");
   ClonedModule->setDataLayout(TargetMachine_->createDataLayout());
   ClonedModule->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
-  addModule(std::move(ClonedModule));
+
+  return ClonedModule;
 }
 
 //==============================================================================
 // Verify module
 //==============================================================================
-void ROCmJIT::runOnModule(Module & TheModule)
+void ROCmJIT::runOnModule(Module & M)
 {
-  auto PassMan = legacy::PassManager();
-  PassMan.add(createVerifierPass());
+#if 0
+  //----------------------------------------------------------------------------
+  // Add annotations
   
-  auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
-  TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
-  Config->addIRPasses();
-  PassMan.add(Config);
+  //auto Annots = M->getOrInsertNamedMetadata("llvm.module.flags");
+  //std::vector<Metadata*> Meta = {
+  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ),
+  //  MDString::get(TheContext_, "wchar_size"),
+  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 4) ) };
+  //Annots->addOperand(MDNode::get(TheContext_, Meta));
+  //Meta = {
+  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 7) ),
+  //  MDString::get(TheContext_, "PIC Level"),
+  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ) };
+  //Annots->addOperand(MDNode::get(TheContext_, Meta));
+
+  //Annots = M->getOrInsertNamedMetadata("opencl.ocl.version");
+  //Meta = {
+  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 2) ),
+  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 0) ) };
+  //Annots->addOperand(MDNode::get(TheContext_, Meta));
   
-  PassMan.run(TheModule);
+  //----------------------------------------------------------------------------
+  // Fix globals
+  //for (auto & GV : M.getGlobalList()) {
+    //auto Ty = GV.getType()->getPointerElementType();
+    //GV.mutateType(PointerType::get(Ty, 4));
+    //GV.setLinkage(GlobalValue::InternalLinkage);
+    //GV.setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+    //auto NewGV = new GlobalVariable(
+    //  *M,
+    //  Ty,
+    //  true,
+    //  GlobalValue::PrivateLinkage,
+    //  GV.getInitializer(),
+    //  "",
+    //  &GV,
+    //  GlobalValue::NotThreadLocal,
+    //  4);
+    //GV.getType()->print(outs()); outs()<<" ";
+    //NewGV->getType()->print(outs()); outs()<<"\n";
+    //GV.replaceAllUsesWith(NewGV); 
+  //}
+
+  //----------------------------------------------------------------------------
+  // Change function attributes
+  for (auto & Func : M.getFunctionList()) {
+    if (!Func.isDeclaration()) {
+      if (Func.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
+      {
+        //Func.removeFnAttr(llvm::Attribute::OptimizeNone);
+      }
+      else {
+        //Func.setLinkage(GlobalValue::LinkOnceODRLinkage);
+        //Func.setVisibility(GlobalValue::ProtectedVisibility);
+        //Func.removeFnAttr(llvm::Attribute::OptimizeNone);
+        //Func.addFnAttr(llvm::Attribute::AlwaysInline);
+      }
+    }
+  }
+#endif
+
+  //----------------------------------------------------------------------------
+  // Replace calls/intrinsics
+
+  for (auto & Func : M.getFunctionList()) {
+    for (auto BlockIt=Func.begin(); BlockIt!=Func.end(); ++BlockIt) {
+      for (auto InstIt=BlockIt->begin(); InstIt!=BlockIt->end(); ++InstIt) {
+        Instruction* NewI = nullptr;
+
+        //------------------------------
+        // Replace Calls
+        if (auto CallI = dyn_cast<CallInst>(InstIt)) {
+          auto CallF = CallI->getCalledFunction();
+
+          if (CallF->getName().str() == "print") {
+            //auto BB = replacePrint2(*M, CallI);
+            //BlockIt = Function::iterator(BB);
+            //break;
+            NewI = replacePrint(M, CallI);
+          }
+
+        } // call
+        // Done Replacements
+        //------------------------------
+            
+        // replace instruction
+        if (NewI) {
+          ReplaceInstWithInst(&(*InstIt), NewI);
+          InstIt = BasicBlock::iterator(NewI);
+        }
+      } // Instruction
+    } // Block
+  
+    verifyFunction(Func);
+
+  } // Function
+  
 }
 
 //==============================================================================
@@ -245,12 +286,16 @@ std::string ROCmJIT::compile(
   // Compile
   
   auto PassMan = legacy::PassManager();
-  PassMan.add(createVerifierPass());
-
+  
+  TargetLibraryInfoImpl TLII(Triple(TheModule.getTargetTriple()));
+  PassMan.add(new TargetLibraryInfoWrapperPass(TLII));
+  
   auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
   TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
   Config->addIRPasses();
   PassMan.add(Config);
+
+  PassMan.add(createVerifierPass());
 
   auto fail = TargetMachine_->addPassesToEmitFile(
       PassMan,
@@ -323,36 +368,81 @@ std::vector<char> ROCmJIT::compileAndLink(
 //==============================================================================
 // Compile a module
 //==============================================================================
-std::unique_ptr<Module> ROCmJIT::insertBitcode(
-    std::unique_ptr<Module> M,
-    std::string file_name)
+void ROCmJIT::assemble(
+    Module & M,
+    std::string file_name,
+    bool IncludeDeviceLibs)
 {
 
-  auto Composite = std::make_unique<Module>("llvm-link", TheContext_);
-  Linker L(*Composite);
-
   unsigned Flags = Linker::Flags::None & Linker::Flags::OverrideFromSrc;
-  auto err = L.linkInModule(std::move(M), Flags);
-  if (err)
-    THROW_CONTRA_ERROR("Error linking in contra module.");
+  Linker L(M);
+
+  //----------------------------------------------------------------------------
+  // Add user device modules
+
+  if (IncludeDeviceLibs) {
+    for (const auto & DevM : DeviceModules_) {
+      auto ClonedM = cloneModule(*DevM);
+      auto err = L.linkInModule(std::move(ClonedM));
+      if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
+    }
+  }
+      
+  //M.print(outs(), nullptr); outs()<<"\n";
+
+  //----------------------------------------------------------------------------
+  // Run passmanager
+  // Replace printfs, and fix addresses
+
+  auto PassMan = legacy::PassManager();
+
+  PassMan.add(createAMDGPUPrintfRuntimeBinding());
+  PassMan.add(createSROAPass());
+  PassMan.add(createAMDGPULowerAllocaPass());
+  PassMan.add(createInferAddressSpacesPass());
   
-  SMDiagnostic Diag;
-  auto DeviceM = parseIRFile(
-      "/opt/rocm-3.5.0/lib/opencl.amdgcn.bc",
-      Diag,
-      TheContext_);
-  if (!DeviceM)
-    THROW_CONTRA_ERROR("Error reading device bitcode file.");
+  PassMan.run(M);
+  
+  //----------------------------------------------------------------------------
+  // Add bytecode
 
-  err = L.linkInModule(std::move(DeviceM), Flags);
-  if (err)
-    THROW_CONTRA_ERROR("Error linking in device module.");
+  std::vector<std::string> Files = {
+    //"/opt/rocm-3.5.0/lib/hip.amdgcn.bc"
+    "/opt/rocm-3.5.0/lib/ocml.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/ockl.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/oclc_daz_opt_off.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/oclc_unsafe_math_off.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/oclc_finite_only_off.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/oclc_correctly_rounded_sqrt_on.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/oclc_wavefrontsize64_on.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/oclc_isa_version_900.amdgcn.bc",
+    //"/opt/rocm-3.5.0/lib/hip.amdgcn.bc",
+    //"/opt/rocm-3.5.0/lib/ockl.amdgcn.bc",
+    //"/opt/rocm-3.5.0/lib/oclc_wavefrontsize64_on.amdgcn.bc",
+    "/opt/rocm-3.5.0/lib/opencl.amdgcn.bc",
+    //"/opt/rocm-3.5.0/lib/ockl.amdgcn.bc"
+    };
+  
+  for (const auto & F : Files) {
+    SMDiagnostic Diag;
+    auto DeviceM = parseIRFile(
+        F,
+        Diag,
+        TheContext_);
+    if (!DeviceM)
+      THROW_CONTRA_ERROR("Error reading device bitcode file.");
 
-  auto error_message = verifyModule(*Composite);
+    auto err = L.linkInModule(std::move(DeviceM), Flags);
+    if (err)
+      THROW_CONTRA_ERROR("Error linking in device module.");
+  }
+
+  // verify
+  auto error_message = verifyModule(M);
   if (!error_message.empty())
-    THROW_CONTRA_ERROR("inked module is broken: " << error_message);
+    THROW_CONTRA_ERROR("Linked module is broken: " << error_message);
 
-  return Composite;
+
 }
 
 //==============================================================================
@@ -379,6 +469,119 @@ CallInst* ROCmJIT::replacePrint(Module &M, CallInst* CallI) {
   auto TmpB = IRBuilder<>(TheContext_);
   return TmpB.CreateCall(PrintF, ArgVs, CallI->getName());
 }
+
+//==============================================================================
+// Split out the reduce functions
+//==============================================================================
+std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
+{
+  return nullptr;
+  //----------------------------------------------------------------------------
+  // Look for reduction
+  bool HasReduce = false;
+  std::vector<std::string> ReduceNs = {"apply", "init", "fold"};
+
+  for (const auto & FuncN : ReduceNs) {
+    if (M.getFunction(FuncN)) {
+      HasReduce = true;
+      break;
+    }
+  }
+
+  if (!HasReduce) return nullptr;
+
+  //----------------------------------------------------------------------------
+  // Copy over reduction
+  auto ReduceM = std::make_unique<Module>("reduce jit", TheContext_);
+  ReduceM->setDataLayout(TargetMachine_->createDataLayout());
+  ReduceM->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
+
+  for (const auto & FuncN : ReduceNs) {
+    auto F = M.getFunction(FuncN);
+    cloneFunction(F, ReduceM.get());
+    F->eraseFromParent();      
+  }
+
+  //----------------------------------------------------------------------------
+  // Add any usr device modules
+  
+  unsigned Flags = Linker::Flags::None & Linker::Flags::OverrideFromSrc;
+  Linker L(*ReduceM);
+
+  SMDiagnostic Diag;
+  auto DeviceM = parseIRFile(
+      "/home/charest/code/contra/build-rocm/src/contra/rocm_reduce.bc",
+      Diag,
+      TheContext_);
+  if (!DeviceM)
+    THROW_CONTRA_ERROR("Error reading device bitcode file.");
+
+  auto err = L.linkInModule(std::move(DeviceM), Flags);
+  if (err)
+    THROW_CONTRA_ERROR("Error linking in device module.");
+
+  //----------------------------------------------------------------------------
+  // find any memcopies
+  for (auto & Func : *ReduceM) {
+    for (auto & Block : Func) {
+      for (auto InstIt=Block.begin(); InstIt!=Block.end(); ++InstIt) {
+        if (auto CallI = dyn_cast<CallInst>(InstIt)) {
+          auto CallF = CallI->getCalledFunction();
+
+          if (CallF->getName().str() == "memcpy") {
+            auto TmpB = IRBuilder<>(CallI);
+            auto NewI = TmpB.CreateMemCpy(
+                CallI->getArgOperand(0),
+                MaybeAlign(1),
+                CallI->getArgOperand(1),
+                MaybeAlign(1),
+                CallI->getArgOperand(2));
+            CallI->eraseFromParent();
+            InstIt = BasicBlock::iterator(NewI);
+          }
+
+        } // call
+      } // Instruction
+    } // Block
+  } // function
+
+
+  return ReduceM;
+}
+
+//==============================================================================
+// Helper to replace print function
+//==============================================================================
+BasicBlock* ROCmJIT::replacePrint2(Module &M, CallInst* CallI) {
+
+  // some types
+  auto VoidPtrT = llvmType<void*>(TheContext_);
+  auto Int32T = Type::getInt32Ty(TheContext_);
+
+  // create new print function
+  auto PrintT = FunctionType::get(
+      Int32T,
+      VoidPtrT,
+      true /* var args */ );
+  auto PrintF = M.getOrInsertFunction("printf", PrintT).getCallee();
+
+  // gather args
+  std::vector<Value*> ArgVs;
+  for (auto & A : CallI->args())
+    ArgVs.push_back(A);
+
+
+  // create new instruction            
+  auto TmpB = IRBuilder<>(CallI);
+  emitAMDGPUPrintfCall(TmpB, ArgVs);
+
+  // erase old
+  CallI->eraseFromParent();
+
+  return TmpB.GetInsertBlock();
+  
+}
+
 
 
 } // namepsace

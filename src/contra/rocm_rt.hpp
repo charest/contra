@@ -10,9 +10,6 @@
 #include <map>
 #include <vector>
 
-extern "C" {
-  
-
 ////////////////////////////////////////////////////////////////////////////////
 // Runtime definition
 ////////////////////////////////////////////////////////////////////////////////
@@ -22,34 +19,24 @@ struct rocm_runtime_t {
   std::vector< std::vector<char> > Kernels;
   std::map< std::string, unsigned > KernelMap;
 
-#if 0
-  std::map<std::string, KernelData> Kernels;
-#endif
-
   size_t MaxThreadsPerBlock = 0;
 
   void init(int);
   void shutdown();
 
-  std::pair<size_t, size_t> threadDims(size_t NumThreads)
-  {
-    size_t NumBlocks = 1;
-    size_t ThreadsPerBlock = NumThreads;
+  std::pair<size_t, size_t> threadDims(size_t NumThreads);
 
-    if (NumThreads > MaxThreadsPerBlock) {
-      ThreadsPerBlock = MaxThreadsPerBlock;
-      NumBlocks = NumThreads / ThreadsPerBlock;
-      if (NumThreads % ThreadsPerBlock) NumBlocks++;
-    }
-
-    return {NumBlocks, ThreadsPerBlock};
-  }
-
+  void loadKernel(
+    const char * name,
+    hipModule_t * M,
+    hipFunction_t * F);
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Types needed for kokkos runtime
 ////////////////////////////////////////////////////////////////////////////////
+extern "C" {
 
 //==============================================================================
 struct contra_rocm_partition_t {

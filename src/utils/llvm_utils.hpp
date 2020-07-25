@@ -158,6 +158,8 @@ void insertModule(llvm::Module &, llvm::Module &);
 
 std::string verifyModule(llvm::Module&);
 
+void cloneFunction(llvm::Function*, llvm::Module*);
+
 } // namespace
 
 #endif // CONFIG_HPP

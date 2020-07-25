@@ -41,6 +41,7 @@ protected:
 
   llvm::Type* VoidType_ = nullptr;
   llvm::Type* VoidPtrType_ = nullptr;
+  llvm::Type* ByteType_ = nullptr;
   llvm::Type* BoolType_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* IntType_ = nullptr;

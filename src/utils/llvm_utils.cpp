@@ -290,4 +290,43 @@ std::string verifyModule(llvm::Module& M){
   return Stream.str();
 }
 
+//==============================================================================
+void cloneFunction(Function* F, Module* M)
+{
+  std::vector<Type*> ArgTypes;
+  ValueToValueMapTy VMap;
+
+  // The user might be deleting arguments to the function by specifying them in
+  // the VMap.  If so, we need to not add the arguments to the arg ty vector
+  for (const Argument &I : F->args())
+    if (VMap.count(&I) == 0) // Haven't mapped the argument to anything yet?
+      ArgTypes.push_back(I.getType());
+ 
+  // Create a new function type...
+  FunctionType *FTy = FunctionType::get(
+    F->getFunctionType()->getReturnType(),
+    ArgTypes,
+    F->getFunctionType()->isVarArg());
+ 
+  // Create the new function...
+  Function *NewF = Function::Create(
+      FTy,
+      F->getLinkage(),
+      F->getAddressSpace(),
+      F->getName(),
+      M);
+
+  // Loop over the arguments, copying the names of the mapped arguments over...
+  Function::arg_iterator DestI = NewF->arg_begin();
+  for (const Argument & I : F->args())
+    if (VMap.count(&I) == 0) {     // Is this argument preserved?
+      DestI->setName(I.getName()); // Copy the name over...
+      VMap[&I] = &*DestI++;        // Add mapping to VMap
+    }
+
+  bool ModuleLevelChanges = F->getSubprogram() != nullptr;
+  SmallVector< ReturnInst *, 8> Returns;
+  CloneFunctionInto(NewF, F, VMap, ModuleLevelChanges, Returns);
+}
+
 } // namespace

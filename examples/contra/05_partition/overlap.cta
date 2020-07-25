@@ -1,0 +1,85 @@
+tsk top_level() {
+  
+  chunk = 2
+  num_parts = 3
+  num_points = chunk*num_parts
+  parts = 0 : num_parts-1
+  points = 0 : num_points-1
+  
+  print("Points: %ld\n", num_points)
+  print("Partitions: %ld\n", num_parts)
+  print("Points per partition: %ld\n", chunk)
+
+  point_sizes = [0; num_parts]
+  point_sizes[0] = chunk + 1
+  point_sizes[num_parts-1] = chunk + 1
+  for i = 1 : num_parts-2
+    point_sizes[i] = chunk + 2
+
+  expanded_size = 0
+  for i = 0 : num_parts-1
+    expanded_size = expanded_size + point_sizes[i]
+
+  print("Expanded size: %ld\n", expanded_size)
+
+  point_offsets = [0; num_parts+1]
+  for i = 0 : num_parts-1
+    point_offsets[i+1] = point_offsets[i] + point_sizes[i] - 2
+
+
+  points_expanded = 0 : expanded_size-1
+  points_expanded_part = part(points_expanded, point_sizes)
+
+  point_id[points_expanded] = -1
+  foreach i = parts {
+    use points_expanded : points_expanded_part
+    for j = 0 : len(points_expanded)-1 {
+      point_id[j] = point_offsets[i] + j
+    }
+  }
+
+  points_part = part(points, points_expanded_part, point_id)
+
+  myfield[points] = -1
+  foreach i = points
+    myfield[0] = i
+  
+  foreach i = parts {
+    use points : points_part
+    for j = 0 : len(points)-1
+      print("i=%ld j=%ld myfield[j]=%ld\n", i, j, myfield[j])
+  }
+
+
+#  foreach i = parts {
+#
+#    use cells : cells_part
+#    use cell_id : cells_part
+#   
+#    num_points = len(points)
+#    num_cells = len(cells)
+#
+#    for j = 0:num_points-1 {
+#      print("Point loop with partition %ld and local id %ld\n", i, j)
+#      point_id[j] = j
+#    }
+#    
+#    for j = 0:num_cells-1 {
+#      print("Cell loop with partition %ld and local id %ld\n", i, j)
+#      cell_id[j] = j
+#    }
+#  }
+#  
+#  foreach i = parts {
+#    for j = 0:len(cells)-1
+#      print("Cell loop with partition %ld and cell_id[%ld]=%ld\n", i, j, cell_id[j])
+#  }
+#  
+#  foreach i = parts {
+#    for j = 0:len(points)-1
+#      print("Point loop with partition %ld and point_id[%ld]=%ld\n", i, j, point_id[j])
+#  }
+
+}
+
+top_level()

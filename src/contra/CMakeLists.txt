@@ -43,4 +43,20 @@ if (HIP_FOUND)
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/rocm.cpp )
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/rocm_jit.cpp )
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/rocm_rt.cpp )
+
+  add_custom_target(contra_rocm_devlibs
+    DEPENDS rocm_reduce.bc)
+  add_dependencies(contra contra_rocm_devlibs)
+
+  #set_property(TARGET contra_rocm_devlibs APPEND PROPERTY OBJECT_DEPENDS rocm_reduce.bc)
+
+  add_custom_command(OUTPUT rocm_reduce.bc
+    COMMAND
+      ${ROCM_CLANG_EXE} -cl-std=CL2.0 -Xclang -finclude-default-header -xcl
+      -target amdgcn-amd-amdhsa
+      -c ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl  -emit-llvm -I ..  -o rocm_reduce.bc
+    DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl
+    WORKING_DIRECTORY
+      ${CMAKE_CURRENT_BINARY_DIR})
 endif()

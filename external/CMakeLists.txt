@@ -43,14 +43,23 @@ set(COMPILE_FLAGS
 option(BUILD_LLVM "Build llvm." ON)
 if (BUILD_LLVM)
   MESSAGE(STATUS "Building LLVM.")
+
+  # Create a list with an alternate separator e.g. pipe symbol
+  set(LLVM_TARGETS_TO_BUILD "X86;AMDGPU")
+  string(REPLACE ";" "|" LLVM_TARGETS_TO_BUILD_ALT_SEP "${LLVM_TARGETS_TO_BUILD}")
+
   ExternalProject_Add(llvm
     URL https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.0/llvm-10.0.0.src.tar.xz
     INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
     UPDATE_COMMAND  ""
+
+    LIST_SEPARATOR | # Use the alternate list separator
+
     CMAKE_ARGS
       -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
       -DLLVM_ENABLE_RTTI=ON
       -DLLVM_BUILD_LLVM_DYLIB=${BUILD_SHARED_LIBS}
+      #-DLLVM_TARGETS_TO_BUILD=${LLVM_TARGETS_TO_BUILD_ALT_SEP}
       ${COMPILE_FLAGS}
   )
 endif()

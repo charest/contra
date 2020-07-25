@@ -1,6 +1,6 @@
-##fn index_task(i64 id, i64 ilocal, i64 iglobal, i64 arr[])
-##  print("Hello world from task %ld, with local arg %ld, and global arg %ld and %ld!\n",
-##    id, ilocal, iglobal, arr[id])
+fn index_task(i64 id, i64 ilocal, i64 iglobal, i64 arr[])
+  print("Hello world from task %ld, with local arg %ld, and global arg %ld and %ld!\n",
+    id, ilocal, iglobal, arr[id])
 
 
 tsk top_level() {
@@ -14,10 +14,7 @@ tsk top_level() {
 
   print("launching\n")
   foreach i = 0:num_points-1
-    #index_task(i, i+10, num_points, arr)
-    {
-      print("inside %ld\n", i)
-    }
+    index_task(i, i+10, num_points, arr)
 
 }
 
