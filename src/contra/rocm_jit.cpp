@@ -155,68 +155,6 @@ std::unique_ptr<Module> ROCmJIT::cloneModule(const Module & M) {
 //==============================================================================
 void ROCmJIT::runOnModule(Module & M)
 {
-#if 0
-  //----------------------------------------------------------------------------
-  // Add annotations
-  
-  //auto Annots = M->getOrInsertNamedMetadata("llvm.module.flags");
-  //std::vector<Metadata*> Meta = {
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ),
-  //  MDString::get(TheContext_, "wchar_size"),
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 4) ) };
-  //Annots->addOperand(MDNode::get(TheContext_, Meta));
-  //Meta = {
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 7) ),
-  //  MDString::get(TheContext_, "PIC Level"),
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 1) ) };
-  //Annots->addOperand(MDNode::get(TheContext_, Meta));
-
-  //Annots = M->getOrInsertNamedMetadata("opencl.ocl.version");
-  //Meta = {
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 2) ),
-  //  ValueAsMetadata::get( llvmValue<int>(TheContext_, 0) ) };
-  //Annots->addOperand(MDNode::get(TheContext_, Meta));
-  
-  //----------------------------------------------------------------------------
-  // Fix globals
-  //for (auto & GV : M.getGlobalList()) {
-    //auto Ty = GV.getType()->getPointerElementType();
-    //GV.mutateType(PointerType::get(Ty, 4));
-    //GV.setLinkage(GlobalValue::InternalLinkage);
-    //GV.setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
-    //auto NewGV = new GlobalVariable(
-    //  *M,
-    //  Ty,
-    //  true,
-    //  GlobalValue::PrivateLinkage,
-    //  GV.getInitializer(),
-    //  "",
-    //  &GV,
-    //  GlobalValue::NotThreadLocal,
-    //  4);
-    //GV.getType()->print(outs()); outs()<<" ";
-    //NewGV->getType()->print(outs()); outs()<<"\n";
-    //GV.replaceAllUsesWith(NewGV); 
-  //}
-
-  //----------------------------------------------------------------------------
-  // Change function attributes
-  for (auto & Func : M.getFunctionList()) {
-    if (!Func.isDeclaration()) {
-      if (Func.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
-      {
-        //Func.removeFnAttr(llvm::Attribute::OptimizeNone);
-      }
-      else {
-        //Func.setLinkage(GlobalValue::LinkOnceODRLinkage);
-        //Func.setVisibility(GlobalValue::ProtectedVisibility);
-        //Func.removeFnAttr(llvm::Attribute::OptimizeNone);
-        //Func.addFnAttr(llvm::Attribute::AlwaysInline);
-      }
-    }
-  }
-#endif
-
   //----------------------------------------------------------------------------
   // Replace calls/intrinsics
 
