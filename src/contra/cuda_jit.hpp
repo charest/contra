@@ -29,7 +29,6 @@ public:
 private:
 
   llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);
-  llvm::CallInst* replaceIntrinsic(llvm::Module &, llvm::CallInst*, unsigned);
 
   llvm::TargetMachine * TargetMachine_ = nullptr;
 };

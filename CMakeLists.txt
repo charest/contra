@@ -173,11 +173,14 @@ if (HIP_FOUND)
     PATH_SUFFIXES
         bin
   )
-if (NOT ROCM_CLANG_EXE)
+  if (NOT ROCM_CLANG_EXE)
     MESSAGE(FATAL_ERROR "Could not find clang.  Please set ROCM_LLVM_PATH")
   else ()
     MESSAGE(STATUS "Found clang: ${ROCM_CLANG_EXE}")
   endif()
+
+  find_package(AMDDeviceLibs REQUIRED CONFIG)
+  MESSAGE(STATUS "Found device libs: ${AMD_DEVICE_LIBS_TARGETS}")
 endif()
 
 #------------------------------------------------------------------------------#

@@ -16,7 +16,7 @@
 struct rocm_runtime_t {
   bool IsStarted = false;
 
-  std::vector< std::vector<char> > Kernels;
+  std::vector< std::pair<std::vector<char>, std::vector<char>> > Kernels;
   std::map< std::string, unsigned > KernelMap;
 
   size_t MaxThreadsPerBlock = 0;
@@ -29,7 +29,8 @@ struct rocm_runtime_t {
   void loadKernel(
     const char * name,
     hipModule_t * M,
-    hipFunction_t * F);
+    hipFunction_t * F,
+    bool Reduce);
 };
 
 
@@ -213,6 +214,8 @@ void contra_rocm_startup();
 void contra_rocm_shutdown();
 
 void contra_rocm_register_kernel(
+    const char *,
+    size_t,
     const char *,
     size_t,
     const char * [],

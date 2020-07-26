@@ -176,7 +176,8 @@ void rocm_runtime_t::shutdown() {
 void rocm_runtime_t::loadKernel(
     const char * name,
     hipModule_t * M,
-    hipFunction_t * F)
+    hipFunction_t * F,
+    bool LoadReduce)
 {
   auto KernelIt = RocmRuntime.KernelMap.find(name);
   if (KernelIt == RocmRuntime.KernelMap.end()) {
@@ -185,12 +186,22 @@ void rocm_runtime_t::loadKernel(
   }
 
   auto KernelData = RocmRuntime.Kernels.at(KernelIt->second);
-  
-  auto err = hipModuleLoadData(M, (const void*)KernelData.data());
-  check(err);
 
-  err = hipModuleGetFunction(F, *M, name );
-  check(err);
+  if (LoadReduce) {
+    auto err = hipModuleLoadData(M, (const void*)KernelData.second.data());
+    check(err);
+  
+    err = hipModuleGetFunction(F, *M, "reduce6" );
+    check(err);
+  }
+  else {
+    auto err = hipModuleLoadData(M, (const void*)KernelData.first.data());
+    check(err);
+    
+    err = hipModuleGetFunction(F, *M, name );
+    check(err);
+  }
+
 }
 
 //==============================================================================
@@ -266,11 +277,17 @@ void contra_rocm_shutdown() {
 void contra_rocm_register_kernel(
     const char * kernel,
     size_t size_kernel,
+    const char * reduce,
+    size_t size_reduce,
     const char * names[],
     unsigned size_names)
 {
   auto KernelId = RocmRuntime.Kernels.size();
-  RocmRuntime.Kernels.emplace_back( kernel, kernel+size_kernel );
+ 
+  std::vector<char> kernel_data(kernel, kernel+size_kernel);
+  std::vector<char> reduce_data(reduce, reduce+size_reduce);
+  
+  RocmRuntime.Kernels.emplace_back( kernel_data, reduce_data );
 
   for (unsigned i=0; i<size_names; ++i) {
     RocmRuntime.KernelMap[names[i]] = KernelId;
@@ -289,7 +306,7 @@ void contra_rocm_launch_kernel(
 {
   hipFunction_t F;
   hipModule_t M;
-  RocmRuntime.loadKernel(name, &M, &F);
+  RocmRuntime.loadKernel(name, &M, &F, false);
 
   auto size = is->size();
   //auto Dims = RocmRuntime.threadDims(size);
@@ -759,6 +776,7 @@ void contra_rocm_prepare_reduction(
   auto size = is->size();
   auto bytes = data_size * size;
   auto err = hipMalloc(indata, bytes);
+
   check(err);
 }
 
@@ -766,72 +784,82 @@ void contra_rocm_prepare_reduction(
 // launch a kernel
 //==============================================================================
 void contra_rocm_launch_reduction(
-    char * kernel_name//,
-    //contra_index_space_t * is,
-    //void ** dev_indata,
-    //void * result,
-    //size_t data_size)//,
-    //apply_t host_apply
-)
+    char * kernel_name,
+    contra_index_space_t * is,
+    void ** dev_indata,
+    void * result,
+    size_t data_size,
+    void(*host_apply)(byte_t*, byte_t*))
 {
-  
-  std::cout << kernel_name << std::endl;
-  abort();
-  hipFunction_t F;
-  hipModule_t M;
-  RocmRuntime.loadKernel(kernel_name, &M, &F);
-#if 0
   // some dimensinos
   size_t size = is->size();
-  size_t bytes = data_size * size;
+ 
+  if (size==1) {
+    hipMemcpy(result, *dev_indata, data_size, hipMemcpyDeviceToHost); 
+    return;
+  }
+
+  // get the kernel
+  hipFunction_t F;
+  hipModule_t M;
+  RocmRuntime.loadKernel(kernel_name, &M, &F, true);
   
   // block dimensinos
-  auto Dims = CudaRuntime.threadDims(size);
-  size_t block_size = Dims.first;
-  size_t threads_per_block = Dims.second;
+  auto max_threads  = RocmRuntime.MaxThreadsPerBlock;
+  size_t threads_per_block = (size < max_threads*2) ? size / 2 : max_threads;
+  size_t block_size = size / (threads_per_block * 2);
+  block_size = min(64, block_size);
+  
+  // size of shared memory
+  size_t shared_bytes = data_size * threads_per_block;
 
   // block level storage for result
   void * dev_outdata;
-  cudaMalloc(&dev_outdata, block_size*data_size); // num blocks
+  hipMalloc(&dev_outdata, block_size*data_size); // num blocks
   
-  // Get the reduction function
-  CUfunction ReduceFunction;
-  auto err = cuModuleGetFunction(&ReduceFunction, Kernel->Module, "reduce6");
-  check(err);
+  // prepare final args
+  struct {
+    void * dev_indata;
+    void * dev_outdata;
+    uint data_size;
+    uint size;
+    uint threads_per_block;
+  } args;
+  args.dev_indata = *dev_indata;
+  args.dev_outdata = dev_outdata;
+  args.data_size = data_size;
+  args.size = size;
+  args.threads_per_block = threads_per_block;
+  size_t args_size = sizeof(args);
 
-  // launch the final reduction
-  void * params[] = {
-    dev_indata,
-    &dev_outdata,
-    &data_size,
-    &size,
-    &block_size,
-    &init_ptr,
-    &apply_ptr,
-    &fold_ptr
+  void *config[] = {
+    HIP_LAUNCH_PARAM_BUFFER_POINTER, &args,
+    HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
+    HIP_LAUNCH_PARAM_END
   };
-
-  err = cuLaunchKernel(
-      ReduceFunction,
+  
+  // launch the final reduction
+  hipModuleLaunchKernel(
+      F,
       block_size, 1, 1,
       threads_per_block, 1, 1,
-      bytes,
+      shared_bytes,
+      0,
       nullptr,
-      params,
-      nullptr);
-  check(err);
-  
-  auto cuerr = cudaDeviceSynchronize();
-  check(cuerr, "Reduction launch");
+      config);
+  hipDeviceSynchronize();
 
-  err = hipModuleUnload(*M);
+  auto err = hipGetLastError();
+  check(err);
+
+  err = hipModuleUnload(M);
   check(err);
 
   // copy over data
   if (block_size > 1) {
     auto outdata = malloc(block_size*data_size);
-    auto err = cudaMemcpy(outdata, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost);
-    check(err, "cudaMemcpy");
+    auto err = hipMemcpy(outdata, dev_outdata, block_size*data_size, hipMemcpyDeviceToHost);
+    check(err);
     auto outdata_bytes = static_cast<byte_t*>(outdata);
     for (unsigned i=1; i<block_size; ++i)
       (host_apply)( outdata_bytes, outdata_bytes+data_size*i );
@@ -839,13 +867,10 @@ void contra_rocm_launch_reduction(
     free(outdata);
   }
   else {
-    cudaMemcpy(result, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost); 
+    hipMemcpy(result, dev_outdata, data_size, hipMemcpyDeviceToHost); 
   }
-  cudaFree(dev_outdata);
+  hipFree(dev_outdata);
 
-  // final reduce
-  
-#endif
 }
 
 

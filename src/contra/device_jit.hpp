@@ -29,9 +29,10 @@ public:
   virtual void addModule(std::unique_ptr<llvm::Module> M) = 0;
   virtual void addModule(const llvm::Module * M) = 0;
 
-
 protected:
   
+  llvm::CallInst* replaceIntrinsic(llvm::Module &, llvm::CallInst*, unsigned);
+
   utils::BuilderHelper & TheHelper_;
 
   llvm::IRBuilder<> & Builder_;

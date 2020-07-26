@@ -330,6 +330,7 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   auto IndexSizeV = TheHelper_.load(IndexSizeA);
 
   IndexV = TheHelper_.load(IndexA); 
+  IndexSizeV = llvmValue<int_t>(TheContext_, 1000);
   auto CondV = Builder_.CreateICmpSLT(IndexV, IndexSizeV, "threadcond");
   Builder_.CreateCondBr(CondV, ThenBB, TaskI.MergeBlock);
   
@@ -592,17 +593,21 @@ Value* ROCmTasker::launch(
   AllocaInst* ResultA = nullptr;
   if (ResultT && AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const ROCmReduceInfo*>(AbstractReduceOp);
+    
+    const auto & ApplyN = ReduceOp->getApplyName();
+    auto ApplyT = ReduceOp->getApplyType();
+    auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
 
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
     auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
     auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
     std::vector<Value*> ArgVs = {
       TaskStr,
-      //IndexSpaceA,
-      //IndataA,
-      //OutDataV,
-      //DataSizeV//,
-    //  ApplyF
+      IndexSpaceA,
+      IndataA,
+      OutDataV,
+      DataSizeV,
+      ApplyF
     };
     TheHelper_.callFunction(
         TheModule,
@@ -1177,15 +1182,21 @@ Value* ROCmTasker::getThreadID(Module & TheModule) const {
   //    "__ockl_get_global_id",
   //    SizeType_,
   //    {llvmValue<uint>(TheContext_, 0)} );
+  
+
+  // local_id
   auto TidF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::amdgcn_workitem_id_x);
   Value* IndexV = Builder_.CreateCall(TidF);
+
+  // group_id
   auto BidF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::amdgcn_workgroup_id_x);
   Value* BlockIdV = Builder_.CreateCall(BidF);
   
+  // group_size
   auto DispatchPtrF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::amdgcn_dispatch_ptr);
@@ -1195,10 +1206,28 @@ Value* ROCmTasker::getThreadID(Module & TheModule) const {
   auto AddrSpace = DispatchPtrGEP->getType()->getPointerAddressSpace();
   auto Int16PtrT = Int16T->getPointerTo( AddrSpace );
   auto BlockDimPtrV = TheHelper_.createBitCast(DispatchPtrGEP, Int16PtrT);
-  Value* BlockDimV = TheHelper_.load(BlockDimPtrV);
-  BlockDimV = TheHelper_.createCast(BlockDimV, BlockIdV->getType());
+  Value* GroupSizeV = TheHelper_.load(BlockDimPtrV);
+  auto IdT = BlockIdV->getType();
+  GroupSizeV = TheHelper_.createCast(GroupSizeV, IdT);
+
+  // grid_size
+  DispatchPtrGEP = TheHelper_.getElementPointer(DispatchPtrV, 12);
+  auto Int32T = llvmType<uint32_t>(TheContext_);
+  auto Int32PtrT = Int32T->getPointerTo( AddrSpace );
+  auto GridSizePtrV = TheHelper_.createBitCast(DispatchPtrGEP, Int32PtrT);
+  Value* GridSizeV = TheHelper_.load(GridSizePtrV);
+  GridSizeV = TheHelper_.createCast(GridSizeV, IdT);
+
+  // r = grid_size - group_id * group_size
+  Value* TmpV = Builder_.CreateMul(BlockIdV, GroupSizeV);
+  TmpV = Builder_.CreateSub(GridSizeV, TmpV);
+
+  // local_size = (r < group_size) ? r : group_size;
+  auto CondV = Builder_.CreateICmpULT(TmpV, GroupSizeV, "threadcond");
+  auto BlockDimV = Builder_.CreateSelect(CondV, TmpV, GroupSizeV);
   
-  Value* TmpV = Builder_.CreateMul(BlockIdV, BlockDimV);
+  // local_id + group_id*local_size
+  TmpV = Builder_.CreateMul(BlockIdV, BlockDimV);
   IndexV = Builder_.CreateAdd(IndexV, TmpV);
   IndexV = TheHelper_.createCast(IndexV, IntType_);
 

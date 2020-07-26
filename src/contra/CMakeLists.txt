@@ -52,9 +52,18 @@ if (HIP_FOUND)
 
   add_custom_command(OUTPUT rocm_reduce.bc
     COMMAND
-      ${ROCM_CLANG_EXE} -cl-std=CL2.0 -Xclang -finclude-default-header -xcl
+      ${ROCM_CLANG_EXE}
+      -cl-std=CL2.0
+      -Xclang 
+      -finclude-default-header
+      -xcl
       -target amdgcn-amd-amdhsa
-      -c ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl  -emit-llvm -I ..  -o rocm_reduce.bc
+      -mcpu=gfx900
+      -c ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl
+      -emit-llvm
+      -I ${CMAKE_CURRENT_BINARY_DIR}/..
+      -I ${CMAKE_CURRENT_SOURCE_DIR}/..
+      -o rocm_reduce.bc
     DEPENDS
       ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl
     WORKING_DIRECTORY

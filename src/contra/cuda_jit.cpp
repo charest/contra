@@ -201,17 +201,5 @@ CallInst* CudaJIT::replacePrint(Module &M, CallInst* CallI) {
   return TmpB.CreateCall(PrintF, ArgVs, CallI->getName());
 }
 
-//==============================================================================
-// Helper to replace math
-//==============================================================================
-CallInst* CudaJIT::replaceIntrinsic(Module &M, CallInst* CallI, unsigned Intr)
-{
-  std::vector<Value*> ArgVs;
-  for (auto & Arg : CallI->args()) ArgVs.push_back(Arg.get());
-  auto IntrinsicF = Intrinsic::getDeclaration(&M, Intr);
-  auto TmpB = IRBuilder<>(TheContext_);
-  return TmpB.CreateCall(IntrinsicF, ArgVs, CallI->getName());
-}
-
 
 } // namepsace

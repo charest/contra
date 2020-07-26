@@ -902,6 +902,13 @@ void contra_cuda_launch_reduction(
     size_t data_size,
     apply_t host_apply)
 {
+  // some dimensinos
+  size_t size = is->size();
+ 
+  if (size==1) {
+    hipMemcpy(result, *dev_indata, data_size, hipMemcpyDeviceToHost); 
+    return;
+  }
 
   KernelData* Kernel;
   auto it = CudaRuntime.Kernels.find(kernel_name);
@@ -936,14 +943,14 @@ void contra_cuda_launch_reduction(
     &fold_ptr,
     sizeof(fold_t));
 
-  // some dimensinos
-  size_t size = is->size();
-  size_t bytes = data_size * size;
-  
   // block dimensinos
-  auto Dims = CudaRuntime.threadDims(size);
-  size_t block_size = Dims.first;
-  size_t threads_per_block = Dims.second;
+  auto max_threads  = RocmRuntime.MaxThreadsPerBlock;
+  size_t threads_per_block = (size < max_threads*2) ? size / 2 : max_threads;
+  size_t block_size = size / (threads_per_block * 2);
+  block_size = min(64, block_size);
+  
+  // size of shared memory
+  size_t shared_bytes = data_size * threads_per_block;
 
   // block level storage for result
   void * dev_outdata;
@@ -955,12 +962,15 @@ void contra_cuda_launch_reduction(
   check(err);
 
   // launch the final reduction
+  unsigned data_size_as_uint = data_size;
+  unsigned size_as_uint = size;
+  unsigned threads_per_block_as_uint = threads_per_block;
   void * params[] = {
     dev_indata,
     &dev_outdata,
-    &data_size,
-    &size,
-    &block_size,
+    &data_size_as_uint,
+    &size_as_uint,
+    &threads_per_block_as_uint,
     &init_ptr,
     &apply_ptr,
     &fold_ptr
@@ -970,7 +980,7 @@ void contra_cuda_launch_reduction(
       ReduceFunction,
       block_size, 1, 1,
       threads_per_block, 1, 1,
-      bytes,
+      shared_bytes,
       nullptr,
       params,
       nullptr);
@@ -994,9 +1004,6 @@ void contra_cuda_launch_reduction(
     cudaMemcpy(result, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost); 
   }
   cudaFree(dev_outdata);
-
-  // final reduce
-  
 
 }
 

@@ -15,6 +15,7 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetIntrinsicInfo.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Scalar.h"
@@ -114,6 +115,8 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
   contra_rocm_register_kernel(
       Hsaco.data(),
       Hsaco.size(),
+      ReduceHsaco.empty() ? nullptr : ReduceHsaco.data(),
+      ReduceHsaco.size(),
       KernelNamesC,
       NumKernels);
 
@@ -388,7 +391,17 @@ void ROCmJIT::assemble(
     }
   }
       
-  //M.print(outs(), nullptr); outs()<<"\n";
+  //----------------------------------------------------------------------------
+  // Simple inlineing
+
+  for (auto & Func : M.getFunctionList()) {
+    if (!Func.isDeclaration()) {
+      if (Func.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL) {
+        Func.setLinkage(GlobalValue::LinkOnceODRLinkage);
+      }
+    }
+  }
+
 
   //----------------------------------------------------------------------------
   // Run passmanager
@@ -475,7 +488,6 @@ CallInst* ROCmJIT::replacePrint(Module &M, CallInst* CallI) {
 //==============================================================================
 std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
 {
-  return nullptr;
   //----------------------------------------------------------------------------
   // Look for reduction
   bool HasReduce = false;
@@ -508,27 +520,42 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
   unsigned Flags = Linker::Flags::None & Linker::Flags::OverrideFromSrc;
   Linker L(*ReduceM);
 
-  SMDiagnostic Diag;
-  auto DeviceM = parseIRFile(
-      "/home/charest/code/contra/build-rocm/src/contra/rocm_reduce.bc",
-      Diag,
-      TheContext_);
-  if (!DeviceM)
-    THROW_CONTRA_ERROR("Error reading device bitcode file.");
+  std::vector<std::string> Files = {
+      "/home/charest/code/contra/src/librtrocm/rocm_scratch.ll",
+      "/home/charest/code/contra/build/src/contra/rocm_reduce.bc"
+  };
+  for (const auto & F : Files) {
+    SMDiagnostic Diag;
+    auto DeviceM = parseIRFile(
+        F,
+        Diag,
+        TheContext_);
+    if (!DeviceM)
+      THROW_CONTRA_ERROR("Error reading device bitcode file.");
 
-  auto err = L.linkInModule(std::move(DeviceM), Flags);
-  if (err)
-    THROW_CONTRA_ERROR("Error linking in device module.");
+    auto err = L.linkInModule(std::move(DeviceM), Flags);
+    if (err)
+      THROW_CONTRA_ERROR("Error linking in device module.");
+  }
 
   //----------------------------------------------------------------------------
   // find any memcopies
+  
+  auto Intr = TargetMachine_->getIntrinsicInfo();
+
   for (auto & Func : *ReduceM) {
     for (auto & Block : Func) {
       for (auto InstIt=Block.begin(); InstIt!=Block.end(); ++InstIt) {
+        
+        Instruction* NewI = nullptr;
+
+        //------------------------------
+        // Replace Calls
         if (auto CallI = dyn_cast<CallInst>(InstIt)) {
           auto CallF = CallI->getCalledFunction();
+          auto FunN = CallF->getName().str();
 
-          if (CallF->getName().str() == "memcpy") {
+          if (FunN == "memcpy") {
             auto TmpB = IRBuilder<>(CallI);
             auto NewI = TmpB.CreateMemCpy(
                 CallI->getArgOperand(0),
@@ -539,13 +566,19 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
             CallI->eraseFromParent();
             InstIt = BasicBlock::iterator(NewI);
           }
-
         } // call
+        //------------------------------
+        
+        // replace instruction
+        if (NewI) {
+          ReplaceInstWithInst(&(*InstIt), NewI);
+          InstIt = BasicBlock::iterator(NewI);
+        }
+
       } // Instruction
     } // Block
   } // function
-
-
+  
   return ReduceM;
 }
 

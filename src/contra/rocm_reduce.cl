@@ -1,10 +1,11 @@
 #include "config.h"
 
+#include "librtrocm/rocm_scratch.h"
+#include "librtrocm/rocm_builtins.h"
+
 void init(volatile byte_t*);
 void apply(volatile byte_t*, volatile byte_t*);
 void fold(byte_t*, byte_t*, byte_t*);
-
-void * memcpy(void *, const void *, size_t);
 
 //==============================================================================
 /// Reduce accross blocks
@@ -23,36 +24,37 @@ void warpReduce(
   if (blockSize >=  2) apply(sdata + data_size*tid, sdata + data_size*(tid +  1));
 }
 
-
 //==============================================================================
 /// Main reduction kernel
 //==============================================================================
 void kernel reduce6(
   global byte_t * g_idata,
   global byte_t * g_odata,
-  local byte_t * sdata,
   unsigned int data_size,
   unsigned int n,
   unsigned int blockSize
 ) {
+  __local byte_t * sdata = GET_LOCAL_MEM_PTR();
 
-  unsigned int tid = get_local_id(0);
-  unsigned int i = get_group_id(0)*(blockSize*2) + tid;
-  unsigned int gridSize = blockSize*2*get_num_groups(0);
+  unsigned int gid = GET_GROUP_ID(0);
+  unsigned int tid = GET_LOCAL_ID(0);
+  unsigned int i = gid*(blockSize*2) + tid;
+  unsigned int gridSize = blockSize*2*GET_NUM_GROUPS(0);
 
   //sdata[tid] = 0;
   init( sdata + tid*data_size );
-
+ 
   while (i < n) {
     //sdata[tid] += g_idata[i] + g_idata[i+blockSize];
     fold(
         g_idata + data_size*i,
         g_idata + data_size*(i+blockSize),
-        sdata   + data_size*tid
+        sdata//   + data_size*tid
     );
     i += gridSize;
   }
-  barrier(CLK_LOCAL_MEM_FENCE);
+
+  SYNC();
 
   if (blockSize >= 512) {
     if (tid < 256) 
@@ -61,7 +63,7 @@ void kernel reduce6(
           sdata + data_size*tid,
           sdata + data_size*(tid + 256)
       );
-    barrier(CLK_LOCAL_MEM_FENCE);
+    SYNC();
   }
   if (blockSize >= 256) {
     if (tid < 128)
@@ -70,7 +72,7 @@ void kernel reduce6(
           sdata + data_size*tid,
           sdata + data_size*(tid + 128)
       );
-    barrier(CLK_LOCAL_MEM_FENCE);
+    SYNC();
   }
   if (blockSize >= 128) {
     if (tid < 64) 
@@ -79,12 +81,12 @@ void kernel reduce6(
           sdata + data_size*tid,
           sdata + data_size*(tid + 64)
       );
-    barrier(CLK_LOCAL_MEM_FENCE);
+    SYNC();
   }
-
+  
   if (tid < 32) warpReduce(sdata, tid, blockSize, data_size);
   if (tid == 0) {
     //g_odata[blockIdx.x] = sdata[0];
-    memcpy(g_odata + data_size*get_group_id(0), sdata, data_size);
+    memcpy(g_odata + data_size*gid, sdata, data_size);
   }
 }
