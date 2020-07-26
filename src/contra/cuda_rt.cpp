@@ -429,14 +429,12 @@ void contra_cuda_2host(void * dev, void * host, size_t size)
 //==============================================================================
 // Copy array to device
 //==============================================================================
-dopevector_t contra_cuda_array2dev(dopevector_t * arr)
+void contra_cuda_array2dev(dopevector_t * arr, dopevector_t * dev_arr)
 {
   auto size = arr->bytes();
   auto dev_data = contra_cuda_2dev(arr->data, size);
 
-  dopevector_t dev_arr;
-  dev_arr.setup(arr->size, arr->data_size, dev_data);
-  return dev_arr;
+  dev_arr->setup(arr->size, arr->data_size, dev_data);
 }
 
 //==============================================================================
@@ -906,7 +904,8 @@ void contra_cuda_launch_reduction(
   size_t size = is->size();
  
   if (size==1) {
-    hipMemcpy(result, *dev_indata, data_size, hipMemcpyDeviceToHost); 
+    auto err = cudaMemcpy(result, *dev_indata, data_size, cudaMemcpyDeviceToHost); 
+    check(err, "cudaMemcpy");
     return;
   }
 
@@ -944,10 +943,10 @@ void contra_cuda_launch_reduction(
     sizeof(fold_t));
 
   // block dimensinos
-  auto max_threads  = RocmRuntime.MaxThreadsPerBlock;
+  auto max_threads  = CudaRuntime.MaxThreadsPerBlock;
   size_t threads_per_block = (size < max_threads*2) ? size / 2 : max_threads;
   size_t block_size = size / (threads_per_block * 2);
-  block_size = min(64, block_size);
+  block_size = std::min<size_t>(64, block_size);
   
   // size of shared memory
   size_t shared_bytes = data_size * threads_per_block;
@@ -1001,7 +1000,8 @@ void contra_cuda_launch_reduction(
     free(outdata);
   }
   else {
-    cudaMemcpy(result, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost); 
+    auto err = cudaMemcpy(result, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost); 
+    check(err, "cudaMemcpy");
   }
   cudaFree(dev_outdata);
 

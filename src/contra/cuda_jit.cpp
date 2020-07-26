@@ -30,7 +30,7 @@ CudaJIT::CudaJIT(BuilderHelper & TheHelper) :
   LLVMInitializeNVPTXTarget();
   LLVMInitializeNVPTXTargetMC();
   LLVMInitializeNVPTXAsmPrinter();
-  auto Tgt = utils::findTarget(TargetNvptxString);
+  auto Tgt = utils::findTarget("nvptx64");
   if (!Tgt) 
     THROW_CONTRA_ERROR(
         "Cuda backend selected but LLVM does not support 'nvptx64'");
@@ -82,16 +82,17 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
         // Replace Calls
         if (auto CallI = dyn_cast<CallInst>(InstIt)) {
           auto CallF = CallI->getCalledFunction();
+          auto CallN = CallF->getName().str();
 
-          if (CallF->getName().str() == "print")
+          if (CallN == "print")
             NewI = replacePrint(*M, CallI);
-          else if (CallF->getName().str() == "sqrt")
+          else if (CallN == "sqrt")
             NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_sqrt_rn_d); 
-          else if (CallF->getName().str() == "fabs")
+          else if (CallN == "fabs")
             NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_fabs_d);
-          else if (CallF->getName().str() == "fmax")
+          else if (CallN == "fmax")
             NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_fmax_d);
-          else if (CallF->getName().str() == "fmin")
+          else if (CallN == "fmin")
             NewI = replaceIntrinsic(*M, CallI, Intrinsic::nvvm_fmin_d);
 
         } // call
