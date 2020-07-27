@@ -7,7 +7,7 @@
 void * memcpy(void *, const void *, size_t);
 void __memcpy_internal_aligned(void *, const void *, size_t, size_t);
 
-inline size_t GET_NUM_GROUPS(uint id) {
+inline uint GET_NUM_GROUPS(uint id) {
   __constant byte_t * p = (__constant byte_t*)__builtin_amdgcn_dispatch_ptr();
   uint n = *(__constant uint*)(p + 12); // love it!
   uint d = __builtin_amdgcn_workgroup_size_x();

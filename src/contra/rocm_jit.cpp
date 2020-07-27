@@ -16,6 +16,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
+#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Scalar.h"
@@ -167,13 +168,22 @@ void ROCmJIT::runOnModule(Module & M)
         // Replace Calls
         if (auto CallI = dyn_cast<CallInst>(InstIt)) {
           auto CallF = CallI->getCalledFunction();
+          auto CallN = CallF->getName().str();
+          auto RetT = CallF->getReturnType();
 
-          if (CallF->getName().str() == "print") {
-            //auto BB = replacePrint2(*M, CallI);
-            //BlockIt = Function::iterator(BB);
-            //break;
-            NewI = replacePrint(M, CallI);
+          if (CallN == "print") {
+            NewI = replaceName(M, CallI, "printf");
           }
+          else if (CallN == "sqrt") {
+            NewI = replaceIntrinsic(M, CallI, Intrinsic::sqrt, {RetT}); 
+          }
+          else if (CallF->getName().str() == "fabs") {
+            NewI = replaceIntrinsic(M, CallI, Intrinsic::fabs, {RetT});
+          }
+          else if (CallN == "fmax")
+            NewI = replaceIntrinsic(M, CallI, Intrinsic::maxnum, {RetT});
+          else if (CallN == "fmin")
+            NewI = replaceIntrinsic(M, CallI, Intrinsic::minnum, {RetT});
 
         } // call
         // Done Replacements
@@ -235,6 +245,7 @@ std::string ROCmJIT::compile(
   TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
   Config->addIRPasses();
   PassMan.add(Config);
+  //PassMan.add(createFunctionInliningPass());
 
   PassMan.add(createVerifierPass());
 
@@ -330,16 +341,22 @@ void ROCmJIT::assemble(
   }
       
   //----------------------------------------------------------------------------
-  // Simple inlineing
+  // Fix functoin attributes
 
-  for (auto & Func : M.getFunctionList()) {
+  for (auto & Func : M) {
     if (!Func.isDeclaration()) {
-      if (Func.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL) {
+      if (Func.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
+        Func.removeFnAttr(llvm::Attribute::OptimizeNone);
+      }
+      else {
         Func.setLinkage(GlobalValue::LinkOnceODRLinkage);
+        Func.setVisibility(GlobalValue::ProtectedVisibility);
+        Func.removeFnAttr(Attribute::OptimizeNone);
+        Func.removeFnAttr(Attribute::NoInline);
+        Func.addFnAttr(Attribute::AlwaysInline);
       }
     }
   }
-
 
   //----------------------------------------------------------------------------
   // Run passmanager
@@ -351,6 +368,8 @@ void ROCmJIT::assemble(
   PassMan.add(createSROAPass());
   PassMan.add(createAMDGPULowerAllocaPass());
   PassMan.add(createInferAddressSpacesPass());
+  //PassMan.add(createInternalizePass());
+  //PassMan.add(createGlobalDCEPass());
   
   PassMan.run(M);
   
@@ -358,7 +377,7 @@ void ROCmJIT::assemble(
   // Add bytecode
 
   std::vector<std::string> Files = {
-    //"/opt/rocm-3.5.0/lib/hip.amdgcn.bc"
+    "/opt/rocm-3.5.0/lib/hip.amdgcn.bc",
     "/opt/rocm-3.5.0/lib/ocml.amdgcn.bc",
     "/opt/rocm-3.5.0/lib/ockl.amdgcn.bc",
     "/opt/rocm-3.5.0/lib/oclc_daz_opt_off.amdgcn.bc",
@@ -380,8 +399,10 @@ void ROCmJIT::assemble(
         F,
         Diag,
         TheContext_);
-    if (!DeviceM)
+    if (!DeviceM) {
+      std::cerr << Diag.getMessage().str() << std::endl;
       THROW_CONTRA_ERROR("Error reading device bitcode file.");
+    }
 
     auto err = L.linkInModule(std::move(DeviceM), Flags);
     if (err)
@@ -394,31 +415,6 @@ void ROCmJIT::assemble(
     THROW_CONTRA_ERROR("Linked module is broken: " << error_message);
 
 
-}
-
-//==============================================================================
-// Helper to replace print function
-//==============================================================================
-CallInst* ROCmJIT::replacePrint(Module &M, CallInst* CallI) {
-
-  // some types
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto Int32T = Type::getInt32Ty(TheContext_);
-
-  // create new print function
-  auto PrintT = FunctionType::get(
-      Int32T,
-      VoidPtrT,
-      true /* var args */ );
-  auto PrintF = M.getOrInsertFunction("printf", PrintT).getCallee();
-    
-  // gather args
-  std::vector<Value*> ArgVs;
-  for (auto & Arg : CallI->args()) ArgVs.push_back(Arg);
-
-  // create new instruction            
-  auto TmpB = IRBuilder<>(TheContext_);
-  return TmpB.CreateCall(PrintF, ArgVs, CallI->getName());
 }
 
 //==============================================================================
@@ -468,54 +464,15 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
         F,
         Diag,
         TheContext_);
-    if (!DeviceM)
+    if (!DeviceM) {
+      std::cerr << Diag.getMessage().str() << std::endl;
       THROW_CONTRA_ERROR("Error reading device bitcode file.");
+    }
 
     auto err = L.linkInModule(std::move(DeviceM), Flags);
     if (err)
       THROW_CONTRA_ERROR("Error linking in device module.");
   }
-
-  //----------------------------------------------------------------------------
-  // find any memcopies
-  
-  auto Intr = TargetMachine_->getIntrinsicInfo();
-
-  for (auto & Func : *ReduceM) {
-    for (auto & Block : Func) {
-      for (auto InstIt=Block.begin(); InstIt!=Block.end(); ++InstIt) {
-        
-        Instruction* NewI = nullptr;
-
-        //------------------------------
-        // Replace Calls
-        if (auto CallI = dyn_cast<CallInst>(InstIt)) {
-          auto CallF = CallI->getCalledFunction();
-          auto FunN = CallF->getName().str();
-
-          if (FunN == "memcpy") {
-            auto TmpB = IRBuilder<>(CallI);
-            auto NewI = TmpB.CreateMemCpy(
-                CallI->getArgOperand(0),
-                MaybeAlign(1),
-                CallI->getArgOperand(1),
-                MaybeAlign(1),
-                CallI->getArgOperand(2));
-            CallI->eraseFromParent();
-            InstIt = BasicBlock::iterator(NewI);
-          }
-        } // call
-        //------------------------------
-        
-        // replace instruction
-        if (NewI) {
-          ReplaceInstWithInst(&(*InstIt), NewI);
-          InstIt = BasicBlock::iterator(NewI);
-        }
-
-      } // Instruction
-    } // Block
-  } // function
   
   return ReduceM;
 }

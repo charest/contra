@@ -27,7 +27,6 @@ public:
 
 private:
 
-  llvm::CallInst*   replacePrint(llvm::Module &, llvm::CallInst*);
   llvm::BasicBlock* replacePrint2(llvm::Module &, llvm::CallInst*);
 
   std::unique_ptr<llvm::Module> cloneModule(const llvm::Module &);

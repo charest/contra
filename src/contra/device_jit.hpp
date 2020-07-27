@@ -31,7 +31,12 @@ public:
 
 protected:
   
-  llvm::CallInst* replaceIntrinsic(llvm::Module &, llvm::CallInst*, unsigned);
+  llvm::CallInst* replaceIntrinsic(
+      llvm::Module &,
+      llvm::CallInst*,
+      unsigned,
+      const std::vector<llvm::Type*> & = {});
+  llvm::CallInst* replaceName(llvm::Module &, llvm::CallInst*, const std::string&);
 
   utils::BuilderHelper & TheHelper_;
 

@@ -137,7 +137,7 @@ endif()
 find_package(HIP)
 if (HIP_FOUND)
   target_link_libraries(contra PUBLIC hip::host)
-  target_compile_options(contra PRIVATE -D__HIP_HCC_COMPAT_MODE__=1 -D__HIP_ARCH_GFX900__=1)
+  #target_compile_options(contra PRIVATE -D__HIP_HCC_COMPAT_MODE__=1 -D__HIP_ARCH_GFX900__=1)
   #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${ROCM_DIR}/cmake")  
   list(APPEND SUPPORTED_BACKENDS "rocm")
   

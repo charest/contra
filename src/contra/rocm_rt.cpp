@@ -795,7 +795,8 @@ void contra_rocm_launch_reduction(
   size_t size = is->size();
  
   if (size==1) {
-    hipMemcpy(result, *dev_indata, data_size, hipMemcpyDeviceToHost); 
+    auto err = hipMemcpy(result, *dev_indata, data_size, hipMemcpyDeviceToHost); 
+    check(err);
     return;
   }
 
@@ -806,9 +807,9 @@ void contra_rocm_launch_reduction(
   
   // block dimensinos
   auto max_threads  = RocmRuntime.MaxThreadsPerBlock;
-  size_t threads_per_block = (size < max_threads*2) ? size / 2 : max_threads;
+  size_t threads_per_block = 1; //(size < max_threads*2) ? size / 2 : max_threads;
   size_t block_size = size / (threads_per_block * 2);
-  block_size = min(64, block_size);
+  block_size = std::min<size_t>(64, block_size);
   
   // size of shared memory
   size_t shared_bytes = data_size * threads_per_block;
@@ -839,6 +840,7 @@ void contra_rocm_launch_reduction(
   };
   
   // launch the final reduction
+  hipDeviceSynchronize();
   hipModuleLaunchKernel(
       F,
       block_size, 1, 1,
@@ -867,7 +869,8 @@ void contra_rocm_launch_reduction(
     free(outdata);
   }
   else {
-    hipMemcpy(result, dev_outdata, data_size, hipMemcpyDeviceToHost); 
+    auto err = hipMemcpy(result, dev_outdata, data_size, hipMemcpyDeviceToHost); 
+    check(err);
   }
   hipFree(dev_outdata);
 

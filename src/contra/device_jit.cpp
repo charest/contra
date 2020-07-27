@@ -9,14 +9,54 @@ namespace contra {
 //==============================================================================
 // Helper to replace math
 //==============================================================================
-CallInst* DeviceJIT::replaceIntrinsic(Module &M, CallInst* CallI, unsigned Intr)
+CallInst* DeviceJIT::replaceIntrinsic(
+    Module &M,
+    CallInst* CallI,
+    unsigned Intr,
+    const std::vector<Type*> & Tys)
 {
   std::vector<Value*> ArgVs;
   for (auto & Arg : CallI->args()) ArgVs.push_back(Arg.get());
-  auto IntrinsicF = Intrinsic::getDeclaration(&M, Intr);
+  auto IntrinsicF = Intrinsic::getDeclaration(&M, Intr, Tys);
   auto TmpB = IRBuilder<>(TheContext_);
   return TmpB.CreateCall(IntrinsicF, ArgVs, CallI->getName());
 }
+
+//==============================================================================
+// Helper to replace print function
+//==============================================================================
+CallInst* DeviceJIT::replaceName(
+    Module &M,
+    CallInst* CallI,
+    const std::string & Name)
+{
+  std::vector<Value*> ArgVs;
+  for (auto & Arg : CallI->args()) ArgVs.push_back(Arg.get());
+
+  auto FTy = CallI->getFunctionType();
+  
+  Function * NewF = M.getFunction(Name);
+
+  if (!NewF) {  
+    auto F = CallI->getFunction();
+    NewF = Function::Create(
+        FTy,
+        F->getLinkage(),
+        F->getAddressSpace(),
+        Name,
+        &M);
+  }
+  
+  // create new instruction            
+  auto TmpB = IRBuilder<>(TheContext_);
+  
+  auto RetT = NewF->getReturnType();
+  if (!RetT || RetT->isVoidTy())
+    return TmpB.CreateCall(NewF, ArgVs);
+  else
+    return TmpB.CreateCall(NewF, ArgVs, CallI->getName());
+}
+
 
 
 } // namespace

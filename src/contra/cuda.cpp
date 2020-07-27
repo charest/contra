@@ -441,10 +441,10 @@ Value* CudaTasker::launch(
       auto ArrayA = TheHelper_.getAsAlloca(ArgA);
       auto ArrayT = librt::DopeVector::DopeVectorType;
       auto DevPtrA = TheHelper_.createEntryBlockAlloca(ArrayT);
-      auto DevPtr = TheHelper_.callFunction(
+      TheHelper_.callFunction(
           TheModule,
           "contra_cuda_array2dev",
-          librt::DopeVector::DopeVectorType,
+          VoidType_,
           {ArrayA, DevPtrA});
       ToFree.emplace_back( DevPtrA );
       ArgAs[i] = DevPtrA;

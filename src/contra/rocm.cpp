@@ -259,31 +259,25 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   // annotate as kernel
   WrapperF->setCallingConv(CallingConv::AMDGPU_KERNEL);
 
-  std::vector< std::pair<std::string,std::string> > Annotes = {
-    //{"amdgpu-flat-work-group-size", "1,256"},
-    {"amdgpu-implicitarg-num-bytes", "56"},
-    //{"correctly-rounded-divide-sqrt-fp-math", "false"},
-    //{"denormal-fp-math-f32", "preserve-sign,preserve-sign"},
-    //{"disable-tail-calls", "false"},
-    //{"frame-pointer", "none"},
-    //{"less-precise-fpmad", "false"},
-    //{"min-legal-vector-width", "0"},
-    //{"no-infs-fp-math", "false"},
-    //{"no-jump-tables", "false"},
-    //{"no-nans-fp-math", "false"},
-    //{"no-signed-zeros-fp-math", "false"},
-    //{"no-trapping-math", "false"},
-    //{"stack-protector-buffer-size", "8"},
-    //{"target-cpu", "gfx900"},
-    //{"target-features", "+16-bit-insts,+ci-insts,+dpp,+flat-address-space,+gfx8-insts,+gfx9-insts,+s-memrealtime"},
-    //{"uniform-work-group-size", "true"},
-    //{"unsafe-fp-math", "false"},
-    //{"use-soft-float", "false"}
-  };
-
-  for ( const auto & Ann : Annotes ) {
-    WrapperF->addFnAttr(Ann.first, Ann.second);
-  }
+  //WrapperF->addFnAttr("amdgpu-flat-work-group-size", "1,256");
+  WrapperF->addFnAttr("amdgpu-implicitarg-num-bytes", "56");
+  //WrapperF->addFnAttr("correctly-rounded-divide-sqrt-fp-math", "false");
+  //WrapperF->addFnAttr("denormal-fp-math-f32", "preserve-sign,preserve-sign");
+  //WrapperF->addFnAttr("disable-tail-calls", "false");
+  //WrapperF->addFnAttr("frame-pointer", "none");
+  //WrapperF->addFnAttr("less-precise-fpmad", "false");
+  //WrapperF->addFnAttr("min-legal-vector-width", "0");
+  //WrapperF->addFnAttr("no-infs-fp-math", "false");
+  //WrapperF->addFnAttr("no-jump-tables", "false");
+  //WrapperF->addFnAttr("no-nans-fp-math", "false");
+  //WrapperF->addFnAttr("no-signed-zeros-fp-math", "false");
+  //WrapperF->addFnAttr("no-trapping-math", "false");
+  //WrapperF->addFnAttr("stack-protector-buffer-size", "8");
+  //WrapperF->addFnAttr("target-cpu", "gfx900");
+  //WrapperF->addFnAttr("target-features", "+16-bit-insts,+ci-insts,+dpp,+flat-address-space,+gfx8-insts,+gfx9-insts,+s-memrealtime");
+  //WrapperF->addFnAttr("uniform-work-group-size", "true");
+  //WrapperF->addFnAttr("unsafe-fp-math", "false");
+  //WrapperF->addFnAttr("use-soft-float", "false");
   
   // Set names for all arguments.
   unsigned Idx = 0;
@@ -501,7 +495,7 @@ Value* ROCmTasker::launch(
       auto ArrayA = TheHelper_.getAsAlloca(ArgA);
       auto ArrayT = librt::DopeVector::DopeVectorType;
       auto DevPtrA = TheHelper_.createEntryBlockAlloca(ArrayT);
-      auto DevPtr = TheHelper_.callFunction(
+      TheHelper_.callFunction(
           TheModule,
           "contra_rocm_array2dev",
           VoidType_,

@@ -392,23 +392,7 @@ Value* BuilderHelper::createMinimum(
   else if (Ty->isIntegerTy())
     CondV = Builder_.CreateICmpSLT(LHS, RHS, "cmptmp");
 
-  // Create blocks for the then and else cases.  Insert the 'then' block at the
-  // end of the function.
-  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  BasicBlock *ElseBB = BasicBlock::Create(TheContext_, "else");
-  BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
-  Builder_.CreateCondBr(CondV, ThenBB, ElseBB);
-  Builder_.SetInsertPoint(ThenBB);
-  Builder_.CreateStore(LHS, ResultA); // then
-  Builder_.CreateBr(MergeBB);
-  TheFunction->getBasicBlockList().push_back(ElseBB);
-  Builder_.SetInsertPoint(ElseBB);
-  Builder_.CreateStore(RHS, ResultA); // else
-  TheFunction->getBasicBlockList().push_back(MergeBB);
-  Builder_.CreateBr(MergeBB);
-  Builder_.SetInsertPoint(MergeBB);
-
-  return Builder_.CreateLoad(Ty, ResultA);
+  return Builder_.CreateSelect(CondV, LHS, RHS);
 }
 
 //==============================================================================
@@ -432,22 +416,6 @@ Value* BuilderHelper::createMaximum(
   else if (Ty->isIntegerTy())
     CondV = Builder_.CreateICmpSGT(LHS, RHS, "cmptmp");
 
-  // Create blocks for the then and else cases.  Insert the 'then' block at the
-  // end of the function.
-  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  BasicBlock *ElseBB = BasicBlock::Create(TheContext_, "else");
-  BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
-  Builder_.CreateCondBr(CondV, ThenBB, ElseBB);
-  Builder_.SetInsertPoint(ThenBB);
-  Builder_.CreateStore(LHS, ResultA); // then
-  Builder_.CreateBr(MergeBB);
-  TheFunction->getBasicBlockList().push_back(ElseBB);
-  Builder_.SetInsertPoint(ElseBB);
-  Builder_.CreateStore(RHS, ResultA); // else
-  TheFunction->getBasicBlockList().push_back(MergeBB);
-  Builder_.CreateBr(MergeBB);
-  Builder_.SetInsertPoint(MergeBB);
-
-  return Builder_.CreateLoad(Ty, ResultA);
+  return Builder_.CreateSelect(CondV, LHS, RHS);
 }
 } // namespace

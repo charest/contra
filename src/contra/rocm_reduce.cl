@@ -87,6 +87,6 @@ void kernel reduce6(
   if (tid < 32) warpReduce(sdata, tid, blockSize, data_size);
   if (tid == 0) {
     //g_odata[blockIdx.x] = sdata[0];
-    memcpy(g_odata + data_size*gid, sdata, data_size);
+    __builtin_memcpy(g_odata + data_size*gid, sdata, data_size);
   }
 }
