@@ -20,6 +20,8 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "llvm/Target/AMDGPU/AMDGPU.h"
 #include "llvm/Transforms/Utils/AMDGPUEmitPrintf.h"
@@ -37,7 +39,8 @@ namespace contra {
 // The constructor
 //==============================================================================
 ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
-  DeviceJIT(TheHelper)
+  DeviceJIT(TheHelper),
+  LinkFlags_(Linker::Flags::None & Linker::Flags::OverrideFromSrc)
 {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTarget();
@@ -59,18 +62,49 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
         None,
         None,
         CodeGenOpt::Aggressive);
+
+  UserModule_ = createModule("function lib");
+  
 }
 
 //==============================================================================
 // Create a new module
 //==============================================================================
-std::unique_ptr<Module> ROCmJIT::createModule()
+std::unique_ptr<Module> ROCmJIT::createModule(const std::string & Name)
 {
-  auto NewModule = std::make_unique<Module>("device jit", TheContext_);
+  std::string NewName = Name.empty() ? "Device jit" : Name;
+  auto NewModule = std::make_unique<Module>(NewName, TheContext_);
   NewModule->setDataLayout(TargetMachine_->createDataLayout());
   NewModule->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
   return NewModule;
 }
+  
+//==============================================================================
+// Compile a module by cloning it first
+//==============================================================================
+std::unique_ptr<Module> ROCmJIT::cloneModule(const Module & M) {
+  auto ClonedModule = CloneModule(M);
+
+  ClonedModule->setSourceFileName(M.getName());
+  ClonedModule->setDataLayout(TargetMachine_->createDataLayout());
+  ClonedModule->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
+
+  return ClonedModule;
+}
+
+//==============================================================================
+// Compile a module by cloning it first
+//==============================================================================
+void ROCmJIT::addModule(const Module * M) {
+  auto ClonedModule = cloneModule(*M);
+
+  runOnModule(*ClonedModule);
+
+  // must be just a function since we are not given
+  // ownership of module
+  Linker::linkModules(*UserModule_, std::move(ClonedModule), LinkFlags_);
+}
+
 
 //==============================================================================
 // Compile a module
@@ -125,31 +159,6 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
 
 }
 
-//==============================================================================
-// Compile a module by cloning it first
-//==============================================================================
-void ROCmJIT::addModule(const Module * M) {
-  auto ClonedModule = cloneModule(*M);
-
-  runOnModule(*ClonedModule);
-
-  // must be just a function since we are not given
-  // ownership of module
-  DeviceModules_.emplace_back(std::move(ClonedModule));
-}
-
-//==============================================================================
-// Compile a module by cloning it first
-//==============================================================================
-std::unique_ptr<Module> ROCmJIT::cloneModule(const Module & M) {
-  auto ClonedModule = CloneModule(M);
-
-  ClonedModule->setSourceFileName("device jit");
-  ClonedModule->setDataLayout(TargetMachine_->createDataLayout());
-  ClonedModule->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
-
-  return ClonedModule;
-}
 
 //==============================================================================
 // Verify module
@@ -237,17 +246,24 @@ std::string ROCmJIT::compile(
   // Compile
   
   auto PassMan = legacy::PassManager();
+
+  //PassManagerBuilder Builder;
+  //TargetMachine_->adjustPassManager(Builder);
   
   TargetLibraryInfoImpl TLII(Triple(TheModule.getTargetTriple()));
   PassMan.add(new TargetLibraryInfoWrapperPass(TLII));
+  
+  PassMan.add(createVerifierPass());
   
   auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
   TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
   Config->addIRPasses();
   PassMan.add(Config);
+  
+  //PassMan.add(createGlobalOptimizerPass());
   //PassMan.add(createFunctionInliningPass());
+  //Builder.populateModulePassManager(PassMan);
 
-  PassMan.add(createVerifierPass());
 
   auto fail = TargetMachine_->addPassesToEmitFile(
       PassMan,
@@ -326,18 +342,15 @@ void ROCmJIT::assemble(
     bool IncludeDeviceLibs)
 {
 
-  unsigned Flags = Linker::Flags::None & Linker::Flags::OverrideFromSrc;
   Linker L(M);
 
   //----------------------------------------------------------------------------
   // Add user device modules
 
   if (IncludeDeviceLibs) {
-    for (const auto & DevM : DeviceModules_) {
-      auto ClonedM = cloneModule(*DevM);
-      auto err = L.linkInModule(std::move(ClonedM));
-      if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
-    }
+    auto ClonedM = cloneModule(*UserModule_);
+    auto err = L.linkInModule(std::move(ClonedM));
+    if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
   }
       
   //----------------------------------------------------------------------------
@@ -368,34 +381,27 @@ void ROCmJIT::assemble(
   PassMan.add(createSROAPass());
   PassMan.add(createAMDGPULowerAllocaPass());
   PassMan.add(createInferAddressSpacesPass());
-  //PassMan.add(createInternalizePass());
-  //PassMan.add(createGlobalDCEPass());
+  PassMan.add(createInstructionCombiningPass());
   
   PassMan.run(M);
   
   //----------------------------------------------------------------------------
   // Add bytecode
-
+      
   std::vector<std::string> Files = {
-    "/opt/rocm-3.5.0/lib/hip.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/ocml.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/ockl.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/oclc_daz_opt_off.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/oclc_unsafe_math_off.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/oclc_finite_only_off.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/oclc_wavefrontsize64_on.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/oclc_isa_version_900.amdgcn.bc",
-    //"/opt/rocm-3.5.0/lib/hip.amdgcn.bc",
-    //"/opt/rocm-3.5.0/lib/ockl.amdgcn.bc",
-    //"/opt/rocm-3.5.0/lib/oclc_wavefrontsize64_on.amdgcn.bc",
-    "/opt/rocm-3.5.0/lib/opencl.amdgcn.bc",
-    //"/opt/rocm-3.5.0/lib/ockl.amdgcn.bc"
+      "/opt/rocm-3.5.0/lib/oclc_daz_opt_off.amdgcn.bc",
+      "/opt/rocm-3.5.0/lib/oclc_unsafe_math_off.amdgcn.bc",
+      "/opt/rocm-3.5.0/lib/oclc_finite_only_off.amdgcn.bc",
+      "/opt/rocm-3.5.0/lib/oclc_correctly_rounded_sqrt_on.amdgcn.bc",
+      "/opt/rocm-3.5.0/lib/oclc_wavefrontsize64_on.amdgcn.bc",
+      "/opt/rocm-3.5.0/lib/oclc_isa_version_900.amdgcn.bc",
     };
+  if (IncludeDeviceLibs)
+    Files.emplace_back("/opt/rocm-3.5.0/lib/opencl.amdgcn.bc");
   
   for (const auto & F : Files) {
     SMDiagnostic Diag;
-    auto DeviceM = parseIRFile(
+    auto DeviceM = getLazyIRFileModule(
         F,
         Diag,
         TheContext_);
@@ -404,7 +410,7 @@ void ROCmJIT::assemble(
       THROW_CONTRA_ERROR("Error reading device bitcode file.");
     }
 
-    auto err = L.linkInModule(std::move(DeviceM), Flags);
+    auto err = L.linkInModule(std::move(DeviceM), LinkFlags_);
     if (err)
       THROW_CONTRA_ERROR("Error linking in device module.");
   }
@@ -413,7 +419,6 @@ void ROCmJIT::assemble(
   auto error_message = verifyModule(M);
   if (!error_message.empty())
     THROW_CONTRA_ERROR("Linked module is broken: " << error_message);
-
 
 }
 
@@ -437,30 +442,28 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
   if (!HasReduce) return nullptr;
 
   //----------------------------------------------------------------------------
+  // Create initial module
+  auto ReduceM = createModule("reduce jit");
+  Linker L(*ReduceM);
+  
+  //----------------------------------------------------------------------------
   // Copy over reduction
-  auto ReduceM = std::make_unique<Module>("reduce jit", TheContext_);
-  ReduceM->setDataLayout(TargetMachine_->createDataLayout());
-  ReduceM->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
-
   for (const auto & FuncN : ReduceNs) {
     auto F = M.getFunction(FuncN);
     cloneFunction(F, ReduceM.get());
     F->eraseFromParent();      
   }
-
+  
   //----------------------------------------------------------------------------
   // Add any usr device modules
   
-  unsigned Flags = Linker::Flags::None & Linker::Flags::OverrideFromSrc;
-  Linker L(*ReduceM);
-
   std::vector<std::string> Files = {
       "/home/charest/code/contra/src/librtrocm/rocm_scratch.ll",
       "/home/charest/code/contra/build/src/contra/rocm_reduce.bc"
   };
   for (const auto & F : Files) {
     SMDiagnostic Diag;
-    auto DeviceM = parseIRFile(
+    auto DeviceM = getLazyIRFileModule(
         F,
         Diag,
         TheContext_);
@@ -469,11 +472,11 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
       THROW_CONTRA_ERROR("Error reading device bitcode file.");
     }
 
-    auto err = L.linkInModule(std::move(DeviceM), Flags);
+    auto err = L.linkInModule(std::move(DeviceM), LinkFlags_);
     if (err)
       THROW_CONTRA_ERROR("Error linking in device module.");
   }
-  
+
   return ReduceM;
 }
 

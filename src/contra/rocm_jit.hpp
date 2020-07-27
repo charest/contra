@@ -13,6 +13,10 @@
 
 #include <memory>
 
+namespace llvm {
+class Linker;
+}
+
 namespace contra {
 
 class ROCmJIT : public DeviceJIT {
@@ -20,13 +24,13 @@ public:
   
   ROCmJIT(utils::BuilderHelper &);
 
-  virtual std::unique_ptr<llvm::Module> createModule() override;
+  virtual std::unique_ptr<llvm::Module> createModule(const std::string &) override;
 
   virtual void addModule(std::unique_ptr<llvm::Module> M) override;
   virtual void addModule(const llvm::Module * M) override;
 
 private:
-
+  
   llvm::BasicBlock* replacePrint2(llvm::Module &, llvm::CallInst*);
 
   std::unique_ptr<llvm::Module> cloneModule(const llvm::Module &);
@@ -48,7 +52,10 @@ private:
   std::unique_ptr<llvm::Module> splitOutReduce(llvm::Module &);
 
   llvm::TargetMachine * TargetMachine_ = nullptr;
-  std::vector<std::unique_ptr<llvm::Module>> DeviceModules_;
+
+  std::unique_ptr<llvm::Module> UserModule_;
+
+  unsigned LinkFlags_ = 0;
 };
 
 } // end namespace

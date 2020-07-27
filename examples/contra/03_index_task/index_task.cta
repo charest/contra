@@ -12,7 +12,6 @@ tsk top_level() {
   for i = 0 : num_points-1
     arr[i] = i
 
-  print("launching\n")
   foreach i = 0:num_points-1
     index_task(i, i+10, num_points, arr)
 

@@ -854,9 +854,6 @@ void contra_rocm_launch_reduction(
   auto err = hipGetLastError();
   check(err);
 
-  err = hipModuleUnload(M);
-  check(err);
-
   // copy over data
   if (block_size > 1) {
     auto outdata = malloc(block_size*data_size);
@@ -873,6 +870,9 @@ void contra_rocm_launch_reduction(
     check(err);
   }
   hipFree(dev_outdata);
+
+  err = hipModuleUnload(M);
+  check(err);
 
 }
 

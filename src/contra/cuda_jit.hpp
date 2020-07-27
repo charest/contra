@@ -20,7 +20,8 @@ public:
   CudaJIT(utils::BuilderHelper &);
   ~CudaJIT();
 
-  virtual std::unique_ptr<llvm::Module> createModule() override;
+  virtual std::unique_ptr<llvm::Module> createModule(
+    const std::string & ) override;
 
   virtual void addModule(std::unique_ptr<llvm::Module> M) override;
   virtual void addModule(const llvm::Module * M) override;

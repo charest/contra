@@ -24,7 +24,8 @@ public:
 
   virtual ~DeviceJIT() {};
 
-  virtual std::unique_ptr<llvm::Module> createModule() = 0;
+  virtual std::unique_ptr<llvm::Module> createModule(
+      const std::string  & = "") = 0;
 
   virtual void addModule(std::unique_ptr<llvm::Module> M) = 0;
   virtual void addModule(const llvm::Module * M) = 0;

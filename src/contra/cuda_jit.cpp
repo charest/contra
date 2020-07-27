@@ -60,7 +60,7 @@ CudaJIT::~CudaJIT()
 //==============================================================================
 // Create a new module
 //==============================================================================
-std::unique_ptr<Module> CudaJIT::createModule()
+std::unique_ptr<Module> CudaJIT::createModule(const std::string &)
 {
   auto NewModule = std::make_unique<Module>("devicee jit", TheContext_);
   NewModule->setDataLayout(TargetMachine_->createDataLayout());
