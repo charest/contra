@@ -7,6 +7,7 @@
 
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -46,6 +47,22 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
+
+
+  auto registry = PassRegistry::getPassRegistry();
+  initializeCore(*registry);
+  initializeCodeGen(*registry);
+  initializeScalarOpts(*registry);
+  initializeObjCARCOpts(*registry);
+  initializeVectorization(*registry);
+  initializeIPO(*registry);
+  initializeAnalysis(*registry);
+  initializeTransformUtils(*registry);
+  initializeInstCombine(*registry);
+  initializeInstrumentation(*registry);
+  initializeTarget(*registry);
+  initializeCodeGenPreparePass(*registry);
+
   auto Tgt = utils::findTarget("amdgcn");
   if (!Tgt) 
     THROW_CONTRA_ERROR(
@@ -385,6 +402,14 @@ void ROCmJIT::assemble(
   
   PassMan.run(M);
   
+  //for (auto & F : M) {
+  //  for (auto & BB : F ) {      
+  //    for (auto &I : BB) {        
+  //      if (auto CallI = dyn_cast<CallInst>(&I)) CallI->setTailCall(false);
+  //    }
+  //  }
+  //}
+
   //----------------------------------------------------------------------------
   // Add bytecode
       

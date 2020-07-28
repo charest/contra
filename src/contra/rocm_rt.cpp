@@ -840,7 +840,6 @@ void contra_rocm_launch_reduction(
   };
   
   // launch the final reduction
-  hipDeviceSynchronize();
   hipModuleLaunchKernel(
       F,
       block_size, 1, 1,
