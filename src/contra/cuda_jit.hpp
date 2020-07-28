@@ -29,6 +29,12 @@ public:
 
 private:
 
+  std::string compile(
+      llvm::Module & TheModule,
+      const std::string & Filename = "",
+      llvm::CodeGenFileType FileType = llvm::CGFT_AssemblyFile);
+
+
   llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);
 
   llvm::TargetMachine * TargetMachine_ = nullptr;

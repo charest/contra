@@ -222,7 +222,7 @@ private:
   // Variable interface
   //============================================================================
   VariableAlloca * createVariable(
-      const std::string &VarName,
+      llvm::StringRef VarName,
       Type* VarType);
 
   std::pair<VariableAlloca*, bool> getOrCreateVariable(
@@ -232,11 +232,11 @@ private:
   VariableAlloca * getVariable(const std::string & VarName);
 
   VariableAlloca * insertVariable(
-      const std::string &VarName,
+      llvm::StringRef VarName,
       const VariableAlloca & VarEntry);
   
   VariableAlloca * insertVariable(
-      const std::string &VarName,
+      llvm::StringRef VarName,
       llvm::Value*,
       llvm::Type*);
 
@@ -254,12 +254,12 @@ private:
   /// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
   /// the function.  This is used for mutable variables etc.
   VariableAlloca * createArray(
-      const std::string &VarName,
+      llvm::StringRef VarName,
       Type* PtrType,
       Value * SizeExpr );
   
   VariableAlloca * createArray(
-      const std::string &VarName,
+      llvm::StringRef VarName,
       Type* ElementType);
   
   void allocateArray(

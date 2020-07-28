@@ -290,7 +290,7 @@ VariableAlloca * CodeGen::getVariable(const std::string & VarName)
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createVariable(
-    const std::string &VarName,
+    StringRef VarName,
     Type* VarType)
 {
   Value* NewVar;
@@ -332,7 +332,7 @@ std::pair<VariableAlloca*, bool> CodeGen::getOrCreateVariable(
 /// Insert an already allocated variable
 //==============================================================================
 VariableAlloca * CodeGen::insertVariable(
-    const std::string &VarName,
+    StringRef VarName,
     const VariableAlloca & VarE)
 { 
   auto it = VariableTable_.front().emplace(VarName, VarE);
@@ -343,7 +343,7 @@ VariableAlloca * CodeGen::insertVariable(
 /// Insert an already allocated variable
 //==============================================================================
 VariableAlloca * CodeGen::insertVariable(
-    const std::string &VarName,
+    StringRef VarName,
     Value* VarAlloca,
     Type* VarType)
 { 
@@ -402,7 +402,7 @@ bool CodeGen::isArray(Value* V)
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createArray(
-    const std::string &VarName,
+    llvm::StringRef VarName,
     Type* ElementT)
 {
   Value* NewVar;
@@ -416,7 +416,7 @@ VariableAlloca * CodeGen::createArray(
 /// the function.  This is used for mutable variables etc.
 //==============================================================================
 VariableAlloca * CodeGen::createArray(
-    const std::string &VarName,
+    llvm::StringRef VarName,
     Type * ElementType,
     Value * SizeExpr)
 {

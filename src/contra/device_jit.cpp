@@ -18,7 +18,7 @@ CallInst* DeviceJIT::replaceIntrinsic(
   std::vector<Value*> ArgVs;
   for (auto & Arg : CallI->args()) ArgVs.push_back(Arg.get());
   auto IntrinsicF = Intrinsic::getDeclaration(&M, Intr, Tys);
-  auto TmpB = IRBuilder<>(TheContext_);
+  IRBuilder<> TmpB(TheContext_);
   return TmpB.CreateCall(IntrinsicF, ArgVs, CallI->getName());
 }
 
@@ -48,7 +48,7 @@ CallInst* DeviceJIT::replaceName(
   }
   
   // create new instruction            
-  auto TmpB = IRBuilder<>(TheContext_);
+  IRBuilder<> TmpB(TheContext_);
   
   auto RetT = NewF->getReturnType();
   if (!RetT || RetT->isVoidTy())

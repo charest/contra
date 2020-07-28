@@ -1,22 +1,24 @@
 #include "jit.hpp"
 
+using namespace llvm;
+
 namespace contra {
   
 //==============================================================================
-std::string JIT::mangle(const std::string &Name) {
+std::string JIT::mangle(StringRef Name) {
   std::string MangledName;
   {
-    llvm::raw_string_ostream MangledNameStream(MangledName);
-    llvm::Mangler::getNameWithPrefix(MangledNameStream, Name, DL_);
+    raw_string_ostream MangledNameStream(MangledName);
+    Mangler::getNameWithPrefix(MangledNameStream, Name, DL_);
   }
   return MangledName;
 }
 
 //==============================================================================
-JIT::JITSymbol JIT::findMangledSymbol(const std::string &Name) {
+JIT::JITSymbol JIT::findMangledSymbol(StringRef Name) {
   
-  using JITSymbolFlags = llvm::JITSymbolFlags;
-  using RTDyldMemoryManager = llvm::RTDyldMemoryManager;
+  using JITSymbolFlags = JITSymbolFlags;
+  using RTDyldMemoryManager = RTDyldMemoryManager;
 
 #ifdef _WIN32
   // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
@@ -34,12 +36,12 @@ JIT::JITSymbol JIT::findMangledSymbol(const std::string &Name) {
   // Search modules in reverse order: from last added to first added.
   // This is the opposite of the usual search order for dlsym, but makes more
   // sense in a REPL where we want to bind to the newest available definition.
-  for (auto H : llvm::make_range(ModuleKeys_.rbegin(), ModuleKeys_.rend()))
-    if (auto Sym = CompileLayer_.findSymbolIn(H, Name, ExportedSymbolsOnly))
+  for (auto H : make_range(ModuleKeys_.rbegin(), ModuleKeys_.rend()))
+    if (auto Sym = CompileLayer_.findSymbolIn(H, Name.str(), ExportedSymbolsOnly))
       return Sym;
 
   // If we can't find the symbol in the JIT, try looking in the host process.
-  if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
+  if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name.str()))
     return JITSymbol(SymAddr, JITSymbolFlags::Exported);
 
 #ifdef _WIN32

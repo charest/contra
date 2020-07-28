@@ -55,8 +55,8 @@ public:
   Value* getTypeSize(Type* ElementType)
   { return getTypeSize(ElementType, llvmType<T>(TheContext_)); }
 
-  AllocaInst* createEntryBlockAlloca(Type*, const std::string & = "");
-  AllocaInst* createEntryBlockAlloca(Function*, Type*, const std::string & = "");
+  AllocaInst* createEntryBlockAlloca(Type*, const llvm::Twine & = "");
+  AllocaInst* createEntryBlockAlloca(Function*, Type*, const llvm::Twine & = "");
 
   Value* load(AllocaInst*, const std::string & ="");
   Value* load(Value*, const std::string & ="");

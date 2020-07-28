@@ -34,7 +34,7 @@ void Contra::setup(const std::string & FileName)
     if (!isOverwrite() && utils::file_exists(IRFileName_))
       THROW_CONTRA_ERROR("File '" << IRFileName_
           << "' already exists!  Use -f to overwrite.");
-    IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC, llvm::sys::fs::F_None);
+    IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC);
     IRFileStream_ = IRFile_.get();
   }
 

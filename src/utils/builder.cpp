@@ -211,7 +211,7 @@ std::size_t BuilderHelper::getTypeSizeInBits(const Module & TheModule, Type* Ty)
 //============================================================================  
 AllocaInst* BuilderHelper::createEntryBlockAlloca(
     Type* Ty,
-    const std::string & Name)
+    const Twine & Name)
 {
   auto TheFunction = Builder_.GetInsertBlock()->getParent();
   return createEntryBlockAlloca(TheFunction, Ty, Name);
@@ -219,11 +219,11 @@ AllocaInst* BuilderHelper::createEntryBlockAlloca(
 AllocaInst* BuilderHelper::createEntryBlockAlloca(
     Function* F,
     Type* Ty,
-    const std::string & Name)
+    const Twine & Name)
 {
   auto & Block = F->getEntryBlock();
-  auto TmpB = IRBuilder<>(&Block, Block.begin());
-  return TmpB.CreateAlloca(Ty, nullptr, Name.c_str());
+  IRBuilder<> TmpB(&Block, Block.begin());
+  return TmpB.CreateAlloca(Ty, nullptr, Name);
 }
 
 //============================================================================  

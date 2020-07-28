@@ -285,9 +285,8 @@ void insertModule(
 std::string verifyModule(llvm::Module& M){
   SmallString<SmallVectorLength> SmallStr;
   raw_svector_ostream Stream(SmallStr);
-  std::string error_message;
   verifyModule(M, &Stream);
-  return Stream.str();
+  return Stream.str().str();
 }
 
 //==============================================================================

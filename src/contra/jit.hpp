@@ -48,7 +48,7 @@ public:
       Resolver_(
         llvm::orc::createLegacyLookupResolver(
           ES_,
-          [this](const std::string &Name) { return findMangledSymbol(Name); },
+          [this](llvm::StringRef Name) { return findMangledSymbol(Name); },
           [](llvm::Error Err) { llvm::cantFail(std::move(Err), "lookupFlags failed"); }
         )
       ),
@@ -94,14 +94,14 @@ public:
     llvm::cantFail(CompileLayer_.removeModule(K));
   }
 
-  auto findSymbol(const std::string Name) {
+  auto findSymbol(llvm::StringRef Name) {
     return findMangledSymbol(mangle(Name));
   }
 
 private:
 
-  std::string mangle(const std::string &Name);
-  JITSymbol findMangledSymbol(const std::string &Name);
+  std::string mangle(llvm::StringRef Name);
+  JITSymbol findMangledSymbol(llvm::StringRef Name);
 
   llvm::orc::ExecutionSession ES_;
   std::shared_ptr<llvm::SectionMemoryManager> MM_;

@@ -5,9 +5,9 @@
 #include "errors.hpp"
 #include "utils/llvm_utils.hpp"
 
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
-#include "llvm/InitializePasses.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -17,12 +17,12 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "llvm/Target/AMDGPU/AMDGPU.h"
 #include "llvm/Transforms/Utils/AMDGPUEmitPrintf.h"
@@ -47,21 +47,6 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
-
-
-  auto registry = PassRegistry::getPassRegistry();
-  initializeCore(*registry);
-  initializeCodeGen(*registry);
-  initializeScalarOpts(*registry);
-  initializeObjCARCOpts(*registry);
-  initializeVectorization(*registry);
-  initializeIPO(*registry);
-  initializeAnalysis(*registry);
-  initializeTransformUtils(*registry);
-  initializeInstCombine(*registry);
-  initializeInstrumentation(*registry);
-  initializeTarget(*registry);
-  initializeCodeGenPreparePass(*registry);
 
   auto Tgt = utils::findTarget("amdgcn");
   if (!Tgt) 
@@ -254,7 +239,7 @@ std::string ROCmJIT::compile(
   // output to file
   else {
     std::error_code EC;
-    Dest = std::make_unique<raw_fd_ostream>(Filename, EC, sys::fs::OF_None);
+    Dest = std::make_unique<raw_fd_ostream>(Filename, EC);
     if (EC)
       THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
   }
@@ -267,10 +252,10 @@ std::string ROCmJIT::compile(
   //PassManagerBuilder Builder;
   //TargetMachine_->adjustPassManager(Builder);
   
+  PassMan.add(createVerifierPass());
+  
   TargetLibraryInfoImpl TLII(Triple(TheModule.getTargetTriple()));
   PassMan.add(new TargetLibraryInfoWrapperPass(TLII));
-  
-  PassMan.add(createVerifierPass());
   
   auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
   TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
@@ -278,7 +263,7 @@ std::string ROCmJIT::compile(
   PassMan.add(Config);
   
   //PassMan.add(createGlobalOptimizerPass());
-  //PassMan.add(createFunctionInliningPass());
+  PassMan.add(createFunctionInliningPass());
   //Builder.populateModulePassManager(PassMan);
 
 
@@ -293,7 +278,7 @@ std::string ROCmJIT::compile(
   
   PassMan.run(TheModule);
 
-  return SmallStr.str();
+  return SmallStr.str().str();
 
 }
 
@@ -393,12 +378,13 @@ void ROCmJIT::assemble(
   // Replace printfs, and fix addresses
 
   auto PassMan = legacy::PassManager();
-
+  
+  //PassMan.add(createGlobalDCEPass());
   PassMan.add(createAMDGPUPrintfRuntimeBinding());
   PassMan.add(createSROAPass());
   PassMan.add(createAMDGPULowerAllocaPass());
   PassMan.add(createInferAddressSpacesPass());
-  PassMan.add(createInstructionCombiningPass());
+  //PassMan.add(createInstructionCombiningPass());
   
   PassMan.run(M);
   
@@ -528,7 +514,7 @@ BasicBlock* ROCmJIT::replacePrint2(Module &M, CallInst* CallI) {
 
 
   // create new instruction            
-  auto TmpB = IRBuilder<>(CallI);
+  IRBuilder<> TmpB(CallI);
   emitAMDGPUPrintfCall(TmpB, ArgVs);
 
   // erase old

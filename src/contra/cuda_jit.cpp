@@ -1,15 +1,19 @@
 #include "cuda_jit.hpp"
 
 #include "cuda_rt.hpp"
-#include "compiler.hpp"
 #include "errors.hpp"
 #include "utils/llvm_utils.hpp"
 
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
@@ -112,9 +116,7 @@ void CudaJIT::addModule(std::unique_ptr<Module> M) {
   } // Function
 
   //M->print(outs(), nullptr); outs() << "\n";
-  auto KernelStr = compileKernel(
-      *M,
-      TargetMachine_);
+  auto KernelStr = compile(*M);
   contra_cuda_register_kernel(KernelStr.c_str());
 }
 
@@ -129,6 +131,72 @@ void CudaJIT::addModule(const Module * M) {
     ClonedModule->setTargetTriple(TargetMachine_->getTargetTriple().getTriple());
     addModule(std::move(ClonedModule));
 }
+
+//==============================================================================
+// Standard compiler for host
+//==============================================================================
+std::string CudaJIT::compile(
+    Module & TheModule,
+    const std::string & Filename,
+    CodeGenFileType FileType)
+{
+
+  if (!TheModule.getInstructionCount()) return "";
+  
+  //----------------------------------------------------------------------------
+  // Create output stream
+
+  std::unique_ptr<raw_pwrite_stream> Dest;
+  
+  SmallString<SmallVectorLength> SmallStr;
+
+  // output to string
+  if (Filename.empty()) {
+    Dest = std::make_unique<raw_svector_ostream>(SmallStr);
+  }
+  // output to file
+  else {
+    std::error_code EC;
+    Dest = std::make_unique<raw_fd_ostream>(Filename, EC, sys::fs::OF_None);
+    if (EC)
+      THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
+  }
+  
+  //----------------------------------------------------------------------------
+  // Compile
+  
+  auto PassMan = legacy::PassManager();
+  
+PassMan.add(createVerifierPass());
+
+  TargetLibraryInfoImpl TLII(Triple(TheModule.getTargetTriple()));
+  PassMan.add(new TargetLibraryInfoWrapperPass(TLII));
+  
+  PassMan.add(createSROAPass());
+  PassMan.add(createInstructionCombiningPass());
+  PassMan.add(createFunctionInliningPass());
+  
+  
+  auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
+  TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
+  Config->addIRPasses();
+  PassMan.add(Config);
+
+  auto fail = TargetMachine_->addPassesToEmitFile(
+      PassMan,
+      *Dest,
+      nullptr,
+      FileType,
+      false);
+  if (fail)
+    THROW_CONTRA_ERROR( "Error generating PTX");
+  
+  PassMan.run(TheModule);
+
+  return SmallStr.str().str();
+
+}
+
 
 //==============================================================================
 // Helper to replace print function

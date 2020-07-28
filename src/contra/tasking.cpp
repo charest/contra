@@ -300,7 +300,7 @@ void AbstractTasker::start(Module & TheModule, int Argc, char ** Argv)
 //==============================================================================
 TaskInfo & AbstractTasker::insertTask(const std::string & Name, Function* F)
 {
-  auto TaskName = F->getName();
+  auto TaskName = F->getName().str();
   auto Id = makeTaskId();
   auto it = TaskTable_.emplace(Name, TaskInfo(Id, TaskName, F));
   return it.first->second;
