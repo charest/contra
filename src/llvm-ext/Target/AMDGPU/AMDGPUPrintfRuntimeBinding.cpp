@@ -43,6 +43,19 @@ using namespace llvm;
 #define DEBUG_TYPE "printfToRuntime"
 #define DWORD_ALIGN 4
 
+/// OpenCL uses address spaces to differentiate between
+/// various memory regions on the hardware. On the CPU
+/// all of the address spaces point to the same memory,
+/// however on the GPU, each address space points to
+/// a separate piece of memory that is unique from other
+/// memory locations.
+namespace AMDGPUAS {
+  enum : unsigned {
+    GLOBAL_ADDRESS = 1,   ///< Address space for global memory (RAT0, VTX0).
+    CONSTANT_ADDRESS = 4 ///< Address space for constant memory (VTX2).
+  };
+}
+
 namespace {
 class LLVM_LIBRARY_VISIBILITY AMDGPUPrintfRuntimeBinding final
     : public ModulePass {

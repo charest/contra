@@ -324,7 +324,6 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   auto IndexSizeV = TheHelper_.load(IndexSizeA);
 
   IndexV = TheHelper_.load(IndexA); 
-  IndexSizeV = llvmValue<int_t>(TheContext_, 1000);
   auto CondV = Builder_.CreateICmpSLT(IndexV, IndexSizeV, "threadcond");
   Builder_.CreateCondBr(CondV, ThenBB, TaskI.MergeBlock);
   

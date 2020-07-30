@@ -25,7 +25,8 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 #include "llvm/Target/AMDGPU/AMDGPU.h"
-#include "llvm/Transforms/Utils/AMDGPUEmitPrintf.h"
+#include "llvm-ext/Target/AMDGPU/AMDGPU.h"                                      
+#include "llvm-ext/Transforms/Utils/AMDGPUEmitPrintf.h"                                
 
 #include <fstream>
 #include <set>
@@ -41,7 +42,7 @@ namespace contra {
 //==============================================================================
 ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
   DeviceJIT(TheHelper),
-  LinkFlags_(Linker::Flags::None & Linker::Flags::OverrideFromSrc)
+  LinkFlags_(Linker::Flags::OverrideFromSrc)
 {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTarget();
@@ -470,7 +471,7 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
   
   std::vector<std::string> Files = {
       "/home/charest/code/contra/src/librtrocm/rocm_scratch.ll",
-      "/home/charest/code/contra/build/src/contra/rocm_reduce.bc"
+      "/home/charest/code/contra/build-rocm/src/contra/rocm_reduce.bc"
   };
   for (const auto & F : Files) {
     SMDiagnostic Diag;
