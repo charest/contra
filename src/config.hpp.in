@@ -17,6 +17,9 @@
 
 #cmakedefine HAVE_ROCM
 #define ROCM_LD_LLD_PATH "@ROCM_LD_LLD_EXE@"
+#define ROCM_DEVICE_LIB_PATH "@AMD_DEVICE_LIBS_PREFIX@/lib"
+#define ROCM_DEVICE_USER_PATH "@PROJECT_BINARY_DIR@/src"
+
 
 #ifdef __CUDACC__
 #define CONTRA_INLINE_TARGET __host__ __device__

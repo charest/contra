@@ -394,8 +394,8 @@ void contra_cuda_launch_kernel(
       nullptr);
   check(err);
  
-  cudaError_t cudaerr = cudaDeviceSynchronize();
-  check(cudaerr, "Kernel launch");
+  //cudaError_t cudaerr = cudaDeviceSynchronize();
+  //check(cudaerr, "Kernel launch");
 
   //err = cuModuleUnload(CuModule);
   //check(err);
@@ -985,8 +985,8 @@ void contra_cuda_launch_reduction(
       nullptr);
   check(err);
   
-  auto cuerr = cudaDeviceSynchronize();
-  check(cuerr, "Reduction launch");
+  //auto cuerr = cudaDeviceSynchronize();
+  //check(cuerr, "Reduction launch");
 
   // copy over data
   if (block_size > 1) {

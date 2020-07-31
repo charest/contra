@@ -31,8 +31,6 @@ public:
 
 private:
   
-  llvm::BasicBlock* replacePrint2(llvm::Module &, llvm::CallInst*);
-
   std::unique_ptr<llvm::Module> cloneModule(const llvm::Module &);
 
   void runOnModule(llvm::Module &);
@@ -45,12 +43,12 @@ private:
   void assemble(
       llvm::Module &,
       std::string,
-      bool IncludeDeviceLibs);
+      bool);
 
   std::vector<char> compileAndLink(llvm::Module &, const std::string&);
-  
-  std::unique_ptr<llvm::Module> splitOutReduce(llvm::Module &);
 
+  void linkFiles(llvm::Linker &, const std::vector<std::string>&, unsigned);
+  
   llvm::TargetMachine * TargetMachine_ = nullptr;
 
   std::unique_ptr<llvm::Module> UserModule_;

@@ -16,7 +16,12 @@
 struct rocm_runtime_t {
   bool IsStarted = false;
 
-  std::vector< std::pair<std::vector<char>, std::vector<char>> > Kernels;
+  struct KernelData {
+    std::vector<char> Hsaco;
+    bool HasReduce = false;
+  };
+
+  std::vector< KernelData > Kernels;
   std::map< std::string, unsigned > KernelMap;
 
   size_t MaxThreadsPerBlock = 0;
@@ -24,13 +29,12 @@ struct rocm_runtime_t {
   void init(int);
   void shutdown();
 
-  std::pair<size_t, size_t> threadDims(size_t NumThreads);
+  void threadDims(size_t NumThreads, size_t &, size_t &);
 
-  void loadKernel(
+  const KernelData & loadKernel(
     const char * name,
     hipModule_t * M,
-    hipFunction_t * F,
-    bool Reduce);
+    hipFunction_t * F);
 };
 
 
@@ -216,10 +220,9 @@ void contra_rocm_shutdown();
 void contra_rocm_register_kernel(
     const char *,
     size_t,
-    const char *,
-    size_t,
     const char * [],
-    unsigned);
+    unsigned,
+    bool);
 
 void contra_rocm_partition_free(contra_rocm_partition_t *);
 void contra_rocm_accessor_free(contra_rocm_accessor_t *);

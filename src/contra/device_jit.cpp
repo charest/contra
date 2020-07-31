@@ -57,6 +57,20 @@ CallInst* DeviceJIT::replaceName(
     return TmpB.CreateCall(NewF, ArgVs, CallI->getName());
 }
 
-
+//==============================================================================
+// Calls function
+//==============================================================================
+bool DeviceJIT::callsFunction(Module & M, const std::string & Name)
+{
+  for (auto & F : M)
+    for (auto & BB : F)
+      for (auto & I : BB)
+        if (auto CallI = dyn_cast<CallInst>(&I)) {
+          auto CallF = CallI->getCalledFunction();
+          if (CallF->getName() == Name) return
+            true;
+        }
+  return false;
+}
 
 } // namespace

@@ -44,28 +44,21 @@ if (HIP_FOUND)
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/rocm_jit.cpp )
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/rocm_rt.cpp )
 
-  add_custom_target(contra_rocm_devlibs
-    DEPENDS rocm_reduce.bc)
-  add_dependencies(contra contra_rocm_devlibs)
-
-  #set_property(TARGET contra_rocm_devlibs APPEND PROPERTY OBJECT_DEPENDS rocm_reduce.bc)
-
-  add_custom_command(OUTPUT rocm_reduce.bc
-    COMMAND
-      ${ROCM_CLANG_EXE}
-      -cl-std=CL2.0
-      -Xclang 
-      -finclude-default-header
-      -xcl
-      -target amdgcn-amd-amdhsa
-      -mcpu=gfx900
-      -c ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl
-      -emit-llvm
-      -I ${CMAKE_CURRENT_BINARY_DIR}/..
-      -I ${CMAKE_CURRENT_SOURCE_DIR}/..
-      -o rocm_reduce.bc
-    DEPENDS
+  compile_to_bitcode(
+    rocm_reduce_bc   
+    SOURCE
       ${CMAKE_CURRENT_SOURCE_DIR}/rocm_reduce.cl
-    WORKING_DIRECTORY
-      ${CMAKE_CURRENT_BINARY_DIR})
+    OUTPUT
+      rocm_reduce.bc
+    INCLUDES
+      ${CMAKE_CURRENT_BINARY_DIR}/..
+      ${CMAKE_CURRENT_SOURCE_DIR}/..
+    DEPENDS
+      ${CMAKE_CURRENT_BINARY_DIR}/../config.h
+      ${CMAKE_CURRENT_SOURCE_DIR}/../librtrocm/rocm_builtins.h
+      ${CMAKE_CURRENT_SOURCE_DIR}/../librtrocm/rocm_scratch.h
+    TARGET
+      contra_rocm_devlibs
+    )
+
 endif()

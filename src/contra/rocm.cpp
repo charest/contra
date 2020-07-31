@@ -243,8 +243,10 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   WrapperArgNs.emplace_back("size");
 
   if (ResultT) {
-    WrapperArgTs.emplace_back(VoidPtrType_);
+    WrapperArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
+    WrapperArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
     WrapperArgNs.emplace_back("indata");
+    WrapperArgNs.emplace_back("outdata");
   }
 
   auto WrapperT = FunctionType::get(VoidType_, WrapperArgTs, false);
@@ -343,11 +345,14 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   }
 
   if (ResultT) {
-    TaskI.ResultAlloca = WrapperArgAs.back();
+    TaskI.ResultBlockAlloca = WrapperArgAs.back();
+    WrapperArgAs.pop_back();
+    TaskI.ResultThreadAlloca = WrapperArgAs.back();
     WrapperArgAs.pop_back();
   }
 
   // Index size
+  TaskI.IndexSizeAlloca = WrapperArgAs.back();
   WrapperArgAs.pop_back();
   
   return {WrapperF, WrapperArgAs, IndexA};
@@ -373,19 +378,19 @@ void ROCmTasker::taskPostamble(
   if (IsIndex) {
 
     // Call the reduction
+    AllocaInst* ResultA = nullptr;
+
     if (ResultV && !ResultV->getType()->isVoidTy()) {
-      auto IndataA = TaskI.ResultAlloca;
-      
-      auto ResultA = TheHelper_.getAsAlloca(ResultV);
+      ResultA = TheHelper_.getAsAlloca(ResultV);
       auto ResultT = ResultA->getAllocatedType();
-      
-      auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
+      auto ResultSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
       
       auto TidV = getThreadID(TheModule);
-      auto PosV = Builder_.CreateMul(TidV, DataSizeV);
-      auto IndataV = TheHelper_.load(IndataA);
+      auto PosV = Builder_.CreateMul(TidV, ResultSizeV);
+      auto IndataV = TheHelper_.load(TaskI.ResultThreadAlloca);
       auto OffsetV = TheHelper_.offsetPointer(IndataV, PosV);
-      TheHelper_.memCopy(OffsetV, ResultA, DataSizeV);
+      TheHelper_.memCopy(OffsetV, ResultA, ResultSizeV);
+
     }
   
     // finish If
@@ -394,6 +399,27 @@ void ROCmTasker::taskPostamble(
     auto TheFunction = Builder_.GetInsertBlock()->getParent();
     TheFunction->getBasicBlockList().push_back(MergeBB);
     Builder_.SetInsertPoint(MergeBB);
+      
+    if (ResultA) {  
+      auto IndataV = TheHelper_.load(TaskI.ResultThreadAlloca);
+      auto OutdataV = TheHelper_.load(TaskI.ResultBlockAlloca);
+      auto IndexSizeV = TheHelper_.load(TaskI.IndexSizeAlloca);
+      
+      auto ResultT = ResultA->getAllocatedType();
+      auto ResultSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
+
+      TheHelper_.callFunction(
+        TheModule,
+        "reduce",
+        VoidType_,
+        {
+          IndataV,
+          OutdataV,
+          ResultSizeV,
+          IndexSizeV
+        });
+    }
+    
 
     Builder_.CreateRetVoid();
   }
@@ -412,6 +438,12 @@ void ROCmTasker::taskPostamble(
     }
 
   }
+  
+  //----------------------------------------------------------------------------
+  // Check if has printf
+  
+  TaskI.HasPrintf = TheModule.getFunction("print");
+
 
   //----------------------------------------------------------------------------
   // Finish 
@@ -530,33 +562,17 @@ Value* ROCmTasker::launch(
   ArgAs.emplace_back( IndexSpaceSizeA );
   
   //----------------------------------------------------------------------------
-  // Do reductions
-  AllocaInst* IndataA = nullptr;
-  StructType* ResultT = nullptr;
-  
-  if (AbstractReduceOp) {
-    auto ReduceOp = dynamic_cast<const ROCmReduceInfo*>(AbstractReduceOp);
-    
-    ResultT = StructType::create( TheContext_, "reduce" );
-    ResultT->setBody( ReduceOp->getVarTypes() );
-    IndataA = TheHelper_.createEntryBlockAlloca(VoidPtrType_);
-    auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
-    TheHelper_.callFunction(
-        TheModule,
-        "contra_rocm_prepare_reduction",
-        VoidType_,
-        {IndataA, DataSizeV, IndexSpaceA});
-    ToFree.emplace_back(IndataA);
-    ArgAs.emplace_back( IndataA );
-  }
-  
-  //----------------------------------------------------------------------------
   // Serialize args
   
   auto TotArgs = ArgAs.size();
 
   std::vector<Type*> ArgTs;
   for (auto A : ArgAs) ArgTs.emplace_back( TheHelper_.getAllocatedType(A) );
+  
+  if (AbstractReduceOp) {
+    ArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
+    ArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
+  }
 
   auto ArgsT = StructType::create( TheContext_, ArgTs, "args_t" );
   auto ArgsA = TheHelper_.createEntryBlockAlloca(ArgsT, "args.alloca");
@@ -571,43 +587,51 @@ Value* ROCmTasker::launch(
   auto RangeA = TheHelper_.getAsAlloca(RangeV);
   
   //----------------------------------------------------------------------------
-  // Register function
+  // Prepare reduction function
   
+  Value* ResultA = Constant::getNullValue(VoidPtrType_);
+  Value* ApplyF = Constant::getNullValue(VoidPtrType_);
+  Value* IndataA = cast<Value>(Constant::getNullValue(VoidPtrType_->getPointerTo()));
+  Value* OutdataA = cast<Value>(Constant::getNullValue(VoidPtrType_->getPointerTo()));
+  Value* ResultSizeV = llvmValue<size_t>(TheContext_, 0);
+
+  if (AbstractReduceOp) {
+    auto ReduceOp = dynamic_cast<const ROCmReduceInfo*>(AbstractReduceOp);
+    
+    auto ResultT = StructType::create( TheContext_, "reduce" );
+    ResultT->setBody( ReduceOp->getVarTypes() );
+    ResultSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
+    
+    const auto & ApplyN = ReduceOp->getApplyName();
+    auto ApplyT = ReduceOp->getApplyType();
+    ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
+
+    ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
+
+    IndataA = TheHelper_.getElementPointer(ArgsA, {0, static_cast<unsigned>(TotArgs)});
+    OutdataA = TheHelper_.getElementPointer(ArgsA, {0, static_cast<unsigned>(TotArgs+1)});
+  }
   
+  //----------------------------------------------------------------------------
+  // Launch function
+      
   auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
   TheHelper_.callFunction(
     TheModule,
     "contra_rocm_launch_kernel",
     VoidType_,
-    {TaskStr, RangeA, ArgsA, ArgsSizeV} );
-
-  //----------------------------------------------------------------------------
-  // Call function with reduction
-  AllocaInst* ResultA = nullptr;
-  if (ResultT && AbstractReduceOp) {
-    auto ReduceOp = dynamic_cast<const ROCmReduceInfo*>(AbstractReduceOp);
-    
-    const auto & ApplyN = ReduceOp->getApplyName();
-    auto ApplyT = ReduceOp->getApplyType();
-    auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
-
-    ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
-    auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
-    auto DataSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
-    std::vector<Value*> ArgVs = {
+    {
       TaskStr,
-      IndexSpaceA,
+      RangeA,
+      ArgsA,
+      ArgsSizeV,
+      ResultA,
+      ResultSizeV,
       IndataA,
-      OutDataV,
-      DataSizeV,
+      OutdataA,
       ApplyF
-    };
-    TheHelper_.callFunction(
-        TheModule,
-        "contra_rocm_launch_reduction",
-        VoidType_,
-        ArgVs);
-  }
+    });
+
   
   //----------------------------------------------------------------------------
   // cleanup
@@ -1037,74 +1061,6 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
   }
 
   //----------------------------------------------------------------------------
-  // create fold
-  Function * FoldF;
-  std::string FoldPtrN;
-  {
-    std::string FoldN = "fold";
-
-    std::vector<Type*> ArgTs = {
-      VoidPtrType_,
-      VoidPtrType_,
-      VoidPtrType_
-    };
-    FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
-    FoldF = Function::Create(
-        FunT,
-        Function::ExternalLinkage,
-        FoldN,
-        TheModule);
-
-    auto BB = BasicBlock::Create(TheContext_, "entry", FoldF);
-    Builder_.SetInsertPoint(BB);
-
-    unsigned i=0;
-    std::vector<AllocaInst*> ArgAs(ArgTs.size());
-    for (auto &Arg : FoldF->args()) {
-      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
-      Builder_.CreateStore(&Arg, ArgAs[i]);
-      ++i;
-    }
-
-    auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
-    Builder_.CreateStore(ZeroC, OffsetA);
-
-
-    for (unsigned i=0; i<VarTs.size(); ++i) {
-      auto VarT = VarTs[i];
-      auto VarPtrT = VarT->getPointerTo();
-      // res += lhs + rhs
-      // 1. lhs + rhs
-      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
-      Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
-      auto OffsetV = TheHelper_.load(OffsetA);
-      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
-      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
-      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
-      RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
-      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
-      auto ReduceV = foldReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
-      // 2. res + previous
-      Value* ResPtrV = TheHelper_.load(ArgAs[2]);
-      OffsetV = TheHelper_.load(OffsetA);
-      ResPtrV = Builder_.CreateGEP(ResPtrV, OffsetV);
-      ResPtrV = TheHelper_.createBitCast(ResPtrV, VarPtrT);
-      auto ResV = Builder_.CreateLoad(VarT, ResPtrV, true /*volatile*/);
-      ReduceV = applyReduce(TheModule, ResV, ReduceV, ReduceTypes[i]);
-      // 3. store
-      Builder_.CreateStore(ReduceV, ResPtrV, true /*volatile*/);
-      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
-      TheHelper_.increment( OffsetA, SizeC );
-    }
-        
-    Builder_.CreateRetVoid();
-    
-  }
-
-
-  //----------------------------------------------------------------------------
   // create init
   Function * InitF;
   std::string InitPtrN;
@@ -1159,9 +1115,7 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
       InitF,
       InitPtrN,
       ApplyF,
-      ApplyPtrN,
-      FoldF,
-      FoldPtrN);
+      ApplyPtrN);
 }
 
 

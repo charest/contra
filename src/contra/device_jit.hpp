@@ -39,6 +39,8 @@ protected:
       const std::vector<llvm::Type*> & = {});
   llvm::CallInst* replaceName(llvm::Module &, llvm::CallInst*, const std::string&);
 
+  bool callsFunction(llvm::Module &, const std::string &);
+
   utils::BuilderHelper & TheHelper_;
 
   llvm::IRBuilder<> & Builder_;

@@ -14,7 +14,6 @@ if (CUDA_FOUND)
   )
 endif()
 
-
 configure_file(config.hpp.in config.hpp @ONLY)
 configure_file(config.h.in config.h @ONLY)
 

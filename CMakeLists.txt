@@ -64,7 +64,7 @@ endif()
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-find_package(Legion)
+find_package(Legion QUIET)
 if (Legion_FOUND)
   MESSAGE(STATUS "Legion includes: ${Legion_INCLUDE_DIRS}")
   MESSAGE(STATUS "Legion libraries: ${Legion_LIBRARIES}")
@@ -88,7 +88,7 @@ endif()
 #------------------------------------------------------------------------------#
 # Kokkos
 #------------------------------------------------------------------------------#
-find_package(Kokkos)
+find_package(Kokkos QUIET)
 if (Kokkos_FOUND)
   target_link_libraries(contra PUBLIC Kokkos::kokkos)
   #list(APPEND SUPPORTED_BACKENDS "kokkos")
@@ -98,10 +98,10 @@ endif()
 # Cuda toolkit
 #------------------------------------------------------------------------------#
 IF (CMAKE_VERSION VERSION_GREATER_EQUAL "3.17.0")
-  find_package(CUDAToolkit)
+  find_package(CUDAToolkit QUIET)
   set(CUDA_FOUND ${CUDAToolkit_FOUND})
 else()
-  find_package(CUDA)
+  find_package(CUDA QUIET)
 endif()
 
 
@@ -138,51 +138,23 @@ endif()
 # Hip
 #------------------------------------------------------------------------------#
 
-find_package(HIP)
+find_package(HIP QUIET)
 if (HIP_FOUND)
-  target_link_libraries(contra PUBLIC hip::host)
+  include(rocm_helpers)
 
-  #target_compile_options(contra PRIVATE -D__HIP_HCC_COMPAT_MODE__=1 -D__HIP_ARCH_GFX900__=1)
-  #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${ROCM_DIR}/cmake")  
+  target_link_libraries(contra PUBLIC hip::host)
+  
+  add_custom_target(contra_rocm_devlibs)
+  add_dependencies(contra contra_rocm_devlibs)
+
   list(APPEND SUPPORTED_BACKENDS "rocm")
   
-  find_program(ROCM_LD_LLD_EXE 
-    NAMES 
-      ld.lld  
-    HINTS
-      $ENV{ROCM_PATH}/llvm/bin
-      $ENV{HIP_PATH}/../llvm/bin
-      ENV ROCM_CLANG_PATH
-      ENV HIP_CLANG_PATH
-      ENV ROCM_LLVM_PATH
-      ENV HIP_LLVM_PATH
-    PATH_SUFFIXES
-        bin
-  )
-  if (NOT ROCM_LD_LLD_EXE)
-    MESSAGE(FATAL_ERROR "Could not find ld.lld.  Please set ROCM_LLVM_PATH")
-  else ()
-    MESSAGE(STATUS "Found ld.lld: ${ROCM_LD_LLD_EXE}")
-  endif()
+  find_rocm_program(
+    ROCM_LD_LLD_EXE
+    NAMES ld.lld)
 
-  find_program(ROCM_CLANG_EXE 
-    NAMES 
-      clang
-    HINTS
-      $ENV{ROCM_PATH}/llvm/bin
-      $ENV{HIP_PATH}/../llvm/bin
-      ENV ROCM_CLANG_PATH
-      ENV HIP_CLANG_PATH
-      ENV ROCM_LLVM_PATH
-      ENV HIP_LLVM_PATH
-    PATH_SUFFIXES
-        bin
-  )
-  if (NOT ROCM_CLANG_EXE)
-    MESSAGE(FATAL_ERROR "Could not find clang.  Please set ROCM_LLVM_PATH")
-  else ()
-    MESSAGE(STATUS "Found clang: ${ROCM_CLANG_EXE}")
-  endif()
+  find_rocm_program(ROCM_CLANG_EXE 
+    NAMES clang)
 
   find_package(AMDDeviceLibs REQUIRED CONFIG)
   MESSAGE(STATUS "Found device libs: ${AMD_DEVICE_LIBS_TARGETS}")

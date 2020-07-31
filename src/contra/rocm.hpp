@@ -23,9 +23,6 @@ class ROCmReduceInfo : public AbstractReduceInfo {
   std::string ApplyN_, ApplyPtrN_;
   llvm::FunctionType * ApplyT_;
 
-  std::string FoldN_,  FoldPtrN_;
-  llvm::FunctionType * FoldT_;
-
 public:
 
   ROCmReduceInfo(
@@ -34,9 +31,7 @@ public:
       llvm::Function * InitF,
       const std::string & InitPtrN,
       llvm::Function * ApplyF,
-      const std::string & ApplyPtrN,
-      llvm::Function * FoldF,
-      const std::string & FoldPtrN) :
+      const std::string & ApplyPtrN) :
     VarTypes_(VarTypes),
     ReduceTypes_(ReduceTypes),
     InitN_(InitF->getName()),
@@ -44,10 +39,7 @@ public:
     InitT_(InitF->getFunctionType()),
     ApplyN_(ApplyF->getName()),
     ApplyPtrN_(ApplyPtrN),
-    ApplyT_(ApplyF->getFunctionType()),
-    FoldN_(FoldF->getName()),
-    FoldPtrN_(FoldPtrN),
-    FoldT_(FoldF->getFunctionType())
+    ApplyT_(ApplyF->getFunctionType())
   {}
 
   auto getNumReductions() const { return VarTypes_.size(); }
@@ -63,10 +55,6 @@ public:
   const auto & getApplyName() const { return ApplyN_; }
   const auto & getApplyPtrName() const { return ApplyPtrN_; }
   auto getApplyType() const { return ApplyT_; }
-
-  const auto & getFoldName() const { return FoldN_; }
-  const auto & getFoldPtrName() const { return FoldPtrN_; }
-  auto getFoldType() const { return FoldT_; }
 
 };
 
@@ -96,9 +84,13 @@ class ROCmTasker : public AbstractTasker {
   const TaskInfo * TopLevelTask_ = nullptr;
   
   struct TaskEntry {
-    llvm::AllocaInst* ResultAlloca = nullptr;
     llvm::BasicBlock* MergeBlock = nullptr;
     llvm::AllocaInst* TaskInfoAlloca = nullptr;
+    bool HasPrintf = false;
+    
+    llvm::AllocaInst* ResultThreadAlloca = nullptr;
+    llvm::AllocaInst* ResultBlockAlloca = nullptr;
+    llvm::AllocaInst* IndexSizeAlloca = nullptr;
   };
 
   std::forward_list<TaskEntry> TaskAllocas_;

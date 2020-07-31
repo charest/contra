@@ -167,20 +167,7 @@ std::string CudaJIT::compile(
   
   auto PassMan = legacy::PassManager();
   
-PassMan.add(createVerifierPass());
-
-  TargetLibraryInfoImpl TLII(Triple(TheModule.getTargetTriple()));
-  PassMan.add(new TargetLibraryInfoWrapperPass(TLII));
-  
-  PassMan.add(createSROAPass());
-  PassMan.add(createInstructionCombiningPass());
-  PassMan.add(createFunctionInliningPass());
-  
-  
-  auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
-  TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
-  Config->addIRPasses();
-  PassMan.add(Config);
+  PassMan.add(createVerifierPass());
 
   auto fail = TargetMachine_->addPassesToEmitFile(
       PassMan,

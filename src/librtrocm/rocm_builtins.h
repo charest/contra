@@ -3,10 +3,6 @@
 
 #include "config.h"
 
-// prototypes for internal functions
-void * memcpy(void *, const void *, size_t);
-void __memcpy_internal_aligned(void *, const void *, size_t, size_t);
-
 __attribute__((const)) size_t GET_NUM_GROUPS(uint dim) {
     __constant byte_t * p = (__constant byte_t*)__builtin_amdgcn_dispatch_ptr();
 
@@ -34,6 +30,39 @@ __attribute__((const)) size_t GET_NUM_GROUPS(uint dim) {
 
     return q + (n > q*d);
 }
+
+__attribute__((const)) size_t GET_LOCAL_SIZE(uint dim)
+{
+    __constant byte_t * p = __builtin_amdgcn_dispatch_ptr();
+    uint group_id, grid_size, group_size;
+
+    switch(dim) {
+    case 0:
+        group_id = __builtin_amdgcn_workgroup_id_x();
+        group_size = __builtin_amdgcn_workgroup_size_x();
+        grid_size = *(__constant uint*)(p + 12); // love it!
+        break;
+    case 1:
+        group_id = __builtin_amdgcn_workgroup_id_y();
+        group_size = __builtin_amdgcn_workgroup_size_y();
+        grid_size = *(__constant uint*)(p + 16); // love it!
+        break;
+    case 2:
+        group_id = __builtin_amdgcn_workgroup_id_z();
+        group_size = __builtin_amdgcn_workgroup_size_z();
+        grid_size = *(__constant uint*)(p + 20); // love it!
+        break;
+    default:
+        group_id = 0;
+        grid_size = 0;
+        group_size = 1;
+        break;
+    }
+    uint r = grid_size - group_id * group_size;
+    return (r < group_size) ? r : group_size;
+}
+
+
 
 __attribute__((const)) size_t GET_LOCAL_ID(uint dim)
 {

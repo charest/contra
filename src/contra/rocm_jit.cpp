@@ -129,18 +129,12 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
   //----------------------------------------------------------------------------
   // Compile
   
-  auto ReduceM = splitOutReduce(*M);
+  bool HasReduce = M->getFunction("apply");
   
   std::string temp_name = std::tmpnam(nullptr);
-  assemble(*M, temp_name, true);
+  assemble(*M, temp_name, HasReduce);
   auto Hsaco = compileAndLink(*M, temp_name);
-  
-  decltype(Hsaco) ReduceHsaco;
-  if (ReduceM) {
-    std::string temp_name = std::tmpnam(nullptr);  
-    assemble(*ReduceM, temp_name, false);
-    ReduceHsaco = compileAndLink(*ReduceM, temp_name);
-  }
+
 
   //----------------------------------------------------------------------------
   // Register
@@ -153,10 +147,9 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
   contra_rocm_register_kernel(
       Hsaco.data(),
       Hsaco.size(),
-      ReduceHsaco.empty() ? nullptr : ReduceHsaco.data(),
-      ReduceHsaco.size(),
       KernelNamesC,
-      NumKernels);
+      NumKernels,
+      HasReduce);
 
   delete[] KernelNamesC;
 
@@ -250,23 +243,7 @@ std::string ROCmJIT::compile(
   
   auto PassMan = legacy::PassManager();
 
-  //PassManagerBuilder Builder;
-  //TargetMachine_->adjustPassManager(Builder);
-  
   PassMan.add(createVerifierPass());
-  
-  TargetLibraryInfoImpl TLII(Triple(TheModule.getTargetTriple()));
-  PassMan.add(new TargetLibraryInfoWrapperPass(TLII));
-  
-  auto LLVMT = static_cast<LLVMTargetMachine*>(TargetMachine_);
-  TargetPassConfig * Config = LLVMT->createPassConfig(PassMan);
-  Config->addIRPasses();
-  PassMan.add(Config);
-  
-  //PassMan.add(createGlobalOptimizerPass());
-  PassMan.add(createFunctionInliningPass());
-  //Builder.populateModulePassManager(PassMan);
-
 
   auto fail = TargetMachine_->addPassesToEmitFile(
       PassMan,
@@ -342,7 +319,7 @@ std::vector<char> ROCmJIT::compileAndLink(
 void ROCmJIT::assemble(
     Module & M,
     std::string file_name,
-    bool IncludeDeviceLibs)
+    bool HasReduce)
 {
 
   Linker L(M);
@@ -350,10 +327,18 @@ void ROCmJIT::assemble(
   //----------------------------------------------------------------------------
   // Add user device modules
 
-  if (IncludeDeviceLibs) {
-    auto ClonedM = cloneModule(*UserModule_);
-    auto err = L.linkInModule(std::move(ClonedM));
-    if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
+  auto ClonedM = cloneModule(*UserModule_);
+  auto err = L.linkInModule(std::move(ClonedM), Linker::Flags::LinkOnlyNeeded);
+  if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
+  
+  if (HasReduce) {
+    linkFiles(
+        L, 
+        {
+          ROCM_DEVICE_USER_PATH"/librtrocm/rocm_scratch.bc",
+          ROCM_DEVICE_USER_PATH"/contra/rocm_reduce.bc"
+        }, 
+        LinkFlags_);
   }
       
   //----------------------------------------------------------------------------
@@ -380,51 +365,33 @@ void ROCmJIT::assemble(
 
   auto PassMan = legacy::PassManager();
   
-  //PassMan.add(createGlobalDCEPass());
   PassMan.add(createAMDGPUPrintfRuntimeBinding());
+  PassMan.add(createInferAddressSpacesPass());
   PassMan.add(createSROAPass());
   PassMan.add(createAMDGPULowerAllocaPass());
-  PassMan.add(createInferAddressSpacesPass());
-  //PassMan.add(createInstructionCombiningPass());
   
   PassMan.run(M);
-  
-  //for (auto & F : M) {
-  //  for (auto & BB : F ) {      
-  //    for (auto &I : BB) {        
-  //      if (auto CallI = dyn_cast<CallInst>(&I)) CallI->setTailCall(false);
-  //    }
-  //  }
-  //}
+
+  bool NeedsPrint = M.getNamedMetadata("llvm.printf.fmts");
 
   //----------------------------------------------------------------------------
   // Add bytecode
       
   std::vector<std::string> Files = {
-      "/opt/rocm-3.5.0/lib/oclc_daz_opt_off.amdgcn.bc",
-      "/opt/rocm-3.5.0/lib/oclc_unsafe_math_off.amdgcn.bc",
-      "/opt/rocm-3.5.0/lib/oclc_finite_only_off.amdgcn.bc",
-      "/opt/rocm-3.5.0/lib/oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-      "/opt/rocm-3.5.0/lib/oclc_wavefrontsize64_on.amdgcn.bc",
-      "/opt/rocm-3.5.0/lib/oclc_isa_version_900.amdgcn.bc",
+      ROCM_DEVICE_LIB_PATH"/oclc_daz_opt_off.amdgcn.bc",
+      ROCM_DEVICE_LIB_PATH"/oclc_unsafe_math_off.amdgcn.bc",
+      ROCM_DEVICE_LIB_PATH"/oclc_finite_only_off.amdgcn.bc",
+      ROCM_DEVICE_LIB_PATH"/oclc_correctly_rounded_sqrt_on.amdgcn.bc",
+      ROCM_DEVICE_LIB_PATH"/oclc_wavefrontsize64_on.amdgcn.bc",
+      ROCM_DEVICE_LIB_PATH"/oclc_isa_version_900.amdgcn.bc",
     };
-  if (IncludeDeviceLibs)
-    Files.emplace_back("/opt/rocm-3.5.0/lib/opencl.amdgcn.bc");
+  linkFiles(L, Files, LinkFlags_);
   
-  for (const auto & F : Files) {
-    SMDiagnostic Diag;
-    auto DeviceM = getLazyIRFileModule(
-        F,
-        Diag,
-        TheContext_);
-    if (!DeviceM) {
-      std::cerr << Diag.getMessage().str() << std::endl;
-      THROW_CONTRA_ERROR("Error reading device bitcode file.");
-    }
-
-    auto err = L.linkInModule(std::move(DeviceM), LinkFlags_);
-    if (err)
-      THROW_CONTRA_ERROR("Error linking in device module.");
+  if (NeedsPrint) {
+    linkFiles(
+        L, 
+        {ROCM_DEVICE_LIB_PATH"/opencl.amdgcn.bc"}, 
+        LinkFlags_ & Linker::Flags::LinkOnlyNeeded);
   }
 
   // verify
@@ -435,44 +402,13 @@ void ROCmJIT::assemble(
 }
 
 //==============================================================================
-// Split out the reduce functions
+// Link in bitcode
 //==============================================================================
-std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
+void ROCmJIT::linkFiles(
+    Linker & L,
+    const std::vector<std::string>& Files,
+    unsigned Flags)
 {
-  //----------------------------------------------------------------------------
-  // Look for reduction
-  bool HasReduce = false;
-  std::vector<std::string> ReduceNs = {"apply", "init", "fold"};
-
-  for (const auto & FuncN : ReduceNs) {
-    if (M.getFunction(FuncN)) {
-      HasReduce = true;
-      break;
-    }
-  }
-
-  if (!HasReduce) return nullptr;
-
-  //----------------------------------------------------------------------------
-  // Create initial module
-  auto ReduceM = createModule("reduce jit");
-  Linker L(*ReduceM);
-  
-  //----------------------------------------------------------------------------
-  // Copy over reduction
-  for (const auto & FuncN : ReduceNs) {
-    auto F = M.getFunction(FuncN);
-    cloneFunction(F, ReduceM.get());
-    F->eraseFromParent();      
-  }
-  
-  //----------------------------------------------------------------------------
-  // Add any usr device modules
-  
-  std::vector<std::string> Files = {
-      "/home/charest/code/contra/src/librtrocm/rocm_scratch.ll",
-      "/home/charest/code/contra/build-rocm/src/contra/rocm_reduce.bc"
-  };
   for (const auto & F : Files) {
     SMDiagnostic Diag;
     auto DeviceM = getLazyIRFileModule(
@@ -481,50 +417,13 @@ std::unique_ptr<Module> ROCmJIT::splitOutReduce(Module & M)
         TheContext_);
     if (!DeviceM) {
       std::cerr << Diag.getMessage().str() << std::endl;
-      THROW_CONTRA_ERROR("Error reading device bitcode file.");
+      THROW_CONTRA_ERROR("Error reading device bitcode file: " << F);
     }
 
-    auto err = L.linkInModule(std::move(DeviceM), LinkFlags_);
+    auto err = L.linkInModule(std::move(DeviceM), Flags);
     if (err)
       THROW_CONTRA_ERROR("Error linking in device module.");
   }
-
-  return ReduceM;
 }
-
-//==============================================================================
-// Helper to replace print function
-//==============================================================================
-BasicBlock* ROCmJIT::replacePrint2(Module &M, CallInst* CallI) {
-
-  // some types
-  auto VoidPtrT = llvmType<void*>(TheContext_);
-  auto Int32T = Type::getInt32Ty(TheContext_);
-
-  // create new print function
-  auto PrintT = FunctionType::get(
-      Int32T,
-      VoidPtrT,
-      true /* var args */ );
-  auto PrintF = M.getOrInsertFunction("printf", PrintT).getCallee();
-
-  // gather args
-  std::vector<Value*> ArgVs;
-  for (auto & A : CallI->args())
-    ArgVs.push_back(A);
-
-
-  // create new instruction            
-  IRBuilder<> TmpB(CallI);
-  emitAMDGPUPrintfCall(TmpB, ArgVs);
-
-  // erase old
-  CallI->eraseFromParent();
-
-  return TmpB.GetInsertBlock();
-  
-}
-
-
 
 } // namepsace
