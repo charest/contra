@@ -30,7 +30,7 @@ void reduce(
       g_idata + data_size*i
   );
   
-  SYNC();
+  __syncthreads();
 
   for(unsigned int s2=blockSize, s=s2/2; s>0; s>>=1) { 
     if (tid < s) {
@@ -54,7 +54,7 @@ void reduce(
     } // tid < s
 
     s2 = s;
-    SYNC();
+    __syncthreads();
   } // for
 
   if (tid == 0) {

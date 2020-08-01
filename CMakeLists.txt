@@ -138,6 +138,8 @@ endif()
 # Hip
 #------------------------------------------------------------------------------#
 
+set(CONTRA_ROCM_DEFAULT_TARGET_CPU CACHE STRING "Default target cpu")
+
 find_package(HIP QUIET)
 if (HIP_FOUND)
   include(rocm_helpers)
@@ -146,8 +148,18 @@ if (HIP_FOUND)
   
   add_custom_target(contra_rocm_devlibs)
   add_dependencies(contra contra_rocm_devlibs)
-
+  
   list(APPEND SUPPORTED_BACKENDS "rocm")
+
+  MESSAGE(STATUS "Available AMDGPU Target CPUs: ${AMDGPU_TARGETS}")
+
+  if (NOT CONTRA_ROCM_DEFAULT_TARGET_CPU)
+    list(GET AMDGPU_TARGETS 0 ROCM_DEFAULT_TARGET_CPU)
+    MESSAGE(STATUS "CONTRA_ROCM_DEFAULT_TARGET_CPU not set, using: "
+       "${ROCM_DEFAULT_TARGET_CPU}")
+  else()
+    set(ROCM_DEFAULT_TARGET_CPU ${CONTRA_ROCM_DEFAULT_TARGET_CPU})
+  endif()
   
   find_rocm_program(
     ROCM_LD_LLD_EXE

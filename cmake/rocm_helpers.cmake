@@ -13,61 +13,71 @@ macro(compile_to_bitcode target)
     "${multiValueArgs}"
     ${ARGN} )
 
-  add_custom_target(${target} DEPENDS ${ARGS_OUTPUT})
+  foreach(_gpu ${AMDGPU_TARGETS})
 
-  set(target_includes)
-  if (ARGS_INCLUDES)
-    foreach(_include ${ARGS_INCLUDES})
-      list(APPEND target_includes -I${_include})
-    endforeach()
-  endif()
-  
-  get_filename_component(extension ${ARGS_SOURCE} EXT)
-  if (extension STREQUAL ".ll")
+    set(_target ${target}_${_gpu})
     
-    add_custom_command(OUTPUT ${ARGS_OUTPUT}
-      COMMAND
-        ${ROCM_CLANG_EXE}
-        -Xclang 
-        -xasm
-        -target amdgcn-amd-amdhsa
-        -mcpu=gfx900
-        -c ${ARGS_SOURCE}
-        -emit-llvm
-        ${target_includes}
-        -o ${ARGS_OUTPUT}
-      DEPENDS
-        ${ARGS_SOURCE}
-        ${ARGS_DEPENDS}
-      WORKING_DIRECTORY
-        ${CMAKE_CURRENT_BINARY_DIR})
+    string(REGEX REPLACE "\\.[^.]*$" "" _output_no_ext ${ARGS_OUTPUT})
+    get_filename_component(_output_ext ${ARGS_OUTPUT} LAST_EXT)
+    set(_output ${_output_no_ext}.${_gpu}${_output_ext})
+    
+    add_custom_target(${_target} DEPENDS ${_output})
 
-  elseif(extension STREQUAL ".cl")
+    set(_target_includes)
+    if (ARGS_INCLUDES)
+      foreach(_include ${ARGS_INCLUDES})
+        list(APPEND _target_includes -I${_include})
+      endforeach()
+    endif()
 
-    add_custom_command(OUTPUT ${ARGS_OUTPUT}
-      COMMAND
-        ${ROCM_CLANG_EXE}
-        -cl-std=CL2.0
-        -Xclang 
-        -finclude-default-header
-        -xcl
-        -target amdgcn-amd-amdhsa
-        -mcpu=gfx900
-        -c ${ARGS_SOURCE}
-        -emit-llvm
-        ${target_includes}
-        -o ${ARGS_OUTPUT}
-      DEPENDS
-        ${ARGS_SOURCE}
-        ${ARGS_DEPENDS}
-      WORKING_DIRECTORY
-        ${CMAKE_CURRENT_BINARY_DIR})
+    get_filename_component(_extension ${ARGS_SOURCE} LAST_EXT)
+    if (_extension STREQUAL ".ll")
+      
+      add_custom_command(OUTPUT ${_output}
+        COMMAND
+          ${ROCM_CLANG_EXE}
+          -Xclang 
+          -xasm
+          -target amdgcn-amd-amdhsa
+          -mcpu=${_gpu}
+          -c ${ARGS_SOURCE}
+          -emit-llvm
+          ${_target_includes}
+          -o ${_output}
+        DEPENDS
+          ${ARGS_SOURCE}
+          ${ARGS_DEPENDS}
+        WORKING_DIRECTORY
+          ${CMAKE_CURRENT_BINARY_DIR})
 
-  endif()
+    elseif(_extension STREQUAL ".cl")
 
-  if (ARGS_TARGET)
-    add_dependencies(${ARGS_TARGET} ${target})
-  endif()
+      add_custom_command(OUTPUT ${_output}
+        COMMAND
+          ${ROCM_CLANG_EXE}
+          -cl-std=CL2.0
+          -Xclang 
+          -finclude-default-header
+          -xcl
+          -target amdgcn-amd-amdhsa
+          -mcpu=${_gpu}
+          -c ${ARGS_SOURCE}
+          -emit-llvm
+          ${_target_includes}
+          -o ${_output}
+        DEPENDS
+          ${ARGS_SOURCE}
+          ${ARGS_DEPENDS}
+        WORKING_DIRECTORY
+          ${CMAKE_CURRENT_BINARY_DIR})
+
+    endif()
+
+    if (ARGS_TARGET)
+      add_dependencies(${ARGS_TARGET} ${_target})
+    endif()
+
+  endforeach() # GPU TARGETS
 
 endmacro()
 

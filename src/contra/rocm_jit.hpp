@@ -49,9 +49,11 @@ private:
 
   void linkFiles(llvm::Linker &, const std::vector<std::string>&, unsigned);
   
+  llvm::Instruction* replaceSync(llvm::Module &, llvm::CallInst*);
+  
   llvm::TargetMachine * TargetMachine_ = nullptr;
 
-  std::unique_ptr<llvm::Module> UserModule_;
+  std::vector<std::unique_ptr<llvm::Module>> UserModules_;
 
   unsigned LinkFlags_ = 0;
 };

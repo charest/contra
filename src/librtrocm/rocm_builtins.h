@@ -3,6 +3,8 @@
 
 #include "config.h"
 
+void __syncthreads();
+
 __attribute__((const)) size_t GET_NUM_GROUPS(uint dim) {
     __constant byte_t * p = (__constant byte_t*)__builtin_amdgcn_dispatch_ptr();
 

@@ -157,6 +157,7 @@ void rocm_runtime_t::init(int dev_id) {
   hipDeviceProp_t props;
   hipGetDeviceProperties(&props, dev_id);
   MaxThreadsPerBlock = props.maxThreadsPerBlock;
+  MaxThreadsPerBlock = 512;
   
   IsStarted = true;
 }

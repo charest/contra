@@ -9,6 +9,7 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
@@ -58,14 +59,12 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
   Trip.setOS(Triple::AMDHSA);
   TargetMachine_ = Tgt->createTargetMachine(
         Trip.getTriple(),
-        "gfx900",
+        ROCM_DEFAULT_TARGET_CPU,
         "", //"-code-object-v3",
         TargetOptions(),
         None,
         None,
         CodeGenOpt::Aggressive);
-
-  UserModule_ = createModule("function lib");
   
 }
 
@@ -104,7 +103,7 @@ void ROCmJIT::addModule(const Module * M) {
 
   // must be just a function since we are not given
   // ownership of module
-  Linker::linkModules(*UserModule_, std::move(ClonedModule), LinkFlags_);
+  UserModules_.emplace_back( std::move(ClonedModule) );
 }
 
 
@@ -188,6 +187,8 @@ void ROCmJIT::runOnModule(Module & M)
             NewI = replaceIntrinsic(M, CallI, Intrinsic::maxnum, {RetT});
           else if (CallN == "fmin")
             NewI = replaceIntrinsic(M, CallI, Intrinsic::minnum, {RetT});
+          else if (CallN == "__syncthreads")
+            NewI = replaceSync(M, CallI);
 
         } // call
         // Done Replacements
@@ -195,7 +196,8 @@ void ROCmJIT::runOnModule(Module & M)
             
         // replace instruction
         if (NewI) {
-          ReplaceInstWithInst(&(*InstIt), NewI);
+          if (InstIt->getParent())
+            ReplaceInstWithInst(&(*InstIt), NewI);
           InstIt = BasicBlock::iterator(NewI);
         }
       } // Instruction
@@ -326,18 +328,22 @@ void ROCmJIT::assemble(
   //----------------------------------------------------------------------------
   // Add user device modules
 
-  auto ClonedM = cloneModule(*UserModule_);
-  auto err = L.linkInModule(std::move(ClonedM), Linker::Flags::LinkOnlyNeeded);
-  if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
+  for (auto & UserM : UserModules_) {
+    auto ClonedM = cloneModule(*UserM);
+    auto err = L.linkInModule(std::move(ClonedM), LinkFlags_);
+    if (err) THROW_CONTRA_ERROR("Error linking in user device module.");
+  }
   
   if (HasReduce) {
+    auto CPUStr = TargetMachine_->getTargetCPU().str();
     linkFiles(
         L, 
         {
-          ROCM_DEVICE_USER_PATH"/librtrocm/rocm_scratch.bc",
-          ROCM_DEVICE_USER_PATH"/contra/rocm_reduce.bc"
+          ROCM_DEVICE_USER_PATH"/librtrocm/rocm_scratch." + CPUStr + ".bc",
+          ROCM_DEVICE_USER_PATH"/contra/rocm_reduce." + CPUStr + ".bc"
         }, 
         LinkFlags_);
+    runOnModule(M);
   }
       
   //----------------------------------------------------------------------------
@@ -423,6 +429,20 @@ void ROCmJIT::linkFiles(
     if (err)
       THROW_CONTRA_ERROR("Error linking in device module.");
   }
+}
+
+//==============================================================================
+// Link in bitcode
+//==============================================================================
+Instruction* ROCmJIT::replaceSync(Module & M, CallInst * CallI){
+  auto WorkgroupSSID = TheContext_.getOrInsertSyncScopeID("workgroup");
+  IRBuilder<> TmpB(CallI);
+  TmpB.CreateFence(AtomicOrdering::Release, WorkgroupSSID);
+  auto F = Intrinsic::getDeclaration(&M, Intrinsic::amdgcn_s_barrier); 
+  TmpB.CreateCall(F);
+  auto FenceI = TmpB.CreateFence(AtomicOrdering::Acquire, WorkgroupSSID);
+  CallI->eraseFromParent();
+  return FenceI;
 }
 
 } // namepsace
