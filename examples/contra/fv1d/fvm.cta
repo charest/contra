@@ -47,7 +47,7 @@ fn compute_flux(
 tsk main() {
 
   # input parameters
-  num_parts = 512
+  num_parts = 256
   num_cells = 4000
   num_ghost = 1
   f64 xleft = 0

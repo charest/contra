@@ -375,47 +375,31 @@ CallInst* BuilderHelper::memSet(
 // create a minimum instruction
 //==============================================================================
 Value* BuilderHelper::createMinimum(
+    Module& M,
     Value* LHS,
     Value* RHS,
     const std::string & Name)
 {
-  assert(LHS->getType() == RHS->getType());
-  
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-
   auto Ty = LHS->getType();
-  auto ResultA = createEntryBlockAlloca(Ty, "min");
-
-  Value* CondV = nullptr;
-  if (Ty->isFloatingPointTy())
-    CondV = Builder_.CreateFCmpULT(LHS, RHS, "cmptmp");
-  else if (Ty->isIntegerTy())
-    CondV = Builder_.CreateICmpSLT(LHS, RHS, "cmptmp");
-
-  return Builder_.CreateSelect(CondV, LHS, RHS);
+  assert(Ty == RHS->getType());
+    
+  auto F = Intrinsic::getDeclaration(&M, Intrinsic::minnum, {Ty});
+  return Builder_.CreateCall(F, {LHS, RHS}, Name);
 }
 
 //==============================================================================
 // create a minimum instruction
 //==============================================================================
 Value* BuilderHelper::createMaximum(
+    Module& M,
     Value* LHS,
     Value* RHS,
     const std::string & Name)
 {
-  assert(LHS->getType() == RHS->getType());
-  
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-
   auto Ty = LHS->getType();
-  auto ResultA = createEntryBlockAlloca(Ty, "max");
-
-  Value* CondV = nullptr;
-  if (Ty->isFloatingPointTy())
-    CondV = Builder_.CreateFCmpUGT(LHS, RHS, "cmptmp");
-  else if (Ty->isIntegerTy())
-    CondV = Builder_.CreateICmpSGT(LHS, RHS, "cmptmp");
-
-  return Builder_.CreateSelect(CondV, LHS, RHS);
+  assert(Ty == RHS->getType());
+    
+  auto F = Intrinsic::getDeclaration(&M, Intrinsic::maxnum, {Ty});
+  return Builder_.CreateCall(F, {LHS, RHS}, Name);
 }
 } // namespace

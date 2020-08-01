@@ -498,9 +498,9 @@ Value* AbstractTasker::applyReduce(
     case ReductionType::Div:
       return Builder_.CreateFDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
-      return TheHelper_.createMinimum(LhsV, RhsV, "min");
+      return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.createMaximum(LhsV, RhsV, "max");
+      return TheHelper_.createMaximum(TheModule, LhsV, RhsV, "max");
     default :
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -518,9 +518,9 @@ Value* AbstractTasker::applyReduce(
     case ReductionType::Div:
       return Builder_.CreateSDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
-      return TheHelper_.createMinimum(LhsV, RhsV, "min");
+      return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.createMaximum(LhsV, RhsV, "max");
+      return TheHelper_.createMaximum(TheModule, LhsV, RhsV, "max");
     default:
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -548,9 +548,9 @@ Value* AbstractTasker::foldReduce(
     case ReductionType::Div:
       return Builder_.CreateFMul(LhsV, RhsV, "multmp");
     case ReductionType::Min:
-      return TheHelper_.createMinimum(LhsV, RhsV, "min");
+      return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.createMaximum(LhsV, RhsV, "max");
+      return TheHelper_.createMaximum(TheModule, LhsV, RhsV, "max");
     default :
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -566,9 +566,9 @@ Value* AbstractTasker::foldReduce(
     case ReductionType::Div:
       return Builder_.CreateMul(LhsV, RhsV, "multmp");
     case ReductionType::Min:
-      return TheHelper_.createMinimum(LhsV, RhsV, "min");
+      return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
-      return TheHelper_.createMaximum(LhsV, RhsV, "max");
+      return TheHelper_.createMaximum(TheModule, LhsV, RhsV, "max");
     default:
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
