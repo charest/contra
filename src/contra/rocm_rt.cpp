@@ -157,7 +157,7 @@ void rocm_runtime_t::init(int dev_id) {
   hipDeviceProp_t props;
   hipGetDeviceProperties(&props, dev_id);
   MaxThreadsPerBlock = props.maxThreadsPerBlock;
-  MaxThreadsPerBlock = 512;
+  //MaxThreadsPerBlock = 512;
   
   IsStarted = true;
 }
@@ -317,14 +317,14 @@ void contra_rocm_launch_kernel(
     size_t result_size,
     void ** dev_indata,
     void ** dev_outdata,
-    void(*host_apply)(byte_t*, byte_t*))
+    void(*host_fold)(byte_t*, byte_t*))
 {
   hipFunction_t F;
   hipModule_t M;
   const auto & KD = RocmRuntime.loadKernel(name, &M, &F);
 
   auto size = is->size();
-  size_t num_blocks = size, num_threads_per_block = 1;
+  size_t num_blocks, num_threads_per_block;
   RocmRuntime.threadDims(size, num_blocks, num_threads_per_block);
   
   // size of shared memory
@@ -382,7 +382,7 @@ void contra_rocm_launch_kernel(
       check(err);
       auto outdata_bytes = static_cast<byte_t*>(outdata);
       for (unsigned i=1; i<num_blocks; ++i)
-        (host_apply)( outdata_bytes, outdata_bytes+result_size*i );
+        (host_fold)( outdata_bytes, outdata_bytes+result_size*i );
       memcpy(result, outdata, result_size);
       free(outdata);
     }

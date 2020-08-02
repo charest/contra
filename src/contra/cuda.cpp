@@ -975,7 +975,6 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
 
     std::vector<Type*> ArgTs = {
       VoidPtrType_,
-      VoidPtrType_,
       VoidPtrType_
     };
     FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
@@ -1002,29 +1001,19 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
 
 
     for (unsigned i=0; i<VarTs.size(); ++i) {
-      auto VarT = VarTs[i];
-      auto VarPtrT = VarT->getPointerTo();
-      // res += lhs + rhs
-      // 1. lhs + rhs
       Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
       Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
       auto OffsetV = TheHelper_.load(OffsetA);
       LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
       RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+      auto VarT = VarTs[i];
+      auto VarPtrT = VarT->getPointerTo();
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
       RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV);
-      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV);
-      auto ReduceV = foldReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
-      // 2. res + previous
-      Value* ResPtrV = TheHelper_.load(ArgAs[2]);
-      OffsetV = TheHelper_.load(OffsetA);
-      ResPtrV = Builder_.CreateGEP(ResPtrV, OffsetV);
-      ResPtrV = TheHelper_.createBitCast(ResPtrV, VarPtrT);
-      auto ResV = Builder_.CreateLoad(VarT, ResPtrV, true /*volatile*/);
-      ReduceV = applyReduce(TheModule, ResV, ReduceV, ReduceTypes[i]);
-      // 3. store
-      Builder_.CreateStore(ReduceV, ResPtrV, true /*volatile*/);
+      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
+      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
+      auto ReduceV = applyReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
+      Builder_.CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
       auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
       TheHelper_.increment( OffsetA, SizeC );
     }
@@ -1044,7 +1033,6 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
         GlobalValue::NotThreadLocal,
         1);
   }
-
 
   //----------------------------------------------------------------------------
   // create init

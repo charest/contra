@@ -11,7 +11,7 @@ tsk top_level() {
   isum = 0
 
   foreach i = parts {
-    reduce isum, dsum : +
+    reduce isum, dsum : -
 
     for j = 0:len(points)-1 {
       dsum = dsum + 1.

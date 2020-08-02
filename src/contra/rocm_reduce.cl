@@ -5,6 +5,7 @@
 
 void init(volatile byte_t*);
 void apply(volatile byte_t*, volatile byte_t*);
+void fold(volatile byte_t*, volatile byte_t*);
 
 //==============================================================================
 /// Main reduction kernel
@@ -36,7 +37,7 @@ void reduce(
     if (tid < s) {
 
       //sdata[tid] += sdata[tid + s];
-      apply(
+      fold(
           sdata + data_size*tid,
           sdata + data_size*(tid + s)
       );
@@ -44,7 +45,7 @@ void reduce(
       // sdata[tid] += sdata[tid + (s2-1)];
       if (2*s < s2) {
         if (tid==0) {
-          apply(
+          fold(
               sdata + data_size*tid,
               sdata + data_size*(tid + s2-1)
           );

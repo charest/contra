@@ -38,10 +38,180 @@ void check(cudaError_t err, const char * msg) {
 /// Runtime definition
 ////////////////////////////////////////////////////////////////////////////////
 
-extern "C" {
-
 /// global runtime for compiled cases
 cuda_runtime_t CudaRuntime;
+
+//==============================================================================
+// Determine the number of threads/blocks
+//==============================================================================
+void cuda_runtime_t::threadDims(
+    size_t NumThreads,
+    size_t & NumBlocks,
+    size_t & ThreadsPerBlock
+    )
+{
+  NumBlocks = 1;
+  ThreadsPerBlock = NumThreads;
+
+  if (NumThreads > MaxThreadsPerBlock) {
+    ThreadsPerBlock = MaxThreadsPerBlock;
+    NumBlocks = NumThreads / ThreadsPerBlock;
+    if (NumThreads % ThreadsPerBlock) NumBlocks++;
+  }
+}
+
+//==============================================================================
+// start runtime
+//==============================================================================
+void cuda_runtime_t::init(int dev_id) {
+  auto err = cuInit(0);
+  check(err);
+
+  err = cuDeviceGet(&CuDevice, dev_id);
+  check(err);
+  printf( "Selected Device: %d\n", dev_id);
+    
+  cudaDeviceProp props;
+  cudaGetDeviceProperties(&props, dev_id);
+  MaxThreadsPerBlock = props.maxThreadsPerBlock;
+  //MaxThreadsPerBlock = 256;
+
+  err = cuCtxCreate(&CuContext, 0, CuDevice);
+  check(err);
+  
+  IsStarted = true;
+}
+
+//==============================================================================
+// shutdown runtime
+//==============================================================================
+void cuda_runtime_t::shutdown() {
+  if (!IsStarted) return;
+
+  auto err = cuCtxDestroy(CuContext);
+  check(err);
+
+  IsStarted = false;
+}
+  
+  
+//==============================================================================
+// Link a module
+//==============================================================================
+void cuda_runtime_t::link(CUmodule &CuModule) {
+  
+  //------------------------------------
+  // Start linker
+  
+  static constexpr auto log_size = 8*1024;
+  float walltime = 0;
+  char error_log[log_size];
+  char info_log[log_size];
+
+  
+  CUjit_option options[6];
+  void* values[6];
+  options[0] = CU_JIT_WALL_TIME;
+  values[0] = (void*)&walltime;
+  options[1] = CU_JIT_INFO_LOG_BUFFER;
+  values[1] = (void*)info_log;
+  options[2] = CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES;
+  values[2] = (void*)log_size;
+  options[3] = CU_JIT_ERROR_LOG_BUFFER;
+  values[3] = (void*)error_log;
+  options[4] = CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES;
+  values[4] = (void*)log_size;
+  options[5] = CU_JIT_LOG_VERBOSE;
+  values[5] = (void*)1;
+
+  CUlinkState CuLinkState;
+  auto err = cuLinkCreate(6, options, values, &CuLinkState);
+  check(err);
+  
+  //------------------------------------
+  // Populate linker
+
+  // link library
+  err = cuLinkAddFile(
+      CuLinkState,
+      CU_JIT_INPUT_LIBRARY,
+      CONTRA_CUDA_LIBRARY,
+      0, 0, 0);
+  if (err != CUDA_SUCCESS) {
+    err = cuLinkAddFile(
+        CuLinkState,
+        CU_JIT_INPUT_LIBRARY,
+        CONTRA_CUDA_LIBRARY_INSTALLED,
+        0, 0, 0);
+  }
+  check(err);
+
+  // link any ptx
+  for (auto & ptx : Ptxs) {
+
+    // compile
+    err = cuLinkAddData(
+        CuLinkState,
+        CU_JIT_INPUT_PTX,
+        (void*)ptx.c_str(),
+        ptx.size()+1,
+        0, 0, 0, 0);
+
+    // check for errors
+    if(err != CUDA_SUCCESS){
+      const char* s;
+      cuGetErrorString(err, &s);
+      std::cerr << "cuLinkAddData error: " << s << std::endl;
+      std::cerr << std::endl;
+      std::cerr << error_log << std::endl;
+      std::cerr << std::endl;
+      std::istringstream iss(ptx); 
+      size_t cnt = 1;
+      for (std::string line; std::getline(iss, line); )
+      {
+        std::cerr << std::setw(6) << cnt++ << " - " << line << std::endl;
+      }
+      std::cerr << std::endl;
+      abort();
+    } // error report
+
+  } // ptx
+
+  //------------------------------------
+  // finish link
+  void* cubin; 
+  size_t cubin_size; 
+  err = cuLinkComplete(CuLinkState, &cubin, &cubin_size);
+    
+  // check for errors
+  if(err != CUDA_SUCCESS){
+    const char* s;
+    cuGetErrorString(err, &s);
+    std::cerr << "cuLinkComplete error: " << s << std::endl;
+    std::cerr << std::endl;
+    std::cerr << error_log << std::endl;
+    std::cerr << std::endl;
+    abort();
+  } // error report
+
+  err = cuModuleLoadData(&CuModule, cubin);
+  check(err);
+  
+  //------------------------------------
+  // Destroy linker
+  err = cuLinkDestroy(CuLinkState);
+  check(err);
+  
+
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Runtime definition
+////////////////////////////////////////////////////////////////////////////////
+
+extern "C" {
 
 //==============================================================================
 // Get/create memory for an index partition
@@ -157,147 +327,6 @@ contra_cuda_task_info_t::~contra_cuda_task_info_t() {
 }
   
 
-//==============================================================================
-// start runtime
-//==============================================================================
-void cuda_runtime_t::init(int dev_id) {
-  auto err = cuInit(0);
-  check(err);
-
-  err = cuDeviceGet(&CuDevice, dev_id);
-  check(err);
-  printf( "Selected Device: %d\n", dev_id);
-    
-  cudaDeviceProp props;
-  cudaGetDeviceProperties(&props, dev_id);
-  MaxThreadsPerBlock = props.maxThreadsPerBlock;
-
-  err = cuCtxCreate(&CuContext, 0, CuDevice);
-  check(err);
-  
-  IsStarted = true;
-}
-
-//==============================================================================
-// shutdown runtime
-//==============================================================================
-void cuda_runtime_t::shutdown() {
-  if (!IsStarted) return;
-
-  auto err = cuCtxDestroy(CuContext);
-  check(err);
-
-  IsStarted = false;
-}
-  
-  
-void cuda_runtime_t::link(CUmodule &CuModule) {
-  
-  //------------------------------------
-  // Start linker
-  
-  static constexpr auto log_size = 8*1024;
-  float walltime = 0;
-  char error_log[log_size];
-  char info_log[log_size];
-
-  
-  CUjit_option options[6];
-  void* values[6];
-  options[0] = CU_JIT_WALL_TIME;
-  values[0] = (void*)&walltime;
-  options[1] = CU_JIT_INFO_LOG_BUFFER;
-  values[1] = (void*)info_log;
-  options[2] = CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES;
-  values[2] = (void*)log_size;
-  options[3] = CU_JIT_ERROR_LOG_BUFFER;
-  values[3] = (void*)error_log;
-  options[4] = CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES;
-  values[4] = (void*)log_size;
-  options[5] = CU_JIT_LOG_VERBOSE;
-  values[5] = (void*)1;
-
-  CUlinkState CuLinkState;
-  auto err = cuLinkCreate(6, options, values, &CuLinkState);
-  check(err);
-  
-  //------------------------------------
-  // Populate linker
-
-  // link library
-  err = cuLinkAddFile(
-      CuLinkState,
-      CU_JIT_INPUT_LIBRARY,
-      CONTRA_CUDA_LIBRARY,
-      0, 0, 0);
-  if (err != CUDA_SUCCESS) {
-    err = cuLinkAddFile(
-        CuLinkState,
-        CU_JIT_INPUT_LIBRARY,
-        CONTRA_CUDA_LIBRARY_INSTALLED,
-        0, 0, 0);
-  }
-  check(err);
-
-  // link any ptx
-  for (auto & ptx : Ptxs) {
-
-    // compile
-    err = cuLinkAddData(
-        CuLinkState,
-        CU_JIT_INPUT_PTX,
-        (void*)ptx.c_str(),
-        ptx.size()+1,
-        0, 0, 0, 0);
-
-    // check for errors
-    if(err != CUDA_SUCCESS){
-      const char* s;
-      cuGetErrorString(err, &s);
-      std::cerr << "cuLinkAddData error: " << s << std::endl;
-      std::cerr << std::endl;
-      std::cerr << error_log << std::endl;
-      std::cerr << std::endl;
-      std::istringstream iss(ptx); 
-      size_t cnt = 1;
-      for (std::string line; std::getline(iss, line); )
-      {
-        std::cerr << std::setw(6) << cnt++ << " - " << line << std::endl;
-      }
-      std::cerr << std::endl;
-      abort();
-    } // error report
-
-  } // ptx
-
-  //------------------------------------
-  // finish link
-  void* cubin; 
-  size_t cubin_size; 
-  err = cuLinkComplete(CuLinkState, &cubin, &cubin_size);
-    
-  // check for errors
-  if(err != CUDA_SUCCESS){
-    const char* s;
-    cuGetErrorString(err, &s);
-    std::cerr << "cuLinkComplete error: " << s << std::endl;
-    std::cerr << std::endl;
-    std::cerr << error_log << std::endl;
-    std::cerr << std::endl;
-    abort();
-  } // error report
-
-  err = cuModuleLoadData(&CuModule, cubin);
-  check(err);
-  
-  //------------------------------------
-  // Destroy linker
-  err = cuLinkDestroy(CuLinkState);
-  check(err);
-  
-
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Public c interface
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,12 +410,13 @@ void contra_cuda_launch_kernel(
   
 
   auto size = is->size();
-  auto Dims = CudaRuntime.threadDims(size);
+  size_t num_blocks, threads_per_block;
+  CudaRuntime.threadDims(size, num_blocks, threads_per_block);
 
   auto err = cuLaunchKernel(
       Kernel->Function,
-      Dims.first, 1, 1,
-      Dims.second, 1, 1,
+      num_blocks, 1, 1,
+      threads_per_block, 1, 1,
       0,
       nullptr,
       params,
@@ -790,15 +820,18 @@ contra_cuda_accessor_t contra_cuda_field2dev(
       auto err = cudaMalloc(&(dev_acc->data), bytes);
       check(err, "cudaMalloc");
     }
-    auto Dims = CudaRuntime.threadDims(size);
+
+    size_t num_blocks, threads_per_block;
+    CudaRuntime.threadDims(size, num_blocks, threads_per_block);
+
     cuda_copy(
       static_cast<byte_t*>(*dev_data),
       static_cast<byte_t*>(dev_acc->data),
       dev_part.indices,
       data_size,
       size,
-      Dims.first,
-      Dims.second);
+      num_blocks,
+      threads_per_block);
     
     // move accessor over
     if (!acc_res.second)
@@ -942,44 +975,37 @@ void contra_cuda_launch_reduction(
     sizeof(fold_t));
 
   // block dimensinos
-  auto max_threads  = CudaRuntime.MaxThreadsPerBlock;
-  size_t threads_per_block = (size < max_threads*2) ? size / 2 : max_threads;
-  size_t block_size = size / (threads_per_block * 2);
-  block_size = std::min<size_t>(64, block_size);
+  size_t num_blocks, threads_per_block;
+  CudaRuntime.threadDims(size, num_blocks, threads_per_block);
   
   // size of shared memory
   size_t shared_bytes = data_size * threads_per_block;
 
   // block level storage for result
   void * dev_outdata;
-  cudaMalloc(&dev_outdata, block_size*data_size); // num blocks
+  cudaMalloc(&dev_outdata, num_blocks*data_size); // num blocks
   
   // Get the reduction function
   CUfunction ReduceFunction;
-  auto err = cuModuleGetFunction(&ReduceFunction, Kernel->Module, "reduce6");
+  auto err = cuModuleGetFunction(&ReduceFunction, Kernel->Module, "reduce");
   check(err);
 
   // launch the final reduction
   unsigned data_size_as_uint = data_size;
   unsigned size_as_uint = size;
-  unsigned threads_per_block_as_uint = threads_per_block;
   void * params[] = {
     dev_indata,
     &dev_outdata,
     &data_size_as_uint,
     &size_as_uint,
-    &threads_per_block_as_uint,
     &init_ptr,
     &apply_ptr,
     &fold_ptr
   };
 
-  std::cout << "block " <<  block_size << ", threads " << threads_per_block << std::endl;
-  std::cout << "size " << size  << std::endl;
-  std::cout << "gridSize " << block_size*2*threads_per_block << std::endl;
   err = cuLaunchKernel(
       ReduceFunction,
-      block_size, 1, 1,
+      num_blocks, 1, 1,
       threads_per_block, 1, 1,
       shared_bytes,
       nullptr,
@@ -991,18 +1017,18 @@ void contra_cuda_launch_reduction(
   //check(cuerr, "Reduction launch");
   
   // copy over data
-  if (block_size > 1) {
-    auto outdata = malloc(block_size*data_size);
-    auto err = cudaMemcpy(outdata, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost);
+  if (num_blocks > 1) {
+    auto outdata = malloc(num_blocks*data_size);
+    auto err = cudaMemcpy(outdata, dev_outdata, num_blocks*data_size, cudaMemcpyDeviceToHost);
     check(err, "cudaMemcpy");
     auto outdata_bytes = static_cast<byte_t*>(outdata);
-    for (unsigned i=1; i<block_size; ++i)
+    for (unsigned i=1; i<num_blocks; ++i)
       (host_fold)( outdata_bytes, outdata_bytes+data_size*i );
     memcpy(result, outdata, data_size);
     free(outdata);
   }
   else {
-    auto err = cudaMemcpy(result, dev_outdata, block_size*data_size, cudaMemcpyDeviceToHost); 
+    auto err = cudaMemcpy(result, dev_outdata, num_blocks*data_size, cudaMemcpyDeviceToHost); 
     check(err, "cudaMemcpy");
   }
   cudaFree(dev_outdata);

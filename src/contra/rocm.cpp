@@ -590,7 +590,7 @@ Value* ROCmTasker::launch(
   // Prepare reduction function
   
   Value* ResultA = Constant::getNullValue(VoidPtrType_);
-  Value* ApplyF = Constant::getNullValue(VoidPtrType_);
+  Value* FoldF = Constant::getNullValue(VoidPtrType_);
   Value* IndataA = cast<Value>(Constant::getNullValue(VoidPtrType_->getPointerTo()));
   Value* OutdataA = cast<Value>(Constant::getNullValue(VoidPtrType_->getPointerTo()));
   Value* ResultSizeV = llvmValue<size_t>(TheContext_, 0);
@@ -602,9 +602,9 @@ Value* ROCmTasker::launch(
     ResultT->setBody( ReduceOp->getVarTypes() );
     ResultSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
     
-    const auto & ApplyN = ReduceOp->getApplyName();
-    auto ApplyT = ReduceOp->getApplyType();
-    ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
+    const auto & FoldN = ReduceOp->getFoldName();
+    auto FoldT = ReduceOp->getFoldType();
+    FoldF = TheModule.getOrInsertFunction(FoldN, FoldT).getCallee();
 
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
 
@@ -629,7 +629,7 @@ Value* ROCmTasker::launch(
       ResultSizeV,
       IndataA,
       OutdataA,
-      ApplyF
+      FoldF
     });
 
   
@@ -1003,6 +1003,63 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
     DataSizes.emplace_back( TheHelper_.getTypeSizeInBits(TheModule, VarT)/8 );
     DataSize += DataSizes.back();
   }
+  
+  //----------------------------------------------------------------------------
+  // create Fold
+  Function * FoldF;
+  std::string FoldPtrN;
+  {
+    std::string FoldN = "fold";
+
+    std::vector<Type*> ArgTs = {
+      VoidPtrType_,
+      VoidPtrType_
+    };
+    FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
+    FoldF = Function::Create(
+        FunT,
+        Function::ExternalLinkage,
+        FoldN,
+        TheModule);
+
+    auto BB = BasicBlock::Create(TheContext_, "entry", FoldF);
+    Builder_.SetInsertPoint(BB);
+
+    unsigned i=0;
+    std::vector<AllocaInst*> ArgAs(ArgTs.size());
+    for (auto &Arg : FoldF->args()) {
+      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
+      Builder_.CreateStore(&Arg, ArgAs[i]);
+      ++i;
+    }
+
+    auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+    Builder_.CreateStore(ZeroC, OffsetA);
+
+
+    for (unsigned i=0; i<VarTs.size(); ++i) {
+      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
+      Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
+      auto OffsetV = TheHelper_.load(OffsetA);
+      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+      auto VarT = VarTs[i];
+      auto VarPtrT = VarT->getPointerTo();
+      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
+      RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
+      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
+      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
+      auto ReduceV = foldReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
+      Builder_.CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
+      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      TheHelper_.increment( OffsetA, SizeC );
+    }
+        
+    Builder_.CreateRetVoid();
+    
+  }
+
 
   //----------------------------------------------------------------------------
   // create apply
@@ -1115,7 +1172,9 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
       InitF,
       InitPtrN,
       ApplyF,
-      ApplyPtrN);
+      ApplyPtrN,
+      FoldF,
+      FoldPtrN);
 }
 
 

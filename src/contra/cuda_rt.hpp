@@ -10,8 +10,6 @@
 #include <map>
 #include <vector>
 
-extern "C" {
-  
 struct KernelData {
   CUfunction Function;
   CUmodule Module;
@@ -37,25 +35,15 @@ struct cuda_runtime_t {
   void link(CUmodule &);
   void link_start();
   
-  std::pair<size_t, size_t> threadDims(size_t NumThreads)
-  {
-    size_t NumBlocks = 1;
-    size_t ThreadsPerBlock = NumThreads;
-
-    if (NumThreads > MaxThreadsPerBlock) {
-      ThreadsPerBlock = MaxThreadsPerBlock;
-      NumBlocks = NumThreads / ThreadsPerBlock;
-      if (NumThreads % ThreadsPerBlock) NumBlocks++;
-    }
-
-    return {NumBlocks, ThreadsPerBlock};
-  }
+  void threadDims(size_t NumThreads, size_t &, size_t &);
 
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Types needed for kokkos runtime
 ////////////////////////////////////////////////////////////////////////////////
+extern "C" {
 
 //==============================================================================
 struct contra_cuda_partition_t {
