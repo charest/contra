@@ -22,7 +22,7 @@ class CudaReduceInfo : public AbstractReduceInfo {
 
   std::string ApplyN_, ApplyPtrN_;
   llvm::FunctionType * ApplyT_;
-
+  
   std::string FoldN_,  FoldPtrN_;
   llvm::FunctionType * FoldT_;
 

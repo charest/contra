@@ -897,7 +897,7 @@ void contra_cuda_launch_reduction(
     void ** dev_indata,
     void * result,
     size_t data_size,
-    apply_t host_apply)
+    fold_t host_fold)
 {
   // some dimensinos
   size_t size = is->size();
@@ -974,6 +974,9 @@ void contra_cuda_launch_reduction(
     &fold_ptr
   };
 
+  std::cout << "block " <<  block_size << ", threads " << threads_per_block << std::endl;
+  std::cout << "size " << size  << std::endl;
+  std::cout << "gridSize " << block_size*2*threads_per_block << std::endl;
   err = cuLaunchKernel(
       ReduceFunction,
       block_size, 1, 1,
@@ -986,7 +989,7 @@ void contra_cuda_launch_reduction(
   
   //auto cuerr = cudaDeviceSynchronize();
   //check(cuerr, "Reduction launch");
-
+  
   // copy over data
   if (block_size > 1) {
     auto outdata = malloc(block_size*data_size);
@@ -994,7 +997,7 @@ void contra_cuda_launch_reduction(
     check(err, "cudaMemcpy");
     auto outdata_bytes = static_cast<byte_t*>(outdata);
     for (unsigned i=1; i<block_size; ++i)
-      (host_apply)( outdata_bytes, outdata_bytes+data_size*i );
+      (host_fold)( outdata_bytes, outdata_bytes+data_size*i );
     memcpy(result, outdata, data_size);
     free(outdata);
   }

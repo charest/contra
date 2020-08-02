@@ -531,9 +531,9 @@ Value* CudaTasker::launch(
     auto ApplyStr = llvmString(TheContext_, TheModule, ReduceOp->getApplyPtrName());
     auto FoldStr = llvmString(TheContext_, TheModule, ReduceOp->getFoldPtrName());
 
-    const auto & ApplyN = ReduceOp->getApplyName();
-    auto ApplyT = ReduceOp->getApplyType();
-    auto ApplyF = TheModule.getOrInsertFunction(ApplyN, ApplyT).getCallee();
+    const auto & FoldN = ReduceOp->getFoldName();
+    auto FoldT = ReduceOp->getFoldType();
+    auto FoldF = TheModule.getOrInsertFunction(FoldN, FoldT).getCallee();
 
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
     auto OutDataV = TheHelper_.createBitCast(ResultA, VoidPtrType_);
@@ -547,7 +547,7 @@ Value* CudaTasker::launch(
       IndataA,
       OutDataV,
       DataSizeV,
-      ApplyF
+      FoldF
     };
     TheHelper_.callFunction(
         TheModule,
@@ -898,74 +898,6 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
   }
 
   //----------------------------------------------------------------------------
-  // create apply
-  Function * ApplyF;
-  std::string ApplyPtrN;
-  {
-    std::string ApplyN = ReductionN + "apply";
-
-    std::vector<Type*> ArgTs = {
-      VoidPtrType_,
-      VoidPtrType_
-    };
-    FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
-    ApplyF = Function::Create(
-        FunT,
-        Function::ExternalLinkage,
-        ApplyN,
-        TheModule);
-
-    auto BB = BasicBlock::Create(TheContext_, "entry", ApplyF);
-    Builder_.SetInsertPoint(BB);
-
-    unsigned i=0;
-    std::vector<AllocaInst*> ArgAs(ArgTs.size());
-    for (auto &Arg : ApplyF->args()) {
-      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
-      Builder_.CreateStore(&Arg, ArgAs[i]);
-      ++i;
-    }
-
-    auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
-    Builder_.CreateStore(ZeroC, OffsetA);
-
-
-    for (unsigned i=0; i<VarTs.size(); ++i) {
-      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
-      Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
-      auto OffsetV = TheHelper_.load(OffsetA);
-      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
-      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
-      auto VarT = VarTs[i];
-      auto VarPtrT = VarT->getPointerTo();
-      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
-      RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
-      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
-      auto ReduceV = applyReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
-      Builder_.CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
-      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
-      TheHelper_.increment( OffsetA, SizeC );
-    }
-        
-    Builder_.CreateRetVoid();
-    
-    // device pointer
-    ApplyPtrN = ApplyN + "_ptr";
-    new GlobalVariable(
-        TheModule, 
-        FunT->getPointerTo(),
-        false,
-        GlobalValue::InternalLinkage,
-        ApplyF, // has initializer, specified below
-        ApplyPtrN,
-        nullptr,
-        GlobalValue::NotThreadLocal,
-        1);
-  }
-
-  //----------------------------------------------------------------------------
   // create fold
   Function * FoldF;
   std::string FoldPtrN;
@@ -973,7 +905,6 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     std::string FoldN = ReductionN + "fold";
 
     std::vector<Type*> ArgTs = {
-      VoidPtrType_,
       VoidPtrType_,
       VoidPtrType_
     };
@@ -1001,6 +932,76 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
 
 
     for (unsigned i=0; i<VarTs.size(); ++i) {
+      Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
+      Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
+      auto OffsetV = TheHelper_.load(OffsetA);
+      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+      auto VarT = VarTs[i];
+      auto VarPtrT = VarT->getPointerTo();
+      LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
+      RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
+      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
+      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
+      auto ReduceV = foldReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
+      Builder_.CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
+      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      TheHelper_.increment( OffsetA, SizeC );
+    }
+        
+    Builder_.CreateRetVoid();
+    
+    // device pointer
+    FoldPtrN = FoldN + "_ptr";
+    new GlobalVariable(
+        TheModule, 
+        FunT->getPointerTo(),
+        false,
+        GlobalValue::InternalLinkage,
+        FoldF, // has initializer, specified below
+        FoldPtrN,
+        nullptr,
+        GlobalValue::NotThreadLocal,
+        1);
+  }
+
+
+  //----------------------------------------------------------------------------
+  // create apply + fold operation
+  Function * ApplyF;
+  std::string ApplyPtrN;
+  {
+    std::string ApplyN = ReductionN + "apply";
+
+    std::vector<Type*> ArgTs = {
+      VoidPtrType_,
+      VoidPtrType_,
+      VoidPtrType_
+    };
+    FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
+    ApplyF = Function::Create(
+        FunT,
+        Function::ExternalLinkage,
+        ApplyN,
+        TheModule);
+
+    auto BB = BasicBlock::Create(TheContext_, "entry", ApplyF);
+    Builder_.SetInsertPoint(BB);
+
+    unsigned i=0;
+    std::vector<AllocaInst*> ArgAs(ArgTs.size());
+    for (auto &Arg : ApplyF->args()) {
+      ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
+      Builder_.CreateStore(&Arg, ArgAs[i]);
+      ++i;
+    }
+
+    auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
+    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+    Builder_.CreateStore(ZeroC, OffsetA);
+
+
+    for (unsigned i=0; i<VarTs.size(); ++i) {
       auto VarT = VarTs[i];
       auto VarPtrT = VarT->getPointerTo();
       // res += lhs + rhs
@@ -1012,8 +1013,8 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
       RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
       RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
-      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
+      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV);
+      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV);
       auto ReduceV = foldReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
       // 2. res + previous
       Value* ResPtrV = TheHelper_.load(ArgAs[2]);
@@ -1031,14 +1032,14 @@ std::unique_ptr<AbstractReduceInfo> CudaTasker::createReductionOp(
     Builder_.CreateRetVoid();
     
     // device pointer
-    FoldPtrN = FoldN + "_ptr";
+    ApplyPtrN = ApplyN + "_ptr";
     new GlobalVariable(
         TheModule, 
         FunT->getPointerTo(),
         false,
         GlobalValue::InternalLinkage,
-        FoldF, // has initializer, specified below
-        FoldPtrN,
+        ApplyF, // has initializer, specified below
+        ApplyPtrN,
         nullptr,
         GlobalValue::NotThreadLocal,
         1);
