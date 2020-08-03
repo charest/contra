@@ -27,7 +27,6 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 #include "llvm-ext/Target/AMDGPU/AMDGPU.h"                                      
-#include "llvm-ext/Transforms/Utils/AMDGPUEmitPrintf.h"                                
 
 #include <fstream>
 #include <set>
