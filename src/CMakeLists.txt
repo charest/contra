@@ -1,5 +1,4 @@
 set(HAVE_LEGION ${Legion_FOUND})
-set(HAVE_KOKKOS ${Kokkos_FOUND})
 set(HAVE_CUDA ${CUDA_FOUND})
 set(HAVE_ROCM ${HIP_FOUND})
 

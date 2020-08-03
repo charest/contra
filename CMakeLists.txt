@@ -86,15 +86,6 @@ if (Legion_FOUND)
 endif()
 
 #------------------------------------------------------------------------------#
-# Kokkos
-#------------------------------------------------------------------------------#
-find_package(Kokkos QUIET)
-if (Kokkos_FOUND)
-  target_link_libraries(contra PUBLIC Kokkos::kokkos)
-  #list(APPEND SUPPORTED_BACKENDS "kokkos")
-endif()
-
-#------------------------------------------------------------------------------#
 # Cuda toolkit
 #------------------------------------------------------------------------------#
 IF (CMAKE_VERSION VERSION_GREATER_EQUAL "3.17.0")

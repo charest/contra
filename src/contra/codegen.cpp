@@ -7,7 +7,6 @@
 #include "cuda.hpp"
 #include "cuda_jit.hpp"
 #include "errors.hpp"
-#include "kokkos.hpp"
 #include "legion.hpp"
 #include "precedence.hpp"
 #include "rocm.hpp"
@@ -73,11 +72,6 @@ CodeGen::CodeGen (
   else if (Backend == SupportedBackends::Legion) {
     Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
   }
-#endif
-
-#ifdef HAVE_KOKKOS
-  else if (Backend == SupportedBackends::Kokkos)
-    Tasker_ = std::make_unique<KokkosTasker>(TheHelper_);
 #endif
 
 #ifdef HAVE_CUDA

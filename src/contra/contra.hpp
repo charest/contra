@@ -86,9 +86,6 @@ public:
 #ifdef HAVE_LEGION
     if (lower == "legion") BackendType_ = SupportedBackends::Legion; 
 #endif
-#ifdef HAVE_KOKKOS
-    if (lower == "kokkos") BackendType_ = SupportedBackends::Kokkos;
-#endif
 #ifdef HAVE_CUDA
     if (lower == "cuda") BackendType_ = SupportedBackends::Cuda;
 #endif

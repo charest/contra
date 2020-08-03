@@ -9,9 +9,6 @@ enum class SupportedBackends {
 #ifdef HAVE_LEGION
   Legion,
 #endif
-#ifdef HAVE_KOKKOS
-  Kokkos,
-#endif
 #ifdef HAVE_CUDA
   Cuda,
 #endif

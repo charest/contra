@@ -81,20 +81,3 @@ if (BUILD_LEGION)
   )
 endif()
 
-#------------------------------------------------------------------------------#
-# Legion
-#------------------------------------------------------------------------------#
-option(BUILD_KOKKOS "Build Kokkos." ON)
-if (BUILD_KOKKOS)
-  MESSAGE(STATUS "Building Kokkos.")
-  ExternalProject_Add(kokkos
-    GIT_REPOSITORY https://github.com/kokkos/kokkos.git
-    INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
-    UPDATE_COMMAND  ""
-    CMAKE_ARGS
-      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-      -DBUILD_SHARED_LIBS=True
-      ${COMPILE_FLAGS}
-  )
-endif()
-

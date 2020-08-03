@@ -8,7 +8,6 @@
 #define REALM_LIBRARY "@REALM_LIBRARY@"
 #define LEGION_LIBRARY "@Legion_LIBRARY@"
 
-#cmakedefine HAVE_KOKKOS
 #cmakedefine HAVE_CUDA
 
 #ifdef HAVE_CUDA
