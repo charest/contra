@@ -24,7 +24,7 @@ void Contra::setup(const std::string & FileName)
   else
     TheParser_ = std::make_unique<Parser>(ThePrecedence_, FileName);
 
-  TheCG_ = std::make_unique<CodeGen>(BackendType_, IsDebug_, Arguments_);
+  TheCG_ = std::make_unique<CodeGen>(BackendType_, IsDebug_);
 
   if (IRFileName_ == "-") {
     IRFileStream_ = &llvm::outs();

@@ -89,11 +89,6 @@ cl::alias OptionBackendA(
     cl::desc("Alias for -backend"),
     cl::aliasopt(OptionBackend));
 
-cl::opt<std::string> OptionBackendArgs(
-  "backend-args",
-  cl::desc("Arguments to forward to the specified backend"),
-  cl::cat(OptionCategory));
-
 cl::opt<std::string> OptionInputFilename(
   cl::Positional,
   cl::desc("Optional input file.  If none specified, run the interpreter"),
@@ -118,7 +113,6 @@ int main(int argc, char** argv) {
   if (!OptionDumpIR.empty()) Interp.setDumpIR(OptionDumpIR);
   if (!OptionDumpDot.empty()) Interp.setDumpDot(OptionDumpDot);
   if (!OptionBackend.empty()) Interp.setBackend(OptionBackend);
-  if (!OptionBackendArgs.empty()) Interp.setArgs(OptionBackendArgs);
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;

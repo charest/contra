@@ -39,8 +39,6 @@ class Contra : public ErrorVisiter {
 
   SupportedBackends BackendType_ = static_cast<SupportedBackends>(0);
 
-  std::string Arguments_;
-
 public:
 
 
@@ -101,9 +99,6 @@ public:
     if (BackendType_ == SupportedBackends::Size)
       THROW_CONTRA_ERROR("Unsupported backend requested: '" << Backend << "'.");
   }
-
-  void setArgs(const std::string & Args)
-  { Arguments_ = Args; }
 
   // top ::= definition | external | expression | ';'
   void mainLoop();

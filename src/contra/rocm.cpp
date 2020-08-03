@@ -195,7 +195,7 @@ void ROCmTasker::createIndexSpaceFromPartition(
 //==============================================================================
 // start runtime
 //==============================================================================
-void ROCmTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void ROCmTasker::startRuntime(Module &TheModule)
 {
   TheHelper_.callFunction(
       TheModule,

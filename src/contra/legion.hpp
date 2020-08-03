@@ -166,10 +166,7 @@ public:
       llvm::Module &,
       const TaskInfo &) override;
   
-  virtual void startRuntime(
-      llvm::Module &,
-      int,
-      char **) override;
+  virtual void startRuntime(llvm::Module &) override;
   
   virtual llvm::Value* launch(
       llvm::Module &,

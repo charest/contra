@@ -132,13 +132,8 @@ void CudaTasker::destroyTaskInfo(Module & TheModule, AllocaInst* PartA)
 //==============================================================================
 // start runtime
 //==============================================================================
-void CudaTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void CudaTasker::startRuntime(Module &TheModule)
 {
-  //TheHelper_.callFunction(
-  //    TheModule,
-  //    "contra_cuda_startup",
-  //    VoidType_);
-
   launch(TheModule, *TopLevelTask_);
 }
 //==============================================================================

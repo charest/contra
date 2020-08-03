@@ -101,7 +101,7 @@ void SerialTasker::destroyPartitionInfo(Module & TheModule, AllocaInst* PartA)
 //==============================================================================
 // start runtime
 //==============================================================================
-void SerialTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void SerialTasker::startRuntime(Module &TheModule)
 {
   launch(TheModule, *TopLevelTask_);
 }

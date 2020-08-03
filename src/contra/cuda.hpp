@@ -99,10 +99,7 @@ public:
  
   CudaTasker(utils::BuilderHelper & TheHelper);
 
-  virtual void startRuntime(
-      llvm::Module &,
-      int,
-      char **) override;
+  virtual void startRuntime(llvm::Module &) override;
   
   virtual PreambleResult taskPreamble(
       llvm::Module &,

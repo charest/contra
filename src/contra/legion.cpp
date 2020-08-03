@@ -4,20 +4,35 @@
 #include "errors.hpp"
 #include "legion.hpp"
 #include "legion_rt.hpp"
+
 #include "utils/llvm_utils.hpp"
+#include "utils/string_utils.hpp"
+
+#include "llvm/Support/CommandLine.h"
 
 #include <legion.h>
 
 #include <vector>
+
+using namespace llvm;
+using namespace utils;
+
+////////////////////////////////////////////////////////////////////////////////
+// Legion tasker args
+////////////////////////////////////////////////////////////////////////////////
+
+static cl::OptionCategory OptionCategory("Legion Backend Options");
+
+cl::opt<std::string> OptionLegion(
+    "legion-opts",
+    cl::desc("Legion runtime options"),
+    cl::cat(OptionCategory));
   
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace contra {
-
-using namespace llvm;
-using namespace utils;
 
 //==============================================================================
 // Constructor
@@ -1329,9 +1344,39 @@ void LegionTasker::setTopLevelTask(Module &TheModule, const TaskInfo & TaskI)
 //==============================================================================
 // start runtime
 //==============================================================================
-void LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void LegionTasker::startRuntime(Module &TheModule)
 {
+  // setup backend args
+  std::vector<std::string> Args = {"./contra"};
 
+  auto SplitArgs = utils::split(OptionLegion, ' ');
+  for (const auto & A : SplitArgs) 
+    Args.emplace_back(A);
+  
+  bool HasGsize = false;
+  for (const auto & A : Args) {
+    if (A == "-ll:gsize") {
+      HasGsize = true;
+      break;
+    }
+  }
+
+  if (!HasGsize) {
+    Args.emplace_back("-ll:gsize");
+    Args.emplace_back("0");
+  }
+  
+  // need to turn them into char arrays
+  unsigned Argc = Args.size();
+  auto Argv = new char *[Argc];
+
+  for ( unsigned i=0; i<Args.size(); ++i ) {
+    auto len = Args[i].size();
+    Argv[i] = new char[len+1];
+    strcpy(Argv[i], Args[i].data());
+  }
+
+  // startup runtime
   TheHelper_.callFunction(
       TheModule,
       "contra_legion_startup",
@@ -1355,6 +1400,11 @@ void LegionTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
       Int32Type_,
       StartArgVs,
       "start");
+  
+  // delete arguments
+  for (int i=0; i<Argc; ++i) delete[] Argv[i];
+  delete[] Argv;
+
 }
 
 //==============================================================================

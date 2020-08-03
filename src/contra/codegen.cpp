@@ -20,7 +20,6 @@
 #include "librt/dopevector.hpp"
 
 #include "utils/llvm_utils.hpp"
-#include "utils/string_utils.hpp"
 
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
@@ -49,16 +48,12 @@ namespace contra {
 //==============================================================================
 CodeGen::CodeGen (
     SupportedBackends Backend,
-    bool,
-    const std::string & SuppliedArgs) :
+    bool) :
   TheContext_(TheHelper_.getContext()),
   Builder_(TheHelper_.getBuilder())
 {
   HostJIT_ = std::make_unique<JIT>();
 
-  // setup backend args
-  std::vector<std::string> Args = {"./contra"};
-  
   // setup runtime
   librt::RunTimeLib::setup(TheContext_);
   
@@ -76,8 +71,6 @@ CodeGen::CodeGen (
 
 #ifdef HAVE_LEGION
   else if (Backend == SupportedBackends::Legion) {
-    Args.emplace_back("-ll:gsize");
-    Args.emplace_back("0");
     Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
   }
 #endif
@@ -122,32 +115,8 @@ CodeGen::CodeGen (
   // init function optimizer
   initializeModuleAndPassManager();
   
-  // finish arg setup
-  auto SplitArgs = utils::split(SuppliedArgs, ' ');
-  for (const auto & A : SplitArgs) 
-    Args.emplace_back(A);
-
-  Argc_ = Args.size();
-  Argv_ = new char *[Argc_];
-
-  for ( unsigned i=0; i<Args.size(); ++i ) {
-    auto len = Args[i].size();
-    Argv_[i] = new char[len+1];
-    strcpy(Argv_[i], Args[i].data());
-  }
-
 }
   
-//==============================================================================
-// Destructor
-//==============================================================================
-CodeGen::~CodeGen() {
-  // delete arguments
-  for (int i=0; i<Argc_; ++i) delete[] Argv_[i];
-  delete[] Argv_;
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // Optimization / Module interface
 ////////////////////////////////////////////////////////////////////////////////
@@ -1017,7 +986,7 @@ void CodeGen::visit(CallExprAST &e) {
       else
         Tasker_->preregisterTasks(*TheModule_);
       Tasker_->setTopLevelTask(*TheModule_, TaskI);
-      Tasker_->start(*TheModule_, Argc_, Argv_);
+      Tasker_->start(*TheModule_);
     }
     else {
       FutureV = Tasker_->launch(*TheModule_, TaskI, ArgVs);

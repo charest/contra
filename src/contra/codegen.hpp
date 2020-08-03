@@ -72,10 +72,6 @@ class CodeGen : public RecursiveAstVisiter {
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
 
-  // command line arguments
-  int Argc_ = 0;
-  char ** Argv_ = nullptr;
-
 public:
   
   //============================================================================
@@ -83,10 +79,7 @@ public:
   //============================================================================
 
   // Constructor
-  CodeGen(SupportedBackends, bool, const std::string &);
-
-  // destructor
-  virtual ~CodeGen();
+  CodeGen(SupportedBackends, bool);
 
   //============================================================================
   // LLVM accessors

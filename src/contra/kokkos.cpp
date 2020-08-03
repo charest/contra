@@ -38,9 +38,12 @@ StructType * KokkosTasker::createFieldDataType()
 //==============================================================================
 // start runtime
 //==============================================================================
-void KokkosTasker::startRuntime(Module &TheModule, int Argc, char ** Argv)
+void KokkosTasker::startRuntime(Module &TheModule)
 {
 
+  std::vector<std::string> Argv = { "./contra" };
+ 
+  unsigned Argc = Argv.size();
   auto ArgcV = llvmValue(TheContext_, Int32Type_, Argc);
 
   std::vector<Constant*> ArgVs;
