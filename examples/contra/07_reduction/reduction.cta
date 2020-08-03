@@ -1,7 +1,7 @@
 tsk top_level() {
   
   num = 10
-  num_parts = 3
+  num_parts = 6
   num_points = num*num
 
   parts = 0 : num_parts-1

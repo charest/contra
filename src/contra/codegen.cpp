@@ -20,18 +20,13 @@
 
 #include "utils/llvm_utils.hpp"
 
+#include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/LinkAllPasses.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
-
-#include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
-
-extern "C" {
-
-} // extern
 
 using namespace llvm;
 using namespace utils;

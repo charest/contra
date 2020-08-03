@@ -1,10 +1,40 @@
 #include "device_jit.hpp"
 
+#include "args.hpp"
 
 using namespace utils;
 using namespace llvm;
 
 namespace contra {
+
+//==============================================================================
+// Options
+//==============================================================================
+llvm::cl::opt<std::string> OptionTargetCPU(
+    "mcpu",
+    llvm::cl::desc("Target CPU"),
+    llvm::cl::cat(OptionCategory));
+
+llvm::cl::opt<int> OptionMaxBlockSize(
+    "max-block-size",
+    llvm::cl::desc(
+      "The maximum block size to use with GPU-based backends. "
+      "If unset, this information is extracted from the particular device."
+    ),
+    llvm::cl::cat(OptionCategory));
+
+  
+//==============================================================================
+// Constructor
+//==============================================================================
+DeviceJIT::DeviceJIT(utils::BuilderHelper & TheHelper) :
+  TheHelper_(TheHelper),
+  Builder_(TheHelper.getBuilder()),
+  TheContext_(TheHelper.getContext())
+{
+  if (!OptionTargetCPU.empty()) TargetCPU_ = OptionTargetCPU;
+  if (OptionMaxBlockSize) MaxBlockSize_ = OptionMaxBlockSize;
+}
 
 //==============================================================================
 // Helper to replace math

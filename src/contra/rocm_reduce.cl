@@ -26,10 +26,12 @@ void reduce(
   //sdata[tid] = 0;
   init( sdata + tid*data_size );
 
-  apply(
-      sdata + data_size*tid,
-      g_idata + data_size*i
-  );
+  if (i < n) {
+    apply(
+        sdata + data_size*tid,
+        g_idata + data_size*i
+    );
+  }
   
   __syncthreads();
 

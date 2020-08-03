@@ -86,8 +86,7 @@ void fibonacci_task(
     &ctx,
     &runtime);
 
-  size_t arglen = legion_task_get_arglen(task);
-  assert(arglen == sizeof(int));
+  assert(legion_task_get_arglen(task) == sizeof(int));
 
   int res;
 
@@ -165,8 +164,7 @@ void sum_task(
     &ctx,
     &runtime);
 
-  unsigned nfutures = legion_task_get_futures_size(task);
-  assert(nfutures == 2);
+  assert(legion_task_get_futures_size(task) == 2);
 
   legion_future_t f1 = legion_task_get_future(task, 0);
   legion_future_t f2 = legion_task_get_future(task, 1);

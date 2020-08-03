@@ -29,10 +29,7 @@ public:
 
 private:
 
-  std::string compile(
-      llvm::Module & TheModule,
-      const std::string & Filename = "",
-      llvm::CodeGenFileType FileType = llvm::CGFT_AssemblyFile);
+  std::string compile(llvm::Module & TheModule);
 
 
   llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);

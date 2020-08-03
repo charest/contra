@@ -35,12 +35,10 @@ void index_space_task(
 
   assert(dp.dim == 1);
 
-  size_t local_arglen = legion_task_get_local_arglen(task);
-  assert(local_arglen == sizeof(int));
+  assert(legion_task_get_local_arglen(task) == sizeof(int));
   int local_arg = *(int *)legion_task_get_local_args(task);
   
-	size_t global_arglen = legion_task_get_arglen(task);
-  assert(global_arglen == sizeof(int));
+  assert(legion_task_get_arglen(task) == sizeof(int));
   int global_arg = *(int *)legion_task_get_args(task);
 
   printf("Hello world from task %lld, with local arg %d, and global arg %d!\n",

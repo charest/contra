@@ -16,11 +16,7 @@ namespace contra {
 class DeviceJIT {
 public:
   
-  DeviceJIT(utils::BuilderHelper & TheHelper) :
-    TheHelper_(TheHelper),
-    Builder_(TheHelper.getBuilder()),
-    TheContext_(TheHelper.getContext())
-  {}
+  DeviceJIT(utils::BuilderHelper & TheHelper);
 
   virtual ~DeviceJIT() {};
 
@@ -30,8 +26,6 @@ public:
   virtual void addModule(std::unique_ptr<llvm::Module> M) = 0;
   virtual void addModule(const llvm::Module * M) = 0;
 
-protected:
-  
   llvm::CallInst* replaceIntrinsic(
       llvm::Module &,
       llvm::CallInst*,
@@ -41,10 +35,23 @@ protected:
 
   bool callsFunction(llvm::Module &, const std::string &);
 
+  const auto & getTargetCPU() const { return TargetCPU_; }
+  auto hasTargetCPU() const { return !TargetCPU_.empty(); }
+
+  auto getMaxBlockSize() const { return MaxBlockSize_; }
+  auto hasMaxBlockSize() const { return MaxBlockSize_ != 0; }
+
+protected:
+  
   utils::BuilderHelper & TheHelper_;
 
   llvm::IRBuilder<> & Builder_;
   llvm::LLVMContext & TheContext_;
+
+private:
+
+  std::string TargetCPU_;
+  unsigned MaxBlockSize_ = 0;
 };
 
 } // end namespace

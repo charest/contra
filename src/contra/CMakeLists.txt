@@ -1,5 +1,6 @@
 
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/analysis.cpp )
+target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/args.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/ast.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/compiler.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/context.cpp )

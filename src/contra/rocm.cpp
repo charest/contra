@@ -197,11 +197,6 @@ void ROCmTasker::createIndexSpaceFromPartition(
 //==============================================================================
 void ROCmTasker::startRuntime(Module &TheModule)
 {
-  TheHelper_.callFunction(
-      TheModule,
-      "contra_rocm_startup",
-      VoidType_);
-
   launch(TheModule, *TopLevelTask_);
 }
 //==============================================================================

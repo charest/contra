@@ -9,6 +9,7 @@
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Transforms/IPO.h"
@@ -30,6 +31,8 @@ namespace contra {
 CudaJIT::CudaJIT(BuilderHelper & TheHelper) :
   DeviceJIT(TheHelper)
 {
+  std::string CPU = hasTargetCPU() ? getTargetCPU() : "sm_20";
+
   LLVMInitializeNVPTXTargetInfo();
   LLVMInitializeNVPTXTarget();
   LLVMInitializeNVPTXTargetMC();
@@ -44,13 +47,17 @@ CudaJIT::CudaJIT(BuilderHelper & TheHelper) :
   Trip.setOS(Triple::CUDA);
   TargetMachine_ = Tgt->createTargetMachine(
         Trip.getTriple(),
-        "sm_20",
+        CPU,
         "",
         TargetOptions(),
         None,
         None,
         CodeGenOpt::Aggressive);
+  
   contra_cuda_startup();
+  
+  if (hasMaxBlockSize())
+    contra_cuda_set_block_size(getMaxBlockSize());
 }
 
 //==============================================================================
@@ -135,32 +142,14 @@ void CudaJIT::addModule(const Module * M) {
 //==============================================================================
 // Standard compiler for host
 //==============================================================================
-std::string CudaJIT::compile(
-    Module & TheModule,
-    const std::string & Filename,
-    CodeGenFileType FileType)
+std::string CudaJIT::compile(Module & TheModule)
 {
 
-  if (!TheModule.getInstructionCount()) return "";
-  
   //----------------------------------------------------------------------------
   // Create output stream
 
-  std::unique_ptr<raw_pwrite_stream> Dest;
-  
-  SmallString<SmallVectorLength> SmallStr;
-
-  // output to string
-  if (Filename.empty()) {
-    Dest = std::make_unique<raw_svector_ostream>(SmallStr);
-  }
-  // output to file
-  else {
-    std::error_code EC;
-    Dest = std::make_unique<raw_fd_ostream>(Filename, EC, sys::fs::OF_None);
-    if (EC)
-      THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
-  }
+  SmallString<1024> SmallStr;
+  raw_svector_ostream Dest(SmallStr);
   
   //----------------------------------------------------------------------------
   // Compile
@@ -171,9 +160,9 @@ std::string CudaJIT::compile(
 
   auto fail = TargetMachine_->addPassesToEmitFile(
       PassMan,
-      *Dest,
+      Dest,
       nullptr,
-      FileType,
+      CGFT_AssemblyFile,
       false);
   if (fail)
     THROW_CONTRA_ERROR( "Error generating PTX");

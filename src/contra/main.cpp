@@ -1,10 +1,10 @@
+#include "args.hpp"
 #include "contra.hpp"
 #include "precedence.hpp"
 #include "utils/string_utils.hpp"
 
 #include "librt/librt.hpp"
 
-#include "llvm/Support/CommandLine.h"
 
 #include <fstream>
 #include <iostream>
@@ -17,82 +17,81 @@ using namespace llvm;
 //==============================================================================
 // Options
 //==============================================================================
-static cl::OptionCategory OptionCategory("Contra Options");
 
-cl::opt<bool> OptionVerbose(
+llvm::cl::opt<bool> OptionVerbose(
     "verbose",
-    cl::desc("Print extra information"),
-    cl::cat(OptionCategory));
-cl::alias OptionVerboseA(
+    llvm::cl::desc("Print extra information"),
+    llvm::cl::cat(OptionCategory));
+llvm::cl::alias OptionVerboseA(
     "v",
-    cl::desc("Alias for -verbose"),
-    cl::aliasopt(OptionVerbose));
+    llvm::cl::desc("Alias for -verbose"),
+    llvm::cl::aliasopt(OptionVerbose));
 
-cl::opt<bool> OptionForce(
+llvm::cl::opt<bool> OptionForce(
     "force",
-    cl::desc("Force overwriting of existing files"),
-    cl::cat(OptionCategory));
-cl::alias OptionForceA(
+    llvm::cl::desc("Force overwriting of existing files"),
+    llvm::cl::cat(OptionCategory));
+llvm::cl::alias OptionForceA(
     "f",
-    cl::desc("Alias for -force"),
-    cl::aliasopt(OptionForce));
+    llvm::cl::desc("Alias for -force"),
+    llvm::cl::aliasopt(OptionForce));
 
-cl::opt<bool> OptionCompile(
+llvm::cl::opt<bool> OptionCompile(
     "c",
-    cl::desc("Compile the source files"),
-    cl::cat(OptionCategory));
+    llvm::cl::desc("Compile the source files"),
+    llvm::cl::cat(OptionCategory));
 
-cl::opt<std::string> OptionOutput(
+llvm::cl::opt<std::string> OptionOutput(
     "o",
-    cl::desc("Place compiled output in <filename>"),
-    cl::value_desc("filename"),
-    cl::cat(OptionCategory));
+    llvm::cl::desc("Place compiled output in <filename>"),
+    llvm::cl::value_desc("filename"),
+    llvm::cl::cat(OptionCategory));
 
-cl::opt<bool> OptionDebug(
+llvm::cl::opt<bool> OptionDebug(
     "g",
-    cl::desc("Produce debugging information"),
-    cl::cat(OptionCategory));
+    llvm::cl::desc("Produce debugging information"),
+    llvm::cl::cat(OptionCategory));
 
 enum OptLevel {
   O0, O1, O2, O3
 };
 
-cl::opt<OptLevel> OptionOptimizationLevel(
-  cl::desc("Choose optimization level:"),
-  cl::values(
+llvm::cl::opt<OptLevel> OptionOptimizationLevel(
+  llvm::cl::desc("Choose optimization level:"),
+  llvm::cl::values(
     clEnumVal(O0 , "No optimizations"),
     clEnumVal(O1, "Enable trivial optimizations"),
     clEnumVal(O2, "Enable default optimizations"),
     clEnumVal(O3, "Enable expensive optimizations")),
-  cl::init(O0),
-  cl::cat(OptionCategory));
+  llvm::cl::init(O0),
+  llvm::cl::cat(OptionCategory));
 
-cl::opt<std::string> OptionDumpIR(
+llvm::cl::opt<std::string> OptionDumpIR(
   "dump-ir",
-  cl::desc("Dump LLVM IR to <filename>"),
-  cl::value_desc("filename"),
-  cl::cat(OptionCategory));
+  llvm::cl::desc("Dump LLVM IR to <filename>"),
+  llvm::cl::value_desc("filename"),
+  llvm::cl::cat(OptionCategory));
 
-cl::opt<std::string> OptionDumpDot(
+llvm::cl::opt<std::string> OptionDumpDot(
   "dump-dot",
-  cl::desc("Dump AST in graphviz format to <filename>"),
-  cl::value_desc("filename"),
-  cl::cat(OptionCategory));
+  llvm::cl::desc("Dump AST in graphviz format to <filename>"),
+  llvm::cl::value_desc("filename"),
+  llvm::cl::cat(OptionCategory));
 
-cl::opt<std::string> OptionBackend(
+llvm::cl::opt<std::string> OptionBackend(
   "backend",
-  cl::desc("Use specified backend"),
-  cl::value_desc("backend"),
-  cl::cat(OptionCategory));
-cl::alias OptionBackendA(
+  llvm::cl::desc("Use specified backend"),
+  llvm::cl::value_desc("backend"),
+  llvm::cl::cat(OptionCategory));
+llvm::cl::alias OptionBackendA(
     "b",
-    cl::desc("Alias for -backend"),
-    cl::aliasopt(OptionBackend));
+    llvm::cl::desc("Alias for -backend"),
+    llvm::cl::aliasopt(OptionBackend));
 
-cl::opt<std::string> OptionInputFilename(
-  cl::Positional,
-  cl::desc("Optional input file.  If none specified, run the interpreter"),
-  cl::value_desc("input file"));
+llvm::cl::opt<std::string> OptionInputFilename(
+  llvm::cl::Positional,
+  llvm::cl::desc("Optional input file.  If none specified, run the interpreter"),
+  llvm::cl::value_desc("input file"));
 
 
 //==============================================================================

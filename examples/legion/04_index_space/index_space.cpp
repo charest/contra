@@ -41,11 +41,9 @@ void field_task(
 
   assert(dp.dim == 1);
 
-  size_t local_arglen = legion_task_get_local_arglen(task);
-  assert(local_arglen == 0);
+  assert(legion_task_get_local_arglen(task) == 0);
   
-	size_t global_arglen = legion_task_get_arglen(task);
-  assert(global_arglen == 0);
+  assert(legion_task_get_arglen(task) == 0);
 
   assert(num_regions == 1);
   legion_accessor_array_1d_t acc = 
@@ -108,12 +106,10 @@ void index_space_task(
 
   assert(dp.dim == 1);
 
-  size_t local_arglen = legion_task_get_local_arglen(task);
-  assert(local_arglen == sizeof(int));
+  assert(legion_task_get_local_arglen(task) == sizeof(int));
   int local_arg = *(int *)legion_task_get_local_args(task);
   
-	size_t global_arglen = legion_task_get_arglen(task);
-  assert(global_arglen == sizeof(int));
+  assert(legion_task_get_arglen(task) == sizeof(int));
   int global_arg = *(int *)legion_task_get_args(task);
 
   assert(num_regions == 1);

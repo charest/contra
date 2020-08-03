@@ -1,5 +1,6 @@
 #include "config.hpp"
 
+#include "args.hpp"
 #include "codegen.hpp"
 #include "errors.hpp"
 #include "legion.hpp"
@@ -8,31 +9,27 @@
 #include "utils/llvm_utils.hpp"
 #include "utils/string_utils.hpp"
 
-#include "llvm/Support/CommandLine.h"
-
 #include <legion.h>
 
 #include <vector>
 
 using namespace llvm;
 using namespace utils;
+  
+namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker args
 ////////////////////////////////////////////////////////////////////////////////
 
-static cl::OptionCategory OptionCategory("Legion Backend Options");
-
 cl::opt<std::string> OptionLegion(
     "legion-opts",
     cl::desc("Legion runtime options"),
     cl::cat(OptionCategory));
-  
+
 ////////////////////////////////////////////////////////////////////////////////
 // Legion tasker
 ////////////////////////////////////////////////////////////////////////////////
-
-namespace contra {
 
 //==============================================================================
 // Constructor

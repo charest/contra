@@ -14,6 +14,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -30,7 +31,6 @@
 
 #include <fstream>
 #include <set>
-#include <unistd.h>
 
 using namespace llvm;
 using namespace utils;
@@ -44,6 +44,9 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
   DeviceJIT(TheHelper),
   LinkFlags_(Linker::Flags::OverrideFromSrc)
 {
+  std::string CPU = hasTargetCPU() ?
+    getTargetCPU() : std::string(ROCM_DEFAULT_TARGET_CPU);
+
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetMC();
@@ -59,13 +62,17 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
   Trip.setOS(Triple::AMDHSA);
   TargetMachine_ = Tgt->createTargetMachine(
         Trip.getTriple(),
-        ROCM_DEFAULT_TARGET_CPU,
+        CPU,
         "", //"-code-object-v3",
         TargetOptions(),
         None,
         None,
         CodeGenOpt::Aggressive);
   
+  contra_rocm_startup();
+  
+  if (hasMaxBlockSize())
+    contra_rocm_set_block_size(getMaxBlockSize());
 }
 
 //==============================================================================
@@ -128,11 +135,9 @@ void ROCmJIT::addModule(std::unique_ptr<Module> M) {
   // Compile
   
   bool HasReduce = M->getFunction("apply");
-  
-  std::string temp_name = std::tmpnam(nullptr);
-  assemble(*M, temp_name, HasReduce);
-  auto Hsaco = compileAndLink(*M, temp_name);
 
+  assemble(*M, HasReduce);
+  auto Hsaco = compileAndLink(*M);
 
   //----------------------------------------------------------------------------
   // Register
@@ -212,77 +217,59 @@ void ROCmJIT::runOnModule(Module & M)
 //==============================================================================
 // Standard compiler for host
 //==============================================================================
-std::string ROCmJIT::compile(
+void ROCmJIT::compile(
     Module & TheModule,
-    const std::string & Filename,
-    CodeGenFileType FileType)
+    raw_pwrite_stream & Dest)
 {
 
-  if (!TheModule.getInstructionCount()) return "";
-  
-  //----------------------------------------------------------------------------
-  // Create output stream
-
-  std::unique_ptr<raw_pwrite_stream> Dest;
-  
-  SmallString<SmallVectorLength> SmallStr;
-
-  // output to string
-  if (Filename.empty()) {
-    Dest = std::make_unique<raw_svector_ostream>(SmallStr);
-  }
-  // output to file
-  else {
-    std::error_code EC;
-    Dest = std::make_unique<raw_fd_ostream>(Filename, EC);
-    if (EC)
-      THROW_CONTRA_ERROR( "Could not open file: " << EC.message() );
-  }
-  
-  //----------------------------------------------------------------------------
-  // Compile
-  
   auto PassMan = legacy::PassManager();
 
   PassMan.add(createVerifierPass());
 
   auto fail = TargetMachine_->addPassesToEmitFile(
       PassMan,
-      *Dest,
+      Dest,
       nullptr,
-      FileType,
+      CGFT_ObjectFile,
       false);
   if (fail)
     THROW_CONTRA_ERROR( "Error generating PTX");
   
   PassMan.run(TheModule);
 
-  return SmallStr.str().str();
-
 }
 
 //==============================================================================
 // Compile a module
 //==============================================================================
-std::vector<char> ROCmJIT::compileAndLink(
-    Module & M,
-    const std::string & file_name)
+std::vector<char> ROCmJIT::compileAndLink(Module & M)
 {
 
   // compile to isa
-  auto isa_name = file_name + ".isabin";
-  compile(M, isa_name, CGFT_ObjectFile);
-
+  auto IsaFile =  sys::fs::TempFile::create("contra-%%%%%%%.isabin");
+  if (!IsaFile)
+    THROW_CONTRA_ERROR( "Could not create temporary file." );
+  auto IsaName = IsaFile->TmpName;
+  
+  raw_fd_ostream IsaFS(IsaFile->FD, false);
+  compile(M, IsaFS);
+  IsaFS.flush();
+  
   // convert to hsaco
-  auto hsaco_name = file_name + ".hsaco";
+  SmallString<128> HsacoName;
+  sys::fs::createUniquePath(
+      "contra-%%%%%%%.hsaco",
+      HsacoName,
+      true);
+
   std::vector<StringRef> LdArgs {
     ROCM_LD_LLD_PATH,
     "-flavor",
     "gnu",
     "-shared",
-    isa_name,
+    IsaName,
     "-o",
-    hsaco_name
+    HsacoName
   };
 
   std::string error_message;
@@ -300,9 +287,14 @@ std::vector<char> ROCmJIT::compileAndLink(
         "ld.lld execute failed: '" << error_message << "', error code: "
         << res);
   }
+  
+  // discard file
+  if (auto Err = IsaFile->discard())
+    THROW_CONTRA_ERROR( "Could not discard temporary file." );
+
 
   // read hsaco
-  std::ifstream file(hsaco_name, std::ios::binary | std::ios::ate);
+  std::ifstream file(HsacoName.str(), std::ios::binary | std::ios::ate);
   auto size = file.tellg();
 
   std::vector<char> HsacoBytes(size);
@@ -317,10 +309,7 @@ std::vector<char> ROCmJIT::compileAndLink(
 //==============================================================================
 // Compile a module
 //==============================================================================
-void ROCmJIT::assemble(
-    Module & M,
-    std::string file_name,
-    bool HasReduce)
+void ROCmJIT::assemble(Module & M, bool HasReduce)
 {
 
   Linker L(M);

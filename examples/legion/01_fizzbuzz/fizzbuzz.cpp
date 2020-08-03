@@ -73,8 +73,7 @@ void fizzbuzz_task(
     &ctx,
     &runtime);
 
-  size_t arglen = legion_task_get_arglen(task);
-  assert(arglen == sizeof(int));
+  assert(legion_task_get_futures_size(task) == sizeof(int));
 
   int number = *(int*)legion_task_get_args(task); 
   if (number % 15 == 0)

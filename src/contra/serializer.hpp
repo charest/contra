@@ -47,7 +47,6 @@ public:
 //==============================================================================
 class ArraySerializer : public Serializer {
 
-  llvm::StructType* ArrayType_ = nullptr;
   llvm::Type* PtrType_ = nullptr;
   llvm::Type* LengthType_ = nullptr;
 

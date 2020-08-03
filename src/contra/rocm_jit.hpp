@@ -35,17 +35,11 @@ private:
 
   void runOnModule(llvm::Module &);
 
-  std::string compile(
-      llvm::Module&,
-      const std::string &,
-      llvm::CodeGenFileType);
+  void compile(llvm::Module&, llvm::raw_pwrite_stream&);
 
-  void assemble(
-      llvm::Module &,
-      std::string,
-      bool);
+  void assemble(llvm::Module &, bool);
 
-  std::vector<char> compileAndLink(llvm::Module &, const std::string&);
+  std::vector<char> compileAndLink(llvm::Module &);
 
   void linkFiles(llvm::Linker &, const std::vector<std::string>&, unsigned);
   

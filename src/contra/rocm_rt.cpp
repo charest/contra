@@ -221,6 +221,7 @@ void rocm_runtime_t::threadDims(
 ////////////////////////////////////////////////////////////////////////////////
 extern "C" {
 
+void contra_rocm_set_block_size(size_t n) { RocmRuntime.setMaxBlockSize(n); }
 
 //==============================================================================
 // start runtime
@@ -286,24 +287,6 @@ void contra_rocm_register_kernel(
   for (unsigned i=0; i<size_names; ++i) 
     RocmRuntime.KernelMap[names[i]] = KernelId;
 }
-//==============================================================================
-// prepare a reduction
-//==============================================================================
-void contra_rocm_prepare_reduction(
-  void ** indata,
-  size_t data_size,
-  contra_index_space_t * is)
-{
-  auto size = is->size();
-  auto bytes = data_size * size;
-  std::cout << indata << std::endl;
-  auto err = hipMalloc(indata, bytes);
-  std::cout << indata << " " << bytes<< std::endl;
-
-  check(err);
-}
-
-
 
 //==============================================================================
 // launch a kernel
@@ -321,7 +304,7 @@ void contra_rocm_launch_kernel(
 {
   hipFunction_t F;
   hipModule_t M;
-  const auto & KD = RocmRuntime.loadKernel(name, &M, &F);
+  RocmRuntime.loadKernel(name, &M, &F);
 
   auto size = is->size();
   size_t num_blocks, num_threads_per_block;

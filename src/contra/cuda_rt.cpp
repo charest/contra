@@ -213,6 +213,8 @@ void cuda_runtime_t::link(CUmodule &CuModule) {
 
 extern "C" {
 
+void contra_cuda_set_block_size(size_t n) { CudaRuntime.setMaxBlockSize(n); }
+
 //==============================================================================
 // Get/create memory for an index partition
 //==============================================================================

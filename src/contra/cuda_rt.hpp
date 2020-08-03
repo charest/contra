@@ -27,7 +27,7 @@ struct cuda_runtime_t {
 
   std::map<std::string, KernelData> Kernels;
 
-  size_t MaxThreadsPerBlock = 0;
+  unsigned MaxThreadsPerBlock = 0;
 
   void init(int);
   void shutdown();
@@ -36,6 +36,8 @@ struct cuda_runtime_t {
   void link_start();
   
   void threadDims(size_t NumThreads, size_t &, size_t &);
+
+  void setMaxBlockSize(size_t n) { MaxThreadsPerBlock = n; }
 
 };
 
@@ -218,6 +220,9 @@ struct contra_cuda_task_info_t {
 
 void contra_cuda_startup();
 void contra_cuda_shutdown();
+
+void contra_cuda_set_block_size(size_t);
+
 void contra_cuda_register_kernel(const char * kernel);
 
 void contra_cuda_partition_free(contra_cuda_partition_t *);

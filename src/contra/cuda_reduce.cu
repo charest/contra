@@ -27,10 +27,12 @@ void reduce(
   //sdata[tid] = 0;
   InitPtr( sdata + tid*data_size );
 
-  ApplyPtr(
+  if (i < n) {
+    ApplyPtr(
       sdata + data_size*tid,
       g_idata + data_size*i
-  );
+    );
+  }
   
   __syncthreads();
 

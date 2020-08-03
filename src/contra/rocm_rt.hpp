@@ -35,6 +35,8 @@ struct rocm_runtime_t {
     const char * name,
     hipModule_t * M,
     hipFunction_t * F);
+  
+  void setMaxBlockSize(size_t n) { MaxThreadsPerBlock = n; }
 };
 
 
@@ -223,6 +225,8 @@ void contra_rocm_register_kernel(
     const char * [],
     unsigned,
     bool);
+
+void contra_rocm_set_block_size(size_t);
 
 void contra_rocm_partition_free(contra_rocm_partition_t *);
 void contra_rocm_accessor_free(contra_rocm_accessor_t *);

@@ -6,9 +6,6 @@
 #include "hip/hip_runtime.h"
 
 __global__
-void rocm_init_kernel();
-
-__global__
 void rocm_copy_kernel(
     byte_t * src_data,
     byte_t * tgt_data,

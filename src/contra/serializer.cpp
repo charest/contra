@@ -77,7 +77,6 @@ ArraySerializer::ArraySerializer(
     BuilderHelper & TheHelper,
     StructType* ArrayType) :
   Serializer(TheHelper),
-  ArrayType_(ArrayType),
   PtrType_(ArrayType->getElementType(0)),
   LengthType_(ArrayType->getElementType(1))
 {}
