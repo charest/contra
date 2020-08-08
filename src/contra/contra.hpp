@@ -81,18 +81,7 @@ public:
 
   void setBackend(const std::string & Backend)
   {
-    auto lower = utils::tolower(Backend);
-    BackendType_ = SupportedBackends::Size;
-#ifdef HAVE_LEGION
-    if (lower == "legion") BackendType_ = SupportedBackends::Legion; 
-#endif
-#ifdef HAVE_CUDA
-    if (lower == "cuda") BackendType_ = SupportedBackends::Cuda;
-#endif
-#ifdef HAVE_ROCM
-    if (lower == "rocm") BackendType_ = SupportedBackends::ROCm;
-#endif
-    if (lower == "serial") BackendType_ = SupportedBackends::Serial;
+    BackendType_ = getBackend(Backend);
     if (BackendType_ == SupportedBackends::Size)
       THROW_CONTRA_ERROR("Unsupported backend requested: '" << Backend << "'.");
   }

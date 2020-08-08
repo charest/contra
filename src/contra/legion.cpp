@@ -1344,14 +1344,14 @@ void LegionTasker::setTopLevelTask(Module &TheModule, const TaskInfo & TaskI)
 void LegionTasker::startRuntime(Module &TheModule)
 {
   // setup backend args
-  std::vector<std::string> Args = {"./contra"};
+  std::vector<std::string> Argv  = {"./contra"};
 
   auto SplitArgs = utils::split(OptionLegion, ' ');
   for (const auto & A : SplitArgs) 
-    Args.emplace_back(A);
+    Argv.emplace_back(A);
   
   bool HasGsize = false;
-  for (const auto & A : Args) {
+  for (const auto & A : Argv) {
     if (A == "-ll:gsize") {
       HasGsize = true;
       break;
@@ -1359,30 +1359,20 @@ void LegionTasker::startRuntime(Module &TheModule)
   }
 
   if (!HasGsize) {
-    Args.emplace_back("-ll:gsize");
-    Args.emplace_back("0");
+    Argv.emplace_back("-ll:gsize");
+    Argv.emplace_back("0");
   }
   
-  // need to turn them into char arrays
-  unsigned Argc = Args.size();
-  auto Argv = new char *[Argc];
-
-  for ( unsigned i=0; i<Args.size(); ++i ) {
-    auto len = Args[i].size();
-    Argv[i] = new char[len+1];
-    strcpy(Argv[i], Args[i].data());
-  }
-
   // startup runtime
   TheHelper_.callFunction(
       TheModule,
       "contra_legion_startup",
       VoidType_);
 
-  auto ArgcV = llvmValue(TheContext_, Int32Type_, Argc);
+  auto ArgcV = llvmValue(TheContext_, Int32Type_, Argv.size());
 
   std::vector<Constant*> ArgVs;
-  for (int i=0; i<Argc; ++i)
+  for (int i=0; i<Argv.size(); ++i)
     ArgVs.emplace_back( llvmString(TheContext_, TheModule, Argv[i]) );
 
   auto ZeroC = Constant::getNullValue(IntegerType::getInt32Ty(TheContext_));
@@ -1398,10 +1388,6 @@ void LegionTasker::startRuntime(Module &TheModule)
       StartArgVs,
       "start");
   
-  // delete arguments
-  for (int i=0; i<Argc; ++i) delete[] Argv[i];
-  delete[] Argv;
-
 }
 
 //==============================================================================

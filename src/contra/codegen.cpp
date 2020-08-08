@@ -7,6 +7,7 @@
 #include "cuda.hpp"
 #include "cuda_jit.hpp"
 #include "errors.hpp"
+#include "hpx.hpp"
 #include "legion.hpp"
 #include "precedence.hpp"
 #include "rocm.hpp"
@@ -81,6 +82,12 @@ CodeGen::CodeGen (
     Tasker_ = std::make_unique<ROCmTasker>(TheHelper_);
     DeviceJIT_ = std::make_unique<ROCmJIT>(TheHelper_);
   }     
+#endif
+
+#ifdef HAVE_HPX
+  else if (Backend == SupportedBackends::HPX) {
+    Tasker_ = std::make_unique<HpxTasker>(TheHelper_);
+  }
 #endif
   
   else 

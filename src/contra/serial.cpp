@@ -8,7 +8,7 @@
 #include "llvm/Support/raw_ostream.h"
   
 ////////////////////////////////////////////////////////////////////////////////
-// Legion tasker
+// Serial tasker
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace contra {
@@ -531,7 +531,7 @@ bool SerialTasker::isField(Value* FieldA) const
 
 
 //==============================================================================
-// Create a legion field
+// Create a serial field
 //==============================================================================
 void SerialTasker::createField(
     Module & TheModule,

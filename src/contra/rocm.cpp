@@ -9,7 +9,7 @@
 #include "llvm/Support/raw_ostream.h"
   
 ////////////////////////////////////////////////////////////////////////////////
-// Legion tasker
+// Rocm tasker
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace contra {
@@ -782,7 +782,7 @@ bool ROCmTasker::isField(Value* FieldA) const
 
 
 //==============================================================================
-// Create a legion field
+// Create a rocm field
 //==============================================================================
 void ROCmTasker::createField(
     Module & TheModule,

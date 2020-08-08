@@ -34,7 +34,8 @@ set(COMPILE_FLAGS
   -DCMAKE_CXX_FLAGS:STRING=${CMAKE_CXX_FLAGS}
   -DCMAKE_C_COMPILER:FILEPATH=${CMAKE_C_COMPILER}
   -DCMAKE_C_FLAGS:STRING=${CMAKE_C_FLAGS}
-  -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE})
+  -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+  -DCMAKE_PREFIX_PATH:FILEPATH=${CMAKE_PREFIX_PATH})
 
 
 #------------------------------------------------------------------------------#
@@ -49,9 +50,10 @@ if (BUILD_LLVM)
   string(REPLACE ";" "|" LLVM_TARGETS_TO_BUILD_ALT_SEP "${LLVM_TARGETS_TO_BUILD}")
 
   ExternalProject_Add(llvm
-    URL https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.0/llvm-10.0.0.src.tar.xz
+    URL https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/llvm-project-10.0.1.tar.xz
     INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
     UPDATE_COMMAND  ""
+    SOURCE_SUBDIR llvm
 
     LIST_SEPARATOR | # Use the alternate list separator
 
@@ -60,6 +62,7 @@ if (BUILD_LLVM)
       -DLLVM_ENABLE_RTTI=ON
       -DLLVM_BUILD_LLVM_DYLIB=${BUILD_SHARED_LIBS}
       #-DLLVM_TARGETS_TO_BUILD=${LLVM_TARGETS_TO_BUILD_ALT_SEP}
+      -DLLVM_ENABLE_PROJECTS=clang
       ${COMPILE_FLAGS}
   )
 endif()
@@ -72,6 +75,23 @@ if (BUILD_LEGION)
   MESSAGE(STATUS "Building Legion.")
   ExternalProject_Add(legion
     GIT_REPOSITORY https://github.com/StanfordLegion/legion.git
+    INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
+    UPDATE_COMMAND  ""
+    CMAKE_ARGS
+      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+      -DBUILD_SHARED_LIBS=True
+      ${COMPILE_FLAGS}
+  )
+endif()
+
+#------------------------------------------------------------------------------#
+# HPX
+#------------------------------------------------------------------------------#
+option(BUILD_HPX "Build HPX." ON)
+if (BUILD_LEGION)
+  MESSAGE(STATUS "Building HPX.")
+  ExternalProject_Add(hpx
+    GIT_REPOSITORY https://github.com/STEllAR-GROUP/hpx.git
     INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
     UPDATE_COMMAND  ""
     CMAKE_ARGS

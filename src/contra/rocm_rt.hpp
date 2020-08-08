@@ -234,4 +234,4 @@ void contra_rocm_accessor_free(contra_rocm_accessor_t *);
 } // extern
 
 
-#endif // LIBRT_LEGION_RT_HPP
+#endif // LIBRT_ROCM_RT_HPP

@@ -164,49 +164,14 @@ struct contra_serial_partition_info_t {
 // Function prototypes for serial runtime
 ////////////////////////////////////////////////////////////////////////////////
 
-/// create partition info
-void contra_serial_partition_info_create(contra_serial_partition_info_t**);
-// destroy partition info
-void contra_serial_partition_info_destroy(contra_serial_partition_info_t**);
-
-/// create a field
-void contra_serial_field_create(
-    const char * name,
-    int_t data_size,
-    const void* init,
-    contra_index_space_t * is,
-    contra_serial_field_t * fld);
-/// destroy a field
-void contra_serial_field_destroy(contra_serial_field_t * fld);
-
-/// index space partitioning
-void contra_serial_index_space_create_from_partition(
-    int_t i,
-    contra_serial_partition_t * part,
-    contra_index_space_t * is);
-
-/// index space creation
-void contra_legion_partition_from_index_space(
-    contra_index_space_t * cs,
-    contra_index_space_t * is,
-    contra_serial_partition_t * part);
-
 /// index space creation
 void contra_serial_partition_from_size(
     int_t size,
     contra_index_space_t * is,
     contra_serial_partition_t * part);
 
-/// index space creation
-void contra_serial_partition_from_array(
-    dopevector_t *arr,
-    contra_index_space_t * is,
-    contra_serial_partition_t * part);
-
-/// destroy a partition
-void contra_serial_partition_destroy(contra_serial_partition_t * part);
 
 } // extern
 
 
-#endif // LIBRT_LEGION_RT_HPP
+#endif // LIBRT_SERIAL_RT_HPP

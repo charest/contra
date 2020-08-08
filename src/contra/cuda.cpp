@@ -9,7 +9,7 @@
 #include "llvm/Support/raw_ostream.h"
   
 ////////////////////////////////////////////////////////////////////////////////
-// Legion tasker
+// Cuda tasker
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace contra {
@@ -705,7 +705,7 @@ bool CudaTasker::isField(Value* FieldA) const
 
 
 //==============================================================================
-// Create a legion field
+// Create a cuda field
 //==============================================================================
 void CudaTasker::createField(
     Module & TheModule,

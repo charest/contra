@@ -231,4 +231,4 @@ void contra_cuda_accessor_free(contra_cuda_accessor_t *);
 } // extern
 
 
-#endif // LIBRT_LEGION_RT_HPP
+#endif // LIBRT_CUDA_RT_HPP

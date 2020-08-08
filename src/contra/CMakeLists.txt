@@ -58,3 +58,8 @@ if (HIP_FOUND)
     )
 
 endif()
+
+if (HPX_FOUND)
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/hpx.cpp )
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/hpx_rt.cpp )
+endif()

@@ -164,6 +164,19 @@ if (HIP_FOUND)
 endif()
 
 #------------------------------------------------------------------------------#
+# HPX
+#------------------------------------------------------------------------------#
+
+find_package(HPX QUIET)
+if (HPX_FOUND)
+  MESSAGE(STATUS "Found HPX: ${HPX_DIR}")
+  target_link_libraries(contra PUBLIC HPX::hpx HPX::iostreams_component)
+
+  list(APPEND SUPPORTED_BACKENDS "hpx")
+endif()
+
+
+#------------------------------------------------------------------------------#
 # build library
 #------------------------------------------------------------------------------#
 
