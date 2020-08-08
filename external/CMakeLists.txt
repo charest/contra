@@ -50,10 +50,10 @@ if (BUILD_LLVM)
   string(REPLACE ";" "|" LLVM_TARGETS_TO_BUILD_ALT_SEP "${LLVM_TARGETS_TO_BUILD}")
 
   ExternalProject_Add(llvm
-    URL https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/llvm-project-10.0.1.tar.xz
+    URL https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/llvm-10.0.1.src.tar.xz
     INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
     UPDATE_COMMAND  ""
-    SOURCE_SUBDIR llvm
+    #SOURCE_SUBDIR llvm
 
     LIST_SEPARATOR | # Use the alternate list separator
 
@@ -62,7 +62,7 @@ if (BUILD_LLVM)
       -DLLVM_ENABLE_RTTI=ON
       -DLLVM_BUILD_LLVM_DYLIB=${BUILD_SHARED_LIBS}
       #-DLLVM_TARGETS_TO_BUILD=${LLVM_TARGETS_TO_BUILD_ALT_SEP}
-      -DLLVM_ENABLE_PROJECTS=clang
+      #-DLLVM_ENABLE_PROJECTS=clang
       ${COMPILE_FLAGS}
   )
 endif()
@@ -87,8 +87,8 @@ endif()
 #------------------------------------------------------------------------------#
 # HPX
 #------------------------------------------------------------------------------#
-option(BUILD_HPX "Build HPX." ON)
-if (BUILD_LEGION)
+option(BUILD_HPX "Build HPX." OFF)
+if (BUILD_HPX)
   MESSAGE(STATUS "Building HPX.")
   ExternalProject_Add(hpx
     GIT_REPOSITORY https://github.com/STEllAR-GROUP/hpx.git
