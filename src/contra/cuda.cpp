@@ -867,7 +867,7 @@ void CudaTasker::destroyPartition(
   
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_partition_destroy",
+      "contra_cuda_partition_destroy",
       VoidType_,
       FunArgVs);
 }

@@ -56,10 +56,8 @@ if (HIP_FOUND)
     TARGET
       contra_rocm_devlibs
     )
-
 endif()
-
-if (HPX_FOUND)
-  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/hpx.cpp )
-  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/hpx_rt.cpp )
+if (Threads_FOUND)
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/threads.cpp )
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/threads_rt.cpp )
 endif()

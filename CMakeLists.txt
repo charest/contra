@@ -29,6 +29,7 @@ set( CONTRA_TOOL_DIR "${PROJECT_SOURCE_DIR}/tools" CACHE INTERNAL "")
 option(BUILD_SHARED_LIBS "Build shared libraries." ON)
 
 set(SUPPORTED_BACKENDS "serial")
+set(THREADS_PREFER_PTHREAD_FLAG)
 
 #------------------------------------------------------------------------------#
 # configure targets
@@ -63,6 +64,7 @@ endif()
 #------------------------------------------------------------------------------#
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG)
 
 find_package(Legion QUIET)
 if (Legion_FOUND)
@@ -84,6 +86,17 @@ if (Legion_FOUND)
 
   list(APPEND SUPPORTED_BACKENDS "legion")
 endif()
+
+#------------------------------------------------------------------------------#
+# Threads
+#------------------------------------------------------------------------------#
+  
+find_package(Threads QUIET)
+if (Threads_FOUND)
+  target_link_libraries(contra PUBLIC Threads::Threads)
+  list(APPEND SUPPORTED_BACKENDS "threads")
+endif()
+
 
 #------------------------------------------------------------------------------#
 # Cuda toolkit
@@ -162,19 +175,6 @@ if (HIP_FOUND)
   find_package(AMDDeviceLibs REQUIRED CONFIG)
   MESSAGE(STATUS "Found device libs: ${AMD_DEVICE_LIBS_TARGETS}")
 endif()
-
-#------------------------------------------------------------------------------#
-# HPX
-#------------------------------------------------------------------------------#
-
-find_package(HPX QUIET)
-if (HPX_FOUND)
-  MESSAGE(STATUS "Found HPX: ${HPX_DIR}")
-  target_link_libraries(contra PUBLIC HPX::hpx HPX::iostreams_component)
-
-  list(APPEND SUPPORTED_BACKENDS "hpx")
-endif()
-
 
 #------------------------------------------------------------------------------#
 # build library

@@ -130,6 +130,13 @@ Value* BuilderHelper::getElementPointer(
   return Builder_.CreateGEP(Val, MemberIndices);
 }
   
+Value* BuilderHelper::getElementPointer(
+    Value* Val,
+    const std::vector<Value*> & Indices)
+{
+  return Builder_.CreateGEP(Val, Indices);
+}
+  
   
 //==============================================================================
 // Get pointer to struct member

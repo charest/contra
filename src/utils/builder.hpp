@@ -41,6 +41,8 @@ public:
   Value* getElementPointer(Value*, unsigned);
   Value* getElementPointer(Value*, unsigned, unsigned);
   Value* getElementPointer(Value*, const std::vector<unsigned> &);
+  Value* getElementPointer(Value*, const std::vector<Value*> &);
+
   Value* extractValue(Value*, unsigned);
   void insertValue(Value*, Value*, unsigned);
 

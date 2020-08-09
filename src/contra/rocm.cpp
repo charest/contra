@@ -974,7 +974,7 @@ void ROCmTasker::destroyPartition(
   
   TheHelper_.callFunction(
       TheModule,
-      "contra_serial_partition_destroy",
+      "contra_rocm_partition_destroy",
       VoidType_,
       FunArgVs);
 }

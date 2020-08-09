@@ -16,8 +16,8 @@ enum class SupportedBackends {
 #ifdef HAVE_ROCM
   ROCm,
 #endif
-#ifdef HAVE_HPX
-  HPX,
+#ifdef HAVE_THREADS
+  Threads,
 #endif
   Serial,
   Size
@@ -35,8 +35,8 @@ inline SupportedBackends getBackend(const std::string & Name)
 #ifdef HAVE_ROCM
   if (lower == "rocm") return SupportedBackends::ROCm;
 #endif
-#ifdef HAVE_HPX
-  if (lower == "hpx") return SupportedBackends::HPX;
+#ifdef HAVE_THREADS
+  if (lower == "threads") return SupportedBackends::Threads;
 #endif
   if (lower == "serial") return SupportedBackends::Serial;
   return SupportedBackends::Size;

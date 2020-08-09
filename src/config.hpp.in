@@ -20,7 +20,7 @@
 #define ROCM_DEVICE_USER_PATH "@PROJECT_BINARY_DIR@/src"
 #define ROCM_DEFAULT_TARGET_CPU "@ROCM_DEFAULT_TARGET_CPU@"
 
-#cmakedefine HAVE_HPX
+#cmakedefine HAVE_THREADS
 
 #ifdef __CUDACC__
 #define CONTRA_INLINE_TARGET __host__ __device__

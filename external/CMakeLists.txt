@@ -84,20 +84,4 @@ if (BUILD_LEGION)
   )
 endif()
 
-#------------------------------------------------------------------------------#
-# HPX
-#------------------------------------------------------------------------------#
-option(BUILD_HPX "Build HPX." OFF)
-if (BUILD_HPX)
-  MESSAGE(STATUS "Building HPX.")
-  ExternalProject_Add(hpx
-    GIT_REPOSITORY https://github.com/STEllAR-GROUP/hpx.git
-    INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}
-    UPDATE_COMMAND  ""
-    CMAKE_ARGS
-      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-      -DBUILD_SHARED_LIBS=True
-      ${COMPILE_FLAGS}
-  )
-endif()
 

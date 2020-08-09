@@ -7,12 +7,12 @@
 #include "cuda.hpp"
 #include "cuda_jit.hpp"
 #include "errors.hpp"
-#include "hpx.hpp"
 #include "legion.hpp"
 #include "precedence.hpp"
 #include "rocm.hpp"
 #include "rocm_jit.hpp"
 #include "serial.hpp"
+#include "threads.hpp"
 #include "token.hpp"
 #include "variable.hpp"
 
@@ -64,6 +64,12 @@ CodeGen::CodeGen (
   if (Backend == SupportedBackends::Serial)
     Tasker_ = std::make_unique<SerialTasker>(TheHelper_);
 
+#ifdef HAVE_THREADS
+  else if (Backend == SupportedBackends::Threads) {
+    Tasker_ = std::make_unique<ThreadsTasker>(TheHelper_);
+  }
+#endif
+
 #ifdef HAVE_LEGION
   else if (Backend == SupportedBackends::Legion) {
     Tasker_ = std::make_unique<LegionTasker>(TheHelper_);
@@ -82,12 +88,6 @@ CodeGen::CodeGen (
     Tasker_ = std::make_unique<ROCmTasker>(TheHelper_);
     DeviceJIT_ = std::make_unique<ROCmJIT>(TheHelper_);
   }     
-#endif
-
-#ifdef HAVE_HPX
-  else if (Backend == SupportedBackends::HPX) {
-    Tasker_ = std::make_unique<HpxTasker>(TheHelper_);
-  }
 #endif
   
   else 
