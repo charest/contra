@@ -110,6 +110,9 @@ CodeGen::CodeGen (
 
   // init function optimizer
   initializeModuleAndPassManager();
+
+  // insert communicator runtime init
+  Communicator_ = commCreateCodegen(TheHelper_);
   
 }
   

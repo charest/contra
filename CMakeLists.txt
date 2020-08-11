@@ -60,6 +60,20 @@ else()
 endif()
 
 #------------------------------------------------------------------------------#
+# MPI
+#------------------------------------------------------------------------------#
+find_package(MPI QUIET)
+if (MPI_FOUND)
+  if (MPI_VERSION)
+    MESSAGE(STATUS "Found MPI: ${MPI_VERSION}")
+  endif()
+  MESSAGE(STATUS "MPI Include Dirs: ${MPI_C_INCLUDE_DIRS}")
+  MESSAGE(STATUS "MPI Libraries: ${MPI_C_LIBRARIES}")
+  target_link_libraries(contra PUBLIC MPI::MPI_C)
+endif()
+
+
+#------------------------------------------------------------------------------#
 # Legion
 #------------------------------------------------------------------------------#
 

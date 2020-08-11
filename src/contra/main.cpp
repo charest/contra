@@ -1,10 +1,18 @@
+#include "config.hpp"
+
 #include "args.hpp"
+#include "communicator.hpp"
+#ifdef HAVE_MPI
+#include "communicator_mpi.hpp"
+#endif
 #include "contra.hpp"
 #include "precedence.hpp"
-#include "utils/string_utils.hpp"
 
 #include "librt/librt.hpp"
 
+
+
+#include "utils/string_utils.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -98,9 +106,16 @@ llvm::cl::opt<std::string> OptionInputFilename(
 // Main driver code.
 //==============================================================================
 int main(int argc, char** argv) {
+  
+#ifdef HAVE_MPI
+  commSelect<MPICommunicator>();
+#endif
+
+  commInit(&argc, &argv);
 
   // get arguments
   cl::ParseCommandLineOptions(argc, argv);
+
 
   // santity checks
   Contra Interp;
@@ -152,6 +167,8 @@ int main(int argc, char** argv) {
 
   // Run the main "interpreter loop" now.
   Interp.mainLoop();
+
+  commFinalize();
 
   return 0;
 

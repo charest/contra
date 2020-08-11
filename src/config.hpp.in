@@ -22,6 +22,8 @@
 
 #cmakedefine HAVE_THREADS
 
+#cmakedefine HAVE_MPI
+
 #ifdef __CUDACC__
 #define CONTRA_INLINE_TARGET __host__ __device__
 #else
