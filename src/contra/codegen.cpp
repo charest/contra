@@ -112,7 +112,8 @@ CodeGen::CodeGen (
   initializeModuleAndPassManager();
 
   // insert communicator runtime init
-  Communicator_ = commCreateCodegen(TheHelper_);
+  Communicator_ = &commGetInstance();
+  Communicator_->setup(TheHelper_);
   
 }
   
@@ -978,6 +979,8 @@ void CodeGen::visit(CallExprAST &e) {
   if (IsTask) {
     const auto & TaskI = Tasker_->getTask(Name);
     Value* FutureV = nullptr;
+
+    Communicator_->markTask(*TheModule_);
     
     if (e.isTopLevelTask()) {
       if (Tasker_->isStarted())
@@ -1003,14 +1006,22 @@ void CodeGen::visit(CallExprAST &e) {
       }
       ValueResult_ = FutureV;
     }
+
+    Communicator_->unmarkTask(*TheModule_);
   }
   //----------------------------------------------------------------------------
   else {
     std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
+
+    if (Name == "print") Communicator_->pushRootGuard(*TheModule_);
+
     for (auto & A : ArgVs) A = TheHelper_.getAsValue(A);
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
-    if (Name == "print")
+
+    if (Name == "print") {
+      Communicator_->popRootGuard(*TheModule_);
       ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+    }
   }
 
   IsPacked_ = FunPair.second;

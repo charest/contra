@@ -487,7 +487,6 @@ Value* ThreadsTasker::launch(
 
     //----------------------------------
     // Init
-    auto ResultT = ResultA->getAllocatedType();
     auto ReduceOp = dynamic_cast<const ThreadsReduceInfo*>(AbstractReduceOp);
     auto NumReduce = ReduceOp->getNumReductions();
     for (unsigned i=0; i<NumReduce; ++i) {

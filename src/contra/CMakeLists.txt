@@ -24,6 +24,11 @@ target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/token.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/vizualizer.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp )
 
+if (MPI_FOUND)
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/communicator_mpi.cpp )
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/mpi_rt.cpp )
+endif()
+
 if (CUDA_FOUND)
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda.cpp )
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_jit.cpp )

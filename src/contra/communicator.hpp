@@ -1,6 +1,8 @@
 #ifndef CONTRA_UTILS_COMMUNICATOR_INTERFACE_HPP
 #define CONTRA_UTILS_COMMUNICATOR_INTERFACE_HPP
 
+#include "utils/builder.hpp"
+
 namespace contra {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -13,6 +15,21 @@ public:
   virtual Communicator& createCommunicator() = 0;
   virtual void init(int * argc, char ** argv[]) = 0;
   virtual void finalize() = 0;
+  virtual void markTask(llvm::Module&) = 0;
+  virtual void unmarkTask(llvm::Module&) = 0;
+  virtual void pushRootGuard(llvm::Module&) = 0;
+  virtual void popRootGuard(llvm::Module&) = 0;
+
+  void setup(utils::BuilderHelper & Helper);
+
+protected:
+ utils::BuilderHelper * TheHelper_ = nullptr; 
+ llvm::LLVMContext * TheContext_ = nullptr;
+ llvm::IRBuilder<> * TheBuilder_ = nullptr;
+
+ llvm::Type * VoidType_ = nullptr;
+ llvm::Type * Int1Type_ = nullptr;
+ llvm::Type * Int8Type_ = nullptr;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,6 +53,10 @@ public:
 
   void init(int * argc, char ** argv[]) override {}
   void finalize() override {}
+  void markTask(llvm::Module&) override {}
+  void unmarkTask(llvm::Module&) override {}
+  virtual void pushRootGuard(llvm::Module&) override {};
+  virtual void popRootGuard(llvm::Module&) override {};
 
 private:
  
@@ -77,6 +98,9 @@ void commInit(int * argc, char ** argv[]);
 
 /// Shut down the communicator
 void commFinalize();
+
+/// Get the communicator
+Communicator & commGetInstance();
 
 
 } // namespace

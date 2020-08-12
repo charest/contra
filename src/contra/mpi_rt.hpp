@@ -1,0 +1,38 @@
+#ifndef CONTRA_MPI_RT_HPP
+#define CONTRA_MPI_RT_HPP
+
+#include "config.hpp"
+
+#include <mpi.h>
+
+#include <iostream>
+
+namespace contra {
+
+////////////////////////////////////////////////////////////////////////////////
+/// mpi runtime
+////////////////////////////////////////////////////////////////////////////////
+struct mpi_runtime_t {
+  int rank = -1;
+  int size = 0;
+  unsigned TaskCounter = 0;
+
+  void check(int);
+  bool isRoot() const { return rank == 0; }
+};
+
+} // namespace
+
+extern "C" {
+
+////////////////////////////////////////////////////////////////////////////////
+/// Functions for mpi runtime
+////////////////////////////////////////////////////////////////////////////////
+
+void contra_mpi_init(int * argc, char *** argv);
+void contra_mpi_finalize();
+
+} // extern
+
+
+#endif // LIBRT_MPI_RT_HPP

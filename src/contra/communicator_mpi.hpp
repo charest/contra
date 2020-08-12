@@ -2,9 +2,9 @@
 #define CONTRA_UTILS_COMMUNICATOR_MPI_HPP
 
 #include "communicator.hpp"
+#include "mpi_rt.hpp"
 
-#include <mpi.h>
-
+#include <forward_list>
 #include <iostream>
 
 namespace contra {
@@ -29,44 +29,25 @@ public:
   }
 
   void init(int * argc, char ** argv[]) override
-  {
-    auto err = MPI_Init(argc, argv);
-    checkError(err);
+  { contra_mpi_init(argc, argv); }
 
-    err = MPI_Comm_rank(MPI_COMM_WORLD, &Rank_);
-    checkError(err);
+  void finalize() override 
+  { contra_mpi_finalize(); }
 
-    err = MPI_Comm_rank(MPI_COMM_WORLD, &Size_);
-    checkError(err);
-  }
-
-  void finalize() override {
-    auto err = MPI_Finalize();
-    checkError(err);
-  }
+  void markTask(llvm::Module & M) override;
+  void unmarkTask(llvm::Module & M) override;
+  void pushRootGuard(llvm::Module&) override;
+  void popRootGuard(llvm::Module&) override;
 
 private:
  
   MPICommunicator() = default;
 
-  bool isRoot() const { return Rank_ == 0; }
+  struct RootGuard {
+    llvm::BasicBlock * MergeBlock = nullptr;
+  };
 
-  void checkError(int  errcode) {
-    if (errcode) {
-      if (isRoot()) {
-        char * str;
-        int len;
-        MPI_Error_string(errcode, str, &len);
-        std::cerr << "MPI Error failed with error code " << errcode << std::endl;
-        std::cerr << str << std::endl;
-      }
-      MPI_Abort(MPI_COMM_WORLD, errcode);
-    }
-  }
-
-
-  int Rank_ = 0;
-  int Size_ = 0;
+  std::forward_list<RootGuard> RootGuards_;
 
 };
 

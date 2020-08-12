@@ -73,7 +73,7 @@ class CodeGen : public RecursiveAstVisiter {
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
 
-  std::unique_ptr<AbstractCommunicator> Communicator_;
+  Communicator * Communicator_ = nullptr;
 
 public:
   
