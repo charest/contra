@@ -2,7 +2,6 @@
 #define CONTRA_CODEGEN_HPP
 
 #include "backends.hpp"
-#include "communicator.hpp"
 #include "device_jit.hpp"
 #include "jit.hpp"
 #include "recursive.hpp"
@@ -72,8 +71,6 @@ class CodeGen : public RecursiveAstVisiter {
 
   // task interface
   std::unique_ptr<AbstractTasker> Tasker_;
-
-  Communicator * Communicator_ = nullptr;
 
 public:
   

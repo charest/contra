@@ -19,6 +19,9 @@ enum class SupportedBackends {
 #ifdef HAVE_THREADS
   Threads,
 #endif
+#ifdef HAVE_MPI
+  MPI,
+#endif
   Serial,
   Size
 };
@@ -37,6 +40,9 @@ inline SupportedBackends getBackend(const std::string & Name)
 #endif
 #ifdef HAVE_THREADS
   if (lower == "threads") return SupportedBackends::Threads;
+#endif
+#ifdef HAVE_MPI
+  if (lower == "mpi") return SupportedBackends::MPI;
 #endif
   if (lower == "serial") return SupportedBackends::Serial;
   return SupportedBackends::Size;

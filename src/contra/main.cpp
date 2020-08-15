@@ -1,18 +1,14 @@
 #include "config.hpp"
 
 #include "args.hpp"
-#include "communicator.hpp"
-#ifdef HAVE_MPI
-#include "communicator_mpi.hpp"
-#endif
 #include "contra.hpp"
 #include "precedence.hpp"
 
 #include "librt/librt.hpp"
 
-
-
 #include "utils/string_utils.hpp"
+
+#include <mpi.h>
 
 #include <fstream>
 #include <iostream>
@@ -101,18 +97,13 @@ llvm::cl::opt<std::string> OptionInputFilename(
   llvm::cl::desc("Optional input file.  If none specified, run the interpreter"),
   llvm::cl::value_desc("input file"));
 
-
 //==============================================================================
 // Main driver code.
 //==============================================================================
 int main(int argc, char** argv) {
   
-#ifdef HAVE_MPI
-  commSelect<MPICommunicator>();
-#endif
-
-  commInit(&argc, &argv);
-
+  MPI_Init(&argc, &argv);
+  
   // get arguments
   cl::ParseCommandLineOptions(argc, argv);
 
@@ -167,8 +158,8 @@ int main(int argc, char** argv) {
 
   // Run the main "interpreter loop" now.
   Interp.mainLoop();
-
-  commFinalize();
+  
+  MPI_Finalize();
 
   return 0;
 

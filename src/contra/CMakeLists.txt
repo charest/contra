@@ -2,7 +2,6 @@
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/analysis.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/args.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/ast.cpp )
-target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/communicator.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/compiler.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/context.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/codegen.cpp )
@@ -25,7 +24,7 @@ target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/vizualizer.cpp )
 target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp )
 
 if (MPI_FOUND)
-  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/communicator_mpi.cpp )
+  target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/mpi.cpp )
   target_sources( contra PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/mpi_rt.cpp )
 endif()
 

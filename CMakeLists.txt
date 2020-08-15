@@ -70,6 +70,7 @@ if (MPI_FOUND)
   MESSAGE(STATUS "MPI Include Dirs: ${MPI_C_INCLUDE_DIRS}")
   MESSAGE(STATUS "MPI Libraries: ${MPI_C_LIBRARIES}")
   target_link_libraries(contra PUBLIC MPI::MPI_C)
+  list(APPEND SUPPORTED_BACKENDS "mpi")
 endif()
 
 

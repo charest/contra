@@ -8,6 +8,7 @@
 #include "cuda_jit.hpp"
 #include "errors.hpp"
 #include "legion.hpp"
+#include "mpi.hpp"
 #include "precedence.hpp"
 #include "rocm.hpp"
 #include "rocm_jit.hpp"
@@ -90,6 +91,12 @@ CodeGen::CodeGen (
   }     
 #endif
   
+#ifdef HAVE_MPI
+  else if (Backend == SupportedBackends::MPI) {
+    Tasker_ = std::make_unique<MpiTasker>(TheHelper_);
+  }     
+#endif
+  
   else 
     THROW_CONTRA_ERROR("No viable backend selected!");
 
@@ -111,10 +118,6 @@ CodeGen::CodeGen (
   // init function optimizer
   initializeModuleAndPassManager();
 
-  // insert communicator runtime init
-  Communicator_ = &commGetInstance();
-  Communicator_->setup(TheHelper_);
-  
 }
   
 ////////////////////////////////////////////////////////////////////////////////
@@ -980,8 +983,6 @@ void CodeGen::visit(CallExprAST &e) {
     const auto & TaskI = Tasker_->getTask(Name);
     Value* FutureV = nullptr;
 
-    Communicator_->markTask(*TheModule_);
-    
     if (e.isTopLevelTask()) {
       if (Tasker_->isStarted())
         Tasker_->postregisterTasks(*TheModule_);
@@ -1007,19 +1008,18 @@ void CodeGen::visit(CallExprAST &e) {
       ValueResult_ = FutureV;
     }
 
-    Communicator_->unmarkTask(*TheModule_);
   }
   //----------------------------------------------------------------------------
   else {
     std::string TmpN = CalleeF->getReturnType()->isVoidTy() ? "" : "calltmp";
 
-    if (Name == "print") Communicator_->pushRootGuard(*TheModule_);
+    if (Name == "print") Tasker_->pushRootGuard(*TheModule_);
 
     for (auto & A : ArgVs) A = TheHelper_.getAsValue(A);
     ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
 
     if (Name == "print") {
-      Communicator_->popRootGuard(*TheModule_);
+      Tasker_->popRootGuard(*TheModule_);
       ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
     }
   }
@@ -1285,6 +1285,7 @@ void CodeGen::visit(ForeachStmtAST& e)
   //---------------------------------------------------------------------------
   else {
     createScope();
+    Tasker_->markTask(*TheModule_);
     
     auto TaskN = e.getName();
     const auto & TaskI = Tasker_->getTask(TaskN);
@@ -1368,6 +1369,7 @@ void CodeGen::visit(ForeachStmtAST& e)
     popScope();
     ValueResult_ = UndefValue::get(VoidType_);
 
+    Tasker_->unmarkTask(*TheModule_);
   }
 }
 

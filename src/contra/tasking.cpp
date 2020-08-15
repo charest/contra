@@ -23,6 +23,7 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   ByteType_ = VoidPtrType_->getPointerElementType();
   BoolType_ = llvmType<bool>(TheContext_);
   Int32Type_ = llvmType<int>(TheContext_);
+  Int1Type_ = Type::getInt1Ty(TheContext_);
   IntType_ = llvmType<int_t>(TheContext_);
   SizeType_ = llvmType<std::size_t>(TheContext_);
   RealType_ = llvmType<real_t>(TheContext_);

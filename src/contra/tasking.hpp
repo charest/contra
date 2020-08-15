@@ -43,6 +43,7 @@ protected:
   llvm::Type* VoidPtrType_ = nullptr;
   llvm::Type* ByteType_ = nullptr;
   llvm::Type* BoolType_ = nullptr;
+  llvm::Type* Int1Type_ = nullptr;
   llvm::Type* Int32Type_ = nullptr;
   llvm::Type* IntType_ = nullptr;
   llvm::Type* SizeType_ = nullptr;
@@ -186,6 +187,13 @@ public:
       const std::string &,
       const std::vector<llvm::Type*> &,
       const std::vector<ReductionType> &) = 0;
+
+  virtual void markTask(llvm::Module &) {};
+  virtual void unmarkTask(llvm::Module &) {};
+  
+  virtual void pushRootGuard(llvm::Module &) {};
+  virtual void popRootGuard(llvm::Module &) {};
+
   
   //----------------------------------------------------------------------------
   // Common public members
