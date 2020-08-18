@@ -15,6 +15,9 @@
 
 namespace contra {
 
+////////////////////////////////////////////////////////////////////////////////
+/// field registry data
+////////////////////////////////////////////////////////////////////////////////
 struct field_registry_t {
   std::shared_ptr<void> Init;
 
@@ -30,6 +33,9 @@ struct field_registry_t {
   
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/// mpi runtime 
+////////////////////////////////////////////////////////////////////////////////
 struct field_exchange_t {
   void* RecvBuf = nullptr;
   std::vector<MPI_Request> Requests;
@@ -64,9 +70,13 @@ class mpi_runtime_t {
   int Rank = -1;
   int Size = 0;
   unsigned TaskCounter = 0;
+  unsigned FieldCounter = 0;
+  unsigned PartitionCounter = 0;
   
-  std::vector<field_registry_t> FieldRegistry;
+  std::map<unsigned, field_registry_t> FieldRegistry;
   std::map<void*, field_exchange_t> FieldRequests;
+
+  std::map<unsigned, unsigned> PartitionRegistry;
 
 
 public:
@@ -77,9 +87,9 @@ public:
     Size = size;
   }
 
-  void incrementCounter() { TaskCounter++; }
-  void decrementCounter() { TaskCounter--; }
-  auto getCounter() { return TaskCounter; }
+  void incrementTaskCounter() { TaskCounter++; }
+  void decrementTaskCounter() { TaskCounter--; }
+  auto getTaskCounter() { return TaskCounter; }
 
   void check(int);
   bool isRoot() const { return Rank == 0; }
@@ -87,14 +97,15 @@ public:
   auto getSize() const { return Size; }
   auto getRank() const { return Rank; }
 
-  int registerField(int_t data_size, const void * init)
+  auto registerField(int_t data_size, const void * init)
   {
-    auto fid = FieldRegistry.size();
-    FieldRegistry.emplace_back(data_size, init);
+    auto fid = FieldCounter++;
+    FieldRegistry.emplace(fid, field_registry_t{data_size, init});
     return fid;
   }
+  void deregisterField(unsigned i) { FieldRegistry.erase(i); }
 
-  auto & getField(int i) { return FieldRegistry.at(i); }
+  auto & getRegisteredField(unsigned i) { return FieldRegistry.at(i); }
 
   auto & requestField(void * key, int_t recvcnt, int_t reqcnt) 
   { 
@@ -103,7 +114,7 @@ public:
     return obj;
   }
 
-  std::pair<field_exchange_t*, bool> findRequest(void* data)
+  std::pair<field_exchange_t*, bool> findFieldRequest(void* data)
   {
     auto it = FieldRequests.find(data);
     if (it != FieldRequests.end()) {
@@ -113,9 +124,34 @@ public:
       return {nullptr, false};
     }
   }
+
+  auto registerPartition() {
+    auto pid = PartitionCounter++;
+    PartitionRegistry.emplace(pid, 1);
+    return pid;
+  }
+
+  auto decrementPartition(unsigned id) {
+    auto & Part = PartitionRegistry.at(id);
+    if (Part <= 1) {
+      PartitionRegistry.erase(id);
+      return true;
+    }
+    else {
+      Part--;
+      return false;
+    }
+  }
+  
+  void incrementPartition(unsigned id)
+  { 
+    PartitionRegistry[id]++;
+  }
+
 };
 
 } // namespace
+
 
 extern "C" {
 
@@ -130,18 +166,21 @@ struct contra_mpi_partition_t {
   int_t* offsets;
   int_t* indices;
   contra_index_space_t *index_space;
+  int id;
 
   void setup(
       int_t part_sz,
       int_t parts,
       contra_index_space_t *is,
-      int_t * offs)
+      int_t * offs,
+      int pid)
   {
     num_parts = parts;
     part_size = part_sz;
     index_space = is;
     offsets = offs;
     indices = nullptr;
+    id = pid;
   }
 
   void setup(
@@ -149,13 +188,15 @@ struct contra_mpi_partition_t {
       int_t parts,
       contra_index_space_t *is,
       int_t * indx,
-      int_t * offs)
+      int_t * offs,
+      int pid)
   {
     num_parts = parts;
     part_size = part_sz;
     index_space = is;
     offsets = offs;
     indices = indx;
+    id = pid;
   }
 
   void destroy() {
@@ -187,10 +228,7 @@ struct contra_mpi_field_t {
   contra_index_space_t *index_space = nullptr;
   int id = -1;
   int_t * distribution = nullptr;
-  int_t * offsets = nullptr;
-  int_t num_offsets = 0;
-  int_t begin = 0;
-  int_t end = 0;
+  contra_mpi_partition_t * partition = nullptr;
 
   void setup(
       contra_index_space_t *is,
@@ -202,10 +240,7 @@ struct contra_mpi_field_t {
     index_space = is;
     id = fid;
     distribution = nullptr;
-    offsets = nullptr;
-    num_offsets = 0;
-    begin = 0;
-    end = 0;
+    partition = nullptr;
   }
 
   void destroy() {
@@ -214,45 +249,27 @@ struct contra_mpi_field_t {
     data = nullptr;
     index_space = nullptr;
     id = -1;
-    if (offsets) delete[] offsets;
     if (distribution) delete[] distribution;
-    num_offsets = 0;
-    begin = 0;
-    end = 0;
+    if (partition) delete partition;
   }
 
   int_t allocate(contra_mpi_partition_t *part, int_t *dist, int_t rank, int_t size)
   {
-    auto num_parts = part->num_parts; 
-    auto part_offsets = part->offsets;
-    
-    num_offsets = num_parts;
-    offsets = new int_t[num_offsets+1];
-    memcpy(offsets, part_offsets, (num_offsets+1)*sizeof(int_t));
-    
     distribution = new int_t[size+1];
     memcpy(distribution, dist, (size+1)*sizeof(int_t));
+
+    partition = new contra_mpi_partition_t;
+    *partition = *part;
     
-    begin = std::min(dist[rank], num_parts);
-    end = std::min(dist[rank+1], num_parts);
-    auto len = part_offsets[end] - part_offsets[begin];
+    auto len = part->offsets[dist[rank+1]] - part->offsets[dist[rank]];
     data = malloc(data_size*len);
     return len;
   }
 
-  void redistribute(contra_mpi_partition_t *part, int_t *dist, int_t rank, int_t size)
+  void redistribute(contra_mpi_partition_t *part, int_t *dist, int_t size)
   {
-    auto num_parts = part->num_parts;
-    if (num_parts > num_offsets) {
-      delete[] offsets;
-      offsets = new int_t[num_parts];
-    }
-    num_offsets = num_parts;
-    memcpy(offsets, part->offsets, (num_offsets+1)*sizeof(int_t));
+    *partition = *part;
     memcpy(distribution, dist, (size+1)*sizeof(int_t));
-
-    begin = std::min(dist[rank], num_parts);
-    end = std::min(dist[rank+1], num_parts);
   }
 
   void transfer(void * buf) {
@@ -260,11 +277,8 @@ struct contra_mpi_field_t {
     data = buf;
   }
   
-  int_t begin_offset() { return offsets[begin]; }
-  int_t end_offset() { return offsets[end]; }
-  
-  int_t begin_offset(int_t i) { return offsets[distribution[i]]; }
-  int_t end_offset(int_t i) { return offsets[distribution[i+1]]; }
+  int_t rank_begin(int_t i) { return partition->offsets[distribution[i]]; }
+  int_t rank_end(int_t i) { return partition->offsets[distribution[i+1]]; }
 
 
   bool is_allocated() { return data; }
@@ -337,6 +351,8 @@ void contra_mpi_partition_from_size(
     int_t size,
     contra_index_space_t * is,
     contra_mpi_partition_t * part);
+
+void contra_mpi_partition_destroy(contra_mpi_partition_t * part);
 
 //void contra_mpi_init(int * argc, char *** argv);
 //void contra_mpi_finalize();

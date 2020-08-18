@@ -47,19 +47,19 @@ void contra_mpi_init()
 /// mark we are in a task
 //==============================================================================
 void contra_mpi_mark_task()
-{ MpiRuntime.incrementCounter(); }
+{ MpiRuntime.incrementTaskCounter(); }
 
 //==============================================================================
 /// unmark we are in a task
 //==============================================================================
 void contra_mpi_unmark_task()
-{ MpiRuntime.decrementCounter(); }
+{ MpiRuntime.decrementTaskCounter(); }
 
 //==============================================================================
 /// Test if we need to guard and if we are root
 //==============================================================================
 bool contra_mpi_test_root()
-{ return MpiRuntime.getCounter() > 0 || MpiRuntime.isRoot(); }
+{ return MpiRuntime.getTaskCounter() > 0 || MpiRuntime.isRoot(); }
 
 //==============================================================================
 /// Get the rank
@@ -148,7 +148,7 @@ void contra_mpi_field_fetch(
     contra_mpi_partition_t * part,
     contra_mpi_field_t * fld)
 {
-  auto & Field = MpiRuntime.getField(fld->id);
+  auto & Field = MpiRuntime.getRegisteredField(fld->id);
   auto comm_rank = MpiRuntime.getRank();
   auto comm_size = MpiRuntime.getSize();
  
@@ -156,12 +156,7 @@ void contra_mpi_field_fetch(
   // allocated somewhere
   if (fld->is_allocated()) {
 
-    auto is_same =
-      fld->num_offsets == part->num_parts &&
-      std::equal(
-        part->offsets_begin(), 
-        part->offsets_end(),
-        fld->offsets);
+    auto is_same = fld->partition->id == part->id;
     
     if (!is_same) {
       auto part_offsets = part->offsets;
@@ -172,8 +167,8 @@ void contra_mpi_field_fetch(
       std::vector<int_t> recvcounts(comm_size, 0);
       std::vector<int_t> sendpos(comm_size);
       
-      auto comm_fld_begin = fld->begin_offset();
-      auto comm_fld_end = fld->end_offset();
+      auto comm_fld_begin = fld->rank_begin(comm_rank);
+      auto comm_fld_end = fld->rank_end(comm_rank);
         
       auto comm_part_begin = part_offsets[dist[comm_rank]];
       auto comm_part_end = part_offsets[dist[comm_rank+1]];
@@ -186,21 +181,20 @@ void contra_mpi_field_fetch(
         sendpos[i] = (begin - comm_fld_begin) * data_size;
         sendcounts[i] = end>begin ? (end-begin) * data_size : 0;
         // recv
-        begin = std::max(fld->begin_offset(i), comm_part_begin);
-        end = std::min(fld->end_offset(i), comm_part_end);
+        begin = std::max(fld->rank_begin(i), comm_part_begin);
+        end = std::min(fld->rank_end(i), comm_part_end);
         recvcounts[i] = end>begin ? (end-begin) * data_size : 0;
         recvcnt += recvcounts[i];
         if (i!=comm_rank && (sendcounts[i] || recvcounts[i])) exchange = true;
       }
-
+        
       //------------------------------------
       // at least some info must be exchanged
       if  (exchange) {
-
         if (comm_rank==0) {
           std::cout << "moving [ ";
           for (decltype(comm_size) i=0; i<comm_size+1; ++i) {
-            std::cout << fld->begin_offset(i) << " ";
+            std::cout << fld->rank_begin(i) << " ";
           }
           
           std::cout << "]" << std::endl;
@@ -212,6 +206,8 @@ void contra_mpi_field_fetch(
           std::cout << "]" << std::endl;
         }
         
+
+
         auto fld_data = static_cast<byte_t*>(fld->data);
       
         auto & Request = MpiRuntime.requestField(fld_data, recvcnt, 2*comm_size);
@@ -252,7 +248,9 @@ void contra_mpi_field_fetch(
       // done excanghe
       //------------------------------------
         
-      fld->redistribute(part, dist, comm_rank, comm_size);
+      contra_mpi_partition_destroy(fld->partition);
+      fld->redistribute(part, dist, comm_size);
+      MpiRuntime.incrementPartition(part->id);
 
     } // ! is_same
 
@@ -261,8 +259,13 @@ void contra_mpi_field_fetch(
   // Need to allocate
   else {
     auto len = fld->allocate(part, dist, comm_rank, comm_size);
-    if (Field.Init && len)
-      memcpy(fld->data, Field.getInit(), fld->data_size*len);
+    if (Field.Init && len) {
+      auto fld_data  = static_cast<byte_t*>(fld->data);
+      auto data_size = fld->data_size;
+      for (int_t i=0; i<len; ++i)
+        memcpy(fld_data + i*data_size, Field.getInit(), data_size);
+    }
+    MpiRuntime.incrementPartition(part->id);
   }
 }
 
@@ -270,7 +273,9 @@ void contra_mpi_field_fetch(
 // Destroy a field
 //==============================================================================
 void contra_mpi_field_destroy(contra_mpi_field_t * fld)
-{ fld->destroy(); }
+{
+  fld->destroy();
+}
 
 //==============================================================================
 /// index space partitioning
@@ -321,7 +326,8 @@ void contra_mpi_partition_from_size(
     }
   }
 
-  part->setup( index_size, num_parts, is, offsets);
+  auto pid = MpiRuntime.registerPartition();
+  part->setup( index_size, num_parts, is, offsets, pid);
 }
 
 //==============================================================================
@@ -355,7 +361,8 @@ void contra_mpi_partition_from_array(
     for (int_t i=0; i<num_parts; ++i) 
       offsets[i+1] = offsets[i] + size_ptr[i];
 
-    part->setup( index_size, num_parts, is, offsets);
+    auto pid = MpiRuntime.registerPartition();
+    part->setup( index_size, num_parts, is, offsets, pid);
 
   }
   //------------------------------------
@@ -380,6 +387,8 @@ void contra_mpi_partition_from_field(
   auto fld_ptr = static_cast<int_t*>(fld->data);
 
   if (auto fld_indices = fld_part->indices) {
+    std::cout << "not implemented yet" << std::endl;
+    abort();
 
     for (int_t i=0, cnt=0; i<num_parts; ++i) {
       auto size = fld_part->size(i);
@@ -405,7 +414,8 @@ void contra_mpi_partition_from_field(
 
   }
 
-  part->setup(expanded_size, num_parts, is, indices, offsets);
+  auto pid = MpiRuntime.registerPartition();
+  part->setup(expanded_size, num_parts, is, indices, offsets, pid);
 }
 
 //==============================================================================
@@ -434,7 +444,11 @@ contra_mpi_partition_t*  contra_mpi_partition_get(
 // Destroy a partition
 //==============================================================================
 void contra_mpi_partition_destroy(contra_mpi_partition_t * part)
-{ part->destroy(); }
+{ 
+  if (MpiRuntime.decrementPartition(part->id)) {
+    part->destroy();
+  }
+}
 
 //==============================================================================
 /// Set an accessors current partition.
@@ -446,7 +460,7 @@ void contra_mpi_accessor_setup(
 {
   auto data_size = fld->data_size;
 
-  auto res = MpiRuntime.findRequest(fld->data);
+  auto res = MpiRuntime.findFieldRequest(fld->data);
   if (res.second) {
     auto & exchange_data = *res.first;
     auto & requests = exchange_data.getRequests();
@@ -471,7 +485,8 @@ void contra_mpi_accessor_setup(
   //  }
   //}
   //else {
-    auto pos = fld->offsets[i] - fld->offsets[fld->begin];
+    auto comm_rank = MpiRuntime.getRank();
+    auto pos = fld->partition->offsets[i] - fld->rank_begin(comm_rank);
     acc->setup( fld_data + data_size*pos, data_size );
   //}
 }

@@ -100,10 +100,7 @@ StructType * MpiTasker::createFieldType()
     IndexSpaceType_->getPointerTo(),
     Int32Type_,
     IntType_->getPointerTo(),
-    IntType_->getPointerTo(),
-    IntType_,
-    IntType_,
-    IntType_
+    IndexPartitionType_->getPointerTo()
   };
   auto NewType = StructType::create( TheContext_, members, "contra_mpi_field_t" );
   return NewType;
@@ -134,7 +131,9 @@ StructType * MpiTasker::createIndexPartitionType()
     IntType_,
     IntPtrT,
     IntPtrT,
-    IndexSpaceType_->getPointerTo()};
+    IndexSpaceType_->getPointerTo(),
+    Int32Type_
+  };
   auto NewType = StructType::create( TheContext_, members, "contra_mpi_partition_t" );
   return NewType;
 }
