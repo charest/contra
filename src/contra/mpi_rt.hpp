@@ -37,28 +37,36 @@ struct field_registry_t {
 /// mpi runtime 
 ////////////////////////////////////////////////////////////////////////////////
 struct field_exchange_t {
-  void* RecvBuf = nullptr;
+  std::vector<void*> RecvBufs;
   std::vector<MPI_Request> Requests;
+  std::vector<int_t> Locations;
   
 
   void setup(int_t recvsize, int_t reqsize)
   {
-    RecvBuf = malloc(recvsize);
+    RecvBufs.emplace_back( malloc(recvsize) );
+    Requests.reserve(reqsize);
+  }
+  
+  void setup(int_t recvsize, int_t sendsize, int_t reqsize)
+  {
+    RecvBufs.emplace_back( malloc(recvsize) );
+    RecvBufs.emplace_back( malloc(sendsize) );
     Requests.reserve(reqsize);
   }
 
-  auto getBuffer() const { return RecvBuf; }
+  auto getBuffer(int i=0) const { return RecvBufs[i]; }
   auto & getRequests() { return Requests; }
 
-  auto transferBuffer() {
-    auto buf = RecvBuf;
-    RecvBuf = nullptr;
+  auto transferBuffer(int i=0) {
+    auto buf = RecvBufs[i];
+    RecvBufs[i] = nullptr;
     return buf;
   }
 
   ~field_exchange_t() {
-    if (RecvBuf) free(RecvBuf);
-    RecvBuf = nullptr;
+    for (auto RecvBuf : RecvBufs)
+      if (RecvBuf) free(RecvBuf);
   }
 };
 
@@ -113,6 +121,14 @@ public:
     obj.setup(recvcnt, reqcnt);
     return obj;
   }
+  
+  auto & requestField(void * key, int_t recvcnt, int_t sendcnt, int_t reqcnt) 
+  { 
+    auto & obj = FieldRequests[key];
+    obj.setup(recvcnt, sendcnt, reqcnt);
+    return obj;
+  }
+
 
   std::pair<field_exchange_t*, bool> findFieldRequest(void* data)
   {
@@ -159,12 +175,14 @@ extern "C" {
 /// Types needed for mpi runtime
 ////////////////////////////////////////////////////////////////////////////////
 
+struct contra_mpi_field_t;
+
 //==============================================================================
 struct contra_mpi_partition_t {
   int_t part_size;
   int_t num_parts;
   int_t* offsets;
-  int_t* indices;
+  contra_mpi_field_t* indices;
   contra_index_space_t *index_space;
   int id;
 
@@ -187,7 +205,7 @@ struct contra_mpi_partition_t {
       int_t part_sz,
       int_t parts,
       contra_index_space_t *is,
-      int_t * indx,
+      contra_mpi_field_t * indx,
       int_t * offs,
       int pid)
   {
@@ -204,10 +222,7 @@ struct contra_mpi_partition_t {
       delete[] offsets;
       offsets = nullptr;
     }
-    if (indices) {
-      delete[] indices;
-      indices = nullptr;
-    }
+    indices = nullptr;
     part_size = 0;
     num_parts = 0;
     index_space = nullptr;
@@ -216,7 +231,7 @@ struct contra_mpi_partition_t {
   auto size(int_t i) { return offsets[i+1] - offsets[i]; }
 
   auto offsets_begin() { return offsets; }
-  auto offsets_end() { return offsets + num_parts; }
+  auto offsets_end() { return offsets + num_parts + 1; }
   
 };
 
@@ -311,6 +326,8 @@ struct contra_mpi_accessor_t {
 };
 
 
+void contra_mpi_partition_destroy(contra_mpi_partition_t * part);
+
 //==============================================================================
 struct contra_mpi_task_info_t {
   std::map<contra_index_space_t*, contra_mpi_partition_t*> IndexPartMap;
@@ -337,7 +354,7 @@ struct contra_mpi_task_info_t {
 
   ~contra_mpi_task_info_t() {
     for (auto part : PartsToDelete)
-      part->destroy();
+      contra_mpi_partition_destroy(part);
   }
 };
 
@@ -351,9 +368,6 @@ void contra_mpi_partition_from_size(
     int_t size,
     contra_index_space_t * is,
     contra_mpi_partition_t * part);
-
-void contra_mpi_partition_destroy(contra_mpi_partition_t * part);
-
 //void contra_mpi_init(int * argc, char *** argv);
 //void contra_mpi_finalize();
 

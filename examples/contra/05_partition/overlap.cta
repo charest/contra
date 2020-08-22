@@ -50,36 +50,6 @@ tsk top_level() {
       print("i=%ld j=%ld myfield[j]=%ld\n", i, j, myfield[j])
   }
 
-
-#  foreach i = parts {
-#
-#    use cells : cells_part
-#    use cell_id : cells_part
-#   
-#    num_points = len(points)
-#    num_cells = len(cells)
-#
-#    for j = 0:num_points-1 {
-#      print("Point loop with partition %ld and local id %ld\n", i, j)
-#      point_id[j] = j
-#    }
-#    
-#    for j = 0:num_cells-1 {
-#      print("Cell loop with partition %ld and local id %ld\n", i, j)
-#      cell_id[j] = j
-#    }
-#  }
-#  
-#  foreach i = parts {
-#    for j = 0:len(cells)-1
-#      print("Cell loop with partition %ld and cell_id[%ld]=%ld\n", i, j, cell_id[j])
-#  }
-#  
-#  foreach i = parts {
-#    for j = 0:len(points)-1
-#      print("Point loop with partition %ld and point_id[%ld]=%ld\n", i, j, point_id[j])
-#  }
-
 }
 
 top_level()

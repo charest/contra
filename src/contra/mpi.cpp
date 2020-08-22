@@ -130,7 +130,7 @@ StructType * MpiTasker::createIndexPartitionType()
     IntType_,
     IntType_,
     IntPtrT,
-    IntPtrT,
+    VoidPtrType_,
     IndexSpaceType_->getPointerTo(),
     Int32Type_
   };
@@ -406,6 +406,8 @@ Value* MpiTasker::launch(
   //----------------------------------------------------------------------------
   // Fetch fields
   
+  std::map<Value*, Value*> FieldToPart;
+
   for (unsigned i=0; i<NumArgs; i++) {
     if (isField(ArgAs[i])) {
 
@@ -423,6 +425,9 @@ Value* MpiTasker::launch(
         auto IndexPartitionV = TheHelper_.load(IndexPartitionPtr);
         IndexPartitionA = TheHelper_.getAsAlloca(IndexPartitionV);
       }
+
+
+      FieldToPart[FieldA] = IndexPartitionA;
 
       DistV = TheHelper_.load(DistA);
       TheHelper_.callFunction(
@@ -474,11 +479,12 @@ Value* MpiTasker::launch(
   for (auto ArgA : ArgAs) {
     if (isField(ArgA)) {
       auto AccA = TheHelper_.createEntryBlockAlloca(AccessorType_, "acc");
+      auto PartA = FieldToPart.at(ArgA);
       TheHelper_.callFunction(
           TheModule,
           "contra_mpi_accessor_setup",
           VoidType_,
-          {CurV, ArgA, AccA}); 
+          {CurV, PartA, ArgA, AccA}); 
       ArgA = AccA;
     }
     ArgVs.emplace_back( TheHelper_.getAsValue(ArgA) );

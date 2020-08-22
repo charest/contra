@@ -151,14 +151,14 @@ void contra_mpi_field_fetch(
   auto & Field = MpiRuntime.getRegisteredField(fld->id);
   auto comm_rank = MpiRuntime.getRank();
   auto comm_size = MpiRuntime.getSize();
- 
+      
   //----------------------------------------------------------------------------
   // allocated somewhere
   if (fld->is_allocated()) {
 
     auto is_same = fld->partition->id == part->id;
     
-    if (!is_same) {
+    if (!is_same && !part->indices) {
       auto part_offsets = part->offsets;
       auto data_size = fld->data_size;
       bool exchange = false;
@@ -191,22 +191,6 @@ void contra_mpi_field_fetch(
       //------------------------------------
       // at least some info must be exchanged
       if  (exchange) {
-        if (comm_rank==0) {
-          std::cout << "moving [ ";
-          for (decltype(comm_size) i=0; i<comm_size+1; ++i) {
-            std::cout << fld->rank_begin(i) << " ";
-          }
-          
-          std::cout << "]" << std::endl;
-          
-          std::cout << "to [ ";
-          for (decltype(comm_size) i=0; i<comm_size+1; ++i) {
-            std::cout << part_offsets[dist[i]] << " ";
-          }
-          std::cout << "]" << std::endl;
-        }
-        
-
 
         auto fld_data = static_cast<byte_t*>(fld->data);
       
@@ -247,12 +231,194 @@ void contra_mpi_field_fetch(
       }
       // done excanghe
       //------------------------------------
-        
+      
       contra_mpi_partition_destroy(fld->partition);
       fld->redistribute(part, dist, comm_size);
       MpiRuntime.incrementPartition(part->id);
-
+      
     } // ! is_same
+    else if (!is_same && part->indices) {
+      
+      //------------------------------------
+      // check if partition needs exchange
+    
+      // figure out which indices i have
+      auto num_parts = part->num_parts;
+      auto current_dist = part->indices->distribution;
+
+      if (!std::equal(current_dist, current_dist+num_parts, dist)) {
+
+        auto first_part = current_dist[comm_rank];
+        auto last_part = current_dist[comm_rank+1];
+
+        auto int_size = sizeof(int_t);
+        
+        std::vector<int_t> sendcounts(comm_size, 0);
+        std::vector<int_t> recvcounts(comm_size, 0);
+
+        bool exchange = false;
+
+        for (decltype(comm_size) i=0; i<comm_size; ++i) {
+          auto begin = std::max(dist[i], first_part);
+          auto end = std::min(dist[i+1], last_part);
+          begin = part->offsets[begin];
+          end = part->offsets[end];
+          sendcounts[i] = end>begin ? (end-begin) * int_size : 0;
+          begin = std::max(dist[comm_rank], current_dist[i]);
+          end = std::min(dist[comm_rank+1], current_dist[i+1]);
+          begin = part->offsets[begin];
+          end = part->offsets[end];
+          recvcounts[i] = end>begin ? (end-begin) * int_size : 0;
+          if (i!=comm_rank && (sendcounts[i] || recvcounts[i])) exchange = true;
+        }
+        
+        //------------------------------------
+        // at least some info must be exchanged
+        if  (exchange) {
+          std::cerr << "redistribution of partition from field not implemented" << std::endl;
+          abort();
+        }
+      }
+  
+      //------------------------------------
+      // Now fetch values
+      
+      auto part_indices = static_cast<int_t*>(part->indices->data);
+      
+      auto field_part = fld->partition;
+      auto field_offset_start = field_part->offsets_begin();
+      auto field_offset_end = field_part->offsets_end();
+      auto field_dist = fld->distribution;
+      auto num_field_parts = field_part->num_parts;
+
+      std::vector<int_t> field_part_owners(num_field_parts);
+      for (decltype(comm_size) i=0; i<comm_size; ++i)
+        for (auto p=field_dist[i]; p<field_dist[i+1]; ++p)
+          field_part_owners[p] = i;
+
+      auto dist_start = dist[comm_rank];
+      auto dist_end = dist[comm_rank+1];
+      auto local_dist = dist_end - dist_start;
+      
+      size_t tot_indices = 0;
+      for (int_t p=0; p<local_dist; ++p) 
+        tot_indices += part->size(dist_start + p);
+
+      std::vector<unsigned> index_owners;
+      index_owners.reserve(tot_indices);
+
+      std::vector<int_t> sendcounts(comm_size, 0);
+      for (size_t i=0; i<tot_indices; ++i) {
+        auto it = std::lower_bound(field_offset_start, field_offset_end, part_indices[i]);
+        auto pid = std::distance(field_offset_start, it);
+        auto r = field_part_owners[pid];
+        sendcounts[r]++;
+        index_owners.emplace_back(r);
+      }
+      
+      std::vector<int_t> senddispls(comm_size+1);
+      senddispls[0] = 0;
+      for(decltype(comm_size) r = 0; r < comm_size; ++r)
+        senddispls[r + 1] = senddispls[r] + sendcounts[r];
+
+      std::vector<int_t> send_indices(senddispls[comm_size]);
+      std::fill(sendcounts.begin(), sendcounts.end(), 0);
+      
+      std::vector<int_t> recvloc(tot_indices);
+      for (size_t i=0; i<tot_indices; ++i) {
+        auto r = index_owners[i];
+        auto pos = senddispls[r] + sendcounts[r];
+        send_indices[pos] = part_indices[i];
+        sendcounts[r]++;
+        recvloc[pos] = i;
+      }
+
+      auto mpi_int_t = librtmpi::typetraits<int_t>::type();
+      std::vector<int_t> recvcounts(comm_size, 0);
+
+      auto ret = MPI_Alltoall(
+          sendcounts.data(),
+          1,
+          mpi_int_t,
+          recvcounts.data(),
+          1,
+          mpi_int_t,
+          MPI_COMM_WORLD);
+      MpiRuntime.check(ret);
+      
+      std::vector<int_t> recvdispls(comm_size+1);
+      recvdispls[0] = 0;
+      for(decltype(comm_size) r = 0; r < comm_size; ++r)
+        recvdispls[r + 1] = recvdispls[r] + recvcounts[r];
+
+      std::vector<int_t> recv_indices(recvdispls[comm_size]);
+      ret = librtmpi::alltoallv(
+          send_indices,
+          sendcounts,
+          senddispls,
+          recv_indices,
+          recvcounts,
+          recvdispls,
+          MPI_COMM_WORLD);
+      MpiRuntime.check(ret);
+
+      std::swap(send_indices, recv_indices);
+      std::swap(sendcounts, recvcounts);
+      std::swap(senddispls, recvdispls);
+      
+      // now exchange field data
+      auto field_data = static_cast<byte_t*>(fld->data);
+      auto data_size = fld->data_size;
+      
+      auto & Request = MpiRuntime.requestField(
+          field_data,
+          senddispls[comm_size] * data_size,
+          recvdispls[comm_size] * data_size,
+          2*comm_size);
+      
+      std::swap(Request.Locations, recvloc);
+
+      auto sendbuf = static_cast<byte_t*>(Request.getBuffer(0));
+      auto recvbuf = static_cast<byte_t*>(Request.getBuffer(1));
+      auto & requests = Request.getRequests();
+      
+      int tag = 0;
+      auto mpi_byte_t = librtmpi::typetraits<byte_t>::type();
+
+      size_t recvcnt = 0;
+      for (decltype(comm_size) i=0; i<comm_size; ++i) {
+        auto count = recvcounts[i] * data_size;
+        if(count > 0) {
+          auto buf = &recvbuf[recvcnt];
+          requests.emplace_back();
+          auto & my_request = requests.back();
+          auto ret = MPI_Irecv(buf, count, mpi_byte_t, i, tag, MPI_COMM_WORLD, &my_request);
+          MpiRuntime.check(ret);
+        recvcnt += count;
+        }
+      }
+      
+      auto field_id_start = fld->rank_begin(comm_rank);
+      int_t sendcnt = 0;
+      for (decltype(comm_size) i=0; i<comm_size; ++i) {
+        auto count = sendcounts[i] * data_size;
+        if(count > 0) {
+          auto buf = &sendbuf[sendcnt];
+          auto indice_start = senddispls[i];
+          for (int_t j=0; j<sendcounts[i]; ++j) {
+            auto pos = send_indices[ indice_start + j ] - field_id_start;
+            pos *= data_size;
+            memcpy(buf + j*data_size, field_data + pos, data_size); 
+          }
+          requests.emplace_back();
+          auto & my_request = requests.back();
+          auto ret = MPI_Isend(buf, count, mpi_byte_t, i, tag, MPI_COMM_WORLD, &my_request);
+          MpiRuntime.check(ret);
+          sendcnt += count;
+        }
+      }
+
+    }
 
   }
   //----------------------------------------------------------------------------
@@ -274,6 +440,7 @@ void contra_mpi_field_fetch(
 //==============================================================================
 void contra_mpi_field_destroy(contra_mpi_field_t * fld)
 {
+  if (fld->partition) contra_mpi_partition_destroy(fld->partition);
   fld->destroy();
 }
 
@@ -378,44 +545,31 @@ void contra_mpi_partition_from_field(
     contra_mpi_partition_t * part)
 {
   auto num_parts = fld_part->num_parts;
-  auto expanded_size = fld->index_space->size();
-
-  auto indices = new int_t[expanded_size];
+  
+  // all ranks keep track of offsets
   auto offsets = new int_t[num_parts+1];
   offsets[0] = 0;
-  
-  auto fld_ptr = static_cast<int_t*>(fld->data);
+  for (int_t i=0; i<num_parts; ++i) {
+    auto size = fld_part->size(i);
+    offsets[i+1] = offsets[i] + size;
+  }
 
-  if (auto fld_indices = fld_part->indices) {
+  // determine  the size of my portion
+  auto comm_rank = MpiRuntime.getRank();
+  auto first_part = fld->distribution[comm_rank];
+  auto last_part = fld->distribution[comm_rank+1];
+  auto first_offset = offsets[first_part];
+  auto last_offset = offsets[last_part];
+ 
+  auto size = last_offset - first_offset;
+
+  if (fld_part->indices) {
     std::cout << "not implemented yet" << std::endl;
     abort();
-
-    for (int_t i=0, cnt=0; i<num_parts; ++i) {
-      auto size = fld_part->size(i);
-      offsets[i+1] = offsets[i] + size;
-      for (int_t j=0; j<size; ++j, ++cnt) {
-        indices[cnt] = fld_ptr[ fld_indices[cnt] ]; 
-      }
-    }
-
-  }
-  else {
-    
-    auto fld_offsets = fld_part->offsets;
-
-    for (int_t i=0, cnt=0; i<num_parts; ++i) {
-      auto size = fld_part->size(i);
-      offsets[i+1] = offsets[i] + size;
-      auto fld_part_offset = fld_offsets[i];
-      for (int_t j=0; j<size; ++j, ++cnt) {
-        indices[cnt] = fld_ptr[ fld_part_offset + j ]; 
-      }
-    }
-
   }
 
   auto pid = MpiRuntime.registerPartition();
-  part->setup(expanded_size, num_parts, is, indices, offsets, pid);
+  part->setup(size, num_parts, is, fld, offsets, pid);
 }
 
 //==============================================================================
@@ -455,40 +609,62 @@ void contra_mpi_partition_destroy(contra_mpi_partition_t * part)
 //==============================================================================
 void contra_mpi_accessor_setup(
     int_t i,
+    contra_mpi_partition_t * part,
     contra_mpi_field_t * fld,
     contra_mpi_accessor_t * acc)
 {
   auto data_size = fld->data_size;
-
-  auto res = MpiRuntime.findFieldRequest(fld->data);
-  if (res.second) {
+  auto comm_rank = MpiRuntime.getRank();
+  
+  //----------------------------------------------------------------------------
+  // Partition with nidices
+  if (auto part_indices = part->indices) {
+    
+    auto res = MpiRuntime.findFieldRequest(fld->data);
     auto & exchange_data = *res.first;
     auto & requests = exchange_data.getRequests();
     std::vector<MPI_Status> status(requests.size());
     auto ret = MPI_Waitall(requests.size(), requests.data(), status.data());
     MpiRuntime.check(ret);
-    auto buf = exchange_data.transferBuffer();
-    fld->transfer(buf);
-  }
-  
-  auto fld_data = static_cast<byte_t*>(fld->data);
+    auto recvbuf = static_cast<byte_t*>(exchange_data.getBuffer(1));
+    const auto & recvloc = exchange_data.Locations;
 
-  //if (part->indices) {
-  //  auto size = part->size(i);
-  //  acc->setup( size, data_size );
-  //  auto dest = static_cast<byte_t*>(acc->data);
-  //  auto off = part->offsets[i];
-  //  for (int_t j=0; j<size; ++j) {
-  //    const auto src = fld_data + data_size*part->indices[off + j];
-  //    memcpy(dest, src, data_size);
-  //    dest += data_size;
-  //  }
-  //}
-  //else {
-    auto comm_rank = MpiRuntime.getRank();
+    auto rank_start = part_indices->rank_begin(comm_rank);
+    auto start = part_indices->partition->offsets[i];
+    auto end = part_indices->partition->offsets[i+1];
+    auto size = end - start;
+    auto offset = start - rank_start;
+    
+    acc->setup(size, data_size);
+    auto acc_data = static_cast<byte_t*>(acc->data);
+     
+    for (int_t i=0; i<size; ++i) {
+      auto dest = acc_data + i*data_size;
+      auto src = recvbuf + recvloc[i + offset]*data_size;
+      memcpy(dest, src, data_size); 
+    }
+
+  }
+  //----------------------------------------------------------------------------
+  // Regular partition
+  else {
+  
+    auto res = MpiRuntime.findFieldRequest(fld->data);
+    if (res.second) {
+      auto & exchange_data = *res.first;
+      auto & requests = exchange_data.getRequests();
+      std::vector<MPI_Status> status(requests.size());
+      auto ret = MPI_Waitall(requests.size(), requests.data(), status.data());
+      MpiRuntime.check(ret);
+      auto buf = exchange_data.transferBuffer();
+      fld->transfer(buf);
+    }
+  
+    auto fld_data = static_cast<byte_t*>(fld->data);
+
     auto pos = fld->partition->offsets[i] - fld->rank_begin(comm_rank);
     acc->setup( fld_data + data_size*pos, data_size );
-  //}
+  }
 }
 
 //==============================================================================
