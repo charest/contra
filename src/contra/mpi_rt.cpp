@@ -1,6 +1,7 @@
 #include "mpi_rt.hpp"
 #include "librtmpi/mpi_utils.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <iostream>
 
@@ -309,8 +310,8 @@ void contra_mpi_field_fetch(
 
       std::vector<int_t> sendcounts(comm_size, 0);
       for (size_t i=0; i<tot_indices; ++i) {
-        auto it = std::lower_bound(field_offset_start, field_offset_end, part_indices[i]);
-        auto pid = std::distance(field_offset_start, it);
+        auto it = std::upper_bound(field_offset_start, field_offset_end, part_indices[i]);
+        auto pid = std::distance(field_offset_start, it) - 1;
         auto r = field_part_owners[pid];
         sendcounts[r]++;
         index_owners.emplace_back(r);
@@ -644,6 +645,9 @@ void contra_mpi_accessor_setup(
       memcpy(dest, src, data_size); 
     }
 
+    if (i == part_indices->distribution[comm_rank+1]-1)
+      MpiRuntime.eraseFieldRequest(fld->data);
+
   }
   //----------------------------------------------------------------------------
   // Regular partition
@@ -658,6 +662,7 @@ void contra_mpi_accessor_setup(
       MpiRuntime.check(ret);
       auto buf = exchange_data.transferBuffer();
       fld->transfer(buf);
+      MpiRuntime.eraseFieldRequest(fld->data);
     }
   
     auto fld_data = static_cast<byte_t*>(fld->data);
@@ -707,9 +712,11 @@ void contra_mpi_reduce(
     void * recvbuf,
     size_t count)
 {
+#if 1
   MPI_Op op;
   auto ret = MPI_Op_create(fun, true, &op);
   MpiRuntime.check(ret);
+
 
   ret = MPI_Allreduce(
       sendbuf,
@@ -719,6 +726,16 @@ void contra_mpi_reduce(
       op,
       MPI_COMM_WORLD);
   MpiRuntime.check(ret);
+#else
+  auto ret = MPI_Allreduce(
+      sendbuf,
+      recvbuf,
+      1,
+      MPI_DOUBLE,
+      MPI_MAX,
+      MPI_COMM_WORLD);
+  MpiRuntime.check(ret);
+#endif
 }
 
 } // extern

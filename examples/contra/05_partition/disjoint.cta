@@ -32,11 +32,11 @@ tsk top_level() {
     }
   }
   
-  #foreach i = parts {
-  #  for j = 0:len(cells)-1
-  #    print("Cell loop with partition %ld and cell_id[%ld]=%ld\n", i, j, cell_id[j])
-  #}
-  
+  foreach i = parts {
+    for j = 0:len(cells)-1
+      print("Cell loop with partition %ld and cell_id[%ld]=%ld\n", i, j, cell_id[j])
+  }
+ 
   foreach i = parts {
     for j = 0:len(points)-1
       print("Point loop with partition %ld and point_id[%ld]=%ld\n", i, j, point_id[j])

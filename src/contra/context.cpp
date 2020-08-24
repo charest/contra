@@ -89,6 +89,16 @@ std::vector<VariableDef*> Context::getVariablesAccessedFromAbove() const
   std::sort(Vars.begin(), Vars.end());
   auto last = std::unique(Vars.begin(), Vars.end());
   Vars.erase(last, Vars.end());
+  
+  std::sort(
+      Vars.begin(),
+      Vars.end(),
+      [](const auto a, const auto b) {
+        const auto & astr = a->getName();
+        const auto & bstr = b->getName();
+        return astr < bstr;
+      });
+
   return Vars;
 }
   

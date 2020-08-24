@@ -141,6 +141,9 @@ public:
     }
   }
 
+  void eraseFieldRequest(void *data)
+  { FieldRequests.erase(data); }
+
   auto registerPartition() {
     auto pid = PartitionCounter++;
     PartitionRegistry.emplace(pid, 1);

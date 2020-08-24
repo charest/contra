@@ -48,7 +48,7 @@ tsk main() {
 
   # input parameters
   num_parts = 2
-  num_cells = 4000
+  num_cells = 100
   num_ghost = 1
   f64 xleft = 0
   f64 xright = 1
@@ -56,7 +56,7 @@ tsk main() {
 
   f64 cfl = 1.0
   f64 max_time = 0.2
-  max_its = 10000
+  max_its = 1000
 
   gamma = 1.4 
         
@@ -100,11 +100,13 @@ tsk main() {
   }
 
   # size the cells with extra ghosts
-  cell_sizes_with_ghost = [0; num_parts]
-  cell_sizes_with_ghost[0] = cell_sizes[0] + num_ghost
-  for i = 1 : num_parts-2
-    cell_sizes_with_ghost[i] = cell_sizes[i] + 2*num_ghost
-  cell_sizes_with_ghost[num_parts-1] = cell_sizes[num_parts-1] + num_ghost
+  cell_sizes_with_ghost = [chunk; num_parts]
+  if num_parts > 1 {
+    cell_sizes_with_ghost[0] = cell_sizes[0] + num_ghost
+    for i = 1 : num_parts-2
+      cell_sizes_with_ghost[i] = cell_sizes[i] + 2*num_ghost
+    cell_sizes_with_ghost[num_parts-1] = cell_sizes[num_parts-1] + num_ghost
+  }
 
   # count the number of owned + ghost cells/points
   tot_cells, tot_points = 0
@@ -217,7 +219,7 @@ tsk main() {
 
   foreach i = parts {
     use cells_expanded : cells_expanded_part
-    for j = 0:len(cells_expanded)-1 
+    for j = 0:len(cells_expanded)-1
       cell_ids[j] = cell_offsets[i] + j
   }
 
