@@ -17,13 +17,23 @@ class MpiReduceInfo : public AbstractReduceInfo {
   std::vector<llvm::Type*> VarTypes_;
   std::vector<ReductionType> ReduceTypes_;
 
+  std::string FoldN_;
+  llvm::FunctionType* FoldT_ = nullptr;
+
+  std::size_t DataSize_ = 0;
+
 public:
 
   MpiReduceInfo(
       const std::vector<llvm::Type*> & VarTypes,
-      const std::vector<ReductionType> & ReduceTypes) :
+      const std::vector<ReductionType> & ReduceTypes,
+      llvm::Function* Fold,
+      std::size_t DataSize) :
     VarTypes_(VarTypes),
-    ReduceTypes_(ReduceTypes)
+    ReduceTypes_(ReduceTypes),
+    FoldN_(Fold->getName()),
+    FoldT_(Fold->getFunctionType()),
+    DataSize_(DataSize)
   {}
 
   auto getNumReductions() const { return VarTypes_.size(); }
@@ -31,6 +41,10 @@ public:
   const auto & getVarTypes() const { return VarTypes_; }
   auto getVarType(unsigned i) const { return VarTypes_[i]; }
   auto getReduceOp(unsigned i) const { return ReduceTypes_[i]; }
+
+  auto getDataSize() const { return DataSize_; }
+  const auto & getFoldName() const { return FoldN_; }
+  auto getFoldType() const { return FoldT_; }
 
 };
 
@@ -50,9 +64,7 @@ class MpiTasker : public AbstractTasker {
 
   const TaskInfo * TopLevelTask_ = nullptr;
   
-  struct TaskEntry {
-    llvm::Value* ResultAlloca = nullptr;
-  };
+  struct TaskEntry {};
 
   std::forward_list<TaskEntry> TaskAllocas_;
 

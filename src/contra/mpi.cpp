@@ -6,6 +6,8 @@
 #include "utils/llvm_utils.hpp"
 
 #include "llvm/Support/raw_ostream.h"
+
+#include <mpi.h>
   
 ////////////////////////////////////////////////////////////////////////////////
 // Mpi tasker
@@ -236,7 +238,7 @@ MpiTasker::PreambleResult MpiTasker::taskPreamble(
     WrapperArgAs.emplace_back(Alloca);
     ArgIdx++;
   }
-  
+
   auto IndexA = WrapperArgAs.back();
   WrapperArgAs.pop_back();
   
@@ -280,16 +282,15 @@ void MpiTasker::taskPostamble(
   //----------------------------------------------------------------------------
   //  Index task
   if (IsIndex) {
-
+    // Have return value
     if (HasReturn) {
       ResultV = TheHelper_.getAsValue(ResultV);
-      auto & TaskE = getCurrentTask();
-      Builder_.CreateStore(ResultV, TaskE.ResultAlloca);
+      Builder_.CreateRet(ResultV);
     }
-
-    // always return null
-    auto NullC = Constant::getNullValue(VoidPtrType_);
-    Builder_.CreateRet(NullC);
+    // No return value
+    else {
+      Builder_.CreateRetVoid();
+    }
     finishTask();
   }
   //----------------------------------------------------------------------------
@@ -439,6 +440,27 @@ Value* MpiTasker::launch(
     } // field
   }
   
+  //----------------------------------------------------------------------------
+  // Reduction
+  
+  AllocaInst* ResultA = nullptr;
+
+  if (AbstractReduceOp) {
+    auto ReduceOp = dynamic_cast<const MpiReduceInfo*>(AbstractReduceOp);
+    auto ResultT = StructType::create( TheContext_, "reduce" );
+    ResultT->setBody( ReduceOp->getVarTypes() );
+    ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
+
+    auto NumReduce = ReduceOp->getNumReductions();
+    for (unsigned i=0; i<NumReduce; ++i) {
+      auto VarT = ReduceOp->getVarType(i);
+      auto Op = ReduceOp->getReduceOp(i);
+      // get init value
+      auto InitC = initReduce(VarT, Op);
+      // store init
+      TheHelper_.insertValue(ResultA, InitC, i);
+    }
+  }
   
   //----------------------------------------------------------------------------
   // create for loop
@@ -492,11 +514,25 @@ Value* MpiTasker::launch(
   
   ArgVs.emplace_back( CurV );
    
-  TheHelper_.callFunction(
+  Type* ResultT = ResultA ? TheHelper_.getAllocatedType(ResultA) : VoidType_;
+
+  auto ResultV = TheHelper_.callFunction(
       TheModule,
       TaskI.getName(),
-      VoidType_,
+      ResultT,
       {ArgVs});
+
+  if (ResultA) {
+    auto ReduceOp = dynamic_cast<const MpiReduceInfo*>(AbstractReduceOp);
+    auto NumReduce = ReduceOp->getNumReductions();
+    for (unsigned i=0; i<NumReduce; ++i) {
+      auto VarV = TheHelper_.extractValue(ResultV, i);
+      auto ReduceV = TheHelper_.extractValue(ResultA, i);
+      auto Op = ReduceOp->getReduceOp(i);
+      ReduceV = applyReduce(TheModule, ReduceV, VarV, Op);
+      TheHelper_.insertValue(ResultA, ReduceV, i);
+    }
+  }
   
   // Done loop
   //----------------------------------------------------------------------------
@@ -519,6 +555,31 @@ Value* MpiTasker::launch(
   // Any new code will be inserted in AfterBB.
   //TheFunction->getBasicBlockList().push_back(AfterBB);
   Builder_.SetInsertPoint(AfterBB);
+  
+  //----------------------------------------------------------------------------
+  // Reduction
+  
+  if (ResultA) {
+    auto ReduceOp = dynamic_cast<const MpiReduceInfo*>(AbstractReduceOp);
+    
+    auto ResultT = TheHelper_.getAllocatedType(ResultA);
+    auto TmpResultA = TheHelper_.createEntryBlockAlloca(ResultT);
+    auto DataSizeV = llvmValue<size_t>(TheContext_, ReduceOp->getDataSize()); 
+
+    const auto & FoldN = ReduceOp->getFoldName();
+    auto FoldT = ReduceOp->getFoldType();
+    auto FoldF = TheModule.getOrInsertFunction(FoldN, FoldT).getCallee();
+
+    TheHelper_.callFunction(
+        TheModule,
+        "contra_mpi_reduce",
+        VoidType_,
+        {FoldF, ResultA, TmpResultA, DataSizeV});
+
+    ResultA = TmpResultA;
+  }
+
+  
 
   //----------------------------------------------------------------------------
   // cleanup
@@ -529,7 +590,7 @@ Value* MpiTasker::launch(
   destroyPartitions(TheModule, TempParts);
   destroyTaskInfo(TheModule, TaskInfoA);
 
-  return nullptr; //ResultA;
+  return ResultA;
 }
 
 //==============================================================================
@@ -814,12 +875,59 @@ void MpiTasker::destroyPartition(
 // create a reduction op
 //==============================================================================
 std::unique_ptr<AbstractReduceInfo> MpiTasker::createReductionOp(
-    Module &,
-    const std::string &,
+    Module & TheModule,
+    const std::string & ReductionN,
     const std::vector<Type*> & VarTs,
     const std::vector<ReductionType> & ReduceTypes)
 {
-  return std::make_unique<MpiReduceInfo>(VarTs, ReduceTypes);
+
+  std::vector<Type*> ArgTs = {
+    VoidPtrType_,
+    VoidPtrType_,
+    IntType_->getPointerTo(),
+    llvmType<MPI_Datatype>(TheContext_)->getPointerTo()
+  };
+
+  FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
+  auto FunF = Function::Create(
+      FunT,
+      Function::ExternalLinkage,
+      ReductionN,
+      TheModule);
+
+  auto BB = BasicBlock::Create(TheContext_, "entry", FunF);
+  Builder_.SetInsertPoint(BB);
+  
+  auto InvecPtrA = TheHelper_.createEntryBlockAlloca(ArgTs[0]);
+  auto InoutvecPtrA = TheHelper_.createEntryBlockAlloca(ArgTs[1]);
+
+  auto ArgIt = FunF->arg_begin();
+  Builder_.CreateStore(ArgIt, InvecPtrA);
+  ++ArgIt;
+  Builder_.CreateStore(ArgIt, InoutvecPtrA);
+
+  std::size_t Offset = 0;
+  for (unsigned i=0; i<VarTs.size(); ++i) {
+    auto VarT = VarTs[i];
+    auto VarPtrT = VarT->getPointerTo();
+    auto DataSize = TheHelper_.getTypeSizeInBits(TheModule, VarT)/8;
+    Value* InvecPtrV = TheHelper_.load(InvecPtrA);
+    InvecPtrV = TheHelper_.getElementPointer(InvecPtrV, Offset);
+    InvecPtrV = TheHelper_.createBitCast(InvecPtrV, VarPtrT);
+    Value* InoutvecPtrV = TheHelper_.load(InoutvecPtrA);
+    InoutvecPtrV = TheHelper_.getElementPointer(InoutvecPtrV, Offset);
+    InoutvecPtrV = TheHelper_.createBitCast(InoutvecPtrV, VarPtrT);
+    auto InvecV = TheHelper_.load(InvecPtrV);
+    auto InoutvecV = TheHelper_.load(InoutvecPtrV);
+    auto ResultV = foldReduce(TheModule, InvecV, InoutvecV, ReduceTypes[i]);
+    Builder_.CreateStore(ResultV, InoutvecPtrV);
+    Offset += DataSize;
+  }
+  
+  Builder_.CreateRetVoid();
+
+
+  return std::make_unique<MpiReduceInfo>(VarTs, ReduceTypes, FunF, Offset);
 }
 
 

@@ -698,4 +698,27 @@ void contra_mpi_accessor_destroy(
     contra_mpi_accessor_t * acc)
 { acc->destroy(); }
 
+//==============================================================================
+/// Launch reduction
+//==============================================================================
+void contra_mpi_reduce(
+    MPI_User_function *fun,
+    void * sendbuf,
+    void * recvbuf,
+    size_t count)
+{
+  MPI_Op op;
+  auto ret = MPI_Op_create(fun, true, &op);
+  MpiRuntime.check(ret);
+
+  ret = MPI_Allreduce(
+      sendbuf,
+      recvbuf,
+      count,
+      MPI_BYTE,
+      op,
+      MPI_COMM_WORLD);
+  MpiRuntime.check(ret);
+}
+
 } // extern
