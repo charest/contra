@@ -885,7 +885,7 @@ std::unique_ptr<AbstractReduceInfo> MpiTasker::createReductionOp(
     VoidPtrType_,
     VoidPtrType_,
     IntType_->getPointerTo(),
-    llvmType<MPI_Datatype>(TheContext_)->getPointerTo()
+    llvmType<int>(TheContext_)->getPointerTo()
   };
 
   FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
