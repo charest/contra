@@ -15,7 +15,7 @@ set(REGRESSION_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR} )
 function(create_test)
 
   # the command to run to compare outputs
-  set (TEST_COMMAND "${PYTHON_EXECUTABLE} ${CONTRA_TOOL_DIR}/numdiff.py --check-text --verbose --absolute ${CONTRA_TEST_TOLERANCE}")
+  set (TEST_COMMAND "${Python_EXECUTABLE} ${CONTRA_TOOL_DIR}/numdiff.py --check-text --verbose --absolute ${CONTRA_TEST_TOLERANCE}")
 
   # parse the arguments
   set(options)

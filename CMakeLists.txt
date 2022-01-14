@@ -208,14 +208,13 @@ add_subdirectory(src)
 include(CTest) # note: this adds a BUILD_TESTING which defaults to ON
 
 # find python for running regression tests
-set(PythonInterp_FIND_VERSION TRUE) # unknown hack to search for versions
-find_package (PythonInterp QUIET)
+find_package (Python COMPONENTS Interpreter QUIET)
 
-if (PYTHONINTERP_FOUND)
-  message (STATUS "Found PythonInterp: ${PYTHON_EXECUTABLE}")
+if (Python_Interpreter_FOUND)
+  message (STATUS "Found PythonInterp: ${Python_EXECUTABLE}")
 endif ()
 
-if(BUILD_TESTING AND NOT PYTHONINTERP_FOUND)
+if(BUILD_TESTING AND NOT Python_Interpreter_FOUND)
   message(FATAL_ERROR "Testing requested, but python was not found")
 endif()
 

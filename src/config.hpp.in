@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#cmakedefine HAVE_MPI
+
 #cmakedefine HAVE_LEGION
 #define REALM_LIBRARY "@REALM_LIBRARY@"
 #define LEGION_LIBRARY "@Legion_LIBRARY@"

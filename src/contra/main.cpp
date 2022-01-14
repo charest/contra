@@ -8,7 +8,9 @@
 
 #include "utils/string_utils.hpp"
 
+#ifdef HAVE_MPI
 #include <mpi.h>
+#endif
 
 #include <fstream>
 #include <iostream>
@@ -101,8 +103,10 @@ llvm::cl::opt<std::string> OptionInputFilename(
 // Main driver code.
 //==============================================================================
 int main(int argc, char** argv) {
-  
+ 
+#ifdef HAVE_MPI	
   MPI_Init(&argc, &argv);
+#endif
   
   // get arguments
   cl::ParseCommandLineOptions(argc, argv);
@@ -159,7 +163,9 @@ int main(int argc, char** argv) {
   // Run the main "interpreter loop" now.
   Interp.mainLoop();
   
+#if HAVE_MPI
   MPI_Finalize();
+#endif
 
   return 0;
 
