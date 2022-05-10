@@ -26,8 +26,6 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
-#include "llvm-ext/Target/AMDGPU/AMDGPU.h"                                      
-
 #include <fstream>
 #include <set>
 
@@ -358,10 +356,10 @@ void ROCmJIT::assemble(Module & M, bool HasReduce)
 
   auto PassMan = legacy::PassManager();
   
-  PassMan.add(createAMDGPUPrintfRuntimeBinding());
-  PassMan.add(createInferAddressSpacesPass());
-  PassMan.add(createSROAPass());
-  PassMan.add(createAMDGPULowerAllocaPass());
+  //PassMan.add(createAMDGPUPrintfRuntimeBinding());
+  //PassMan.add(createInferAddressSpacesPass());
+  //PassMan.add(createSROAPass());
+  //PassMan.add(createAMDGPULowerAllocaPass());
   
   PassMan.run(M);
 
