@@ -900,7 +900,7 @@ void ROCmTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto res = offsetAccessor(TheModule, AccessorV, IndexV);
   auto OffsetDataPtrV = res.first;
@@ -919,7 +919,7 @@ Value* ROCmTasker::loadAccessor(
     Module & TheModule, 
     Type * ValueT,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   // get pointer to data
   auto res = offsetAccessor(TheModule, AccessorV, IndexV);

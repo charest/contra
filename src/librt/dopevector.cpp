@@ -1,6 +1,7 @@
 #include "dopevector.hpp"
 #include "llvm_includes.hpp"
 
+#include "contra/errors.hpp"
 #include "contra/symbols.hpp"
 #include "utils/llvm_utils.hpp"
 
@@ -89,7 +90,7 @@ bool DopeVector::isDopeVector(Type* Ty)
 bool DopeVector::isDopeVector(Value* V)
 {
   auto Ty = V->getType();
-  if (isa<AllocaInst>(V)) Ty = Ty->getPointerElementType();
+  if (isa<AllocaInst>(V)) Ty = cast<AllocaInst>(V)->getAllocatedType();
   return isDopeVector(Ty);
 }
 

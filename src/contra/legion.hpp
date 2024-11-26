@@ -241,12 +241,12 @@ public:
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value*) const override;
+      llvm::Value*) override;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,
-      llvm::Value*) const override;
+      llvm::Value*) override;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
   virtual llvm::Type* getAccessorType() const override
@@ -317,7 +317,7 @@ protected:
   
   void createGlobalFutures(
     llvm::Module &,
-    llvm::Value*,
+    llvm::AllocaInst*,
     const std::vector<llvm::Value*> &,
     bool IsIndex);
   
@@ -337,7 +337,13 @@ protected:
 
   void destroyOpaqueType(
       llvm::Module&,
+      llvm::Type*,
       llvm::Value*,
+      const std::string &,
+      const std::string & = "");
+  void destroyOpaqueType(
+      llvm::Module&,
+      llvm::AllocaInst*,
       const std::string &,
       const std::string & = "");
   

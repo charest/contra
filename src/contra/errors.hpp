@@ -131,6 +131,7 @@ public:
 #define THROW_CONTRA_ERROR(msg)                                                \
   do {                                                                         \
     std::cerr << "General runtime error:" << std::endl;                        \
+    abort();                                                                   \
     throw ::contra::ContraError(::contra::Formatter() << msg  );               \
   } while(0)
 

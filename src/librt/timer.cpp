@@ -57,7 +57,7 @@ Function * Timer::install(LLVMContext & TheContext, Module & TheModule)
   auto RealType = llvmType<real_t>(TheContext);
   auto TimerType = FunctionType::get(
       RealType,
-      None,
+      std::nullopt,
       false /* var args */ );
 
   auto TimerFun = Function::Create(TimerType, Function::InternalLinkage,

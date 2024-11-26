@@ -9,17 +9,18 @@
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 
 #include <algorithm>
@@ -31,46 +32,39 @@
 
 namespace contra {
 
+static llvm::ExitOnError ExitOnErr;
+
 class JIT {
 public:
   
-  using ObjLayerT = llvm::orc::LegacyRTDyldObjectLinkingLayer;
-
-  using Compiler = llvm::orc::SimpleCompiler;
-  using CompileLayerT = llvm::orc::LegacyIRCompileLayer<ObjLayerT, Compiler>;
-  
   using JITSymbol = llvm::JITSymbol;
-  using VModuleKey = llvm::orc::VModuleKey;
-
-  JIT(llvm::TargetMachine* TM) 
-    : 
-      MM_(std::make_shared<llvm::SectionMemoryManager>()),
-      Resolver_(
-        llvm::orc::createLegacyLookupResolver(
-          ES_,
-          [this](llvm::StringRef Name) { return findMangledSymbol(Name); },
-          [](llvm::Error Err) { llvm::cantFail(std::move(Err), "lookupFlags failed"); }
-        )
-      ),
-      TM_(TM),
-      DL_(TM_->createDataLayout()),
-      ObjectLayer_(
-        llvm::AcknowledgeORCv1Deprecation,
-        ES_,
-        [this](VModuleKey) {
-          return ObjLayerT::Resources{MM_, Resolver_};
-        }
-      ),
-      CompileLayer_(
-        llvm::AcknowledgeORCv1Deprecation,
-          ObjectLayer_,
-          Compiler(*TM_)
-      )
+  using Resource = llvm::orc::ResourceTrackerSP;
+  
+  JIT( std::unique_ptr<llvm::orc::ExecutionSession> ES,
+       llvm::orc::JITTargetMachineBuilder JTMB,
+       llvm::DataLayout DL)
+    :
+      ES_(std::move(ES)),
+      DL_(std::move(DL)),
+      Mangle_(*ES_, DL_),
+      ObjectLayer_(*ES_, []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
+      CompileLayer_(*ES_, ObjectLayer_,
+                     std::make_unique<llvm::orc::ConcurrentIRCompiler>(std::move(JTMB))),
+      MainJD_(ES_->createBareJITDylib("<main>")),
+      Context_(std::make_unique<llvm::LLVMContext>())
   {
-    //EE = std::make_unique<LLVMLinkInOrcMCJITReplacement>(MM, Resolver, TM_);
-    std::string ErrMsgStr;
-    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr); 
+    MainJD_.addGenerator(
+        llvm::cantFail(
+          llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            DL_.getGlobalPrefix())));
+    if (JTMB.getTargetTriple().isOSBinFormatCOFF()) {
+      ObjectLayer_.setOverrideObjectFlagsWithResponsibilityFlags(true);
+      ObjectLayer_.setAutoClaimResponsibilityForObjectSymbols(true);
+    }
+
+    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 #ifdef HAVE_LEGION
+    std::string ErrMsgStr;
     if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(REALM_LIBRARY, &ErrMsgStr) )
       THROW_CONTRA_ERROR(ErrMsgStr);
     if( llvm::sys::DynamicLibrary::LoadLibraryPermanently(LEGION_LIBRARY, &ErrMsgStr) )
@@ -78,40 +72,76 @@ public:
 #endif
   }
 
-  JIT() : JIT(llvm::EngineBuilder().selectTarget()) {}
+  static llvm::Expected<std::unique_ptr<JIT>> Create() {
+    auto EPC = llvm::orc::SelfExecutorProcessControl::Create();
+    if (!EPC)
+      return EPC.takeError();
 
-  auto getTargetMachine() { return TM_.get(); }
+    auto ES = std::make_unique<llvm::orc::ExecutionSession>(std::move(*EPC));
 
-  auto addModule(std::unique_ptr<llvm::Module> M) {
-    auto K = ES_.allocateVModule();
-    llvm::cantFail(CompileLayer_.addModule(K, std::move(M)));
-    ModuleKeys_.push_back(K);
-    return K;
+    llvm::orc::JITTargetMachineBuilder JTMB(
+        ES->getExecutorProcessControl().getTargetTriple());
+
+    auto DL = JTMB.getDefaultDataLayoutForTarget();
+    if (!DL)
+      return DL.takeError();
+
+    return std::make_unique<JIT>(std::move(ES), std::move(JTMB), std::move(*DL));
   }
 
-  void removeModule(VModuleKey K) {
-    ModuleKeys_.erase(llvm::find(ModuleKeys_, K));
-    llvm::cantFail(CompileLayer_.removeModule(K));
+  const auto & getDataLayout() { return DL_; }
+
+  llvm::orc::ResourceTrackerSP addModule(
+    llvm::orc::ThreadSafeModule TSM,
+    llvm::orc::ResourceTrackerSP RT = nullptr
+  )
+  {
+    if (!RT) RT = MainJD_.getDefaultResourceTracker();
+    ExitOnErr(CompileLayer_.add(RT, std::move(TSM)));
+    return RT;
   }
 
-  auto findSymbol(llvm::StringRef Name) {
-    return findMangledSymbol(mangle(Name));
+  llvm::orc::ResourceTrackerSP addModule(
+    std::unique_ptr<llvm::Module> M, 
+    llvm::orc::ResourceTrackerSP RT = nullptr
+  )
+  {
+    auto TSM = llvm::orc::ThreadSafeModule( std::move(M), Context_ );
+    return addModule(std::move(TSM), RT);
   }
+
+  llvm::orc::ResourceTrackerSP createResource() const
+  { return MainJD_.createResourceTracker(); }
+
+  void removeModule(llvm::orc::ResourceTrackerSP RT)
+  {
+    ExitOnErr(RT->remove());
+  }
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> findSymbol(llvm::StringRef Name)
+  {
+    return ES_->lookup({&MainJD_}, Mangle_(Name.str()));
+  }
+
+  auto getContext() { return Context_.getContext(); }
 
 private:
 
   std::string mangle(llvm::StringRef Name);
   JITSymbol findMangledSymbol(llvm::StringRef Name);
 
-  llvm::orc::ExecutionSession ES_;
-  std::shared_ptr<llvm::SectionMemoryManager> MM_;
-  std::shared_ptr<llvm::orc::SymbolResolver> Resolver_;
-  std::unique_ptr<llvm::TargetMachine> TM_;
+  std::unique_ptr<llvm::orc::ExecutionSession> ES_;
+  //llvm::orc::ExecutionSession ES_;
+  //std::shared_ptr<llvm::orc::SymbolResolver> Resolver_;
+  //std::unique_ptr<llvm::TargetMachine> TM_;
   const llvm::DataLayout DL_;
-  ObjLayerT ObjectLayer_;
-  CompileLayerT CompileLayer_;
-  std::vector<VModuleKey> ModuleKeys_;
+  llvm::orc::MangleAndInterner Mangle_;
+  llvm::orc::RTDyldObjectLinkingLayer ObjectLayer_;
+  llvm::orc::IRCompileLayer CompileLayer_;
   //std::unique_ptr<llvm::ExecutionEngine> EE;
+  
+  llvm::orc::JITDylib &MainJD_;
+  llvm::orc::ThreadSafeContext Context_;
   
 };
 

@@ -14,19 +14,17 @@ using namespace utils;
 //==============================================================================
 AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
   TheHelper_(TheHelper),
-  Builder_(TheHelper.getBuilder()),
-  TheContext_(TheHelper.getContext()),
   DefaultSerializer_(TheHelper)
 {
-  VoidType_ = llvmType<void>(TheContext_);
-  VoidPtrType_ = llvmType<void*>(TheContext_);
-  ByteType_ = VoidPtrType_->getPointerElementType();
-  BoolType_ = llvmType<bool>(TheContext_);
-  Int32Type_ = llvmType<int>(TheContext_);
-  Int1Type_ = Type::getInt1Ty(TheContext_);
-  IntType_ = llvmType<int_t>(TheContext_);
-  SizeType_ = llvmType<std::size_t>(TheContext_);
-  RealType_ = llvmType<real_t>(TheContext_);
+  VoidType_ = llvmType<void>(getContext());
+  VoidPtrType_ = llvmType<void*>(getContext());
+  ByteType_ = llvmType<int8_t>(getContext());
+  BoolType_ = llvmType<bool>(getContext());
+  Int32Type_ = llvmType<int>(getContext());
+  Int1Type_ = Type::getInt1Ty(getContext());
+  IntType_ = llvmType<int_t>(getContext());
+  SizeType_ = llvmType<std::size_t>(getContext());
+  RealType_ = llvmType<real_t>(getContext());
   
   DefaultIndexSpaceType_ = createDefaultIndexSpaceType();
 }
@@ -37,7 +35,7 @@ AbstractTasker::AbstractTasker(BuilderHelper & TheHelper) :
 StructType * AbstractTasker::createDefaultIndexSpaceType()
 {
   std::vector<Type*> members = { IntType_, IntType_, IntType_ };
-  auto NewType = StructType::create( TheContext_, members, "contra_index_space_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_index_space_t" );
   return NewType;
 }
 
@@ -51,8 +49,8 @@ AbstractTasker::PreambleResult AbstractTasker::taskPreamble(
 {
   
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TaskF);
-  Builder_.SetInsertPoint(BB);
+  BasicBlock *BB = BasicBlock::Create(getContext(), "entry", TaskF);
+  getBuilder().SetInsertPoint(BB);
 
   std::vector<AllocaInst*> TaskArgAs;
 
@@ -63,7 +61,7 @@ AbstractTasker::PreambleResult AbstractTasker::taskPreamble(
     auto ArgN = std::string(Arg.getName()) + ".alloca";
     auto Alloca = TheHelper_.createEntryBlockAlloca(TaskF, ArgT, ArgN);
     // Store the initial value into the alloca.
-    Builder_.CreateStore(&Arg, Alloca);
+    getBuilder().CreateStore(&Arg, Alloca);
     TaskArgAs.emplace_back(Alloca);
   }
   
@@ -83,10 +81,10 @@ void AbstractTasker::taskPostamble(
   // Have return value
   if (ResultV && !ResultV->getType()->isVoidTy()) {
     ResultV = TheHelper_.getAsValue(ResultV);
-    Builder_.CreateRet(ResultV);
+    getBuilder().CreateRet(ResultV);
   }
   else {
-    Builder_.CreateRetVoid();
+    getBuilder().CreateRetVoid();
   }
 
 }
@@ -123,7 +121,8 @@ bool AbstractTasker::isRange(Type* RangeT) const
 bool AbstractTasker::isRange(Value* RangeA) const
 {
   auto RangeT = RangeA->getType();
-  if (isa<AllocaInst>(RangeA)) RangeT = RangeT->getPointerElementType();
+  if (isa<AllocaInst>(RangeA))
+    RangeT = cast<AllocaInst>(RangeA)->getAllocatedType();
   return isRange(RangeT);
 }
 
@@ -145,8 +144,8 @@ AllocaInst* AbstractTasker::createRange(
   if (StepV) StepV = TheHelper_.getAsValue(StepV);
 
   TheHelper_.insertValue(IndexSpaceA, StartV, 0);
-  auto OneC = llvmValue<int_t>(TheContext_, 1);
-  EndV = Builder_.CreateAdd(EndV, OneC);
+  auto OneC = llvmValue<int_t>(getContext(), 1);
+  EndV = getBuilder().CreateAdd(EndV, OneC);
   TheHelper_.insertValue(IndexSpaceA, EndV, 1);
   if (!StepV) StepV = OneC;
   TheHelper_.insertValue(IndexSpaceA, StepV, 2);
@@ -167,8 +166,8 @@ llvm::Value* AbstractTasker::getRangeStart(Value* RangeV)
 llvm::Value* AbstractTasker::getRangeEnd(Value* RangeV)
 {
   Value* EndV = TheHelper_.extractValue(RangeV, 1);
-  auto OneC = llvmValue<int_t>(TheContext_, 1);
-  return Builder_.CreateSub(EndV, OneC);
+  auto OneC = llvmValue<int_t>(getContext(), 1);
+  return getBuilder().CreateSub(EndV, OneC);
 }
 
 
@@ -191,7 +190,7 @@ llvm::Value* AbstractTasker::getRangeSize(Value* RangeV)
 {
   auto StartV = TheHelper_.extractValue(RangeV, 0);
   auto EndV = TheHelper_.extractValue(RangeV, 1);
-  return Builder_.CreateSub(EndV, StartV);
+  return getBuilder().CreateSub(EndV, StartV);
 }
 
 //==============================================================================
@@ -203,35 +202,35 @@ llvm::Value* AbstractTasker::loadRangeValue(
 {
   auto StartV = TheHelper_.extractValue(RangeA, 0); 
   IndexV = TheHelper_.getAsValue(IndexV);
-  return Builder_.CreateAdd(StartV, IndexV);
+  return getBuilder().CreateAdd(StartV, IndexV);
 }
 
 //==============================================================================
 Type* AbstractTasker::reduceStruct(
     StructType * StructT,
-    const Module &TheModule) const
+    const Module &TheModule)
 {
   auto NumElem = StructT->getNumElements();
   auto ElementTs = StructT->elements();
   if (NumElem == 1) return ElementTs[0];
   auto BitWidth = TheHelper_.getTypeSizeInBits(TheModule, StructT);
-  return IntegerType::get(TheContext_, BitWidth);
+  return IntegerType::get(getContext(), BitWidth);
 }
 
 //==============================================================================
 Type* AbstractTasker::reduceArray(
     ArrayType * ArrayT,
-    const Module &TheModule) const
+    const Module &TheModule)
 {
   auto NumElem = ArrayT->getNumElements();
   auto ElementT = ArrayT->getElementType();
   if (NumElem == 1) return ElementT;
   auto BitWidth = TheHelper_.getTypeSizeInBits(TheModule, ArrayT);
-  return IntegerType::get(TheContext_, BitWidth);
+  return IntegerType::get(getContext(), BitWidth);
 }
 
 //==============================================================================
-Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
+Value* AbstractTasker::sanitize(Value* V, const Module &TheModule)
 {
   auto T = V->getType();
   if (auto StrucT = dyn_cast<StructType>(T)) {
@@ -246,50 +245,60 @@ Value* AbstractTasker::sanitize(Value* V, const Module &TheModule) const
 //==============================================================================
 void AbstractTasker::sanitize(
     std::vector<Value*> & Vs,
-    const Module &TheModule ) const
+    const Module &TheModule )
 {
   for (auto & V : Vs ) V = sanitize(V, TheModule);
 }
 
 //==============================================================================
 Value* AbstractTasker::load(
-    Value * Alloca,
+    Type* BaseT,
+    Value* Alloca,
     const Module &TheModule,
-    std::string Str) const
+    std::string Str)
 {
   if (!Str.empty()) Str += ".";
   auto AllocaT = Alloca->getType();
-  auto BaseT = AllocaT->getPointerElementType();
   if (auto StructT = dyn_cast<StructType>(BaseT)) {
     auto ReducedT = reduceStruct(StructT, TheModule);
     auto Cast = TheHelper_.createBitCast(Alloca, ReducedT->getPointerTo());
-    return Builder_.CreateLoad(ReducedT, Cast, Str);
+    return getBuilder().CreateLoad(ReducedT, Cast, Str);
   }
   else if (auto ArrayT = dyn_cast<ArrayType>(BaseT)) {
     auto ReducedT = reduceArray(ArrayT, TheModule);
     auto Cast = TheHelper_.createBitCast(Alloca, ReducedT->getPointerTo());
-    return Builder_.CreateLoad(ReducedT, Cast, Str);
+    return getBuilder().CreateLoad(ReducedT, Cast, Str);
   }
   else {
-    return Builder_.CreateLoad(BaseT, Alloca, Str);
+    return getBuilder().CreateLoad(BaseT, Alloca, Str);
   }
 }
 
-//==============================================================================
-void AbstractTasker::store(Value* Val, Value * Alloca) const
+Value* AbstractTasker::load(
+    AllocaInst* Alloca,
+    const Module &TheModule,
+    std::string Str)
 {
-  auto BaseT = Alloca->getType()->getPointerElementType();
+  return load(Alloca->getAllocatedType(), Alloca, TheModule, Str);
+}
+
+//==============================================================================
+void AbstractTasker::store(Type* BaseT, Value* Val, Value * Alloca)
+{
   if (isa<StructType>(BaseT)) {
     std::vector<Value*> MemberIndices(2);
-    MemberIndices[0] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-    MemberIndices[1] = ConstantInt::get(TheContext_, APInt(32, 0, true));
-    auto GEP = Builder_.CreateGEP( BaseT, Alloca, MemberIndices );
-    Builder_.CreateStore(Val, GEP);
+    MemberIndices[0] = ConstantInt::get(getContext(), APInt(32, 0, true));
+    MemberIndices[1] = ConstantInt::get(getContext(), APInt(32, 0, true));
+    auto GEP = getBuilder().CreateGEP( BaseT, Alloca, MemberIndices );
+    getBuilder().CreateStore(Val, GEP);
   }
   else {
-    Builder_.CreateStore(Val, Alloca);
+    getBuilder().CreateStore(Val, Alloca);
   }
 }
+
+void AbstractTasker::store(Value* Val, AllocaInst * Alloca)
+{ store(Alloca->getAllocatedType(), Val, Alloca); }
 
 //==============================================================================
 void AbstractTasker::start(Module & TheModule)
@@ -393,7 +402,8 @@ Value* AbstractTasker::getSerializedSize(
     Type* ResultT)
 {
   auto ValT = Val->getType();
-  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
+  if (auto ValA = dyn_cast<AllocaInst>(Val))
+    ValT = ValA->getAllocatedType();//->getPointerElementType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
     return it->second->getSize(TheModule, Val, ResultT);
@@ -406,29 +416,32 @@ Value* AbstractTasker::serialize(
     Module& TheModule,
     Value* Val,
     Value* DataPtrV,
+    Type* DataT,
     Value* OffsetA)
 {
   auto ValT = Val->getType();
-  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
+  if (auto ValA = dyn_cast<AllocaInst>(Val))
+    ValT = ValA->getAllocatedType();//->getPointerElementType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
-    return it->second->serialize(TheModule, Val, DataPtrV, OffsetA);
+    return it->second->serialize(TheModule, Val, DataPtrV, DataT, OffsetA);
   else
-    return DefaultSerializer_.serialize(TheModule, Val, DataPtrV, OffsetA);
+    return DefaultSerializer_.serialize(TheModule, Val, DataPtrV, DataT, OffsetA);
 }
 
 Value* AbstractTasker::deserialize(
     Module& TheModule,
     AllocaInst* ValA,
     Value* DataPtrV,
+    Type* DataT,
     Value* OffsetA)
 {
   auto ValT = ValA->getAllocatedType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
-    return it->second->deserialize(TheModule, ValA, DataPtrV, OffsetA);
+    return it->second->deserialize(TheModule, ValA, DataPtrV, DataT, OffsetA);
   else
-    return DefaultSerializer_.deserialize(TheModule, ValA, DataPtrV, OffsetA);
+    return DefaultSerializer_.deserialize(TheModule, ValA, DataPtrV, DataT, OffsetA);
 }
 
 //==============================================================================
@@ -445,14 +458,14 @@ Constant* AbstractTasker::initReduce(Type* VarT, ReductionType Op)
   if (VarT->isFloatingPointTy()) {
     if (Op == ReductionType::Add ||
         Op == ReductionType::Sub)
-      InitC = llvmValue<real_t>(TheContext_, 0);
+      InitC = llvmValue<real_t>(getContext(), 0);
     else if (Op == ReductionType::Mult ||
              Op == ReductionType::Div)
-      InitC = llvmValue<real_t>(TheContext_, 1);
+      InitC = llvmValue<real_t>(getContext(), 1);
     else if (Op == ReductionType::Min)
-      InitC = llvmValue<real_t>(TheContext_, MaxReal);
+      InitC = llvmValue<real_t>(getContext(), MaxReal);
     else if (Op == ReductionType::Max)
-      InitC = llvmValue<real_t>(TheContext_, MinReal);
+      InitC = llvmValue<real_t>(getContext(), MinReal);
     else {
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -462,14 +475,14 @@ Constant* AbstractTasker::initReduce(Type* VarT, ReductionType Op)
   else {
     if (Op == ReductionType::Add ||
         Op == ReductionType::Sub)
-      InitC = llvmValue<int_t>(TheContext_, 0);
+      InitC = llvmValue<int_t>(getContext(), 0);
     else if (Op == ReductionType::Mult ||
              Op == ReductionType::Div)
-      InitC = llvmValue<int_t>(TheContext_, 1);
+      InitC = llvmValue<int_t>(getContext(), 1);
     else if (Op == ReductionType::Min)
-      InitC = llvmValue<int_t>(TheContext_, MaxInt);
+      InitC = llvmValue<int_t>(getContext(), MaxInt);
     else if (Op == ReductionType::Max)
-      InitC = llvmValue<int_t>(TheContext_, MinInt);
+      InitC = llvmValue<int_t>(getContext(), MinInt);
     else {
       std::cerr << "Unsupported reduction op." << std::endl;;
       abort();
@@ -491,13 +504,13 @@ Value* AbstractTasker::applyReduce(
   if (VarT->isFloatingPointTy()) {
     switch (Op) {
     case ReductionType::Add:
-      return Builder_.CreateFAdd(LhsV, RhsV, "addtmp");
+      return getBuilder().CreateFAdd(LhsV, RhsV, "addtmp");
     case ReductionType::Sub:
-      return Builder_.CreateFSub(LhsV, RhsV, "subtmp");
+      return getBuilder().CreateFSub(LhsV, RhsV, "subtmp");
     case ReductionType::Mult:
-      return Builder_.CreateFMul(LhsV, RhsV, "multmp");
+      return getBuilder().CreateFMul(LhsV, RhsV, "multmp");
     case ReductionType::Div:
-      return Builder_.CreateFDiv(LhsV, RhsV, "divtmp");
+      return getBuilder().CreateFDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
       return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
@@ -511,13 +524,13 @@ Value* AbstractTasker::applyReduce(
   else {
     switch (Op) {
     case ReductionType::Add:
-      return Builder_.CreateAdd(LhsV, RhsV, "addtmp");
+      return getBuilder().CreateAdd(LhsV, RhsV, "addtmp");
     case ReductionType::Sub:
-      return Builder_.CreateSub(LhsV, RhsV, "subtmp");
+      return getBuilder().CreateSub(LhsV, RhsV, "subtmp");
     case ReductionType::Mult:
-      return Builder_.CreateMul(LhsV, RhsV, "multmp");
+      return getBuilder().CreateMul(LhsV, RhsV, "multmp");
     case ReductionType::Div:
-      return Builder_.CreateSDiv(LhsV, RhsV, "divtmp");
+      return getBuilder().CreateSDiv(LhsV, RhsV, "divtmp");
     case ReductionType::Min:
       return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
@@ -544,10 +557,10 @@ Value* AbstractTasker::foldReduce(
     switch (Op) {
     case ReductionType::Add:
     case ReductionType::Sub:
-      return Builder_.CreateFAdd(LhsV, RhsV, "addtmp");
+      return getBuilder().CreateFAdd(LhsV, RhsV, "addtmp");
     case ReductionType::Mult:
     case ReductionType::Div:
-      return Builder_.CreateFMul(LhsV, RhsV, "multmp");
+      return getBuilder().CreateFMul(LhsV, RhsV, "multmp");
     case ReductionType::Min:
       return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:
@@ -562,10 +575,10 @@ Value* AbstractTasker::foldReduce(
     switch (Op) {
     case ReductionType::Add:
     case ReductionType::Sub:
-      return Builder_.CreateAdd(LhsV, RhsV, "addtmp");
+      return getBuilder().CreateAdd(LhsV, RhsV, "addtmp");
     case ReductionType::Mult:
     case ReductionType::Div:
-      return Builder_.CreateMul(LhsV, RhsV, "multmp");
+      return getBuilder().CreateMul(LhsV, RhsV, "multmp");
     case ReductionType::Min:
       return TheHelper_.createMinimum(TheModule, LhsV, RhsV, "min");
     case ReductionType::Max:

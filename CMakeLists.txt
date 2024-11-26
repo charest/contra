@@ -2,7 +2,7 @@
 # Set the minimum CMake version
 #------------------------------------------------------------------------------#
 
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.5)
 cmake_policy(SET CMP0074 NEW)
 include(ExternalProject)
 
@@ -13,7 +13,7 @@ include(ExternalProject)
 project(Contra VERSION 0.1.0)
 
 # We need C++ 14
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED on)
 set(CMAKE_CXX_EXTENSIONS off)
 
@@ -36,6 +36,10 @@ set(THREADS_PREFER_PTHREAD_FLAG)
 #------------------------------------------------------------------------------#
 
 add_executable( contra )
+
+# Set the ENABLE_EXPORTS property to TRUE
+set_target_properties(contra PROPERTIES ENABLE_EXPORTS TRUE)
+
 install( TARGETS contra
   EXPORT ${PROJECT_NAME}Targets
   RUNTIME DESTINATION bin)
@@ -227,9 +231,6 @@ if (BUILD_TESTING)
   add_subdirectory(testing)
   add_subdirectory(examples)
 endif()
-
-
-
 
 #------------------------------------------------------------------------------#
 # Export targets and package.

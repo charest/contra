@@ -35,6 +35,19 @@ public:
       fold_ptr(fold_p),
       init_ptr(init_p)
   {}
+#if 0
+    sizeof_this = sizeof(ReductionOp);
+    sizeof_lhs = size;
+    sizeof_rhs = size;
+    sizeof_userdata = 0;
+    identity = nullptr;
+    userdata = nullptr;
+    //cpu_apply_excl_fn = &ReductionKernels::cpu_apply_wrapper<REDOP, true>;
+    //cpu_apply_nonexcl_fn = &ReductionKernels::cpu_apply_wrapper<REDOP, false>;
+    //cpu_fold_excl_fn = &ReductionKernels::cpu_fold_wrapper<REDOP, true>;
+    //cpu_fold_nonexcl_fn = &ReductionKernels::cpu_fold_wrapper<REDOP, false>;
+  }
+#endif
 
   virtual ReductionOpUntyped *clone(void) const
   { return new ReductionOp(sizeof_lhs, apply_ptr, fold_ptr, init_ptr); }

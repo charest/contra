@@ -37,16 +37,15 @@ class CodeGen : public RecursiveAstVisiter {
   using Value = llvm::Value;
   using VariableTable = std::map<std::string, VariableAlloca>;
   
+  std::unique_ptr<JIT> HostJIT_;
+  
   // LLVM builder types  
   utils::BuilderHelper TheHelper_;
   
-  llvm::LLVMContext & TheContext_;
-  llvm::IRBuilder<> & Builder_;
   std::unique_ptr<llvm::Module> TheModule_;
   std::unique_ptr<llvm::ExecutionEngine> TheEngine_;
 
   std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM_;
-  std::unique_ptr<JIT> HostJIT_;
   std::unique_ptr<DeviceJIT> DeviceJIT_; 
 
   // visitor results
@@ -86,8 +85,8 @@ public:
   //============================================================================
 
   // some accessors
-  auto & getBuilder() { return Builder_; }
-  auto & getContext() { return TheContext_; }
+  auto & getBuilder() { return TheHelper_.getBuilder(); }
+  auto & getContext() { return TheHelper_.getContext(); }
   auto & getModule() { return *TheModule_; }
   
   //============================================================================
@@ -95,6 +94,7 @@ public:
   //============================================================================
 
   /// Top-Level parsing and JIT Driver
+  void initializeContext();
   void initializeModuleAndPassManager();
   void initializeModule();
   void initializePassManager();
@@ -107,13 +107,13 @@ public:
   //============================================================================
 
   // JIT the current module
-  JIT::VModuleKey doJIT();
+  JIT::Resource doJIT(bool = false);
 
   // Search the JIT for a symbol
-  JIT::JITSymbol findSymbol( const char * Symbol );
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> findSymbol( const char * Symbol );
 
   // Delete a JITed module
-  void removeJIT( JIT::VModuleKey H );
+  void removeJIT( JIT::Resource H );
 
   //============================================================================
   // Debug-related accessors
@@ -230,7 +230,7 @@ private:
   
   VariableAlloca * insertVariable(
       llvm::StringRef VarName,
-      llvm::Value*,
+      llvm::AllocaInst*,
       llvm::Type*);
 
   void destroyVariable(const VariableAlloca &);
@@ -290,7 +290,7 @@ private:
   Value* getArrayPointer(Value*, Type*);
   Value* getArrayElementPointer(Value*, Type*, Value*);
   
-  Value* createArrayPointerAlloca(Value*, Type*);
+  AllocaInst* createArrayPointerAlloca(Value*, Type*);
 
   // get an arrays size
   Value* getArraySize(Value*);

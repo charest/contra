@@ -32,11 +32,13 @@ public:
       llvm::Module&, 
       llvm::Value*,
       llvm::Value*,
+      llvm::Type*,
       llvm::Value*);
   virtual llvm::Value* deserialize(
       llvm::Module&,
       llvm::AllocaInst*,
       llvm::Value*,
+      llvm::Type*,
       llvm::Value*);
 
   virtual ~Serializer() = default;
@@ -61,11 +63,13 @@ public:
       llvm::Module&,
       llvm::Value*,
       llvm::Value*,
+      llvm::Type*,
       llvm::Value*) override;
   llvm::Value* deserialize(
       llvm::Module&,
       llvm::AllocaInst*,
       llvm::Value*,
+      llvm::Type*,
       llvm::Value*) override;
 };
 

@@ -32,9 +32,6 @@ protected:
 
   utils::BuilderHelper & TheHelper_;
 
-  llvm::IRBuilder<> & Builder_;
-  llvm::LLVMContext & TheContext_;
-
   Serializer DefaultSerializer_;
   std::map<llvm::Type*, std::unique_ptr<Serializer>> Serializer_;
 
@@ -158,12 +155,12 @@ public:
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value* = nullptr) const = 0;
+      llvm::Value* = nullptr) = 0;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,
-      llvm::Value* = nullptr) const = 0;
+      llvm::Value* = nullptr) = 0;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) = 0;
   
   virtual llvm::AllocaInst* createPartition(
@@ -241,6 +238,9 @@ public:
   // partition interface
   void destroyPartitions(llvm::Module &, const std::vector<llvm::Value*> &);
 
+  // some accessors
+  auto & getBuilder() { return TheHelper_.getBuilder(); }
+  auto & getContext() { return TheHelper_.getContext(); }
 
 protected:
   
@@ -253,12 +253,14 @@ protected:
   llvm::StructType* createDefaultIndexSpaceType();
 
   // helpers
-  llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &) const;
-  llvm::Type* reduceArray(llvm::ArrayType *, const llvm::Module &) const;
-  llvm::Value* sanitize(llvm::Value*, const llvm::Module &) const;
-  void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &) const;
-  llvm::Value* load(llvm::Value *, const llvm::Module &, std::string) const;
-  void store(llvm::Value*, llvm::Value *) const;
+  llvm::Type* reduceStruct(llvm::StructType *, const llvm::Module &);
+  llvm::Type* reduceArray(llvm::ArrayType *, const llvm::Module &);
+  llvm::Value* sanitize(llvm::Value*, const llvm::Module &);
+  void sanitize(std::vector<llvm::Value*> & Vs, const llvm::Module &);
+  llvm::Value* load(llvm::Type*, llvm::Value *, const llvm::Module &, std::string);
+  llvm::Value* load(llvm::AllocaInst *, const llvm::Module &, std::string);
+  void store(llvm::Type*, llvm::Value*, llvm::Value *);
+  void store(llvm::Value*, llvm::AllocaInst*);
 
   // Serializer
   llvm::Value* getSerializedSize(llvm::Module&, llvm::Value*, llvm::Type*);
@@ -266,11 +268,13 @@ protected:
       llvm::Module&,
       llvm::Value*,
       llvm::Value*,
+      llvm::Type*,
       llvm::Value* = nullptr);
   llvm::Value* deserialize(
       llvm::Module&,
       llvm::AllocaInst*,
       llvm::Value*,
+      llvm::Type*,
       llvm::Value* = nullptr);
 
   // reductions
