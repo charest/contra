@@ -528,7 +528,7 @@ Value* MpiTasker::launch(
     auto ReduceOp = dynamic_cast<const MpiReduceInfo*>(AbstractReduceOp);
     auto NumReduce = ReduceOp->getNumReductions();
     for (unsigned i=0; i<NumReduce; ++i) {
-      auto VarV = getBuilder().CreateExtractValue(ResultV, i);
+      auto VarV = TheHelper_.extractValue(ResultV, i);
       auto ReduceV = TheHelper_.extractValue(ResultA, i);
       auto Op = ReduceOp->getReduceOp(i);
       ReduceV = applyReduce(TheModule, ReduceV, VarV, Op);

@@ -1364,8 +1364,9 @@ void CodeGen::visit(ForeachStmtAST& e)
       auto ResultV = Tasker_->loadFuture(*TheModule_, FutureV, ResultT);
 
       for (unsigned i=0; i<ReduceAs.size(); ++i) {
+        //outs()<<"\n"; ResultV->print(outs()); outs()<<"\n";
         //outs()<<"\n"; ResultV->getType()->print(outs()); outs()<<"\n";
-        auto ValueV = getBuilder().CreateExtractValue(ResultV, i);
+        auto ValueV = TheHelper_.extractValue(ResultV, i);
         getBuilder().CreateStore(ValueV, ReduceAs[i]);
       }
     }
@@ -1644,7 +1645,7 @@ void CodeGen::visit(AssignStmtAST & e)
     RightTuples.clear();
     for (unsigned i=0; i<NumRight; ++i) {
       RightTuples.emplace_back( 
-          getBuilder().CreateExtractValue(StructV, i),
+          TheHelper_.extractValue(StructV, i),
           VarType.getMember(i),
           Expr
       );

@@ -137,7 +137,6 @@ Value* BuilderHelper::extractValue(Value* Val, unsigned i) {
     return Builder_->CreateLoad(MemberT, ValGEP);
   }
   else {
-    abort();
     return Builder_->CreateExtractValue(Val, i);
   }
 }
