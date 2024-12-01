@@ -328,7 +328,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     auto ArgSizeV = getSerializedSize(TheModule, ArgVorA, SizeType_);
     TheHelper_.insertValue(ArgSizesA, ArgSizeV, i);
   }
-
+  
   //----------------------------------------------------------------------------
   // First count sizes
 
@@ -348,7 +348,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
   auto NumFieldArgs = FieldArgId.size();
   auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
   TheHelper_.increment(ArgSizeT, ArgSizeGEP, NumFieldArgs*8, "addoffset");
-
+  
   //----------------------------------------------------------------------------
   // Allocate storate
  
@@ -359,21 +359,25 @@ AllocaInst* LegionTasker::createGlobalArguments(
   //----------------------------------------------------------------------------
   // create an array with booleans identifying argyment type
   
-  auto ArrayGEP = llvmArray(getContext(), TheModule, ArgEnums);
-  auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
-  TheHelper_.memCopy(ArgDataPtrV, ArrayGEP, llvmValue<size_t>(getContext(), NumArgs)); 
+  if (NumArgs) {
+    auto ArrayGEP = llvmArray(getContext(), TheModule, ArgEnums);
+    auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
+    TheHelper_.memCopy(ArgDataPtrV, ArrayGEP, llvmValue<size_t>(getContext(), NumArgs)); 
+  }
  
   //----------------------------------------------------------------------------
   // Copy args
 
   // add 1 byte for each argument first
   TheHelper_.insertValue(TaskArgsA, llvmValue(getContext(), ArgSizeT, NumArgs), 1);
-  
+
+  auto TaskArgsDataT = TaskArgsT->getElementType(0);
+
   for (auto i : ValueArgId) {
     auto ArgV = TheHelper_.getAsAlloca(ArgVorAs[i]);
     // copy
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
-    serialize(TheModule, ArgV, ArgDataPtrV, ArgSizeT, ArgSizeGEP);
+    serialize(TheModule, ArgV, ArgDataPtrV, TaskArgsDataT, ArgSizeT, ArgSizeGEP);
     // increment
     ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
     auto ArgSizeV = TheHelper_.extractValue(ArgSizesT, ArgSizesA, i);
@@ -399,7 +403,7 @@ AllocaInst* LegionTasker::createGlobalArguments(
     auto ArgSizeV = TheHelper_.extractValue(TaskArgsA, 1);
     // offset data pointer
     auto ArgDataPtrV = TheHelper_.extractValue(TaskArgsA, 0);
-    auto OffsetArgDataPtrV = TheHelper_.offsetPointer(ArgDataPtrT, ArgDataPtrV, ArgSizeV);
+    auto OffsetArgDataPtrV = TheHelper_.offsetPointer(ByteType_, ArgDataPtrV, ArgSizeV);
     // pack field info
     auto ArgSizeGEP = TheHelper_.getElementPointer(TaskArgsA, 0, 1);
     std::vector<Value*> ArgVs = {
@@ -410,7 +414,6 @@ AllocaInst* LegionTasker::createGlobalArguments(
     // increment
     TheHelper_.increment(ArgSizeT, ArgSizeGEP, 8, "addoffset");
   }
-  
 
   return TaskArgsA; 
 }
@@ -864,7 +867,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   auto ArrayA = TheHelper_.createEntryBlockAlloca(WrapperF, ArrayT, "isfuture");
   auto ArgDataPtrV = TheHelper_.load(TaskArgsA, "args");
   TheHelper_.memCopy(ArrayA, ArgDataPtrV, llvmValue<size_t>(getContext(), NumArgs)); 
-  
+   
   //----------------------------------------------------------------------------
   // unpack user variables
   
@@ -884,7 +887,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     // Emit then block
     getBuilder().SetInsertPoint(ThenBB);
     // copy
-    auto ArgSizeV = deserialize(TheModule, TaskArgAs[i], TaskArgsA, TaskArgsT, OffsetA);
+    auto ArgSizeV = deserialize(TheModule, TaskArgAs[i], TaskArgsA, TaskArgsT, OffsetT, OffsetA);
     // increment
     TheHelper_.increment(OffsetA, ArgSizeV, "offset");
     // finish then
@@ -895,6 +898,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     WrapperF->insert(WrapperF->end(), MergeBB);
     getBuilder().SetInsertPoint(MergeBB);
   }
+  
 
   //----------------------------------------------------------------------------
   // partition any ranges
@@ -925,7 +929,6 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
   
   }
   
-
   //----------------------------------------------------------------------------
   // unpack future variables
   
@@ -978,7 +981,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     WrapperF->insert(WrapperF->end(), MergeBB);
     getBuilder().SetInsertPoint(MergeBB);
   }
-  
+ 
   //----------------------------------------------------------------------------
   // unpack Field variables
       
@@ -1024,7 +1027,7 @@ LegionTasker::PreambleResult LegionTasker::taskPreamble(
     // Emit then block
     getBuilder().SetInsertPoint(ThenBB);
     // unpack the field data
-    auto ArgGEP = TheHelper_.offsetPointer(TaskArgsT, TaskArgsA, OffsetA);
+    auto ArgGEP = TheHelper_.offsetPointer(ByteType_, TaskArgsA, OffsetA);
     getBuilder().CreateCall( GetFieldDataF, std::vector<Value*>{ArgGEP, FieldIdA, RegionIdA} );
     // get field pointer
     auto ArgPtrV = TheHelper_.createBitCast(TaskArgAs[i], AccessorDataPtrT);
@@ -1412,12 +1415,12 @@ Value* LegionTasker::launch(
     const TaskInfo & TaskI,
     const std::vector<Value*> & ArgVs)
 {
+
   //----------------------------------------------------------------------------
   // Global arguments
   std::vector<unsigned> FutureArgId;
   std::vector<unsigned> FieldArgId;
   auto TaskArgsA = createGlobalArguments(TheModule, ArgVs);
-  
  
   //----------------------------------------------------------------------------
   // Predicate
@@ -1573,7 +1576,7 @@ Value* LegionTasker::launch(
 
   Value* IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
   
-  auto DomainRectA = TheHelper_.createEntryBlockAlloca(DomainRectType_, "domain");
+  auto DomainRectA = TheHelper_.createEntryBlockAlloca(DomainRectType_, "domain.alloca");
 
   std::vector<Value*> DomainFromArgVs = { RuntimeA, IndexSpaceA, DomainRectA };
   TheHelper_.callFunction(
@@ -1613,12 +1616,13 @@ Value* LegionTasker::launch(
   if (!LaunchF) {
     LaunchF = Function::Create(LaunchT, Function::InternalLinkage,
         "legion_index_launcher_create", &TheModule);
-    auto Arg = LaunchF->arg_begin();
-    ++Arg;
-    Arg->addAttr(Attribute::ByVal);
+    LaunchF->addParamAttr(1, Attribute::getWithByValType(getContext(), DomainRectType_));
   }
 
-  Value* LauncherRV = getBuilder().CreateCall(LaunchF, LaunchArgVs, "launcher_create");
+  auto LaunchFC = getBuilder().CreateCall(LaunchF, LaunchArgVs, "launcher_create");
+  LaunchFC->addParamAttr(1, Attribute::getWithByValType(getContext(), DomainRectType_));
+
+  Value* LauncherRV = LaunchFC;
   auto LauncherA = TheHelper_.createEntryBlockAlloca(IndexLauncherType_, "task_launcher.alloca");
   store(LauncherRV, LauncherA);
   
@@ -1733,7 +1737,7 @@ Value* LegionTasker::loadFuture(
       "future");
   
   auto DataA = TheHelper_.createEntryBlockAlloca(DataT);
-  deserialize(TheModule, DataA, DataPtrV, VoidPtrType_);
+  deserialize(TheModule, DataA, DataPtrV, VoidPtrType_, VoidPtrType_);
 
   return TheHelper_.load(DataA, "future");
 }
@@ -2344,8 +2348,8 @@ Function* LegionTasker::createReductionFunction(
     Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
     Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
     auto OffsetV = TheHelper_.load(InnerOffsetA);
-    LhsPtrV = getBuilder().CreateGEP(ArgTs[0], LhsPtrV, OffsetV);
-    RhsPtrV = getBuilder().CreateGEP(ArgTs[1], RhsPtrV, OffsetV);
+    LhsPtrV = getBuilder().CreateGEP(ByteType_, LhsPtrV, OffsetV);
+    RhsPtrV = getBuilder().CreateGEP(ByteType_, RhsPtrV, OffsetV);
     auto VarT = VarTs[i];
     auto VarPtrT = VarT->getPointerTo();
     LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
@@ -2496,7 +2500,7 @@ std::unique_ptr<AbstractReduceInfo> LegionTasker::createReductionOp(
     for (unsigned i=0; i<VarTs.size(); ++i) {
       Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
       auto OffsetV = TheHelper_.load(OffsetA);
-      LhsPtrV = getBuilder().CreateGEP(ArgTs[0], LhsPtrV, OffsetV);
+      LhsPtrV = getBuilder().CreateGEP(ByteType_, LhsPtrV, OffsetV);
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarTs[i]->getPointerTo());
       auto VarT = VarTs[i];
       auto InitC = initReduce(VarT, ReduceTypes[i]);

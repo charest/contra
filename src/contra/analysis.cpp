@@ -473,7 +473,7 @@ void Analyzer::visit(CallExprAST& e)
   const auto & FunName = e.getName();
   auto FunRes = getFunction(FunName, e.getLoc(), e.getNumArgs());
   e.setFunctionDef(FunRes);
-  
+
   int NumArgs = e.getNumArgs();
   int NumFixedArgs = FunRes->getNumArgs();
 

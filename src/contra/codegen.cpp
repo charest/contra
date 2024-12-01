@@ -1364,6 +1364,7 @@ void CodeGen::visit(ForeachStmtAST& e)
       auto ResultV = Tasker_->loadFuture(*TheModule_, FutureV, ResultT);
 
       for (unsigned i=0; i<ReduceAs.size(); ++i) {
+        //outs()<<"\n"; ResultV->getType()->print(outs()); outs()<<"\n";
         auto ValueV = getBuilder().CreateExtractValue(ResultV, i);
         getBuilder().CreateStore(ValueV, ReduceAs[i]);
       }

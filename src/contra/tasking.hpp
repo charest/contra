@@ -269,12 +269,14 @@ protected:
       llvm::Value*,
       llvm::Value*,
       llvm::Type*,
+      llvm::Type* = nullptr,
       llvm::Value* = nullptr);
   llvm::Value* deserialize(
       llvm::Module&,
       llvm::AllocaInst*,
       llvm::Value*,
       llvm::Type*,
+      llvm::Type* = nullptr,
       llvm::Value* = nullptr);
 
   // reductions

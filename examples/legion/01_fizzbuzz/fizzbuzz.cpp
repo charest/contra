@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <iostream>
 
 #include "legion_c.h"
 
@@ -73,7 +74,8 @@ void fizzbuzz_task(
     &ctx,
     &runtime);
 
-  assert(legion_task_get_futures_size(task) == sizeof(int));
+  assert(legion_task_get_futures_size(task) == 0);
+  assert(legion_task_get_arglen(task) == sizeof(int));
 
   int number = *(int*)legion_task_get_args(task); 
   if (number % 15 == 0)

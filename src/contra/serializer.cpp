@@ -17,23 +17,21 @@ Serializer::Serializer(BuilderHelper & TheHelper) :
   TheHelper_(TheHelper),
   Builder_(TheHelper.getBuilder()),
   TheContext_(TheHelper.getContext()),
-  SizeType_(llvmType<size_t>(TheContext_))
+  SizeType_(llvmType<size_t>(TheContext_)),
+  ByteType_(llvmType<int8_t>(TheContext_))
 {}
 
 //==============================================================================
 // Offset a pointer
 //==============================================================================
-Value* Serializer::offsetPointer(Value* Ptr, Value* Offset)
+Value* Serializer::offsetPointer(Type* ValT, Value* ValPtr, Type* OffsetT, Value* OffsetPtr)
 {
-  Value* OffsetV = Offset;
-  if (Offset->getType()->isPointerTy()) {
-    THROW_CONTRA_ERROR("getPointerElementType");
-    auto OffsetT = Offset->getType();//->getPointerElementType();
-    OffsetV = Builder_.CreateLoad(OffsetT, Offset);
-  }
-  auto PtrV = TheHelper_.getAsValue(Ptr);
-  THROW_CONTRA_ERROR("CreateGEP");
-  return Builder_.CreateGEP(Ptr->getType(), PtrV, OffsetV);
+  auto OffsetV = OffsetPtr;
+  if (OffsetPtr->getType()->isPointerTy())
+    OffsetV = Builder_.CreateLoad(OffsetT, OffsetPtr);
+  auto ValV = TheHelper_.getAsValue(ValPtr);
+  auto GEP= Builder_.CreateGEP(ValT, ValV, OffsetV, "MY GEP");
+  return GEP;
 }
 
 //==============================================================================
@@ -47,10 +45,11 @@ Value* Serializer::serialize(
     Value* SrcA,
     Value* TgtPtrV,
     Type* TgtT,
+    Type* OffsetT,
     Value* OffsetA)
 {
   auto OffsetTgtPtrV = TgtPtrV;
-  if (OffsetA) OffsetTgtPtrV = TheHelper_.offsetPointer(TgtT, TgtPtrV, OffsetA);
+  if (OffsetA) OffsetTgtPtrV = offsetPointer(ByteType_, TgtPtrV, OffsetT, OffsetA);
   auto SizeV = getSize(TheModule, SrcA, SizeType_);
   TheHelper_.memCopy(OffsetTgtPtrV, SrcA, SizeV); 
   return SizeV;
@@ -61,10 +60,11 @@ Value* Serializer::deserialize(
     AllocaInst* TgtA,
     Value* SrcA,
     Type* SrcT,
+    Type* OffsetT,
     Value* OffsetA)
 {
   auto OffsetSrc = SrcA;
-  if (OffsetA) OffsetSrc = TheHelper_.offsetPointer(SrcT, SrcA, OffsetA);
+  if (OffsetA) OffsetSrc = offsetPointer(ByteType_, SrcA, OffsetT, OffsetA);
   auto SizeV = getSize(TheModule, TgtA, SizeType_);
   TheHelper_.memCopy(TgtA, OffsetSrc, SizeV);
   return SizeV;
@@ -100,10 +100,11 @@ Value* ArraySerializer::serialize(
     Value* SrcA,
     Value* TgtPtrV,
     Type* TgtT,
+    Type* OffsetT,
     Value* OffsetA)
 {
   auto OffsetTgtPtrV = TgtPtrV;
-  if (OffsetA) OffsetTgtPtrV = TheHelper_.offsetPointer(TgtT, TgtPtrV, OffsetA);
+  if (OffsetA) OffsetTgtPtrV = offsetPointer(ByteType_, TgtPtrV, OffsetT, OffsetA);
   // store size 
   auto LengthPtrT = LengthType_->getPointerTo();
   auto SizeV = TheHelper_.extractValue(SrcA, 1);
@@ -111,13 +112,13 @@ Value* ArraySerializer::serialize(
   Builder_.CreateStore(SizeV, SizeTgtPtr);
   // increment
   auto IntSizeV = TheHelper_.getTypeSize(LengthType_, LengthType_);
-  OffsetTgtPtrV = TheHelper_.offsetPointer(TgtT, OffsetTgtPtrV, IntSizeV);
+  OffsetTgtPtrV = offsetPointer(ByteType_, OffsetTgtPtrV, LengthType_, IntSizeV);
   // store data size
   auto DataSizeV = TheHelper_.extractValue(SrcA, 3);
   auto DataSizeTgtPtr = TheHelper_.createBitCast(OffsetTgtPtrV, LengthPtrT);
   Builder_.CreateStore(DataSizeV, DataSizeTgtPtr);
   // increment
-  OffsetTgtPtrV = TheHelper_.offsetPointer(TgtT, OffsetTgtPtrV, IntSizeV);
+  OffsetTgtPtrV = offsetPointer(ByteType_, OffsetTgtPtrV, LengthType_, IntSizeV);
   // copy data
   auto LenV = Builder_.CreateMul(SizeV, DataSizeV);
   auto DataPtrV = TheHelper_.extractValue(SrcA, 0); 
@@ -135,23 +136,24 @@ Value* ArraySerializer::deserialize(
     AllocaInst* TgtA,
     Value* SrcA,
     Type* SrcT,
+    Type* OffsetT,
     Value* OffsetA)
 {
   // offset source pointer
   auto OffsetSrc = SrcA;
-  if (OffsetA) OffsetSrc = TheHelper_.offsetPointer(SrcT, SrcA, OffsetA);
+  if (OffsetA) OffsetSrc = offsetPointer(ByteType_, SrcA, OffsetT, OffsetA);
   // get size
   auto LengthPtrT = LengthType_->getPointerTo();
   auto SizePtrV = TheHelper_.createBitCast(OffsetSrc, LengthPtrT);
   Value* SizeV = Builder_.CreateLoad(LengthType_, SizePtrV);
   // increment
   auto IntSizeV = TheHelper_.getTypeSize(LengthType_, LengthType_);
-  OffsetSrc = TheHelper_.offsetPointer(SrcT, OffsetSrc, IntSizeV);
+  OffsetSrc = offsetPointer(ByteType_, OffsetSrc, LengthType_, IntSizeV);
   // get data size
   auto DataSizePtrV = TheHelper_.createBitCast(OffsetSrc, LengthPtrT);
   Value* DataSizeV = Builder_.CreateLoad(LengthType_, DataSizePtrV);
   // increment
-  OffsetSrc = TheHelper_.offsetPointer(SrcT, OffsetSrc, IntSizeV);
+  OffsetSrc = offsetPointer(ByteType_, OffsetSrc, LengthType_, IntSizeV);
   // create array
   auto VoidT = Type::getVoidTy(TheContext_);
   TheHelper_.callFunction(

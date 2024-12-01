@@ -2,8 +2,8 @@
 
 #include <limits>
 
-#define PRINT_START std::cout << "START " << __func__ << std::endl;
-#define PRINT_STOP  std::cout << "STOP  " << __func__ << std::endl;
+#define PRINT_START //std::cout << "START " << __func__ << std::endl;
+#define PRINT_STOP  //std::cout << "STOP  " << __func__ << std::endl;
 
 extern "C" {
   
@@ -310,7 +310,6 @@ void contra_legion_register_index_partition(
     contra_legion_partitions_t ** parts)
 {
   PRINT_START
-
   auto res = (*parts)->getOrCreateIndexPartition(runtime, ctx, is->index_space.id, false);
   if (!res.second) *res.first = *index_part;
   PRINT_STOP
@@ -341,7 +340,6 @@ void contra_legion_domain_create(
   *domain = legion_domain_from_index_space(*runtime, is->index_space);
   PRINT_STOP
 }
-
 
 //==============================================================================
 /// field creation
@@ -609,10 +607,10 @@ void contra_legion_accessor_write(
     const void * data,
     int_t index)
 {
-  PRINT_START
+  //PRINT_START
   byte_t * offset = static_cast<byte_t*>(acc->data) + acc->data_size*index;
   memcpy(offset, data, acc->data_size);
-  PRINT_STOP
+  //PRINT_STOP
 }
 
 //==============================================================================
@@ -623,10 +621,10 @@ void contra_legion_accessor_read(
     void * data,
     int_t index)
 {
-  PRINT_START
+  //PRINT_START
   const byte_t * offset = static_cast<const byte_t*>(acc->data) + acc->data_size*index;
   memcpy(data, offset, acc->data_size);
-  PRINT_STOP
+  //PRINT_STOP
 }
 
 //==============================================================================

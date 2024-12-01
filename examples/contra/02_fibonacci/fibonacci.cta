@@ -32,7 +32,6 @@ tsk top_level() {
   print("Computing the first %d Fibonacci numbers...\n", num_fibonacci)
 
   for i = 0 : num_fibonacci-1 {
-    fibonacci(i)
     print_result(i, fibonacci(i))
   }
 

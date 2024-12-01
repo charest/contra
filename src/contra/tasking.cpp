@@ -258,7 +258,6 @@ Value* AbstractTasker::load(
     std::string Str)
 {
   if (!Str.empty()) Str += ".";
-  auto AllocaT = Alloca->getType();
   if (auto StructT = dyn_cast<StructType>(BaseT)) {
     auto ReducedT = reduceStruct(StructT, TheModule);
     auto Cast = TheHelper_.createBitCast(Alloca, ReducedT->getPointerTo());
@@ -417,6 +416,7 @@ Value* AbstractTasker::serialize(
     Value* Val,
     Value* DataPtrV,
     Type* DataT,
+    Type* OffsetT,
     Value* OffsetA)
 {
   auto ValT = Val->getType();
@@ -424,9 +424,9 @@ Value* AbstractTasker::serialize(
     ValT = ValA->getAllocatedType();//->getPointerElementType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
-    return it->second->serialize(TheModule, Val, DataPtrV, DataT, OffsetA);
+    return it->second->serialize(TheModule, Val, DataPtrV, DataT, OffsetT, OffsetA);
   else
-    return DefaultSerializer_.serialize(TheModule, Val, DataPtrV, DataT, OffsetA);
+    return DefaultSerializer_.serialize(TheModule, Val, DataPtrV, DataT, OffsetT, OffsetA);
 }
 
 Value* AbstractTasker::deserialize(
@@ -434,14 +434,15 @@ Value* AbstractTasker::deserialize(
     AllocaInst* ValA,
     Value* DataPtrV,
     Type* DataT,
+    Type* OffsetT,
     Value* OffsetA)
 {
   auto ValT = ValA->getAllocatedType();
   auto it = Serializer_.find(ValT);
   if (it != Serializer_.end())
-    return it->second->deserialize(TheModule, ValA, DataPtrV, DataT, OffsetA);
+    return it->second->deserialize(TheModule, ValA, DataPtrV, DataT, OffsetT, OffsetA);
   else
-    return DefaultSerializer_.deserialize(TheModule, ValA, DataPtrV, DataT, OffsetA);
+    return DefaultSerializer_.deserialize(TheModule, ValA, DataPtrV, DataT, OffsetT, OffsetA);
 }
 
 //==============================================================================
