@@ -126,13 +126,6 @@ CodeGen::CodeGen (
 ////////////////////////////////////////////////////////////////////////////////
 
 //==============================================================================
-// Initialize context
-//==============================================================================
-void CodeGen::initializeContext()
-{
-}
-
-//==============================================================================
 // Initialize module and optimizer
 //==============================================================================
 void CodeGen::initializeModuleAndPassManager()
@@ -1735,7 +1728,7 @@ void CodeGen::visit(FunctionAST& e)
   auto & P = insertFunction( e.moveProtoExpr() );
   const auto & Name = P.getName();
   auto TheFunction = getFunction(Name).first;
-
+  
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(getContext(), "entry", TheFunction);
   getBuilder().SetInsertPoint(BB);

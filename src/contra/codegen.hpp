@@ -95,7 +95,6 @@ public:
   //============================================================================
 
   /// Top-Level parsing and JIT Driver
-  void initializeContext();
   void initializeModuleAndPassManager();
   void initializeModule();
   void initializePassManager();
