@@ -57,6 +57,7 @@ CodeGen::CodeGen (
   F64Type_  = llvmType<real_t>(getContext());
   VoidType_ = Type::getVoidTy(getContext());
   ArrayType_ = librt::DopeVector::DopeVectorType;
+  BoolType_ = llvmType<bool>(getContext());
   
   // setup tasker
   Tasker_ = nullptr;
@@ -111,6 +112,7 @@ CodeGen::CodeGen (
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
   TypeTable_.emplace( C.getFloat64Type()->getName(),  F64Type_);
   TypeTable_.emplace( C.getVoidType()->getName(), VoidType_);
+  TypeTable_.emplace( C.getBoolType()->getName(), BoolType_);
 
   VariableTable_.push_front({});
 
