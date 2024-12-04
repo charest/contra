@@ -1052,6 +1052,9 @@ void CodeGen::visit(ExprListAST & e) {
 //==============================================================================
 void CodeGen::visit(BreakStmtAST &) {
   if (ExitBlock_) getBuilder().CreateBr(ExitBlock_);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  auto BreakBB = BasicBlock::Create(getContext(), "afterbreak", TheFunction);
+  getBuilder().SetInsertPoint(BreakBB);
 }
 
 
@@ -1207,8 +1210,8 @@ void CodeGen::visit(ForStmtAST& e) {
   // block.
   BasicBlock *BeforeBB = BasicBlock::Create(getContext(), "beforeloop", TheFunction);
   BasicBlock *LoopBB =   BasicBlock::Create(getContext(), "loop", TheFunction);
-  BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr", TheFunction);
-  BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr");
+  BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop");
 
   // set new exit block
   auto OldExitBlock = ExitBlock_;
@@ -1248,12 +1251,11 @@ void CodeGen::visit(ForStmtAST& e) {
 
 
   // Insert unconditional branch to increment.
-  if (!HasBreak) getBuilder().CreateBr(IncrBB);
+  getBuilder().CreateBr(IncrBB);
 
   // Start insertion in LoopBB.
-  //TheFunction->getBasicBlockList().push_back(IncrBB);
+  TheFunction->insert(TheFunction->end(), IncrBB);
   getBuilder().SetInsertPoint(IncrBB);
-  
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
@@ -1263,7 +1265,7 @@ void CodeGen::visit(ForStmtAST& e) {
   getBuilder().CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
-  //TheFunction->getBasicBlockList().push_back(AfterBB);
+  TheFunction->insert(TheFunction->end(), AfterBB);
   getBuilder().SetInsertPoint(AfterBB);
 
   // reset exit block
