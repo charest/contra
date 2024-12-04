@@ -7,6 +7,7 @@
 namespace contra {
 
 enum class SupportedBackends {
+  Serial,
 #ifdef HAVE_LEGION
   Legion,
 #endif
@@ -22,7 +23,6 @@ enum class SupportedBackends {
 #ifdef HAVE_MPI
   MPI,
 #endif
-  Serial,
   Size
 };
 
