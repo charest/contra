@@ -13,6 +13,8 @@
 #include <sstream>
 #include <vector>
 
+#define LIBROCM_RT_VERBOSE
+
 //==============================================================================
 // Utility check function
 //==============================================================================
@@ -152,7 +154,10 @@ contra_rocm_task_info_t::~contra_rocm_task_info_t() {
 void rocm_runtime_t::init(int dev_id) {
   auto err = hipSetDevice(dev_id);
   check(err);
+
+#ifdef LIBROCM_RT_VERBOSE
   printf( "Selected Device: %d\n", dev_id);
+#endif
     
   hipDeviceProp_t props;
   hipGetDeviceProperties(&props, dev_id);
@@ -230,6 +235,7 @@ void contra_rocm_startup() {
   const int kb = 1024;
   const int mb = kb * kb;
 
+#ifdef LIBROCM_RT_VERBOSE
   printf( "HIP version:   v%d\n", HIP_VERSION );
 
   int devCount;
@@ -253,6 +259,7 @@ void contra_rocm_startup() {
         props.maxGridSize[1], props.maxGridSize[2] );
     printf( "\n" );
   }
+#endif
 
   RocmRuntime.init(0);
 

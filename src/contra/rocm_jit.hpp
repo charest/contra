@@ -44,6 +44,8 @@ private:
   void linkFiles(llvm::Linker &, const std::vector<std::string>&, unsigned);
   
   llvm::Instruction* replaceSync(llvm::Module &, llvm::CallInst*);
+  llvm::CallInst* replacePrint(llvm::Module &, llvm::CallInst*);
+  llvm::Value* replacePrint2(llvm::Module &, llvm::CallInst*);
   
   llvm::TargetMachine * TargetMachine_ = nullptr;
 

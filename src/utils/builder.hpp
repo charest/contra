@@ -23,9 +23,8 @@ class BuilderHelper {
   using ArrayType = llvm::ArrayType;
 
   std::unique_ptr<llvm::LLVMContext> Context_;
-  std::unique_ptr<llvm::IRBuilder<>> Builder_;
-  
   llvm::LLVMContext * TheContext_ = nullptr;
+  std::unique_ptr<llvm::IRBuilder<>> Builder_;
 
 public:
   BuilderHelper() : 
@@ -52,9 +51,11 @@ public:
   AllocaInst* getAsAlloca(Value*);
 
   Value* getElementPointer(Type*, Value*, unsigned);
+  Value* getElementPointer(AllocaInst*, unsigned i);
   Value* getElementPointer(Type*, Value*, unsigned, unsigned);
   Value* getElementPointer(AllocaInst*, unsigned i, unsigned j);
   Value* getElementPointer(Type*, Value*, const std::vector<unsigned> &);
+  Value* getElementPointer(AllocaInst*, const std::vector<unsigned> &);
 
   Value* extractValue(Value*, unsigned);
   Value* extractValue(ArrayType*, Value*, unsigned);

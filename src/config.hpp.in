@@ -13,12 +13,17 @@
 #cmakedefine HAVE_CUDA
 
 #ifdef HAVE_CUDA
-#include "config.defs"
+#include "cuda.defs"
 #endif
 
 #cmakedefine HAVE_ROCM
+
+#ifdef HAVE_ROCM
+#include "rocm.defs"
+#endif
+
 #define ROCM_LD_LLD_PATH "@ROCM_LD_LLD_EXE@"
-#define ROCM_DEVICE_LIB_PATH "@AMD_DEVICE_LIBS_PREFIX@/lib"
+#define ROCM_DEVICE_LIB_PATH "@AMD_DEVICE_LIBS_PREFIX@/lib/llvm/lib/clang/18/lib/amdgcn/bitcode/"
 #define ROCM_DEVICE_USER_PATH "@PROJECT_BINARY_DIR@/src"
 #define ROCM_DEFAULT_TARGET_CPU "@ROCM_DEFAULT_TARGET_CPU@"
 

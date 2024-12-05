@@ -21,6 +21,7 @@ macro(compile_to_bitcode target)
     get_filename_component(_output_ext ${ARGS_OUTPUT} LAST_EXT)
     set(_output ${_output_no_ext}.${_gpu}${_output_ext})
     
+    MESSAGE(STATUS "Compiling ${_target} to bitcode")
     add_custom_target(${_target} DEPENDS ${_output})
 
     set(_target_includes)

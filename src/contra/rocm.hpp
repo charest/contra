@@ -227,12 +227,12 @@ protected:
   }
   void finishTask() { TaskAllocas_.pop_front(); }
 
-  llvm::Value* getThreadID(llvm::Module &) const;
+  llvm::Value* getThreadID(llvm::Module &);
 
   std::pair<llvm::Value*, llvm::Value*> offsetAccessor(
       llvm::Module &,
       llvm::Value*,
-      llvm::Value*) const;
+      llvm::Value*);
 };
 
 } // namepsace

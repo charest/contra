@@ -78,6 +78,13 @@ Value* BuilderHelper::getElementPointer(Type* Ty, Value* Val, unsigned i)
   };
   return Builder_->CreateGEP(Ty, Val, MemberIndices);
 }
+
+Value* BuilderHelper::getElementPointer(AllocaInst* Alloca, unsigned i)
+{
+  auto Ty = Alloca->getAllocatedType();
+  return getElementPointer(Ty, Alloca, i);
+}
+  
   
 Value* BuilderHelper::getElementPointer(Type* Ty, Value* Val, unsigned i, unsigned j)
 {
@@ -108,6 +115,14 @@ Value* BuilderHelper::getElementPointer(
     MemberIndices.emplace_back(
         ConstantInt::get(*TheContext_, APInt(32, i, true)));
   return Builder_->CreateGEP(Ty, Val, MemberIndices);
+}
+
+Value* BuilderHelper::getElementPointer(
+    AllocaInst* Alloca,
+    const std::vector<unsigned> & Indices)
+{
+  auto Ty = Alloca->getAllocatedType();
+  return getElementPointer(Ty, Alloca, Indices);
 }
   
 //==============================================================================
@@ -261,7 +276,8 @@ Value* BuilderHelper::load(
     llvm::raw_string_ostream RSO(TypeStr);
     ValA->print(RSO);
     llvm::outs() << "Pretty-printed type: " << RSO.str() << "\n";
-    THROW_CONTRA_ERROR("Should not get here");
+    llvm::outs() << "Should not get here\n";
+    abort();
   }
 
   return Builder_->CreateLoad(ValT, ValA, Name);
