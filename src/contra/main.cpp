@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
   // Run the main "interpreter loop" now.
   Interp.mainLoop();
   
-#if HAVE_MPI
+#ifdef HAVE_MPI
   MPI_Finalize();
 #endif
 
