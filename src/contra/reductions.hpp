@@ -2,6 +2,7 @@
 #define CONTRA_REDUCTIONS_HPP
 
 #include <map>
+#include <string>
 
 namespace contra {
   

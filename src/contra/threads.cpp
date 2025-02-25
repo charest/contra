@@ -38,7 +38,7 @@ StructType * ThreadsTasker::createFieldType()
     IntType_,
     VoidPtrType_,
     IndexSpaceType_->getPointerTo() };
-  auto NewType = StructType::create( TheContext_, members, "contra_threads_field_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_threads_field_t" );
   return NewType;
 }
 
@@ -51,7 +51,7 @@ StructType * ThreadsTasker::createAccessorType()
     BoolType_,
     IntType_,
     VoidPtrType_};
-  auto NewType = StructType::create( TheContext_, members, "contra_threads_accessor_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_threads_accessor_t" );
   return NewType;
 }
 
@@ -68,7 +68,7 @@ StructType * ThreadsTasker::createIndexPartitionType()
     IntPtrT,
     IntPtrT,
     IndexSpaceType_->getPointerTo()};
-  auto NewType = StructType::create( TheContext_, members, "contra_threads_partition_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_threads_partition_t" );
   return NewType;
 }
 
@@ -127,14 +127,14 @@ ThreadsTasker::PreambleResult ThreadsTasker::taskPreamble(
       &TheModule);
   
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", WrapperF);
-  Builder_.SetInsertPoint(BB);
+  BasicBlock *BB = BasicBlock::Create(getContext(), "entry", WrapperF);
+  getBuilder().SetInsertPoint(BB);
   
   // store incoming arg
   auto Arg = WrapperF->arg_begin();
   Arg->setName("task_args");
   auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, Arg->getType(), "args");
-  Builder_.CreateStore(Arg, ArgA);
+  getBuilder().CreateStore(Arg, ArgA);
   
   //----------------------------------------------------------------------------
   // Determine the thread data struct
@@ -162,17 +162,17 @@ ThreadsTasker::PreambleResult ThreadsTasker::taskPreamble(
   // reduction goes here
   if (ResultT) ArgTs.emplace_back(ResultT);
 
-  auto ArgsT = StructType::create( TheContext_, ArgTs, "args_t" );
-  Value* ArgsV = TheHelper_.load(ArgA);
+  auto ArgsT = StructType::create( getContext(), ArgTs, "args_t" );
+  Value* ArgsV = getBuilder().CreateLoad(Arg->getType(), ArgA);
   ArgsV = TheHelper_.createBitCast(ArgsV, ArgsT->getPointerTo());
 
   //----------------------------------------------------------------------------
   // extract index
   auto IndexA = TheHelper_.createEntryBlockAlloca(WrapperF, IntType_, "index");
   {
-    auto ArgA = TheHelper_.getElementPointer(ArgsV, 0, IndexLoc);
-    auto ArgV = TheHelper_.load(ArgA);
-    Builder_.CreateStore(ArgV, IndexA);
+    auto ArgA = TheHelper_.getElementPointer(ArgsT, ArgsV, 0, IndexLoc);
+    auto ArgV = getBuilder().CreateLoad(IntType_, ArgA);
+    getBuilder().CreateStore(ArgV, IndexA);
   }
 
 
@@ -180,7 +180,7 @@ ThreadsTasker::PreambleResult ThreadsTasker::taskPreamble(
   // extract result location
   if (ResultT) {
     auto & TaskE = getCurrentTask();
-    TaskE.ResultAlloca = TheHelper_.getElementPointer(ArgsV, 0, ArgTs.size()-1);
+    TaskE.ResultAlloca = TheHelper_.getElementPointer(ArgsT, ArgsV, 0, ArgTs.size()-1);
   }
   
   //----------------------------------------------------------------------------
@@ -190,11 +190,11 @@ ThreadsTasker::PreambleResult ThreadsTasker::taskPreamble(
   WrapperArgAs.reserve(TaskArgTs.size());
 
   for (unsigned i=0, j=0; i<TaskArgNs.size(); ++i, ++j) {
-    auto InArgA = TheHelper_.getElementPointer(ArgsV, 0, j);
+    auto InArgA = TheHelper_.getElementPointer(ArgsT, ArgsV, 0, j);
     const auto & ArgN = TaskArgNs[i];
     auto ArgT = TaskArgTs[i];
     if (isRange(ArgT)) {
-      auto IndexV = TheHelper_.load(IndexA);
+      auto IndexV = getBuilder().CreateLoad(IntType_, IndexA);
       auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
       TheHelper_.callFunction(
           TheModule,
@@ -204,9 +204,9 @@ ThreadsTasker::PreambleResult ThreadsTasker::taskPreamble(
       WrapperArgAs.emplace_back(ArgA);
     }
     else if (isAccessor(ArgT)) {
-      auto IndexV = TheHelper_.load(IndexA);
+      auto IndexV = getBuilder().CreateLoad(IntType_, IndexA);
       auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, AccessorType_, ArgN);
-      auto InPartA = TheHelper_.getElementPointer(ArgsV, 0, ++j);
+      auto InPartA = TheHelper_.getElementPointer(ArgsT, ArgsV, 0, ++j);
       TheHelper_.callFunction(
           TheModule,
           "contra_threads_accessor_setup",
@@ -215,9 +215,9 @@ ThreadsTasker::PreambleResult ThreadsTasker::taskPreamble(
       WrapperArgAs.emplace_back(ArgA);
     }
     else {
-      auto ArgV = TheHelper_.load(InArgA);
+      auto ArgV = getBuilder().CreateLoad(ArgT, InArgA);
       auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgN);
-      Builder_.CreateStore(ArgV, ArgA);
+      getBuilder().CreateStore(ArgV, ArgA);
       WrapperArgAs.emplace_back(ArgA);
     }
   }
@@ -242,12 +242,12 @@ void ThreadsTasker::taskPostamble(
     if (HasReturn) {
       ResultV = TheHelper_.getAsValue(ResultV);
       auto & TaskE = getCurrentTask();
-      Builder_.CreateStore(ResultV, TaskE.ResultAlloca);
+      getBuilder().CreateStore(ResultV, TaskE.ResultAlloca);
     }
 
     // always return null
     auto NullC = Constant::getNullValue(VoidPtrType_);
-    Builder_.CreateRet(NullC);
+    getBuilder().CreateRet(NullC);
     finishTask();
   }
   //----------------------------------------------------------------------------
@@ -256,11 +256,11 @@ void ThreadsTasker::taskPostamble(
     // Have return value
     if (HasReturn) {
       ResultV = TheHelper_.getAsValue(ResultV);
-      Builder_.CreateRet(ResultV);
+      getBuilder().CreateRet(ResultV);
     }
     // No return value
     else {
-      Builder_.CreateRetVoid();
+      getBuilder().CreateRetVoid();
     }
   }
 
@@ -338,7 +338,7 @@ Value* ThreadsTasker::launch(
             "contra_threads_partition_get",
             IndexPartitionType_->getPointerTo(),
             {IndexSpaceA, FieldA, TaskInfoA});
-        auto IndexPartitionV = TheHelper_.load(IndexPartitionPtr);
+        auto IndexPartitionV = getBuilder().CreateLoad(IndexPartitionType_, IndexPartitionPtr);
         IndexPartitionA = TheHelper_.getAsAlloca(IndexPartitionV);
       }
 
@@ -358,21 +358,22 @@ Value* ThreadsTasker::launch(
   ArgTs.emplace_back(IntType_); // index value
 
   AllocaInst* ResultA = nullptr;
+  StructType* ResultT = nullptr;
   if (AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const ThreadsReduceInfo*>(AbstractReduceOp);
-    auto ResultT = StructType::create( TheContext_, "reduce" );
+    ResultT = StructType::create( getContext(), "reduce_t" );
     ResultT->setBody( ReduceOp->getVarTypes() );
     ArgTs.emplace_back(ResultT);
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
   }
   
-  auto ArgsT = StructType::create( TheContext_, ArgTs, "args_t" );
+  auto ArgsT = StructType::create( getContext(), ArgTs, "args_t" );
   auto ArgsSizeV = TheHelper_.getTypeSize<int_t>(ArgsT);
   auto RangeSizeV = getRangeSize(RangeV);
-  auto SizeV = Builder_.CreateMul(ArgsSizeV, RangeSizeV); 
+  auto SizeV = getBuilder().CreateMul(ArgsSizeV, RangeSizeV); 
   auto MallocI = TheHelper_.createMalloc(ByteType_, SizeV, "args");
   auto ArgsA = TheHelper_.createEntryBlockAlloca(VoidPtrType_, "args.a");
-  Builder_.CreateStore(MallocI, ArgsA);
+  getBuilder().CreateStore(MallocI, ArgsA);
 
   //----------------------------------------------------------------------------
   // create for loop
@@ -386,56 +387,56 @@ Value* ThreadsTasker::launch(
   auto StepA = TheHelper_.createEntryBlockAlloca(VarT, "step");
 
   auto StartV = getRangeStart(RangeV);
-  Builder_.CreateStore(StartV, VarA);
+  getBuilder().CreateStore(StartV, VarA);
   auto EndV = getRangeEndPlusOne(RangeV);
-  Builder_.CreateStore(EndV, EndA);
+  getBuilder().CreateStore(EndV, EndA);
   auto StepV = getRangeStep(RangeV);
-  Builder_.CreateStore(StepV, StepA);
+  getBuilder().CreateStore(StepV, StepA);
   
   // Make the new basic block for the loop header, inserting after current
   // block.
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  BasicBlock *BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", TheFunction);
-  BasicBlock *LoopBB =   BasicBlock::Create(TheContext_, "loop", TheFunction);
-  BasicBlock *IncrBB =   BasicBlock::Create(TheContext_, "incr", TheFunction);
-  BasicBlock *AfterBB =  BasicBlock::Create(TheContext_, "afterloop", TheFunction);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  BasicBlock *BeforeBB = BasicBlock::Create(getContext(), "beforeloop", TheFunction);
+  BasicBlock *LoopBB =   BasicBlock::Create(getContext(), "loop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr", TheFunction);
+  BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop", TheFunction);
   
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
+  getBuilder().SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurV = TheHelper_.load(VarA);
+  Value *CurV = getBuilder().CreateLoad(VarT, VarA);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  EndV = TheHelper_.load(EndA);
-  EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
+  EndV = getBuilder().CreateLoad(VarT, EndA);
+  EndV = getBuilder().CreateICmpSLT(CurV, EndV, "loopcond");
 
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateCondBr(EndV, LoopBB, AfterBB);
+  getBuilder().CreateCondBr(EndV, LoopBB, AfterBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(LoopBB);
-  Builder_.SetInsertPoint(LoopBB);
+  getBuilder().SetInsertPoint(LoopBB);
 
   //----------------------------------------------------------------------------
   // Set thread args
-  auto VarV = TheHelper_.load(VarA);
-  Value* ThreadArgsV = TheHelper_.load(ArgsA);
+  auto VarV = getBuilder().CreateLoad(VarT, VarA);
+  Value* ThreadArgsV = getBuilder().CreateLoad(VoidPtrType_, ArgsA);
   ThreadArgsV = TheHelper_.createBitCast(ThreadArgsV, ArgsT->getPointerTo());
-  ThreadArgsV = TheHelper_.offsetPointer(ThreadArgsV, VarV);
+  ThreadArgsV = TheHelper_.offsetPointer(ArgsT, ThreadArgsV, VarV);
 
   for (unsigned i=0; i<NumArgs; ++i) {
-    auto ArgA = TheHelper_.getElementPointer(ThreadArgsV, {0, i});
+    auto ArgA = TheHelper_.getElementPointer(ArgsT, ThreadArgsV, {0, i});
     auto ArgV = TheHelper_.getAsValue(ExpandedArgAs[i]);
-    Builder_.CreateStore(ArgV, ArgA);
+    getBuilder().CreateStore(ArgV, ArgA);
   }
 
   { // index
-    auto ArgA = TheHelper_.getElementPointer(ThreadArgsV, 0, NumArgs);
-    auto VarV = TheHelper_.load(VarA); 
-    Builder_.CreateStore(VarV, ArgA);
+    auto ArgA = TheHelper_.getElementPointer(ArgsT, ThreadArgsV, 0, NumArgs);
+    auto VarV = getBuilder().CreateLoad(VarT, VarA); 
+    getBuilder().CreateStore(VarV, ArgA);
   }
   
   //----------------------------------------------------------------------------
@@ -455,11 +456,11 @@ Value* ThreadsTasker::launch(
   //----------------------------------------------------------------------------
 
   // Insert unconditional branch to increment.
-  Builder_.CreateBr(IncrBB);
+  getBuilder().CreateBr(IncrBB);
   
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(IncrBB);
-  Builder_.SetInsertPoint(IncrBB);
+  getBuilder().SetInsertPoint(IncrBB);
   
 
   // Reload, increment, and restore the alloca.  This handles the case where
@@ -467,11 +468,11 @@ Value* ThreadsTasker::launch(
   TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA );
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateBr(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
   //TheFunction->getBasicBlockList().push_back(AfterBB);
-  Builder_.SetInsertPoint(AfterBB);
+  getBuilder().SetInsertPoint(AfterBB);
 
   // wait for threads
   TheHelper_.callFunction(
@@ -502,47 +503,48 @@ Value* ThreadsTasker::launch(
     // Setup look for reduction
   
     auto StartV = getRangeStart(RangeV);
-    Builder_.CreateStore(StartV, VarA);
+    getBuilder().CreateStore(StartV, VarA);
 
     // Make the new basic block for the loop header, inserting after current
     // block.
-    auto TheFunction = Builder_.GetInsertBlock()->getParent();
-    BasicBlock *BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", TheFunction);
-    BasicBlock *LoopBB =   BasicBlock::Create(TheContext_, "loop", TheFunction);
-    BasicBlock *IncrBB =   BasicBlock::Create(TheContext_, "incr", TheFunction);
-    BasicBlock *AfterBB =  BasicBlock::Create(TheContext_, "afterloop", TheFunction);
+    auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+    BasicBlock *BeforeBB = BasicBlock::Create(getContext(), "beforeloop", TheFunction);
+    BasicBlock *LoopBB =   BasicBlock::Create(getContext(), "loop", TheFunction);
+    BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr", TheFunction);
+    BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop", TheFunction);
     
-    Builder_.CreateBr(BeforeBB);
-    Builder_.SetInsertPoint(BeforeBB);
+    getBuilder().CreateBr(BeforeBB);
+    getBuilder().SetInsertPoint(BeforeBB);
 
     // Load value and check coondition
-    Value *CurV = TheHelper_.load(VarA);
+    Value *CurV = getBuilder().CreateLoad(VarT, VarA);
 
     // Compute the end condition.
     // Convert condition to a bool by comparing non-equal to 0.0.
-    auto EndV = TheHelper_.load(EndA);
-    EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
+    Value* EndV = getBuilder().CreateLoad(VarT, EndA);
+    EndV = getBuilder().CreateICmpSLT(CurV, EndV, "loopcond");
 
 
     // Insert the conditional branch into the end of LoopEndBB.
-    Builder_.CreateCondBr(EndV, LoopBB, AfterBB);
+    getBuilder().CreateCondBr(EndV, LoopBB, AfterBB);
 
     // Start insertion in LoopBB.
     //TheFunction->getBasicBlockList().push_back(LoopBB);
-    Builder_.SetInsertPoint(LoopBB);
+    getBuilder().SetInsertPoint(LoopBB);
 
     //----------------------------------
     // Applly reduction
   
-    auto VarV = TheHelper_.load(VarA);
-    Value* ThreadArgsV = TheHelper_.load(ArgsA);
+    auto VarV = getBuilder().CreateLoad(VarT, VarA);
+    Value* ThreadArgsV = getBuilder().CreateLoad(VoidPtrType_, ArgsA);
     ThreadArgsV = TheHelper_.createBitCast(ThreadArgsV, ArgsT->getPointerTo());
-    ThreadArgsV = TheHelper_.offsetPointer(ThreadArgsV, VarV);
-    auto ThreadResultA = TheHelper_.getElementPointer(ThreadArgsV, 0, NumArgs+1);
+    ThreadArgsV = TheHelper_.offsetPointer(ArgsT, ThreadArgsV, VarV);
+    auto ThreadResultA = TheHelper_.getElementPointer(ArgsT, ThreadArgsV, 0, NumArgs+1);
     
     for (unsigned i=0; i<NumReduce; ++i) {
-      Value* VarV = TheHelper_.getElementPointer(ThreadResultA, 0, i);
-      VarV = TheHelper_.load(VarV);
+      auto VarT = ReduceOp->getVarType(i);
+      Value* VarV = TheHelper_.getElementPointer(ResultT, ThreadResultA, 0, i);
+      VarV = getBuilder().CreateLoad(VarT, VarV);
       auto ReduceV = TheHelper_.extractValue(ResultA, i);
       auto Op = ReduceOp->getReduceOp(i);
       ReduceV = applyReduce(TheModule, ReduceV, VarV, Op);
@@ -553,11 +555,11 @@ Value* ThreadsTasker::launch(
     // Finish loop
 
     // Insert unconditional branch to increment.
-    Builder_.CreateBr(IncrBB);
+    getBuilder().CreateBr(IncrBB);
     
     // Start insertion in LoopBB.
     //TheFunction->getBasicBlockList().push_back(IncrBB);
-    Builder_.SetInsertPoint(IncrBB);
+    getBuilder().SetInsertPoint(IncrBB);
     
 
     // Reload, increment, and restore the alloca.  This handles the case where
@@ -565,11 +567,11 @@ Value* ThreadsTasker::launch(
     TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA );
 
     // Insert the conditional branch into the end of LoopEndBB.
-    Builder_.CreateBr(BeforeBB);
+    getBuilder().CreateBr(BeforeBB);
 
     // Any new code will be inserted in AfterBB.
     //TheFunction->getBasicBlockList().push_back(AfterBB);
-    Builder_.SetInsertPoint(AfterBB);
+    getBuilder().SetInsertPoint(AfterBB);
   }
 
   //----------------------------------------------------------------------------
@@ -617,7 +619,7 @@ AllocaInst* ThreadsTasker::createPartition(
       ColorA,
       IndexSpaceA,
       IndexPartA,
-      llvmValue<bool>(TheContext_, true)
+      llvmValue<bool>(getContext(), true)
     };
     
     TheHelper_.callFunction(
@@ -686,7 +688,7 @@ AllocaInst* ThreadsTasker::createPartition(
 bool ThreadsTasker::isField(Value* FieldA) const
 {
   auto FieldT = FieldA->getType();
-  if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
+  if (isa<AllocaInst>(FieldA)) FieldT = cast<AllocaInst>(FieldA)->getAllocatedType();
   return (FieldT == FieldType_);
 }
 
@@ -702,7 +704,7 @@ void ThreadsTasker::createField(
     Value* RangeV,
     Value* VarV)
 {
-  auto NameV = llvmString(TheContext_, TheModule, VarN);
+  auto NameV = llvmString(getContext(), TheModule, VarN);
 
   Value* DataSizeV;
   if (VarV) {
@@ -710,7 +712,7 @@ void ThreadsTasker::createField(
     VarV = TheHelper_.getAsAlloca(VarV);
   }
   else {
-    DataSizeV = llvmValue<size_t>(TheContext_, 0);
+    DataSizeV = llvmValue<size_t>(getContext(), 0);
     VarV = Constant::getNullValue(VoidPtrType_);
   }
     
@@ -752,7 +754,8 @@ bool ThreadsTasker::isAccessor(Type* AccessorT) const
 bool ThreadsTasker::isAccessor(Value* AccessorA) const
 {
   auto AccessorT = AccessorA->getType();
-  if (isa<AllocaInst>(AccessorA)) AccessorT = AccessorT->getPointerElementType();
+  if (isa<AllocaInst>(AccessorA))
+    AccessorT = cast<AllocaInst>(AccessorA)->getAllocatedType();
   return isAccessor(AccessorT);
 }
 
@@ -763,7 +766,7 @@ void ThreadsTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto ValueA = TheHelper_.getAsAlloca(ValueV);
 
@@ -775,7 +778,7 @@ void ThreadsTasker::storeAccessor(
     FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
   }
   else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+    FunArgVs.emplace_back( llvmValue<int_t>(getContext(), 0) );
   }
   
   TheHelper_.callFunction(
@@ -792,7 +795,7 @@ Value* ThreadsTasker::loadAccessor(
     Module & TheModule, 
     Type * ValueT,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto AccessorA = TheHelper_.getAsAlloca(AccessorV);
     
@@ -804,7 +807,7 @@ Value* ThreadsTasker::loadAccessor(
     FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
   }
   else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+    FunArgVs.emplace_back( llvmValue<int_t>(getContext(), 0) );
   }
 
   TheHelper_.callFunction(
@@ -840,7 +843,8 @@ bool ThreadsTasker::isPartition(Type* PartT) const
 bool ThreadsTasker::isPartition(Value* PartA) const
 {
   auto PartT = PartA->getType();
-  if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
+  THROW_CONTRA_ERROR("getPointerElementType");
+  if (isa<AllocaInst>(PartA)) PartT = PartT;
   return isPartition(PartT);
 }
 

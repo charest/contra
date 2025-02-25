@@ -121,12 +121,12 @@ public:
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value* = nullptr) const override;
+      llvm::Value* = nullptr) override;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,
-      llvm::Value* = nullptr) const override;
+      llvm::Value* = nullptr) override;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
 protected:

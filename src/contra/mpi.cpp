@@ -66,11 +66,11 @@ void MpiTasker::pushRootGuard(Module & M)
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  auto ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  auto MergeBB = BasicBlock::Create(TheContext_, "ifcont");
-  Builder_.CreateCondBr(CondV, ThenBB, MergeBB);
-  Builder_.SetInsertPoint(ThenBB);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  auto ThenBB = BasicBlock::Create(getContext(), "then", TheFunction);
+  auto MergeBB = BasicBlock::Create(getContext(), "ifcont");
+  getBuilder().CreateCondBr(CondV, ThenBB, MergeBB);
+  getBuilder().SetInsertPoint(ThenBB);
 
   RootGuards_.push_front({MergeBB});
 
@@ -83,10 +83,10 @@ void MpiTasker::popRootGuard(Module&)
 {
   auto MergeBB = RootGuards_.front().MergeBlock;
 
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  Builder_.CreateBr(MergeBB);
-  TheFunction->getBasicBlockList().push_back(MergeBB);
-  Builder_.SetInsertPoint(MergeBB);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  getBuilder().CreateBr(MergeBB);
+  TheFunction->insert(TheFunction->end(), MergeBB);
+  getBuilder().SetInsertPoint(MergeBB);
   RootGuards_.pop_front();
 }
 
@@ -104,7 +104,7 @@ StructType * MpiTasker::createFieldType()
     IntType_->getPointerTo(),
     IndexPartitionType_->getPointerTo()
   };
-  auto NewType = StructType::create( TheContext_, members, "contra_mpi_field_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_mpi_field_t" );
   return NewType;
 }
 
@@ -117,7 +117,7 @@ StructType * MpiTasker::createAccessorType()
     BoolType_,
     IntType_,
     VoidPtrType_};
-  auto NewType = StructType::create( TheContext_, members, "contra_mpi_accessor_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_mpi_accessor_t" );
   return NewType;
 }
 
@@ -136,7 +136,7 @@ StructType * MpiTasker::createIndexPartitionType()
     IndexSpaceType_->getPointerTo(),
     Int32Type_
   };
-  auto NewType = StructType::create( TheContext_, members, "contra_mpi_partition_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_mpi_partition_t" );
   return NewType;
 }
 
@@ -219,8 +219,8 @@ MpiTasker::PreambleResult MpiTasker::taskPreamble(
   for (auto &Arg : WrapperF->args()) Arg.setName(WrapperArgNs[ArgIdx++]);
   
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", WrapperF);
-  Builder_.SetInsertPoint(BB);
+  BasicBlock *BB = BasicBlock::Create(getContext(), "entry", WrapperF);
+  getBuilder().SetInsertPoint(BB);
   
   // allocate arguments
   std::vector<AllocaInst*> WrapperArgAs;
@@ -234,12 +234,13 @@ MpiTasker::PreambleResult MpiTasker::taskPreamble(
     auto ArgN = std::string(Arg.getName()) + ".alloca";
     auto Alloca = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgN);
     // Store the initial value into the alloca.
-    Builder_.CreateStore(&Arg, Alloca);
+    getBuilder().CreateStore(&Arg, Alloca);
     WrapperArgAs.emplace_back(Alloca);
     ArgIdx++;
   }
 
   auto IndexA = WrapperArgAs.back();
+  auto IndexT = IndexA->getAllocatedType();
   WrapperArgAs.pop_back();
   
   //----------------------------------------------------------------------------
@@ -256,12 +257,12 @@ MpiTasker::PreambleResult MpiTasker::taskPreamble(
       VoidType_,
       GetRangeArgTs);
   
-  auto IndexV = TheHelper_.load(IndexA);
+  auto IndexV = getBuilder().CreateLoad(IndexT, IndexA);
   for (unsigned i=0; i<TaskArgNs.size(); i++) {
     if (isRange(TaskArgTs[i])) {
       auto ArgN = TaskArgNs[i];
       auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
-      Builder_.CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
+      getBuilder().CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
       WrapperArgAs[i] = ArgA;
     }
   }
@@ -285,11 +286,11 @@ void MpiTasker::taskPostamble(
     // Have return value
     if (HasReturn) {
       ResultV = TheHelper_.getAsValue(ResultV);
-      Builder_.CreateRet(ResultV);
+      getBuilder().CreateRet(ResultV);
     }
     // No return value
     else {
-      Builder_.CreateRetVoid();
+      getBuilder().CreateRetVoid();
     }
     finishTask();
   }
@@ -299,11 +300,11 @@ void MpiTasker::taskPostamble(
     // Have return value
     if (HasReturn) {
       ResultV = TheHelper_.getAsValue(ResultV);
-      Builder_.CreateRet(ResultV);
+      getBuilder().CreateRet(ResultV);
     }
     // No return value
     else {
-      Builder_.CreateRetVoid();
+      getBuilder().CreateRetVoid();
     }
   }
 
@@ -365,7 +366,7 @@ Value* MpiTasker::launch(
       IntType_,
       {});
   auto IndexA = TheHelper_.createEntryBlockAlloca(IntType_, "index");
-  Builder_.CreateStore(IndexV, IndexA);
+  getBuilder().CreateStore(IndexV, IndexA);
 
   Value* SizeV = TheHelper_.callFunction(
       TheModule,
@@ -373,7 +374,7 @@ Value* MpiTasker::launch(
       IntType_,
       {});
   auto SizeA = TheHelper_.createEntryBlockAlloca(IntType_, "size");
-  Builder_.CreateStore(SizeV, SizeA);
+  getBuilder().CreateStore(SizeV, SizeA);
   
   //----------------------------------------------------------------------------
   // Determine loop bounds
@@ -388,16 +389,17 @@ Value* MpiTasker::launch(
 
   auto IndexSpaceA = TheHelper_.getAsAlloca(RangeV);
 
-  auto DistA = TheHelper_.createEntryBlockAlloca(IntType_->getPointerTo(), "dist");
-  SizeV = TheHelper_.load(SizeA);
-  auto OneC = llvmValue(TheContext_, IntType_, 1);
-  auto SizePlusOneV = Builder_.CreateAdd(SizeV, OneC);
+  auto DistT = IntType_->getPointerTo();
+  auto DistA = TheHelper_.createEntryBlockAlloca(DistT, "dist");
+  SizeV = getBuilder().CreateLoad(IntType_, SizeA);
+  auto OneC = llvmValue(getContext(), IntType_, 1);
+  auto SizePlusOneV = getBuilder().CreateAdd(SizeV, OneC);
   auto IntSizeV = TheHelper_.getTypeSize<int_t>(IntType_);
-  auto MallocSizeV = Builder_.CreateMul( SizePlusOneV, IntSizeV );
+  auto MallocSizeV = getBuilder().CreateMul( SizePlusOneV, IntSizeV );
   Value* DistV = TheHelper_.createMalloc(IntType_, MallocSizeV);
-  Builder_.CreateStore(DistV, DistA);
+  getBuilder().CreateStore(DistV, DistA);
 
-  DistV = TheHelper_.load(DistA);
+  DistV = getBuilder().CreateLoad(DistT, DistA);
   TheHelper_.callFunction(
       TheModule,
       "contra_mpi_loop_bounds",
@@ -423,14 +425,14 @@ Value* MpiTasker::launch(
             "contra_mpi_partition_get",
             IndexPartitionType_->getPointerTo(),
             {IndexSpaceA, FieldA, TaskInfoA});
-        auto IndexPartitionV = TheHelper_.load(IndexPartitionPtr);
+        auto IndexPartitionV = getBuilder().CreateLoad(IndexPartitionType_, IndexPartitionPtr);
         IndexPartitionA = TheHelper_.getAsAlloca(IndexPartitionV);
       }
 
 
       FieldToPart[FieldA] = IndexPartitionA;
 
-      DistV = TheHelper_.load(DistA);
+      DistV = getBuilder().CreateLoad(DistT, DistA);
       TheHelper_.callFunction(
           TheModule,
           "contra_mpi_field_fetch",
@@ -447,7 +449,7 @@ Value* MpiTasker::launch(
 
   if (AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const MpiReduceInfo*>(AbstractReduceOp);
-    auto ResultT = StructType::create( TheContext_, "reduce" );
+    auto ResultT = StructType::create( getContext(), "reduce" );
     ResultT->setBody( ReduceOp->getVarTypes() );
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
 
@@ -467,35 +469,35 @@ Value* MpiTasker::launch(
   
   // Make the new basic block for the loop header, inserting after current
   // block.
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  BasicBlock *BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", TheFunction);
-  BasicBlock *LoopBB =   BasicBlock::Create(TheContext_, "loop", TheFunction);
-  BasicBlock *IncrBB =   BasicBlock::Create(TheContext_, "incr", TheFunction);
-  BasicBlock *AfterBB =  BasicBlock::Create(TheContext_, "afterloop", TheFunction);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  BasicBlock *BeforeBB = BasicBlock::Create(getContext(), "beforeloop", TheFunction);
+  BasicBlock *LoopBB =   BasicBlock::Create(getContext(), "loop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr", TheFunction);
+  BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop", TheFunction);
   
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
+  getBuilder().SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurV = TheHelper_.load(VarA);
+  Value *CurV = getBuilder().CreateLoad(VarT, VarA);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  auto EndV = TheHelper_.load(EndA);
-  EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
+  Value* EndV = getBuilder().CreateLoad(VarT, EndA);
+  EndV = getBuilder().CreateICmpSLT(CurV, EndV, "loopcond");
 
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateCondBr(EndV, LoopBB, AfterBB);
+  getBuilder().CreateCondBr(EndV, LoopBB, AfterBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(LoopBB);
-  Builder_.SetInsertPoint(LoopBB);
+  getBuilder().SetInsertPoint(LoopBB);
   
   //----------------------------------------------------------------------------
   // Call function
   
-  CurV = TheHelper_.load(VarA);
+  CurV = getBuilder().CreateLoad(VarT, VarA);
   
   std::vector<Value*> ArgVs;
   for (auto ArgA : ArgAs) {
@@ -538,11 +540,11 @@ Value* MpiTasker::launch(
   //----------------------------------------------------------------------------
 
   // Insert unconditional branch to increment.
-  Builder_.CreateBr(IncrBB);
+  getBuilder().CreateBr(IncrBB);
   
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(IncrBB);
-  Builder_.SetInsertPoint(IncrBB);
+  getBuilder().SetInsertPoint(IncrBB);
   
 
   // Reload, increment, and restore the alloca.  This handles the case where
@@ -550,11 +552,11 @@ Value* MpiTasker::launch(
   TheHelper_.increment( VarA, StepA );
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateBr(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
   //TheFunction->getBasicBlockList().push_back(AfterBB);
-  Builder_.SetInsertPoint(AfterBB);
+  getBuilder().SetInsertPoint(AfterBB);
   
   //----------------------------------------------------------------------------
   // Reduction
@@ -564,7 +566,7 @@ Value* MpiTasker::launch(
     
     auto ResultT = TheHelper_.getAllocatedType(ResultA);
     auto TmpResultA = TheHelper_.createEntryBlockAlloca(ResultT);
-    auto DataSizeV = llvmValue<size_t>(TheContext_, ReduceOp->getDataSize()); 
+    auto DataSizeV = llvmValue<size_t>(getContext(), ReduceOp->getDataSize()); 
 
     const auto & FoldN = ReduceOp->getFoldName();
     auto FoldT = ReduceOp->getFoldType();
@@ -584,7 +586,7 @@ Value* MpiTasker::launch(
   //----------------------------------------------------------------------------
   // cleanup
   
-  DistV = TheHelper_.load(DistA);
+  DistV = getBuilder().CreateLoad(DistT, DistA);
   TheHelper_.createFree(DistV);
   
   destroyPartitions(TheModule, TempParts);
@@ -629,7 +631,7 @@ AllocaInst* MpiTasker::createPartition(
       ColorA,
       IndexSpaceA,
       IndexPartA,
-      llvmValue<bool>(TheContext_, true)
+      llvmValue<bool>(getContext(), true)
     };
     
     TheHelper_.callFunction(
@@ -695,10 +697,11 @@ AllocaInst* MpiTasker::createPartition(
 //==============================================================================
 // Is this a field type
 //==============================================================================
-bool MpiTasker::isField(Value* FieldA) const
+bool MpiTasker::isField(Value* FieldPtr) const
 {
-  auto FieldT = FieldA->getType();
-  if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
+  auto FieldT = FieldPtr->getType();
+  if (auto FieldA = dyn_cast<AllocaInst>(FieldPtr))
+    FieldT = FieldA->getAllocatedType();
   return (FieldT == FieldType_);
 }
 
@@ -714,7 +717,7 @@ void MpiTasker::createField(
     Value* RangeV,
     Value* VarV)
 {
-  auto NameV = llvmString(TheContext_, TheModule, VarN);
+  auto NameV = llvmString(getContext(), TheModule, VarN);
 
   Value* DataSizeV;
   if (VarV) {
@@ -722,7 +725,7 @@ void MpiTasker::createField(
     VarV = TheHelper_.getAsAlloca(VarV);
   }
   else {
-    DataSizeV = llvmValue<size_t>(TheContext_, 0);
+    DataSizeV = llvmValue<size_t>(getContext(), 0);
     VarV = Constant::getNullValue(VoidPtrType_);
   }
     
@@ -761,10 +764,11 @@ void MpiTasker::destroyField(Module &TheModule, Value* FieldA)
 bool MpiTasker::isAccessor(Type* AccessorT) const
 { return (AccessorT == AccessorType_); }
 
-bool MpiTasker::isAccessor(Value* AccessorA) const
+bool MpiTasker::isAccessor(Value* AccessorPtr) const
 {
-  auto AccessorT = AccessorA->getType();
-  if (isa<AllocaInst>(AccessorA)) AccessorT = AccessorT->getPointerElementType();
+  auto AccessorT = AccessorPtr->getType();
+  if (auto AccessorA = dyn_cast<AllocaInst>(AccessorPtr))
+    AccessorT = AccessorA->getAllocatedType();
   return isAccessor(AccessorT);
 }
 
@@ -775,7 +779,7 @@ void MpiTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto ValueA = TheHelper_.getAsAlloca(ValueV);
 
@@ -787,7 +791,7 @@ void MpiTasker::storeAccessor(
     FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
   }
   else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+    FunArgVs.emplace_back( llvmValue<int_t>(getContext(), 0) );
   }
   
   TheHelper_.callFunction(
@@ -804,7 +808,7 @@ Value* MpiTasker::loadAccessor(
     Module & TheModule, 
     Type * ValueT,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto AccessorA = TheHelper_.getAsAlloca(AccessorV);
     
@@ -816,7 +820,7 @@ Value* MpiTasker::loadAccessor(
     FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
   }
   else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+    FunArgVs.emplace_back( llvmValue<int_t>(getContext(), 0) );
   }
 
   TheHelper_.callFunction(
@@ -849,10 +853,11 @@ void MpiTasker::destroyAccessor(
 bool MpiTasker::isPartition(Type* PartT) const
 { return (PartT == IndexPartitionType_); }
 
-bool MpiTasker::isPartition(Value* PartA) const
+bool MpiTasker::isPartition(Value* PartPtr) const
 {
-  auto PartT = PartA->getType();
-  if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
+  auto PartT = PartPtr->getType();
+  if (auto PartA = dyn_cast<AllocaInst>(PartPtr))
+    PartT = PartA->getAllocatedType();
   return isPartition(PartT);
 }
 
@@ -885,7 +890,7 @@ std::unique_ptr<AbstractReduceInfo> MpiTasker::createReductionOp(
     VoidPtrType_,
     VoidPtrType_,
     IntType_->getPointerTo(),
-    llvmType<int>(TheContext_)->getPointerTo()
+    llvmType<int>(getContext())->getPointerTo()
   };
 
   FunctionType* FunT = FunctionType::get(VoidType_, ArgTs, false);
@@ -895,36 +900,38 @@ std::unique_ptr<AbstractReduceInfo> MpiTasker::createReductionOp(
       ReductionN,
       TheModule);
 
-  auto BB = BasicBlock::Create(TheContext_, "entry", FunF);
-  Builder_.SetInsertPoint(BB);
+  auto BB = BasicBlock::Create(getContext(), "entry", FunF);
+  getBuilder().SetInsertPoint(BB);
   
+  auto InvecT = ArgTs[0];
   auto InvecPtrA = TheHelper_.createEntryBlockAlloca(ArgTs[0]);
+  auto InoutvecT = ArgTs[1];
   auto InoutvecPtrA = TheHelper_.createEntryBlockAlloca(ArgTs[1]);
 
   auto ArgIt = FunF->arg_begin();
-  Builder_.CreateStore(ArgIt, InvecPtrA);
+  getBuilder().CreateStore(ArgIt, InvecPtrA);
   ++ArgIt;
-  Builder_.CreateStore(ArgIt, InoutvecPtrA);
+  getBuilder().CreateStore(ArgIt, InoutvecPtrA);
 
   std::size_t Offset = 0;
   for (unsigned i=0; i<VarTs.size(); ++i) {
     auto VarT = VarTs[i];
     auto VarPtrT = VarT->getPointerTo();
     auto DataSize = TheHelper_.getTypeSizeInBits(TheModule, VarT)/8;
-    Value* InvecPtrV = TheHelper_.load(InvecPtrA);
-    InvecPtrV = TheHelper_.getElementPointer(InvecPtrV, Offset);
+    Value* InvecPtrV = getBuilder().CreateLoad(InvecT, InvecPtrA);
+    InvecPtrV = TheHelper_.getElementPointer(InvecT, InvecPtrV, Offset);
     InvecPtrV = TheHelper_.createBitCast(InvecPtrV, VarPtrT);
-    Value* InoutvecPtrV = TheHelper_.load(InoutvecPtrA);
-    InoutvecPtrV = TheHelper_.getElementPointer(InoutvecPtrV, Offset);
+    Value* InoutvecPtrV = getBuilder().CreateLoad(InoutvecT, InoutvecPtrA);
+    InoutvecPtrV = TheHelper_.getElementPointer(InoutvecT, InoutvecPtrV, Offset);
     InoutvecPtrV = TheHelper_.createBitCast(InoutvecPtrV, VarPtrT);
-    auto InvecV = TheHelper_.load(InvecPtrV);
-    auto InoutvecV = TheHelper_.load(InoutvecPtrV);
+    auto InvecV = getBuilder().CreateLoad(InvecT, InvecPtrV);
+    auto InoutvecV = getBuilder().CreateLoad(InoutvecT, InoutvecPtrV);
     auto ResultV = foldReduce(TheModule, InvecV, InoutvecV, ReduceTypes[i]);
-    Builder_.CreateStore(ResultV, InoutvecPtrV);
+    getBuilder().CreateStore(ResultV, InoutvecPtrV);
     Offset += DataSize;
   }
   
-  Builder_.CreateRetVoid();
+  getBuilder().CreateRetVoid();
 
 
   return std::make_unique<MpiReduceInfo>(VarTs, ReduceTypes, FunF, Offset);

@@ -37,7 +37,7 @@ struct LlvmType<
   T, typename std::enable_if_t<std::is_same<T,void*>::value> >
 {
   static llvm::Type* getType(llvm::LLVMContext & TheContext)
-  { return llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0); }
+  { return llvm::PointerType::getUnqual(TheContext); }
 };
 
 template<typename T>

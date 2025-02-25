@@ -135,30 +135,29 @@ void Contra::handleTopLevelExpression()
     if (!isCompiled()) {
       // JIT the module containing the anonymous expression, keeping a handle so
       // we can free it later. 
-      auto H = TheCG_->doJIT();
+      auto H = TheCG_->doJIT(true);
 
       // Search the JIT for the __anon_expr symbol.
-      auto ExprSymbol = TheCG_->findSymbol(Name.c_str());
-      assert(ExprSymbol && "Function not found");
+      auto ExprSymbol = ExitOnErr(TheCG_->findSymbol(Name.c_str()));
 
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.
       if (is_real) {
-        real_t (*FP)() = (real_t (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        real_t (*FP)() = ExprSymbol.getAddress().toPtr<real_t (*)()>();
         if (IsVerbose_) std::cerr << "---Begin Real Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
         if (IsVerbose_) std::cerr << "---End Real Result--- " <<  "\n";
       }
       else if (is_int) {
-        int_t (*FP)() = (int_t(*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        int_t (*FP)() = ExprSymbol.getAddress().toPtr<int_t (*)()>();
         if (IsVerbose_) std::cerr << "---Begin Int Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
         if (IsVerbose_) std::cerr << "---End Int Result--- " <<  "\n";
       }
       else if (is_void) {
-        void (*FP)() = (void(*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        void (*FP)() = ExprSymbol.getAddress().toPtr<void(*)()>();
         if (IsVerbose_) std::cerr << "---Begin Void Result--- " <<  "\n";
         FP();
         if (IsVerbose_) std::cerr << "---End Void Result--- " <<  "\n";

@@ -4,8 +4,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -214,7 +213,7 @@ void insertModule(
     for (auto MD : MDs)
       GV->addMetadata(
           MD.first,
-          *MapMetadata(MD.second, VMap, RF_MoveDistinctMDs));
+          *MapMetadata(MD.second, VMap, RF_ReuseAndMutateDistinctMDs));
  
     copyComdat(GV, &*I);
   }
@@ -240,7 +239,7 @@ void insertModule(
     }
  
     SmallVector<ReturnInst *, 8> Returns; // Ignore returns cloned.
-    CloneFunctionInto(F, &I, VMap, /*ModuleLevelChanges=*/true, Returns);
+    CloneFunctionInto(F, &I, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
  
     if (I.hasPersonalityFn())
       F->setPersonalityFn(MapValue(I.getPersonalityFn(), VMap));
@@ -323,9 +322,9 @@ void cloneFunction(Function* F, Module* M)
       VMap[&I] = &*DestI++;        // Add mapping to VMap
     }
 
-  bool ModuleLevelChanges = F->getSubprogram() != nullptr;
+  //bool ModuleLevelChanges = F->getSubprogram() != nullptr;
   SmallVector< ReturnInst *, 8> Returns;
-  CloneFunctionInto(NewF, F, VMap, ModuleLevelChanges, Returns);
+  CloneFunctionInto(NewF, F, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
 }
 
 } // namespace

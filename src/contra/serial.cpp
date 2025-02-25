@@ -38,7 +38,7 @@ StructType * SerialTasker::createFieldType()
     IntType_,
     VoidPtrType_,
     IndexSpaceType_->getPointerTo() };
-  auto NewType = StructType::create( TheContext_, members, "contra_serial_field_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_serial_field_t" );
   return NewType;
 }
 
@@ -51,7 +51,7 @@ StructType * SerialTasker::createAccessorType()
     BoolType_,
     IntType_,
     VoidPtrType_};
-  auto NewType = StructType::create( TheContext_, members, "contra_serial_accessor_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_serial_accessor_t" );
   return NewType;
 }
 
@@ -68,7 +68,7 @@ StructType * SerialTasker::createIndexPartitionType()
     IntPtrT,
     IntPtrT,
     IndexSpaceType_->getPointerTo()};
-  auto NewType = StructType::create( TheContext_, members, "contra_serial_partition_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_serial_partition_t" );
   return NewType;
 }
 
@@ -142,8 +142,8 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
   for (auto &Arg : WrapperF->args()) Arg.setName(WrapperArgNs[Idx++]);
   
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", WrapperF);
-  Builder_.SetInsertPoint(BB);
+  BasicBlock *BB = BasicBlock::Create(getContext(), "entry", WrapperF);
+  getBuilder().SetInsertPoint(BB);
   
   // allocate arguments
   std::vector<AllocaInst*> WrapperArgAs;
@@ -157,7 +157,7 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
     auto ArgN = std::string(Arg.getName()) + ".alloca";
     auto Alloca = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgN);
     // Store the initial value into the alloca.
-    Builder_.CreateStore(&Arg, Alloca);
+    getBuilder().CreateStore(&Arg, Alloca);
     WrapperArgAs.emplace_back(Alloca);
     ArgIdx++;
   }
@@ -177,13 +177,14 @@ SerialTasker::PreambleResult SerialTasker::taskPreamble(
       GetRangeArgTs);
   
   auto IndexA = WrapperArgAs.back();
-  auto IndexV = TheHelper_.load(IndexA);
+  auto IndexT = IndexA->getAllocatedType();
+  auto IndexV = getBuilder().CreateLoad(IndexT, IndexA);
 
   for (unsigned i=0; i<TaskArgNs.size(); i++) {
     if (isRange(TaskArgTs[i])) {
       auto ArgN = TaskArgNs[i];
       auto ArgA = TheHelper_.createEntryBlockAlloca(WrapperF, IndexSpaceType_, ArgN);
-      Builder_.CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
+      getBuilder().CreateCall(GetRangeF, {IndexV, WrapperArgAs[i], ArgA});
       WrapperArgAs[i] = ArgA;
     }
   }
@@ -272,7 +273,7 @@ Value* SerialTasker::launch(
   if (AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const SerialReduceInfo*>(AbstractReduceOp);
     
-    auto ResultT = StructType::create( TheContext_, "reduce" );
+    auto ResultT = StructType::create( getContext(), "reduce_t" );
     ResultT->setBody( ReduceOp->getVarTypes() );
     ResultA = TheHelper_.createEntryBlockAlloca(ResultT);
 
@@ -300,38 +301,38 @@ Value* SerialTasker::launch(
   auto StepA = TheHelper_.createEntryBlockAlloca(VarT, "step");
 
   auto StartV = getRangeStart(RangeV);
-  Builder_.CreateStore(StartV, VarA);
+  getBuilder().CreateStore(StartV, VarA);
   auto EndV = getRangeEndPlusOne(RangeV);
-  Builder_.CreateStore(EndV, EndA);
+  getBuilder().CreateStore(EndV, EndA);
   auto StepV = getRangeStep(RangeV);
-  Builder_.CreateStore(StepV, StepA);
+  getBuilder().CreateStore(StepV, StepA);
   
   // Make the new basic block for the loop header, inserting after current
   // block.
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  BasicBlock *BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", TheFunction);
-  BasicBlock *LoopBB =   BasicBlock::Create(TheContext_, "loop", TheFunction);
-  BasicBlock *IncrBB =   BasicBlock::Create(TheContext_, "incr", TheFunction);
-  BasicBlock *AfterBB =  BasicBlock::Create(TheContext_, "afterloop", TheFunction);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  BasicBlock *BeforeBB = BasicBlock::Create(getContext(), "beforeloop", TheFunction);
+  BasicBlock *LoopBB =   BasicBlock::Create(getContext(), "loop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr", TheFunction);
+  BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop", TheFunction);
   
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
+  getBuilder().SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurV = TheHelper_.load(VarA);
+  Value *CurV = getBuilder().CreateLoad(VarT, VarA);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  EndV = TheHelper_.load(EndA);
-  EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
+  EndV = getBuilder().CreateLoad(VarT, EndA);
+  EndV = getBuilder().CreateICmpSLT(CurV, EndV, "loopcond");
 
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateCondBr(EndV, LoopBB, AfterBB);
+  getBuilder().CreateCondBr(EndV, LoopBB, AfterBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(LoopBB);
-  Builder_.SetInsertPoint(LoopBB);
+  getBuilder().SetInsertPoint(LoopBB);
   
   //----------------------------------------------------------------------------
   // Set accessor
@@ -392,11 +393,11 @@ Value* SerialTasker::launch(
   //----------------------------------------------------------------------------
 
   // Insert unconditional branch to increment.
-  Builder_.CreateBr(IncrBB);
+  getBuilder().CreateBr(IncrBB);
   
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(IncrBB);
-  Builder_.SetInsertPoint(IncrBB);
+  getBuilder().SetInsertPoint(IncrBB);
   
 
   // Reload, increment, and restore the alloca.  This handles the case where
@@ -404,11 +405,11 @@ Value* SerialTasker::launch(
   TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA );
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateBr(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
   //TheFunction->getBasicBlockList().push_back(AfterBB);
-  Builder_.SetInsertPoint(AfterBB);
+  getBuilder().SetInsertPoint(AfterBB);
 
 
   //----------------------------------------------------------------------------
@@ -456,7 +457,7 @@ AllocaInst* SerialTasker::createPartition(
       ColorA,
       IndexSpaceA,
       IndexPartA,
-      llvmValue<bool>(TheContext_, true)
+      llvmValue<bool>(getContext(), true)
     };
     
     TheHelper_.callFunction(
@@ -522,10 +523,10 @@ AllocaInst* SerialTasker::createPartition(
 //==============================================================================
 // Is this a field type
 //==============================================================================
-bool SerialTasker::isField(Value* FieldA) const
+bool SerialTasker::isField(Value* FieldV) const
 {
-  auto FieldT = FieldA->getType();
-  if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
+  auto FieldT = FieldV->getType();
+  if (auto FieldA = dyn_cast<AllocaInst>(FieldV)) FieldT = FieldA->getAllocatedType();
   return (FieldT == FieldType_);
 }
 
@@ -541,7 +542,7 @@ void SerialTasker::createField(
     Value* RangeV,
     Value* VarV)
 {
-  auto NameV = llvmString(TheContext_, TheModule, VarN);
+  auto NameV = llvmString(getContext(), TheModule, VarN);
 
   Value* DataSizeV;
   if (VarV) {
@@ -549,7 +550,7 @@ void SerialTasker::createField(
     VarV = TheHelper_.getAsAlloca(VarV);
   }
   else {
-    DataSizeV = llvmValue<size_t>(TheContext_, 0);
+    DataSizeV = llvmValue<size_t>(getContext(), 0);
     VarV = Constant::getNullValue(VoidPtrType_);
   }
     
@@ -588,10 +589,11 @@ void SerialTasker::destroyField(Module &TheModule, Value* FieldA)
 bool SerialTasker::isAccessor(Type* AccessorT) const
 { return (AccessorT == AccessorType_); }
 
-bool SerialTasker::isAccessor(Value* AccessorA) const
+bool SerialTasker::isAccessor(Value* AccessorV) const
 {
-  auto AccessorT = AccessorA->getType();
-  if (isa<AllocaInst>(AccessorA)) AccessorT = AccessorT->getPointerElementType();
+  auto AccessorT = AccessorV->getType();
+  if (auto AccessorA = dyn_cast<AllocaInst>(AccessorV))
+    AccessorT = AccessorA->getAllocatedType();
   return isAccessor(AccessorT);
 }
 
@@ -602,7 +604,7 @@ void SerialTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto ValueA = TheHelper_.getAsAlloca(ValueV);
 
@@ -614,7 +616,7 @@ void SerialTasker::storeAccessor(
     FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
   }
   else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+    FunArgVs.emplace_back( llvmValue<int_t>(getContext(), 0) );
   }
   
   TheHelper_.callFunction(
@@ -631,7 +633,7 @@ Value* SerialTasker::loadAccessor(
     Module & TheModule, 
     Type * ValueT,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto AccessorA = TheHelper_.getAsAlloca(AccessorV);
     
@@ -643,7 +645,7 @@ Value* SerialTasker::loadAccessor(
     FunArgVs.emplace_back( TheHelper_.getAsValue(IndexV) );
   }
   else {
-    FunArgVs.emplace_back( llvmValue<int_t>(TheContext_, 0) );
+    FunArgVs.emplace_back( llvmValue<int_t>(getContext(), 0) );
   }
 
   TheHelper_.callFunction(
@@ -676,10 +678,10 @@ void SerialTasker::destroyAccessor(
 bool SerialTasker::isPartition(Type* PartT) const
 { return (PartT == IndexPartitionType_); }
 
-bool SerialTasker::isPartition(Value* PartA) const
+bool SerialTasker::isPartition(Value* PartV) const
 {
-  auto PartT = PartA->getType();
-  if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
+  auto PartT = PartV->getType();
+  if (auto PartA = dyn_cast<AllocaInst>(PartV)) PartT = PartA->getAllocatedType();
   return isPartition(PartT);
 }
 

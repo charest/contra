@@ -23,9 +23,9 @@ using namespace utils;
 ROCmTasker::ROCmTasker(utils::BuilderHelper & TheHelper)
   : AbstractTasker(TheHelper)
 {
-  Int64Type_ = llvmType<long long>(TheContext_);
-  UInt32Type_ = llvmType<uint32_t>(TheContext_);
-  UInt64Type_ = llvmType<uint64_t>(TheContext_);
+  Int64Type_ = llvmType<long long>(getContext());
+  UInt32Type_ = llvmType<uint32_t>(getContext());
+  UInt64Type_ = llvmType<uint64_t>(getContext());
 
   Dim3Type_ = createDim3Type();
   ReducedDim3Type_ = createReducedDim3Type();
@@ -48,7 +48,7 @@ StructType * ROCmTasker::createDim3Type()
     UInt32Type_,
     UInt32Type_,
     UInt32Type_};
-  auto NewType = StructType::create( TheContext_, members, "dim3" );
+  auto NewType = StructType::create( getContext(), members, "dim3" );
   return NewType;
 }
 
@@ -60,7 +60,7 @@ StructType * ROCmTasker::createReducedDim3Type()
   std::vector<Type*> members = {
     UInt64Type_,
     UInt32Type_};
-  auto NewType = StructType::create( TheContext_, members, "dim3.reduced" );
+  auto NewType = StructType::create( getContext(), members, "dim3.reduced" );
   return NewType;
 }
 
@@ -69,7 +69,7 @@ StructType * ROCmTasker::createReducedDim3Type()
 //==============================================================================
 StructType * ROCmTasker::createStreamType()
 {
-  auto NewType = StructType::create( TheContext_, "ihipStream_t" );
+  auto NewType = StructType::create( getContext(), "ihipStream_t" );
   return NewType;
 }
 
@@ -85,7 +85,7 @@ StructType * ROCmTasker::createIndexPartitionType()
     IntType_,
     IntPtrT,
     IntPtrT};
-  auto NewType = StructType::create( TheContext_, members, "contra_rocm_partition_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_rocm_partition_t" );
   return NewType;
 }
 
@@ -100,7 +100,7 @@ StructType * ROCmTasker::createFieldType()
     IntType_,
     VoidPtrType_,
     IndexSpaceType_->getPointerTo()};
-  auto NewType = StructType::create( TheContext_, members, "contra_rocm_field_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_rocm_field_t" );
   return NewType;
 }
 
@@ -115,7 +115,7 @@ StructType * ROCmTasker::createAccessorType()
     VoidPtrType_,
     IndexPartitionType_,
     FieldType_->getPointerTo() };
-  auto NewType = StructType::create( TheContext_, members, "contra_rocm_accessor_t" );
+  auto NewType = StructType::create( getContext(), members, "contra_rocm_accessor_t" );
   return NewType;
 }
 
@@ -181,12 +181,12 @@ void ROCmTasker::createIndexSpaceFromPartition(
     AllocaInst* IndexA)
 {
   auto OffsetsPtrV = TheHelper_.extractValue(PartA, 2);
-  auto StartPtrV = TheHelper_.offsetPointer(OffsetsPtrV, IndexV);
-  auto StartV  = TheHelper_.load(StartPtrV);
-  auto OneC = llvmValue<int_t>(TheContext_, 1);
-  auto IndexPlusOneV = Builder_.CreateAdd(IndexV, OneC);
-  auto EndPtrV = TheHelper_.offsetPointer(OffsetsPtrV, IndexPlusOneV);
-  auto EndV = TheHelper_.load(EndPtrV);
+  auto StartPtrV = TheHelper_.offsetPointer(IntType_, OffsetsPtrV, IndexV);
+  auto StartV  = getBuilder().CreateLoad(IntType_, StartPtrV);
+  auto OneC = llvmValue<int_t>(getContext(), 1);
+  auto IndexPlusOneV = getBuilder().CreateAdd(IndexV, OneC);
+  auto EndPtrV = TheHelper_.offsetPointer(IntType_, OffsetsPtrV, IndexPlusOneV);
+  auto EndV = getBuilder().CreateLoad(IntType_, EndPtrV);
   TheHelper_.insertValue(IndexA, StartV, 0);
   TheHelper_.insertValue(IndexA, EndV, 1);
   TheHelper_.insertValue(IndexA, OneC, 2);
@@ -238,8 +238,8 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   WrapperArgNs.emplace_back("size");
 
   if (ResultT) {
-    WrapperArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
-    WrapperArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
+    WrapperArgTs.emplace_back(ByteType_->getPointerTo(1));
+    WrapperArgTs.emplace_back(ByteType_->getPointerTo(1));
     WrapperArgNs.emplace_back("indata");
     WrapperArgNs.emplace_back("outdata");
   }
@@ -281,8 +281,8 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
   for (auto &Arg : WrapperF->args()) Arg.setName(WrapperArgNs[Idx++]);
   
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", WrapperF);
-  Builder_.SetInsertPoint(BB);
+  BasicBlock *BB = BasicBlock::Create(getContext(), "entry", WrapperF);
+  getBuilder().SetInsertPoint(BB);
   
   // allocate arguments
   std::vector<AllocaInst*> WrapperArgAs;
@@ -296,7 +296,7 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
     auto ArgN = std::string(Arg.getName()) + ".alloca";
     auto Alloca = TheHelper_.createEntryBlockAlloca(WrapperF, ArgT, ArgN);
     // Store the initial value into the alloca.
-    Builder_.CreateStore(&Arg, Alloca);
+    getBuilder().CreateStore(&Arg, Alloca);
     WrapperArgAs.emplace_back(Alloca);
     ArgIdx++;
   }
@@ -308,24 +308,24 @@ ROCmTasker::PreambleResult ROCmTasker::taskPreamble(
 
   // cast and store
   auto IndexA = TheHelper_.createEntryBlockAlloca(WrapperF, IntType_, "index");
-  Builder_.CreateStore(IndexV, IndexA);
+  getBuilder().CreateStore(IndexV, IndexA);
   
   //----------------------------------------------------------------------------
   // If tid < total size
 
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
-  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  TaskI.MergeBlock = BasicBlock::Create(TheContext_, "ifcont");
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  BasicBlock *ThenBB = BasicBlock::Create(getContext(), "then", TheFunction);
+  TaskI.MergeBlock = BasicBlock::Create(getContext(), "ifcont");
 
   auto IndexSizeA = WrapperArgAs[TaskArgNs.size()];
   auto IndexSizeV = TheHelper_.load(IndexSizeA);
 
   IndexV = TheHelper_.load(IndexA); 
-  auto CondV = Builder_.CreateICmpSLT(IndexV, IndexSizeV, "threadcond");
-  Builder_.CreateCondBr(CondV, ThenBB, TaskI.MergeBlock);
+  auto CondV = getBuilder().CreateICmpSLT(IndexV, IndexSizeV, "threadcond");
+  getBuilder().CreateCondBr(CondV, ThenBB, TaskI.MergeBlock);
   
   // Emit then value.
-  Builder_.SetInsertPoint(ThenBB);
+  getBuilder().SetInsertPoint(ThenBB);
 
   //----------------------------------------------------------------------------
   // partition any ranges
@@ -381,19 +381,19 @@ void ROCmTasker::taskPostamble(
       auto ResultSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
       
       auto TidV = getThreadID(TheModule);
-      auto PosV = Builder_.CreateMul(TidV, ResultSizeV);
+      auto PosV = getBuilder().CreateMul(TidV, ResultSizeV);
       auto IndataV = TheHelper_.load(TaskI.ResultThreadAlloca);
-      auto OffsetV = TheHelper_.offsetPointer(IndataV, PosV);
+      auto OffsetV = TheHelper_.offsetPointer(ByteType_, IndataV, PosV);
       TheHelper_.memCopy(OffsetV, ResultA, ResultSizeV);
 
     }
   
     // finish If
     auto MergeBB = TaskI.MergeBlock;
-    Builder_.CreateBr(MergeBB);
-    auto TheFunction = Builder_.GetInsertBlock()->getParent();
-    TheFunction->getBasicBlockList().push_back(MergeBB);
-    Builder_.SetInsertPoint(MergeBB);
+    getBuilder().CreateBr(MergeBB);
+    auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+    TheFunction->insert(TheFunction->end(), MergeBB);
+    getBuilder().SetInsertPoint(MergeBB);
       
     if (ResultA) {  
       auto IndataV = TheHelper_.load(TaskI.ResultThreadAlloca);
@@ -416,7 +416,7 @@ void ROCmTasker::taskPostamble(
     }
     
 
-    Builder_.CreateRetVoid();
+    getBuilder().CreateRetVoid();
   }
   //----------------------------------------------------------------------------
   // Single task
@@ -425,11 +425,11 @@ void ROCmTasker::taskPostamble(
     // Have return value
     if (ResultV && !ResultV->getType()->isVoidTy()) {
       ResultV = TheHelper_.getAsValue(ResultV);
-      Builder_.CreateRet(ResultV);
+      getBuilder().CreateRet(ResultV);
     }
     // no return value
     else {
-      Builder_.CreateRetVoid();
+      getBuilder().CreateRetVoid();
     }
 
   }
@@ -553,7 +553,7 @@ Value* ROCmTasker::launch(
 
   // add index size
   auto IndexSpaceSizeA = TheHelper_.createEntryBlockAlloca(IntType_);
-  Builder_.CreateStore( getRangeSize(IndexSpaceA), IndexSpaceSizeA );
+  getBuilder().CreateStore( getRangeSize(IndexSpaceA), IndexSpaceSizeA );
   ArgAs.emplace_back( IndexSpaceSizeA );
   
   //----------------------------------------------------------------------------
@@ -565,11 +565,11 @@ Value* ROCmTasker::launch(
   for (auto A : ArgAs) ArgTs.emplace_back( TheHelper_.getAllocatedType(A) );
   
   if (AbstractReduceOp) {
-    ArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
-    ArgTs.emplace_back(VoidPtrType_->getPointerElementType()->getPointerTo(1));
+    ArgTs.emplace_back(ByteType_->getPointerTo(1));
+    ArgTs.emplace_back(ByteType_->getPointerTo(1));
   }
 
-  auto ArgsT = StructType::create( TheContext_, ArgTs, "args_t" );
+  auto ArgsT = StructType::create( getContext(), ArgTs, "args_t" );
   auto ArgsA = TheHelper_.createEntryBlockAlloca(ArgsT, "args.alloca");
 
   for (unsigned i=0; i<TotArgs; ++i) {
@@ -588,12 +588,12 @@ Value* ROCmTasker::launch(
   Value* FoldF = Constant::getNullValue(VoidPtrType_);
   Value* IndataA = cast<Value>(Constant::getNullValue(VoidPtrType_->getPointerTo()));
   Value* OutdataA = cast<Value>(Constant::getNullValue(VoidPtrType_->getPointerTo()));
-  Value* ResultSizeV = llvmValue<size_t>(TheContext_, 0);
+  Value* ResultSizeV = llvmValue<size_t>(getContext(), 0);
 
   if (AbstractReduceOp) {
     auto ReduceOp = dynamic_cast<const ROCmReduceInfo*>(AbstractReduceOp);
     
-    auto ResultT = StructType::create( TheContext_, "reduce" );
+    auto ResultT = StructType::create( getContext(), "reduce" );
     ResultT->setBody( ReduceOp->getVarTypes() );
     ResultSizeV = TheHelper_.getTypeSize<size_t>(ResultT);
     
@@ -610,7 +610,7 @@ Value* ROCmTasker::launch(
   //----------------------------------------------------------------------------
   // Launch function
       
-  auto TaskStr = llvmString(TheContext_, TheModule, TaskI.getName());
+  auto TaskStr = llvmString(getContext(), TheModule, TaskI.getName());
   TheHelper_.callFunction(
     TheModule,
     "contra_rocm_launch_kernel",
@@ -704,7 +704,7 @@ AllocaInst* ROCmTasker::createPartition(
       ColorA,
       IndexSpaceA,
       IndexPartA,
-      llvmValue<bool>(TheContext_, true)
+      llvmValue<bool>(getContext(), true)
     };
     
     TheHelper_.callFunction(
@@ -773,10 +773,10 @@ AllocaInst* ROCmTasker::createPartition(
 //==============================================================================
 // Is this a field type
 //==============================================================================
-bool ROCmTasker::isField(Value* FieldA) const
+bool ROCmTasker::isField(Value* Field) const
 {
-  auto FieldT = FieldA->getType();
-  if (isa<AllocaInst>(FieldA)) FieldT = FieldT->getPointerElementType();
+  auto FieldT = Field->getType();
+  if (auto FieldA = dyn_cast<AllocaInst>(Field)) FieldT = FieldA->getAllocatedType();
   return (FieldT == FieldType_);
 }
 
@@ -792,7 +792,7 @@ void ROCmTasker::createField(
     Value* RangeV,
     Value* VarV)
 {
-  auto NameV = llvmString(TheContext_, TheModule, VarN);
+  auto NameV = llvmString(getContext(), TheModule, VarN);
 
   Value* DataSizeV;
   if (VarV) {
@@ -800,7 +800,7 @@ void ROCmTasker::createField(
     VarV = TheHelper_.getAsAlloca(VarV);
   }
   else {
-    DataSizeV = llvmValue<size_t>(TheContext_, 0);
+    DataSizeV = llvmValue<size_t>(getContext(), 0);
     VarV = Constant::getNullValue(VoidPtrType_);
   }
     
@@ -839,10 +839,11 @@ void ROCmTasker::destroyField(Module &TheModule, Value* FieldA)
 bool ROCmTasker::isAccessor(Type* AccessorT) const
 { return (AccessorT == AccessorType_); }
 
-bool ROCmTasker::isAccessor(Value* AccessorA) const
+bool ROCmTasker::isAccessor(Value* Accessor) const
 {
-  auto AccessorT = AccessorA->getType();
-  if (isa<AllocaInst>(AccessorA)) AccessorT = AccessorT->getPointerElementType();
+  auto AccessorT = Accessor->getType();
+  if (auto AccessorA = dyn_cast<AllocaInst>(Accessor)) 
+    AccessorT = AccessorA->getAllocatedType();
   return isAccessor(AccessorT);
 }
 
@@ -852,43 +853,44 @@ bool ROCmTasker::isAccessor(Value* AccessorA) const
 std::pair<Value*, Value*> ROCmTasker::offsetAccessor(
     Module & TheModule,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
+	auto IntPtrT = IntType_->getPointerTo();
   // get offsets
   std::vector<unsigned> Members;
   if (isa<AllocaInst>(AccessorV)) Members.emplace_back(0);
   Members.emplace_back(2); // partition
   Members.emplace_back(2); // offsets
-  auto OffsetsPtrV = TheHelper_.getElementPointer(AccessorV, Members);
-  OffsetsPtrV = TheHelper_.load(OffsetsPtrV);
+  auto OffsetsPtrV = TheHelper_.getElementPointer(AccessorType_, AccessorV, Members);
+  OffsetsPtrV = getBuilder().CreateLoad(IntPtrT, OffsetsPtrV);
 
   // get offsets[tid]
   auto TidV = getThreadID(TheModule);
-  auto OffsetV = TheHelper_.offsetPointer(OffsetsPtrV, TidV);
-  OffsetV = TheHelper_.load(OffsetV);
+  auto OffsetV = TheHelper_.offsetPointer(IntType_, OffsetsPtrV, TidV);
+  OffsetV = getBuilder().CreateLoad(IntType_, OffsetV);
 
   // offsets[tid] + index
   if (IndexV) IndexV = TheHelper_.getAsValue(IndexV);
-  else        IndexV = llvmValue<int_t>(TheContext_, 0);
-  auto PosV = Builder_.CreateAdd(OffsetV, IndexV);
+  else        IndexV = llvmValue<int_t>(getContext(), 0);
+  auto PosV = getBuilder().CreateAdd(OffsetV, IndexV);
 
   // pos * data_size
   Members.clear();
   if (isa<AllocaInst>(AccessorV)) Members.emplace_back(0);
   Members.emplace_back(0);
-  auto DataSizeV = TheHelper_.getElementPointer(AccessorV, Members);
-  DataSizeV = TheHelper_.load(DataSizeV);
-  PosV = Builder_.CreateMul(PosV, DataSizeV);
+  auto DataSizeV = TheHelper_.getElementPointer(AccessorType_, AccessorV, Members);
+  DataSizeV = getBuilder().CreateLoad(IntType_, DataSizeV);
+  PosV = getBuilder().CreateMul(PosV, DataSizeV);
   
   // data
   Members.clear();
   if (isa<AllocaInst>(AccessorV)) Members.emplace_back(0);
   Members.emplace_back(1);
-  auto DataPtrV = TheHelper_.getElementPointer(AccessorV, Members);
-  DataPtrV = TheHelper_.load(DataPtrV);
+  auto DataPtrV = TheHelper_.getElementPointer(AccessorType_, AccessorV, Members);
+  DataPtrV = getBuilder().CreateLoad(IntPtrT, DataPtrV);
   
   // data + offset
-  auto OffsetDataPtrV = TheHelper_.offsetPointer(DataPtrV, PosV);
+  auto OffsetDataPtrV = TheHelper_.offsetPointer(ByteType_, DataPtrV, PosV);
 
   return {OffsetDataPtrV, DataSizeV};
 }
@@ -900,7 +902,7 @@ void ROCmTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto res = offsetAccessor(TheModule, AccessorV, IndexV);
   auto OffsetDataPtrV = res.first;
@@ -919,7 +921,7 @@ Value* ROCmTasker::loadAccessor(
     Module & TheModule, 
     Type * ValueT,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   // get pointer to data
   auto res = offsetAccessor(TheModule, AccessorV, IndexV);
@@ -956,10 +958,10 @@ void ROCmTasker::destroyAccessor(
 bool ROCmTasker::isPartition(Type* PartT) const
 { return (PartT == IndexPartitionType_); }
 
-bool ROCmTasker::isPartition(Value* PartA) const
+bool ROCmTasker::isPartition(Value* Part) const
 {
-  auto PartT = PartA->getType();
-  if (isa<AllocaInst>(PartA)) PartT = PartT->getPointerElementType();
+  auto PartT = Part->getType();
+  if (auto PartA = dyn_cast<AllocaInst>(Part)) PartT = PartA->getAllocatedType();
   return isPartition(PartT);
 }
 
@@ -1017,41 +1019,41 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
         FoldN,
         TheModule);
 
-    auto BB = BasicBlock::Create(TheContext_, "entry", FoldF);
-    Builder_.SetInsertPoint(BB);
+    auto BB = BasicBlock::Create(getContext(), "entry", FoldF);
+    getBuilder().SetInsertPoint(BB);
 
     unsigned i=0;
     std::vector<AllocaInst*> ArgAs(ArgTs.size());
     for (auto &Arg : FoldF->args()) {
       ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
-      Builder_.CreateStore(&Arg, ArgAs[i]);
+      getBuilder().CreateStore(&Arg, ArgAs[i]);
       ++i;
     }
 
     auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
-    Builder_.CreateStore(ZeroC, OffsetA);
+    auto ZeroC = llvmValue(getContext(), SizeType_, 0);
+    getBuilder().CreateStore(ZeroC, OffsetA);
 
 
     for (unsigned i=0; i<VarTs.size(); ++i) {
       Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
       Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
       auto OffsetV = TheHelper_.load(OffsetA);
-      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
-      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+      LhsPtrV = getBuilder().CreateGEP(ByteType_, LhsPtrV, OffsetV);
+      RhsPtrV = getBuilder().CreateGEP(ByteType_, RhsPtrV, OffsetV);
       auto VarT = VarTs[i];
       auto VarPtrT = VarT->getPointerTo();
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
       RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
-      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
+      auto LhsV = getBuilder().CreateLoad(VarT, LhsPtrV, true /*volatile*/);
+      auto RhsV = getBuilder().CreateLoad(VarT, RhsPtrV, true /*volatile*/);
       auto ReduceV = foldReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
-      Builder_.CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
-      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      getBuilder().CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
+      auto SizeC = llvmValue(getContext(), SizeType_, DataSizes[i]);
       TheHelper_.increment( OffsetA, SizeC );
     }
         
-    Builder_.CreateRetVoid();
+    getBuilder().CreateRetVoid();
     
   }
 
@@ -1074,41 +1076,41 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
         ApplyN,
         TheModule);
 
-    auto BB = BasicBlock::Create(TheContext_, "entry", ApplyF);
-    Builder_.SetInsertPoint(BB);
+    auto BB = BasicBlock::Create(getContext(), "entry", ApplyF);
+    getBuilder().SetInsertPoint(BB);
 
     unsigned i=0;
     std::vector<AllocaInst*> ArgAs(ArgTs.size());
     for (auto &Arg : ApplyF->args()) {
       ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
-      Builder_.CreateStore(&Arg, ArgAs[i]);
+      getBuilder().CreateStore(&Arg, ArgAs[i]);
       ++i;
     }
 
     auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
-    Builder_.CreateStore(ZeroC, OffsetA);
+    auto ZeroC = llvmValue(getContext(), SizeType_, 0);
+    getBuilder().CreateStore(ZeroC, OffsetA);
 
 
     for (unsigned i=0; i<VarTs.size(); ++i) {
       Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
       Value* RhsPtrV = TheHelper_.load(ArgAs[1]);
       auto OffsetV = TheHelper_.load(OffsetA);
-      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
-      RhsPtrV = Builder_.CreateGEP(RhsPtrV, OffsetV);
+      LhsPtrV = getBuilder().CreateGEP(ByteType_, LhsPtrV, OffsetV);
+      RhsPtrV = getBuilder().CreateGEP(ByteType_, RhsPtrV, OffsetV);
       auto VarT = VarTs[i];
       auto VarPtrT = VarT->getPointerTo();
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarPtrT);
       RhsPtrV = TheHelper_.createBitCast(RhsPtrV, VarPtrT);
-      auto LhsV = Builder_.CreateLoad(VarT, LhsPtrV, true /*volatile*/);
-      auto RhsV = Builder_.CreateLoad(VarT, RhsPtrV, true /*volatile*/);
+      auto LhsV = getBuilder().CreateLoad(VarT, LhsPtrV, true /*volatile*/);
+      auto RhsV = getBuilder().CreateLoad(VarT, RhsPtrV, true /*volatile*/);
       auto ReduceV = applyReduce(TheModule, LhsV, RhsV, ReduceTypes[i]);
-      Builder_.CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
-      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      getBuilder().CreateStore(ReduceV, LhsPtrV, true /*volatile*/);
+      auto SizeC = llvmValue(getContext(), SizeType_, DataSizes[i]);
       TheHelper_.increment( OffsetA, SizeC );
     }
         
-    Builder_.CreateRetVoid();
+    getBuilder().CreateRetVoid();
     
   }
 
@@ -1128,34 +1130,34 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
         InitN,
         TheModule);
   
-    auto BB = BasicBlock::Create(TheContext_, "entry", InitF);
-    Builder_.SetInsertPoint(BB);
+    auto BB = BasicBlock::Create(getContext(), "entry", InitF);
+    getBuilder().SetInsertPoint(BB);
     
     unsigned i=0;
     std::vector<AllocaInst*> ArgAs(ArgTs.size());
     for (auto &Arg : InitF->args()) {
       ArgAs[i] = TheHelper_.createEntryBlockAlloca(ArgTs[i]);
-      Builder_.CreateStore(&Arg, ArgAs[i]);
+      getBuilder().CreateStore(&Arg, ArgAs[i]);
       ++i;
     }
 
-    auto ZeroC = llvmValue(TheContext_, SizeType_, 0);
+    auto ZeroC = llvmValue(getContext(), SizeType_, 0);
     auto OffsetA = TheHelper_.createEntryBlockAlloca(SizeType_);
-    Builder_.CreateStore(ZeroC, OffsetA);
+    getBuilder().CreateStore(ZeroC, OffsetA);
 
     for (unsigned i=0; i<VarTs.size(); ++i) {
       Value* LhsPtrV = TheHelper_.load(ArgAs[0]);
       auto OffsetV = TheHelper_.load(OffsetA);
-      LhsPtrV = Builder_.CreateGEP(LhsPtrV, OffsetV);
+      LhsPtrV = getBuilder().CreateGEP(ByteType_, LhsPtrV, OffsetV);
       LhsPtrV = TheHelper_.createBitCast(LhsPtrV, VarTs[i]->getPointerTo());
       auto VarT = VarTs[i];
       auto InitC = initReduce(VarT, ReduceTypes[i]);
-      Builder_.CreateStore(InitC, LhsPtrV, true /*volatile*/);
-      auto SizeC = llvmValue(TheContext_, SizeType_, DataSizes[i]);
+      getBuilder().CreateStore(InitC, LhsPtrV, true /*volatile*/);
+      auto SizeC = llvmValue(getContext(), SizeType_, DataSizes[i]);
       TheHelper_.increment( OffsetA, SizeC );
     }
     
-    Builder_.CreateRetVoid();
+    getBuilder().CreateRetVoid();
   }
 
   //----------------------------------------------------------------------------
@@ -1176,60 +1178,60 @@ std::unique_ptr<AbstractReduceInfo> ROCmTasker::createReductionOp(
 //==============================================================================
 // Get the thread id
 //==============================================================================
-Value* ROCmTasker::getThreadID(Module & TheModule) const {
+Value* ROCmTasker::getThreadID(Module & TheModule) {
   // tid = threadIdx.x + blockIdx.x * blockDim.x;
   //Value* IndexV = TheHelper_.callFunction(
   //    TheModule,
   //    "__ockl_get_global_id",
   //    SizeType_,
-  //    {llvmValue<uint>(TheContext_, 0)} );
+  //    {llvmValue<uint>(getContext(), 0)} );
   
 
   // local_id
   auto TidF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::amdgcn_workitem_id_x);
-  Value* IndexV = Builder_.CreateCall(TidF);
+  Value* IndexV = getBuilder().CreateCall(TidF);
 
   // group_id
   auto BidF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::amdgcn_workgroup_id_x);
-  Value* BlockIdV = Builder_.CreateCall(BidF);
+  Value* BlockIdV = getBuilder().CreateCall(BidF);
   
   // group_size
   auto DispatchPtrF = Intrinsic::getDeclaration(
       &TheModule,
       Intrinsic::amdgcn_dispatch_ptr);
-  Value* DispatchPtrV = Builder_.CreateCall(DispatchPtrF);
-  auto DispatchPtrGEP = TheHelper_.getElementPointer(DispatchPtrV, 4); 
-  auto Int16T = llvmType<uint16_t>(TheContext_);
+  Value* DispatchPtrV = getBuilder().CreateCall(DispatchPtrF);
+  auto DispatchPtrGEP = TheHelper_.getElementPointer(ByteType_, DispatchPtrV, 4); 
+  auto Int16T = llvmType<uint16_t>(getContext());
   auto AddrSpace = DispatchPtrGEP->getType()->getPointerAddressSpace();
   auto Int16PtrT = Int16T->getPointerTo( AddrSpace );
   auto BlockDimPtrV = TheHelper_.createBitCast(DispatchPtrGEP, Int16PtrT);
-  Value* GroupSizeV = TheHelper_.load(BlockDimPtrV);
+  Value* GroupSizeV = getBuilder().CreateLoad(Int16T, BlockDimPtrV);
   auto IdT = BlockIdV->getType();
   GroupSizeV = TheHelper_.createCast(GroupSizeV, IdT);
 
   // grid_size
-  DispatchPtrGEP = TheHelper_.getElementPointer(DispatchPtrV, 12);
-  auto Int32T = llvmType<uint32_t>(TheContext_);
+  DispatchPtrGEP = TheHelper_.getElementPointer(ByteType_, DispatchPtrV, 12);
+  auto Int32T = llvmType<uint32_t>(getContext());
   auto Int32PtrT = Int32T->getPointerTo( AddrSpace );
   auto GridSizePtrV = TheHelper_.createBitCast(DispatchPtrGEP, Int32PtrT);
-  Value* GridSizeV = TheHelper_.load(GridSizePtrV);
+  Value* GridSizeV = getBuilder().CreateLoad(Int32T, GridSizePtrV);
   GridSizeV = TheHelper_.createCast(GridSizeV, IdT);
 
   // r = grid_size - group_id * group_size
-  Value* TmpV = Builder_.CreateMul(BlockIdV, GroupSizeV);
-  TmpV = Builder_.CreateSub(GridSizeV, TmpV);
+  Value* TmpV = getBuilder().CreateMul(BlockIdV, GroupSizeV);
+  TmpV = getBuilder().CreateSub(GridSizeV, TmpV);
 
   // local_size = (r < group_size) ? r : group_size;
-  auto CondV = Builder_.CreateICmpULT(TmpV, GroupSizeV, "threadcond");
-  auto BlockDimV = Builder_.CreateSelect(CondV, TmpV, GroupSizeV);
+  auto CondV = getBuilder().CreateICmpULT(TmpV, GroupSizeV, "threadcond");
+  auto BlockDimV = getBuilder().CreateSelect(CondV, TmpV, GroupSizeV);
   
   // local_id + group_id*local_size
-  TmpV = Builder_.CreateMul(BlockIdV, BlockDimV);
-  IndexV = Builder_.CreateAdd(IndexV, TmpV);
+  TmpV = getBuilder().CreateMul(BlockIdV, BlockDimV);
+  IndexV = getBuilder().CreateAdd(IndexV, TmpV);
   IndexV = TheHelper_.createCast(IndexV, IntType_);
 
   return IndexV;

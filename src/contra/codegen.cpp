@@ -22,7 +22,6 @@
 
 #include "utils/llvm_utils.hpp"
 
-#include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/LinkAllPasses.h"
@@ -31,6 +30,7 @@
 #include "llvm/Transforms/Scalar/GVN.h"
 
 using namespace llvm;
+using namespace llvm::orc;
 using namespace utils;
 
 namespace contra {
@@ -44,20 +44,20 @@ namespace contra {
 //==============================================================================
 CodeGen::CodeGen (
     SupportedBackends Backend,
-    bool) :
-  TheContext_(TheHelper_.getContext()),
-  Builder_(TheHelper_.getBuilder())
+    bool)
 {
-  HostJIT_ = std::make_unique<JIT>();
+  HostJIT_ = ExitOnErr(JIT::Create());
+  TheHelper_.setContext( HostJIT_->getContext() );
 
   // setup runtime
-  librt::RunTimeLib::setup(TheContext_);
+  librt::RunTimeLib::setup(getContext());
   
   // setup types
-  I64Type_  = llvmType<int_t>(TheContext_);
-  F64Type_  = llvmType<real_t>(TheContext_);
-  VoidType_ = Type::getVoidTy(TheContext_);
+  I64Type_  = llvmType<int_t>(getContext());
+  F64Type_  = llvmType<real_t>(getContext());
+  VoidType_ = Type::getVoidTy(getContext());
   ArrayType_ = librt::DopeVector::DopeVectorType;
+  BoolType_ = llvmType<bool>(getContext());
   
   // setup tasker
   Tasker_ = nullptr;
@@ -112,6 +112,7 @@ CodeGen::CodeGen (
   TypeTable_.emplace( C.getInt64Type()->getName(),  I64Type_);
   TypeTable_.emplace( C.getFloat64Type()->getName(),  F64Type_);
   TypeTable_.emplace( C.getVoidType()->getName(), VoidType_);
+  TypeTable_.emplace( C.getBoolType()->getName(), BoolType_);
 
   VariableTable_.push_front({});
 
@@ -140,8 +141,8 @@ void CodeGen::initializeModuleAndPassManager()
 void CodeGen::initializeModule()
 {
   // Open a new module.
-  TheModule_ = std::make_unique<Module>("my cool jit", TheContext_);
-  TheModule_->setDataLayout(HostJIT_->getTargetMachine()->createDataLayout());
+  TheModule_ = std::make_unique<Module>("my cool jit", getContext());
+  TheModule_->setDataLayout(HostJIT_->getDataLayout());
 }
 
 //==============================================================================
@@ -172,10 +173,12 @@ void CodeGen::initializePassManager() {
 //==============================================================================
 // JIT the current module
 //==============================================================================
-JIT::VModuleKey CodeGen::doJIT()
+JIT::Resource CodeGen::doJIT(bool newResource)
 {
+  //std::cout << "----->>>>>>> DOJIT" << std::endl;
   //TheModule_->print(outs(), nullptr); outs()<<"\n";
-  auto H = HostJIT_->addModule(std::move(TheModule_));
+  JIT::Resource RT = newResource ? HostJIT_->createResource() : nullptr;
+  auto H = HostJIT_->addModule(std::move(TheModule_), RT);
   initializeModuleAndPassManager();
   return H;
 }
@@ -183,13 +186,13 @@ JIT::VModuleKey CodeGen::doJIT()
 //==============================================================================
 // Search the JIT for a symbol
 //==============================================================================
-JIT::JITSymbol CodeGen::findSymbol( const char * Symbol )
+Expected<ExecutorSymbolDef> CodeGen::findSymbol( const char * Symbol )
 { return HostJIT_->findSymbol(Symbol); }
 
 //==============================================================================
 // Delete a JITed module
 //==============================================================================
-void CodeGen::removeJIT( JIT::VModuleKey H )
+void CodeGen::removeJIT( JIT::Resource H )
 { HostJIT_->removeModule(H); }
 
 
@@ -265,8 +268,7 @@ VariableAlloca * CodeGen::createVariable(
     StringRef VarName,
     Type* VarType)
 {
-  Value* NewVar;
-  NewVar = TheHelper_.createEntryBlockAlloca(VarType, VarName);
+  auto NewVar = TheHelper_.createEntryBlockAlloca(VarType, VarName);
   return insertVariable(VarName, VariableAlloca{NewVar, VarType});
 }
         
@@ -316,7 +318,7 @@ VariableAlloca * CodeGen::insertVariable(
 //==============================================================================
 VariableAlloca * CodeGen::insertVariable(
     StringRef VarName,
-    Value* VarAlloca,
+    AllocaInst* VarAlloca,
     Type* VarType)
 { 
   VariableAlloca VarE(VarAlloca, VarType);
@@ -377,8 +379,7 @@ VariableAlloca * CodeGen::createArray(
     llvm::StringRef VarName,
     Type* ElementT)
 {
-  Value* NewVar;
-  NewVar = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName);
+  auto NewVar = TheHelper_.createEntryBlockAlloca(ArrayType_, VarName);
   return insertVariable(VarName, NewVar, ElementT);
 }
 
@@ -412,12 +413,12 @@ void CodeGen::allocateArray(
   Function *F; 
   const auto & AllocateN = librt::DopeVectorAllocate::Name;
   F = TheModule_->getFunction(AllocateN);
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, AllocateN);
+  if (!F) F = librt::RunTimeLib::tryInstall(getContext(), *TheModule_, AllocateN);
 
 
   auto DataSize = TheHelper_.getTypeSize<int_t>(ElementT);
   std::vector<Value*> ArgVs = {SizeV, DataSize, ArrayA};
-  Builder_.CreateCall(F, ArgVs);
+  getBuilder().CreateCall(F, ArgVs);
 }
  
  
@@ -430,36 +431,36 @@ void CodeGen::initArray(
     Value * SizeV,
     Type * ElementT)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
   
   // create allocas to the pointers
   auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
 
   // create a loop
-  auto Alloca = TheHelper_.createEntryBlockAlloca(llvmType<int_t>(TheContext_), "__i");
-  Value * StartVal = llvmValue<int_t>(TheContext_, 0);
-  Builder_.CreateStore(StartVal, Alloca);
+  auto Alloca = TheHelper_.createEntryBlockAlloca(I64Type_, "__i");
+  Value * StartVal = llvmValue<int_t>(getContext(), 0);
+  getBuilder().CreateStore(StartVal, Alloca);
   
-  auto BeforeBB = BasicBlock::Create(TheContext_, "beforeinit", TheFunction);
-  auto LoopBB =   BasicBlock::Create(TheContext_, "init", TheFunction);
-  auto AfterBB =  BasicBlock::Create(TheContext_, "afterinit", TheFunction);
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(BeforeBB);
-  auto CurVar = TheHelper_.load(Alloca);
+  auto BeforeBB = BasicBlock::Create(getContext(), "beforeinit", TheFunction);
+  auto LoopBB =   BasicBlock::Create(getContext(), "init", TheFunction);
+  auto AfterBB =  BasicBlock::Create(getContext(), "afterinit", TheFunction);
+  getBuilder().CreateBr(BeforeBB);
+  getBuilder().SetInsertPoint(BeforeBB);
+  auto CurVar = getBuilder().CreateLoad(I64Type_, Alloca);
   SizeV = TheHelper_.getAsValue(SizeV);
-  auto EndCond = Builder_.CreateICmpSLT(CurVar, SizeV, "initcond");
-  Builder_.CreateCondBr(EndCond, LoopBB, AfterBB);
-  Builder_.SetInsertPoint(LoopBB);
+  auto EndCond = getBuilder().CreateICmpSLT(CurVar, SizeV, "initcond");
+  getBuilder().CreateCondBr(EndCond, LoopBB, AfterBB);
+  getBuilder().SetInsertPoint(LoopBB);
 
   // store value
   InitV = TheHelper_.getAsValue(InitV);
   insertArrayValue(ArrayPtrA, ElementT, CurVar, InitV);
 
   // increment loop
-  auto StepVal = llvmValue<int_t>(TheContext_, 1);
+  auto StepVal = llvmValue<int_t>(getContext(), 1);
   TheHelper_.increment(Alloca, StepVal);
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(AfterBB);
+  getBuilder().CreateBr(BeforeBB);
+  getBuilder().SetInsertPoint(AfterBB);
 }
   
 //==============================================================================
@@ -475,7 +476,7 @@ void CodeGen::initArray(
   // create allocas to the pointers
   auto ArrayPtrA = createArrayPointerAlloca(ArrayA, ElementT);
   for (std::size_t i=0; i<NumVals; ++i) {
-    auto IndexV = llvmValue<int_t>(TheContext_, i);
+    auto IndexV = llvmValue<int_t>(getContext(), i);
     insertArrayValue(ArrayPtrA, ElementT, IndexV, InitVs[i]);
   }
 }
@@ -487,25 +488,25 @@ void CodeGen::copyArray(Value* SrcArrayV, Value* TgtArrayA)
 {
   const auto & CopyN = librt::DopeVectorCopy::Name;
   auto F = TheModule_->getFunction(CopyN);
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, CopyN);
+  if (!F) F = librt::RunTimeLib::tryInstall(getContext(), *TheModule_, CopyN);
 
   auto SrcArrayA = TheHelper_.getAsAlloca(SrcArrayV);
 
   std::vector<Value*> Args = {SrcArrayA, TgtArrayA};
-  Builder_.CreateCall(F, Args);
+  getBuilder().CreateCall(F, Args);
 }
 
 //==============================================================================
 // Load an arrayarray into an alloca
 //==============================================================================
-Value* CodeGen::createArrayPointerAlloca(
+AllocaInst* CodeGen::createArrayPointerAlloca(
     Value* ArrayA,
     Type* ElementT )
 {
   auto ElementPtrT = ElementT->getPointerTo();
   auto ArrayV = getArrayPointer(ArrayA, ElementT);
   auto ArrayPtrA = TheHelper_.createEntryBlockAlloca(ElementPtrT);
-  Builder_.CreateStore(ArrayV, ArrayPtrA);
+  getBuilder().CreateStore(ArrayV, ArrayPtrA);
   return ArrayPtrA;
 }
 
@@ -532,7 +533,7 @@ Value* CodeGen::getArrayElementPointer(
 {
   auto ArrayPtrV = getArrayPointer(ArrayA, ElementT);
   IndexV = TheHelper_.getAsValue(IndexV);
-  return Builder_.CreateGEP(ArrayPtrV, IndexV);
+  return getBuilder().CreateGEP(ElementT, ArrayPtrV, IndexV);
 }
 
 //==============================================================================
@@ -554,8 +555,8 @@ Value* CodeGen::extractArrayValue(
   if (isArray(ArrayA))
     ArrayGEP = getArrayElementPointer(ArrayA, ElementT, IndexV);
   else
-    ArrayGEP = TheHelper_.offsetPointer(ArrayA, IndexV);
-  return TheHelper_.load(ArrayGEP);
+    ArrayGEP = TheHelper_.offsetPointer(ElementT, ArrayA, IndexV);
+  return getBuilder().CreateLoad(ElementT, ArrayGEP);
 }
 
 //==============================================================================
@@ -572,8 +573,8 @@ void CodeGen::insertArrayValue(
   if (isArray(ArrayA))
     ArrayPtr = getArrayElementPointer(ArrayA, ElementT, IndexV);
   else
-    ArrayPtr = TheHelper_.offsetPointer(ArrayA, IndexV);
-  Builder_.CreateStore(ValueV, ArrayPtr);
+    ArrayPtr = TheHelper_.offsetPointer(ElementT, ArrayA, IndexV);
+  getBuilder().CreateStore(ValueV, ArrayPtr);
 }
   
   
@@ -584,9 +585,9 @@ void CodeGen::destroyArray(Value* Alloca)
 {
   const auto & DeallocateN = librt::DopeVectorDeAllocate::Name;
   auto F = TheModule_->getFunction(DeallocateN);
-  if (!F) F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, DeallocateN);
+  if (!F) F = librt::RunTimeLib::tryInstall(getContext(), *TheModule_, DeallocateN);
 
-  Builder_.CreateCall(F, Alloca);
+  getBuilder().CreateCall(F, Alloca);
 }
 
 //==============================================================================
@@ -613,7 +614,7 @@ std::pair<Function*, bool> CodeGen::getFunction(std::string Name) {
     return {F,false};
   
   // see if this is an available intrinsic, try installing it first
-  if (auto F = librt::RunTimeLib::tryInstall(TheContext_, *TheModule_, Name))
+  if (auto F = librt::RunTimeLib::tryInstall(getContext(), *TheModule_, Name))
     return {F,false};
 
   // If not, check whether we can codegen the declaration from some existing
@@ -644,13 +645,13 @@ void CodeGen::visit(ValueExprAST & e)
 {
   switch (e.getValueType()) {
   case ValueExprAST::ValueType::Int:
-    ValueResult_ = llvmValue<int_t>(TheContext_, e.getVal<int_t>());
+    ValueResult_ = llvmValue<int_t>(getContext(), e.getVal<int_t>());
     break;
   case ValueExprAST::ValueType::Real:
-    ValueResult_ = llvmValue(TheContext_, e.getVal<real_t>());
+    ValueResult_ = llvmValue(getContext(), e.getVal<real_t>());
     break;
   case ValueExprAST::ValueType::String:
-    ValueResult_ = llvmString(TheContext_, *TheModule_, e.getVal<std::string>());
+    ValueResult_ = llvmString(getContext(), *TheModule_, e.getVal<std::string>());
     break;
   }
 }
@@ -722,7 +723,7 @@ void CodeGen::visit(ArrayExprAST &e)
     SizeExpr = runExprVisitor(*e.getSizeExpr());
   }
   else {
-    SizeExpr = llvmValue<int_t>(TheContext_, e.getNumVals());
+    SizeExpr = llvmValue<int_t>(getContext(), e.getNumVals());
   }
 
   auto ArrayN = e.getName();
@@ -805,7 +806,7 @@ void CodeGen::visit(UnaryExprAST & e) {
   
     switch (e.getOperand()) {
     case tok_sub:
-      ValueResult_ = Builder_.CreateFNeg(OperandV, "negtmp");
+      ValueResult_ = getBuilder().CreateFNeg(OperandV, "negtmp");
       return;
     }
 
@@ -813,13 +814,13 @@ void CodeGen::visit(UnaryExprAST & e) {
   else {
     switch (e.getOperand()) {
     case tok_sub:
-      ValueResult_ = Builder_.CreateNeg(OperandV, "negtmp");
+      ValueResult_ = getBuilder().CreateNeg(OperandV, "negtmp");
       return;
     }
   }
 
   auto F = getFunction(std::string("unary") + e.getOperand()).first;
-  ValueResult_ = Builder_.CreateCall(F, OperandV, "unop");
+  ValueResult_ = getBuilder().CreateCall(F, OperandV, "unop");
 }
 
 //==============================================================================
@@ -837,74 +838,74 @@ void CodeGen::visit(BinaryExprAST& e) {
   if (is_real) {
     switch (e.getOperand()) {
     case tok_add:
-      ValueResult_ = Builder_.CreateFAdd(L, R, "addtmp");
+      ValueResult_ = getBuilder().CreateFAdd(L, R, "addtmp");
       return;
     case tok_sub:
-      ValueResult_ = Builder_.CreateFSub(L, R, "subtmp");
+      ValueResult_ = getBuilder().CreateFSub(L, R, "subtmp");
       return;
     case tok_mul:
-      ValueResult_ = Builder_.CreateFMul(L, R, "multmp");
+      ValueResult_ = getBuilder().CreateFMul(L, R, "multmp");
       return;
     case tok_div:
-      ValueResult_ = Builder_.CreateFDiv(L, R, "divtmp");
+      ValueResult_ = getBuilder().CreateFDiv(L, R, "divtmp");
       return;
     case tok_mod:
-      ValueResult_ = Builder_.CreateFRem(L, R, "remtmp");
+      ValueResult_ = getBuilder().CreateFRem(L, R, "remtmp");
       return;
     case tok_lt:
-      ValueResult_ = Builder_.CreateFCmpULT(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateFCmpULT(L, R, "cmptmp");
       return;
     case tok_le:
-      ValueResult_ = Builder_.CreateFCmpULE(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateFCmpULE(L, R, "cmptmp");
       return;
     case tok_gt:
-      ValueResult_ = Builder_.CreateFCmpUGT(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateFCmpUGT(L, R, "cmptmp");
       return;
     case tok_ge:
-      ValueResult_ = Builder_.CreateFCmpUGE(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateFCmpUGE(L, R, "cmptmp");
       return;
     case tok_eq:
-      ValueResult_ = Builder_.CreateFCmpUEQ(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateFCmpUEQ(L, R, "cmptmp");
       return;
     case tok_ne:
-      ValueResult_ = Builder_.CreateFCmpUNE(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateFCmpUNE(L, R, "cmptmp");
       return;
     } 
   }
   else {
     switch (e.getOperand()) {
     case tok_add:
-      ValueResult_ = Builder_.CreateAdd(L, R, "addtmp");
+      ValueResult_ = getBuilder().CreateAdd(L, R, "addtmp");
       return;
     case tok_sub:
-      ValueResult_ = Builder_.CreateSub(L, R, "subtmp");
+      ValueResult_ = getBuilder().CreateSub(L, R, "subtmp");
       return;
     case tok_mul:
-      ValueResult_ = Builder_.CreateMul(L, R, "multmp");
+      ValueResult_ = getBuilder().CreateMul(L, R, "multmp");
       return;
     case tok_div:
-      ValueResult_ = Builder_.CreateSDiv(L, R, "divtmp");
+      ValueResult_ = getBuilder().CreateSDiv(L, R, "divtmp");
       return;
     case tok_mod:
-      ValueResult_ = Builder_.CreateSRem(L, R, "divtmp");
+      ValueResult_ = getBuilder().CreateSRem(L, R, "divtmp");
       return;
     case tok_lt:
-      ValueResult_ = Builder_.CreateICmpSLT(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateICmpSLT(L, R, "cmptmp");
       return;
     case tok_le:
-      ValueResult_ = Builder_.CreateICmpSLE(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateICmpSLE(L, R, "cmptmp");
       return;
     case tok_gt:
-      ValueResult_ = Builder_.CreateICmpSGT(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateICmpSGT(L, R, "cmptmp");
       return;
     case tok_ge:
-      ValueResult_ = Builder_.CreateICmpSGE(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateICmpSGE(L, R, "cmptmp");
       return;
     case tok_eq:
-      ValueResult_ = Builder_.CreateICmpEQ(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateICmpEQ(L, R, "cmptmp");
       return;
     case tok_ne:
-      ValueResult_ = Builder_.CreateICmpNE(L, R, "cmptmp");
+      ValueResult_ = getBuilder().CreateICmpNE(L, R, "cmptmp");
       return;
     }
   }
@@ -914,7 +915,7 @@ void CodeGen::visit(BinaryExprAST& e) {
   auto F = getFunction(std::string("binary") + e.getOperand()).first;
 
   Value *Ops[] = { L, R };
-  ValueResult_ = Builder_.CreateCall(F, Ops, "binop");
+  ValueResult_ = getBuilder().CreateCall(F, Ops, "binop");
 }
 
 //==============================================================================
@@ -995,7 +996,7 @@ void CodeGen::visit(CallExprAST &e) {
       FutureV = Tasker_->launch(*TheModule_, TaskI, ArgVs);
     }
   
-    ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+    ValueResult_ = UndefValue::get(Type::getVoidTy(getContext()));
 
     auto CalleeT = CalleeF->getFunctionType()->getReturnType();
     if (!CalleeT->isVoidTy()) ValueResult_ = FutureV;
@@ -1016,11 +1017,11 @@ void CodeGen::visit(CallExprAST &e) {
     if (Name == "print") Tasker_->pushRootGuard(*TheModule_);
 
     for (auto & A : ArgVs) A = TheHelper_.getAsValue(A);
-    ValueResult_ = Builder_.CreateCall(CalleeF, ArgVs, TmpN);
+    ValueResult_ = getBuilder().CreateCall(CalleeF, ArgVs, TmpN);
 
     if (Name == "print") {
       Tasker_->popRootGuard(*TheModule_);
-      ValueResult_ = UndefValue::get(Type::getVoidTy(TheContext_));
+      ValueResult_ = UndefValue::get(Type::getVoidTy(getContext()));
     }
   }
 
@@ -1050,7 +1051,10 @@ void CodeGen::visit(ExprListAST & e) {
 // Break statement
 //==============================================================================
 void CodeGen::visit(BreakStmtAST &) {
-  if (ExitBlock_) Builder_.CreateBr(ExitBlock_);
+  if (ExitBlock_) getBuilder().CreateBr(ExitBlock_);
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
+  auto BreakBB = BasicBlock::Create(getContext(), "afterbreak", TheFunction);
+  getBuilder().SetInsertPoint(BreakBB);
 }
 
 
@@ -1068,26 +1072,26 @@ void CodeGen::visit(IfStmtAST & e) {
   CondV = TheHelper_.getAsValue(CondV);
   auto CondT = CondV->getType();
   if (CondT->isIntegerTy()) {
-    auto ZeroC = llvmValue(TheContext_, CondT, 0);
-    CondV = Builder_.CreateICmpNE(CondV, ZeroC, "cmptmp");
+    auto ZeroC = llvmValue(getContext(), CondT, 0);
+    CondV = getBuilder().CreateICmpNE(CondV, ZeroC, "cmptmp");
   }
 
 
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
 
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
-  BasicBlock *ThenBB = BasicBlock::Create(TheContext_, "then", TheFunction);
-  BasicBlock *ElseBB = e.getElseExprs().empty() ? nullptr : BasicBlock::Create(TheContext_, "else");
-  BasicBlock *MergeBB = BasicBlock::Create(TheContext_, "ifcont");
+  BasicBlock *ThenBB = BasicBlock::Create(getContext(), "then", TheFunction);
+  BasicBlock *ElseBB = e.getElseExprs().empty() ? nullptr : BasicBlock::Create(getContext(), "else");
+  BasicBlock *MergeBB = BasicBlock::Create(getContext(), "ifcont");
 
   if (ElseBB)
-    Builder_.CreateCondBr(CondV, ThenBB, ElseBB);
+    getBuilder().CreateCondBr(CondV, ThenBB, ElseBB);
   else
-    Builder_.CreateCondBr(CondV, ThenBB, MergeBB);
+    getBuilder().CreateCondBr(CondV, ThenBB, MergeBB);
 
   // Emit then value.
-  Builder_.SetInsertPoint(ThenBB);
+  getBuilder().SetInsertPoint(ThenBB);
 
   createScope();
   for ( const auto & stmt : e.getThenExprs() ) runStmtVisitor(*stmt);
@@ -1096,16 +1100,16 @@ void CodeGen::visit(IfStmtAST & e) {
   // get first non phi instruction
   ThenBB->getFirstNonPHI();
 
-  Builder_.CreateBr(MergeBB);
+  getBuilder().CreateBr(MergeBB);
 
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
-  ThenBB = Builder_.GetInsertBlock();
+  ThenBB = getBuilder().GetInsertBlock();
 
   if (ElseBB) {
 
     // Emit else block.
-    TheFunction->getBasicBlockList().push_back(ElseBB);
-    Builder_.SetInsertPoint(ElseBB);
+    TheFunction->insert(TheFunction->end(), ElseBB);
+    getBuilder().SetInsertPoint(ElseBB);
 
     createScope();
     for ( const auto & stmt : e.getElseExprs() ) runStmtVisitor(*stmt); 
@@ -1114,15 +1118,15 @@ void CodeGen::visit(IfStmtAST & e) {
     // get first non phi
     ElseBB->getFirstNonPHI();
 
-    Builder_.CreateBr(MergeBB);
+    getBuilder().CreateBr(MergeBB);
     // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
-    ElseBB = Builder_.GetInsertBlock();
+    ElseBB = getBuilder().GetInsertBlock();
 
   } // else
 
   // Emit merge block.
-  TheFunction->getBasicBlockList().push_back(MergeBB);
-  Builder_.SetInsertPoint(MergeBB);
+  TheFunction->insert(TheFunction->end(), MergeBB);
+  getBuilder().SetInsertPoint(MergeBB);
   //PHINode *PN = Builder.CreatePHI(ThenV->getType(), 2, "iftmp");
 
   //if (ThenV) PN->addIncoming(ThenV, ThenBB);
@@ -1154,13 +1158,13 @@ void CodeGen::visit(IfStmtAST & e) {
 //==============================================================================
 void CodeGen::visit(ForStmtAST& e) {
   
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto TheFunction = getBuilder().GetInsertBlock()->getParent();
   
   createScope();
 
   // Create an alloca for the variable in the entry block.
   const auto & VarN = e.getVarName();
-  auto VarT = llvmType<int_t>(TheContext_);
+  auto VarT = I64Type_;
   auto VarE = createVariable(VarN, VarT);
   auto VarA = VarE->getAlloca();
   
@@ -1175,19 +1179,19 @@ void CodeGen::visit(ForStmtAST& e) {
   if (auto RangeExpr = dynamic_cast<RangeExprAST*>(StartExpr)) {
     auto StartV = runExprVisitor(*RangeExpr->getStartExpr());
     StartV = TheHelper_.getAsValue(StartV);
-    Builder_.CreateStore(StartV, VarA);
+    getBuilder().CreateStore(StartV, VarA);
     auto EndV = runExprVisitor(*RangeExpr->getEndExpr());
     EndV = TheHelper_.getAsValue(EndV);
-    auto OneC = llvmValue<int_t>(TheContext_, 1);
-    EndV = Builder_.CreateAdd(EndV, OneC);
-    Builder_.CreateStore(EndV, EndA);
+    auto OneC = llvmValue<int_t>(getContext(), 1);
+    EndV = getBuilder().CreateAdd(EndV, OneC);
+    getBuilder().CreateStore(EndV, EndA);
     if (RangeExpr->hasStepExpr()) {
       auto StepV = runExprVisitor(*RangeExpr->getStepExpr());
       StepV = TheHelper_.getAsValue(StepV);
-      Builder_.CreateStore(StepV, StepA);
+      getBuilder().CreateStore(StepV, StepA);
     }
     else {
-      Builder_.CreateStore(OneC, StepA);
+      getBuilder().CreateStore(OneC, StepA);
     }
   }
   //----------------------------------------------------------------------------
@@ -1195,42 +1199,42 @@ void CodeGen::visit(ForStmtAST& e) {
   else {
     auto RangeV = runStmtVisitor(*e.getStartExpr());
     auto StartV = Tasker_->getRangeStart(RangeV);
-    Builder_.CreateStore(StartV, VarA);
+    getBuilder().CreateStore(StartV, VarA);
     auto EndV = Tasker_->getRangeEndPlusOne(RangeV);
-    Builder_.CreateStore(EndV, EndA);
+    getBuilder().CreateStore(EndV, EndA);
     auto StepV = Tasker_->getRangeStep(RangeV);
-    Builder_.CreateStore(StepV, StepA);
+    getBuilder().CreateStore(StepV, StepA);
   }
 
   // Make the new basic block for the loop header, inserting after current
   // block.
-  BasicBlock *BeforeBB = BasicBlock::Create(TheContext_, "beforeloop", TheFunction);
-  BasicBlock *LoopBB =   BasicBlock::Create(TheContext_, "loop", TheFunction);
-  BasicBlock *IncrBB =   BasicBlock::Create(TheContext_, "incr", TheFunction);
-  BasicBlock *AfterBB =  BasicBlock::Create(TheContext_, "afterloop", TheFunction);
+  BasicBlock *BeforeBB = BasicBlock::Create(getContext(), "beforeloop", TheFunction);
+  BasicBlock *LoopBB =   BasicBlock::Create(getContext(), "loop", TheFunction);
+  BasicBlock *IncrBB =   BasicBlock::Create(getContext(), "incr");
+  BasicBlock *AfterBB =  BasicBlock::Create(getContext(), "afterloop");
 
   // set new exit block
   auto OldExitBlock = ExitBlock_;
   ExitBlock_ = AfterBB;
 
-  Builder_.CreateBr(BeforeBB);
-  Builder_.SetInsertPoint(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
+  getBuilder().SetInsertPoint(BeforeBB);
 
   // Load value and check coondition
-  Value *CurV = TheHelper_.load(VarA);
+  Value *CurV = getBuilder().CreateLoad(VarT, VarA);
 
   // Compute the end condition.
   // Convert condition to a bool by comparing non-equal to 0.0.
-  Value* EndV = TheHelper_.load(EndA);
-  EndV = Builder_.CreateICmpSLT(CurV, EndV, "loopcond");
+  Value* EndV = getBuilder().CreateLoad(VarT, EndA);
+  EndV = getBuilder().CreateICmpSLT(CurV, EndV, "loopcond");
 
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateCondBr(EndV, LoopBB, AfterBB);
+  getBuilder().CreateCondBr(EndV, LoopBB, AfterBB);
 
   // Start insertion in LoopBB.
   //TheFunction->getBasicBlockList().push_back(LoopBB);
-  Builder_.SetInsertPoint(LoopBB);
+  getBuilder().SetInsertPoint(LoopBB);
   
   // Emit the body of the loop.  This, like any other expr, can change the
   // current BB.  Note that we ignore the value computed by the body, but don't
@@ -1247,23 +1251,22 @@ void CodeGen::visit(ForStmtAST& e) {
 
 
   // Insert unconditional branch to increment.
-  if (!HasBreak) Builder_.CreateBr(IncrBB);
+  getBuilder().CreateBr(IncrBB);
 
   // Start insertion in LoopBB.
-  //TheFunction->getBasicBlockList().push_back(IncrBB);
-  Builder_.SetInsertPoint(IncrBB);
-  
+  TheFunction->insert(TheFunction->end(), IncrBB);
+  getBuilder().SetInsertPoint(IncrBB);
 
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
   TheHelper_.increment( TheHelper_.getAsAlloca(VarA), StepA );
 
   // Insert the conditional branch into the end of LoopEndBB.
-  Builder_.CreateBr(BeforeBB);
+  getBuilder().CreateBr(BeforeBB);
 
   // Any new code will be inserted in AfterBB.
-  //TheFunction->getBasicBlockList().push_back(AfterBB);
-  Builder_.SetInsertPoint(AfterBB);
+  TheFunction->insert(TheFunction->end(), AfterBB);
+  getBuilder().SetInsertPoint(AfterBB);
 
   // reset exit block
   ExitBlock_ = OldExitBlock;
@@ -1358,8 +1361,10 @@ void CodeGen::visit(ForeachStmtAST& e)
       auto ResultV = Tasker_->loadFuture(*TheModule_, FutureV, ResultT);
 
       for (unsigned i=0; i<ReduceAs.size(); ++i) {
+        //outs()<<"\n"; ResultV->print(outs()); outs()<<"\n";
+        //outs()<<"\n"; ResultV->getType()->print(outs()); outs()<<"\n";
         auto ValueV = TheHelper_.extractValue(ResultV, i);
-        Builder_.CreateStore(ValueV, ReduceAs[i]);
+        getBuilder().CreateStore(ValueV, ReduceAs[i]);
       }
     }
     else {
@@ -1409,7 +1414,7 @@ void CodeGen::assignManyToOne(
     auto VarPair = getOrCreateVariable(VarN, VarType);
     auto VarE = VarPair.first;
     auto VarInserted = VarPair.second; 
-    Value* VarA = VarE->getAlloca();
+    auto VarA = VarE->getAlloca();
     
     // if the left side is not a future, then make sure the right side is loaded
     if (!Tasker_->isFuture(VarA) && Tasker_->isFuture(RightV)) {
@@ -1479,7 +1484,7 @@ void CodeGen::assignManyToOne(
       // otherwise, just copy it
       else {
         RightV = TheHelper_.getAsValue(RightV);
-        Builder_.CreateStore(RightV, VarA);
+        getBuilder().CreateStore(RightV, VarA);
         VarE->setOwner(false);
       }
     }
@@ -1487,7 +1492,7 @@ void CodeGen::assignManyToOne(
     // scalar = scalar
     else {
       RightV = TheHelper_.getAsValue(RightV);
-      Builder_.CreateStore(RightV, VarA);
+      getBuilder().CreateStore(RightV, VarA);
     }
 
   } // for
@@ -1530,7 +1535,7 @@ void CodeGen::assignManyToMany(
     auto VarPair = getOrCreateVariable(VarN, VarType);
     auto VarE = VarPair.first;
     auto VarInserted = VarPair.second; 
-    Value* VarA = VarE->getAlloca();
+    auto VarA = VarE->getAlloca();
     
     // if the left side is not a future, then make sure the right side is loaded
     if (!Tasker_->isFuture(VarA) && Tasker_->isFuture(RightV)) {
@@ -1596,7 +1601,7 @@ void CodeGen::assignManyToMany(
       // otherwise, just copy it
       else {
         RightV = TheHelper_.getAsValue(RightV);
-        Builder_.CreateStore(RightV, VarA);
+        getBuilder().CreateStore(RightV, VarA);
         VarE->setOwner(false);
       }
     }
@@ -1604,7 +1609,7 @@ void CodeGen::assignManyToMany(
     // scalar = scalar
     else {
       RightV = TheHelper_.getAsValue(RightV);
-      Builder_.CreateStore(RightV, VarA);
+      getBuilder().CreateStore(RightV, VarA);
     }
 
   } // for
@@ -1725,10 +1730,10 @@ void CodeGen::visit(FunctionAST& e)
   auto & P = insertFunction( e.moveProtoExpr() );
   const auto & Name = P.getName();
   auto TheFunction = getFunction(Name).first;
-
+  
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext_, "entry", TheFunction);
-  Builder_.SetInsertPoint(BB);
+  BasicBlock *BB = BasicBlock::Create(getContext(), "entry", TheFunction);
+  getBuilder().SetInsertPoint(BB);
 
   // Record the function arguments in the NamedValues map.
   unsigned ArgIdx = 0;
@@ -1750,7 +1755,7 @@ void CodeGen::visit(FunctionAST& e)
     auto Alloca = VarE->getAlloca();
     
     // Store the initial value into the alloca.
-    Builder_.CreateStore(&Arg, Alloca);
+    getBuilder().CreateStore(&Arg, Alloca);
  
     ArgIdx++;
   }
@@ -1763,10 +1768,10 @@ void CodeGen::visit(FunctionAST& e)
   
   // Finish off the function.
   if (RetVal && !RetVal->getType()->isVoidTy() ) {
-    Builder_.CreateRet(RetVal);
+    getBuilder().CreateRet(RetVal);
   }
   else
-    Builder_.CreateRetVoid();
+    getBuilder().CreateRetVoid();
   
   // Validate the generated code, checking for consistency.
   verifyFunction(*TheFunction);
@@ -1806,7 +1811,7 @@ void CodeGen::visit(TaskAST& e)
   unsigned ArgIdx = 0;
   for (auto &Arg : TheFunction->args()) {
     auto Alloca = Wrapper.ArgAllocas[ArgIdx++];
-    auto AllocaT = Alloca->getType()->getPointerElementType(); // FIX FOR ARRAYS
+    auto AllocaT = Alloca->getAllocatedType(); // FIX FOR ARRAYS
     auto VarE = insertVariable(Arg.getName(), Alloca, AllocaT);
     VarE->setOwner(false);
   }
@@ -1870,7 +1875,7 @@ void CodeGen::visit(IndexTaskAST& e)
     ResultT = getLLVMType(ReturnType);
 
     auto ModulePtr = (DeviceJIT_) ?
-      new Module("temporary module", TheContext_) : TheModule_.get(); 
+      new Module("temporary module", getContext()) : TheModule_.get(); 
 
     RedopInfo = Tasker_->createReductionOp(
           *ModulePtr,
@@ -1921,7 +1926,7 @@ void CodeGen::visit(IndexTaskAST& e)
   // insert arguments into variable table
   for (unsigned ArgIdx=0; ArgIdx<TaskArgNs.size(); ++ArgIdx) {
     auto VarA = Wrapper.ArgAllocas[ArgIdx];
-    auto AllocaT = VarA->getType()->getPointerElementType(); // FIX FOR ARRAYS
+    auto AllocaT = VarA->getAllocatedType(); // FIX FOR ARRAYS
     auto VarD = e.getVariableDef(ArgIdx);
     bool IsOwner = false;
     if (Tasker_->isAccessor(AllocaT)) IsOwner = true;
@@ -1932,7 +1937,7 @@ void CodeGen::visit(IndexTaskAST& e)
   
   // and the index
   auto IndexA = Wrapper.Index;
-  auto IndexT = IndexA->getType()->getPointerElementType();
+  auto IndexT = IndexA->getAllocatedType();
   auto IndexE = insertVariable(e.getLoopVariableName(), IndexA, IndexT);
   IndexE->setOwner(false);
 

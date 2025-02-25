@@ -16,15 +16,18 @@
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/AMDGPUEmitPrintf.h"
+
+#include "llvm-ext/Target/AMDGPU/AMDGPU.h"
 
 #include <fstream>
 #include <set>
@@ -62,9 +65,9 @@ ROCmJIT::ROCmJIT(BuilderHelper & TheHelper) :
         CPU,
         "", //"-code-object-v3",
         TargetOptions(),
-        None,
-        None,
-        CodeGenOpt::Aggressive);
+        std::nullopt,
+        std::nullopt,
+        CodeGenOptLevel::Aggressive);
   
   contra_rocm_startup();
   
@@ -163,7 +166,7 @@ void ROCmJIT::runOnModule(Module & M)
 {
   //----------------------------------------------------------------------------
   // Replace calls/intrinsics
-
+here:
   for (auto & Func : M.getFunctionList()) {
     for (auto BlockIt=Func.begin(); BlockIt!=Func.end(); ++BlockIt) {
       for (auto InstIt=BlockIt->begin(); InstIt!=BlockIt->end(); ++InstIt) {
@@ -175,9 +178,23 @@ void ROCmJIT::runOnModule(Module & M)
           auto CallF = CallI->getCalledFunction();
           auto CallN = CallF->getName().str();
           auto RetT = CallF->getReturnType();
+						
+#if 1
+          FunctionType *FTy = CallF->getFunctionType();
+          for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i) {
+            if (CallI->getArgOperand(i)->getType() != FTy->getParamType(i)) {
+          	  std::cout << "Function '" << CallN << "' args[" << i << "] dont match" << std::endl;
+              CallI->print(outs()); outs() << "\n";
+              FTy->print(outs()); outs() << "\n";
+            }
+          }
+#endif
 
           if (CallN == "print") {
             NewI = replaceName(M, CallI, "printf");
+            //auto Res = replacePrint2(M, CallI);
+						//NewI = dyn_cast<Instruction>(Res);
+						//std::cout << "NewI " << NewI << std::endl;	
           }
           else if (CallN == "sqrt") {
             NewI = replaceIntrinsic(M, CallI, Intrinsic::sqrt, {RetT}); 
@@ -201,6 +218,7 @@ void ROCmJIT::runOnModule(Module & M)
           if (InstIt->getParent())
             ReplaceInstWithInst(&(*InstIt), NewI);
           InstIt = BasicBlock::iterator(NewI);
+					//goto here;
         }
       } // Instruction
     } // Block
@@ -227,7 +245,7 @@ void ROCmJIT::compile(
       PassMan,
       Dest,
       nullptr,
-      CGFT_ObjectFile,
+      CodeGenFileType::ObjectFile,
       false);
   if (fail)
     THROW_CONTRA_ERROR( "Error generating PTX");
@@ -273,7 +291,7 @@ std::vector<char> ROCmJIT::compileAndLink(Module & M)
   auto res = sys::ExecuteAndWait(
     ROCM_LD_LLD_PATH,
     LdArgs,
-    None,
+    std::nullopt,
     {},
     0,
     0,
@@ -291,7 +309,7 @@ std::vector<char> ROCmJIT::compileAndLink(Module & M)
 
 
   // read hsaco
-  std::ifstream file(HsacoName.str(), std::ios::binary | std::ios::ate);
+  std::ifstream file(HsacoName.c_str(), std::ios::binary | std::ios::ate);
   auto size = file.tellg();
 
   std::vector<char> HsacoBytes(size);
@@ -357,8 +375,8 @@ void ROCmJIT::assemble(Module & M, bool HasReduce)
   auto PassMan = legacy::PassManager();
   
   //PassMan.add(createAMDGPUPrintfRuntimeBinding());
-  //PassMan.add(createInferAddressSpacesPass());
-  //PassMan.add(createSROAPass());
+  PassMan.add(createInferAddressSpacesPass());
+  PassMan.add(createSROAPass());
   //PassMan.add(createAMDGPULowerAllocaPass());
   
   PassMan.run(M);
@@ -369,12 +387,12 @@ void ROCmJIT::assemble(Module & M, bool HasReduce)
   // Add bytecode
       
   std::vector<std::string> Files = {
-      ROCM_DEVICE_LIB_PATH"/oclc_daz_opt_off.amdgcn.bc",
-      ROCM_DEVICE_LIB_PATH"/oclc_unsafe_math_off.amdgcn.bc",
-      ROCM_DEVICE_LIB_PATH"/oclc_finite_only_off.amdgcn.bc",
-      ROCM_DEVICE_LIB_PATH"/oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-      ROCM_DEVICE_LIB_PATH"/oclc_wavefrontsize64_on.amdgcn.bc",
-      ROCM_DEVICE_LIB_PATH"/oclc_isa_version_900.amdgcn.bc",
+      OCLC_DAZ_OPT_OFF_PATH,
+      OCLC_UNSAFE_MATH_OFF_PATH,
+      OCLC_FINITE_ONLY_OFF_PATH,
+      OCLC_CORRECTLY_ROUNDED_SQRT_ON_PATH,
+      OCLC_WAVEFRONTSIZE64_ON_PATH,
+      OCLC_ISA_VERSION_942_PATH,
     };
   linkFiles(L, Files, LinkFlags_);
   
@@ -429,6 +447,85 @@ Instruction* ROCmJIT::replaceSync(Module & M, CallInst * CallI){
   auto FenceI = TmpB.CreateFence(AtomicOrdering::Acquire, WorkgroupSSID);
   CallI->eraseFromParent();
   return FenceI;
+}
+
+//==============================================================================
+// Helper to replace print function
+//==============================================================================
+CallInst* ROCmJIT::replacePrint(Module &M, CallInst* CallI) {
+  
+  // gather args
+  std::vector<Value*> ArgVs;
+  for (auto & Arg : CallI->args()) ArgVs.push_back(Arg.get());
+        
+	auto CallF = CallI->getCalledFunction();
+	auto FTy = CallF->getFunctionType();
+								
+	outs() << "\nHERHEEHER "; CallI->print(outs()); outs() << "\n";
+	outs() << "\nHERHEEHER "; FTy->print(outs()); outs() << "\n";
+	
+	outs() << "\nHERHEEHER "; ArgVs[0]->getType()->print(outs()); outs() << "\n";
+	outs() << "\nHERHEEHER "; FTy->getParamType(0)->print(outs()); outs() << "\n";
+
+	if (ArgVs[0]->getType() != FTy->getParamType(0)) {
+  	// cast struct type
+  	ArgVs[0] = CastInst::Create(
+  	  Instruction::AddrSpaceCast,
+  	  ArgVs[0],
+  	  FTy->getParamType(0),
+  	  "cast",
+  	  CallI);
+		outs() << "\nHERHEEHER "; ArgVs[0]->getType()->print(outs()); outs() << "\n";
+		outs() << "\nHERHEEHER "; ArgVs[0]->print(outs()); outs() << "\n";
+
+	}
+
+  // create new instruction            
+  auto TmpB = IRBuilder<>(TheContext_);
+
+  Function * NewF = M.getFunction("printf");
+  if (!NewF) {  
+    NewF = Function::Create(
+        FTy,
+        CallF->getLinkage(),
+        CallF->getAddressSpace(),
+        "printf",
+        &M);
+  }
+  return TmpB.CreateCall(NewF, ArgVs, CallI->getName());
+}
+
+Value* ROCmJIT::replacePrint2(Module &M, CallInst* CallI) {
+
+  // gather args
+  std::vector<Value*> ArgVs;
+  for (auto & A : CallI->args())
+    ArgVs.push_back(A);
+
+	auto CallF = CallI->getCalledFunction();
+	auto FTy = CallF->getFunctionType();
+	if (ArgVs[0]->getType() != FTy->getParamType(0)) {
+  	// cast struct type
+  	ArgVs[0] = CastInst::Create(
+  	  Instruction::AddrSpaceCast,
+  	  ArgVs[0],
+  	  FTy->getParamType(0),
+  	  "cast",
+  	  CallI);
+		outs() << "\nHERHEEHER "; ArgVs[0]->getType()->print(outs()); outs() << "\n";
+		outs() << "\nHERHEEHER "; ArgVs[0]->print(outs()); outs() << "\n";
+
+	}
+
+  // create new instruction
+  IRBuilder<> TmpB(CallI);
+  auto ResV = emitAMDGPUPrintfCall(TmpB, ArgVs, false);
+
+  // erase old
+  //CallI->eraseFromParent();
+
+	return ResV;
+
 }
 
 } // namepsace

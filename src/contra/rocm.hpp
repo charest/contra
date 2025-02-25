@@ -189,12 +189,12 @@ public:
       llvm::Module &,
       llvm::Value*,
       llvm::Value*,
-      llvm::Value* = nullptr) const override;
+      llvm::Value* = nullptr) override;
   virtual llvm::Value* loadAccessor(
       llvm::Module &,
       llvm::Type*,
       llvm::Value*,
-      llvm::Value* = nullptr) const override;
+      llvm::Value* = nullptr) override;
   virtual void destroyAccessor(llvm::Module &, llvm::Value*) override;
 
 protected:
@@ -227,12 +227,12 @@ protected:
   }
   void finishTask() { TaskAllocas_.pop_front(); }
 
-  llvm::Value* getThreadID(llvm::Module &) const;
+  llvm::Value* getThreadID(llvm::Module &);
 
   std::pair<llvm::Value*, llvm::Value*> offsetAccessor(
       llvm::Module &,
       llvm::Value*,
-      llvm::Value*) const;
+      llvm::Value*);
 };
 
 } // namepsace

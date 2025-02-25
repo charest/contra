@@ -1,4 +1,4 @@
-foreach(_test primitives arrays assignment) # literals
+foreach(_test primitives arrays assignment bool) # literals
   create_test(
     NAME test_${_test}
     COMMAND $<TARGET_FILE:contra> ${CMAKE_CURRENT_SOURCE_DIR}/${_test}.cta

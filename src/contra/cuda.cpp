@@ -776,7 +776,7 @@ void CudaTasker::storeAccessor(
     Module & TheModule,
     Value* ValueV,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto ValueA = TheHelper_.getAsAlloca(ValueV);
 
@@ -805,7 +805,7 @@ Value* CudaTasker::loadAccessor(
     Module & TheModule, 
     Type * ValueT,
     Value* AccessorV,
-    Value* IndexV) const
+    Value* IndexV)
 {
   auto AccessorA = TheHelper_.getAsAlloca(AccessorV);
     

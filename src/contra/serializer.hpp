@@ -20,23 +20,28 @@ protected:
   llvm::LLVMContext & TheContext_;
 
   llvm::Type* SizeType_ = nullptr;
+  llvm::Type* ByteType_ = nullptr;
 
 public:
 
   Serializer(utils::BuilderHelper & TheHelper);
 
-  llvm::Value* offsetPointer(llvm::Value*, llvm::Value*);
+  llvm::Value* offsetPointer(llvm::Type*, llvm::Value*, llvm::Type*, llvm::Value*);
 
   virtual llvm::Value* getSize(llvm::Module&, llvm::Value*, llvm::Type*);
   virtual llvm::Value* serialize(
       llvm::Module&, 
       llvm::Value*,
       llvm::Value*,
+      llvm::Type*,
+      llvm::Type*,
       llvm::Value*);
   virtual llvm::Value* deserialize(
       llvm::Module&,
       llvm::AllocaInst*,
       llvm::Value*,
+      llvm::Type*,
+      llvm::Type*,
       llvm::Value*);
 
   virtual ~Serializer() = default;
@@ -61,11 +66,15 @@ public:
       llvm::Module&,
       llvm::Value*,
       llvm::Value*,
+      llvm::Type*,
+      llvm::Type*,
       llvm::Value*) override;
   llvm::Value* deserialize(
       llvm::Module&,
       llvm::AllocaInst*,
       llvm::Value*,
+      llvm::Type*,
+      llvm::Type*,
       llvm::Value*) override;
 };
 

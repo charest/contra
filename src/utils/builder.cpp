@@ -1,6 +1,7 @@
 #include "builder.hpp"
 
 #include "llvm_utils.hpp"
+#include "contra/errors.hpp"
 
 namespace utils {
 
@@ -13,7 +14,7 @@ using namespace llvm;
 Value* BuilderHelper::createCast(Value* FromVal, Type* ToType)
 {
   auto FromType = FromVal->getType();
-  auto TheBlock = Builder_.GetInsertBlock();
+  auto TheBlock = Builder_->GetInsertBlock();
 
   if (FromType->isFloatingPointTy() && ToType->isIntegerTy()) {
     return CastInst::Create(Instruction::FPToSI, FromVal,
@@ -37,31 +38,8 @@ Value* BuilderHelper::createCast(Value* FromVal, Type* ToType)
 //==============================================================================
 Value* BuilderHelper::createBitCast(Value* FromVal, Type* ToType)
 {
-  auto TheBlock = Builder_.GetInsertBlock();
-  auto FromT = FromVal->getType();
-  auto ToT = ToType;
-  if (FromT->isPointerTy()) {
-    ToT = PointerType::get(
-        ToT->getPointerElementType(),
-        FromT->getPointerAddressSpace());
-  }
-  return CastInst::Create(Instruction::BitCast, FromVal, ToT, "cast", TheBlock);
-}
-
-//==============================================================================
-// Cast utility
-//==============================================================================
-Value* BuilderHelper::createAddrSpaceCast(Value* FromVal, Type* ToType)
-{
-  auto ToAddr = ToType->getPointerAddressSpace();
-  auto FromAddr = FromVal->getType()->getPointerAddressSpace();
-  if (ToAddr != FromAddr) {
-    auto TheBlock = Builder_.GetInsertBlock();
-    return CastInst::Create(Instruction::AddrSpaceCast, FromVal, ToType, "cast", TheBlock);
-  }
   return FromVal;
 }
-
 
 //==============================================================================
 // Extract values from allocas
@@ -70,15 +48,7 @@ Value* BuilderHelper::getAsValue(Value* ValueV)
 {
   if (auto ValueA = dyn_cast<AllocaInst>(ValueV)) {
     auto ValueT = ValueA->getAllocatedType();
-    return Builder_.CreateLoad(ValueT, ValueA);
-  }
-  return ValueV;
-}
-
-Value* BuilderHelper::getAsValue(Value* ValueV, Type* ValueT)
-{
-  if (auto ValueA = dyn_cast<AllocaInst>(ValueV)) {
-    return Builder_.CreateLoad(ValueT, ValueA);
+    return Builder_->CreateLoad(ValueT, ValueA);
   }
   return ValueV;
 }
@@ -93,7 +63,7 @@ AllocaInst* BuilderHelper::getAsAlloca(Value* ValueV)
   if (!ValueA) {
     auto ValueT = ValueV->getType();
     ValueA = createEntryBlockAlloca(ValueT);
-    Builder_.CreateStore(ValueV, ValueA);
+    Builder_->CreateStore(ValueV, ValueA);
   }
   return ValueA;
 }
@@ -101,51 +71,68 @@ AllocaInst* BuilderHelper::getAsAlloca(Value* ValueV)
 //==============================================================================
 // Get pointer to struct member
 //==============================================================================
-Value* BuilderHelper::getElementPointer(Value* Val, unsigned i)
+Value* BuilderHelper::getElementPointer(Type* Ty, Value* Val, unsigned i)
 {
   std::vector<Value*> MemberIndices = {
-    ConstantInt::get(TheContext_, APInt(32, i, true)),
+    ConstantInt::get(*TheContext_, APInt(32, i, true)),
   };
-  return Builder_.CreateGEP(Val, MemberIndices);
+  return Builder_->CreateGEP(Ty, Val, MemberIndices);
+}
+
+Value* BuilderHelper::getElementPointer(AllocaInst* Alloca, unsigned i)
+{
+  auto Ty = Alloca->getAllocatedType();
+  return getElementPointer(Ty, Alloca, i);
 }
   
-Value* BuilderHelper::getElementPointer(Value* Val, unsigned i, unsigned j)
+  
+Value* BuilderHelper::getElementPointer(Type* Ty, Value* Val, unsigned i, unsigned j)
 {
   std::vector<Value*> MemberIndices = {
-    ConstantInt::get(TheContext_, APInt(32, i, true)),
-    ConstantInt::get(TheContext_, APInt(32, j, true))
+    ConstantInt::get(*TheContext_, APInt(32, i, true)),
+    ConstantInt::get(*TheContext_, APInt(32, j, true))
   };
-  return Builder_.CreateGEP(Val, MemberIndices);
+  //auto AllocaT = Val->getType();
+  //if (auto ValA = dyn_cast<AllocaInst>(Val))
+  //  AllocaT = ValA->getAllocatedType();
+  //THROW_CONTRA_ERROR("CreateGEP");
+  return Builder_->CreateGEP(Ty, Val, MemberIndices);
+}
+
+Value* BuilderHelper::getElementPointer(AllocaInst* Alloca, unsigned i, unsigned j)
+{
+  auto Ty = Alloca->getAllocatedType();
+  return getElementPointer(Ty, Alloca, i, j);
 }
   
 Value* BuilderHelper::getElementPointer(
+    Type* Ty,
     Value* Val,
     const std::vector<unsigned> & Indices)
 {
   std::vector<Value*> MemberIndices;
   for (auto i : Indices)
     MemberIndices.emplace_back(
-        ConstantInt::get(TheContext_, APInt(32, i, true)));
+        ConstantInt::get(*TheContext_, APInt(32, i, true)));
+  return Builder_->CreateGEP(Ty, Val, MemberIndices);
+}
 
-  return Builder_.CreateGEP(Val, MemberIndices);
-}
-  
 Value* BuilderHelper::getElementPointer(
-    Value* Val,
-    const std::vector<Value*> & Indices)
+    AllocaInst* Alloca,
+    const std::vector<unsigned> & Indices)
 {
-  return Builder_.CreateGEP(Val, Indices);
+  auto Ty = Alloca->getAllocatedType();
+  return getElementPointer(Ty, Alloca, Indices);
 }
-  
   
 //==============================================================================
 // Get pointer to struct member
 //==============================================================================
-Value* BuilderHelper::offsetPointer(Value* Ptr, Value* Offset)
+Value* BuilderHelper::offsetPointer(Type* Ty, Value* Ptr, Value* Offset)
 {
   auto OffsetV = getAsValue(Offset);
   auto PtrV = getAsValue(Ptr);
-  return Builder_.CreateGEP(PtrV, OffsetV);
+  return Builder_->CreateGEP(Ty, PtrV, OffsetV);
 }
 
 //==============================================================================
@@ -153,23 +140,45 @@ Value* BuilderHelper::offsetPointer(Value* Ptr, Value* Offset)
 //==============================================================================
 Value* BuilderHelper::extractValue(Value* Val, unsigned i) {
   if (auto ValA = dyn_cast<AllocaInst>(Val)) {
-    auto ValGEP = getElementPointer(ValA, 0, i);
-    auto MemberT = ValGEP->getType()->getPointerElementType();
-    return Builder_.CreateLoad(MemberT, ValGEP);
+    auto ValT = ValA->getAllocatedType();
+    auto ValGEP = getElementPointer(ValT, ValA, 0, i);
+    auto MemberT = ValGEP->getType();
+    //std::cout <<"ValT " << std::flush; ValT->print(llvm::outs()); std::cout << std::endl;
+    //std::cout <<"MemberT " << std::flush; MemberT->print(llvm::outs()); std::cout << std::endl;
+    if (auto StructT = dyn_cast<StructType>(ValT))
+      MemberT = StructT->getElementType(i);
+    else
+      THROW_CONTRA_ERROR("Shouldnt be here.");
+    return Builder_->CreateLoad(MemberT, ValGEP);
   }
   else {
-    return Builder_.CreateExtractValue(Val, i);
+    return Builder_->CreateExtractValue(Val, i);
   }
 }
+
+Value* BuilderHelper::extractValue(ArrayType* ValT, Value* ValPtr, unsigned i) 
+{
+  if (!isa<llvm::PointerType>(ValPtr->getType()))
+    THROW_CONTRA_ERROR("ValPtr is not a pointer!");
+  if (auto ValA = dyn_cast<AllocaInst>(ValPtr)) {
+    if (ValA->getAllocatedType() != ValT)
+      THROW_CONTRA_ERROR("ValA->getType() != ValT");
+  }
+  auto ValGEP = getElementPointer(ValT, ValPtr, 0, i);
+  auto MemberT = ValT->getElementType();
+  return Builder_->CreateLoad(MemberT, ValGEP);
+}
+
 
 //==============================================================================
 // insert a struct value
 //==============================================================================
 void BuilderHelper::insertValue(Value* Val, Value* Member, unsigned i) {
   if (auto ValA = dyn_cast<AllocaInst>(Val)) {
-    auto ValGEP = getElementPointer(ValA, 0, i);
+    auto ValT = ValA->getAllocatedType();
+    auto ValGEP = getElementPointer(ValT, ValA, 0, i);
     auto MemberV = getAsValue(Member);
-    Builder_.CreateStore(MemberV, ValGEP);
+    Builder_->CreateStore(MemberV, ValGEP);
   }
   else {
     std::cerr << "You can't insert a value into a loaded struct." << std::endl;
@@ -184,7 +193,8 @@ void BuilderHelper::insertValue(Value* Val, Value* Member, unsigned i) {
 Type* BuilderHelper::getAllocatedType(Value* Val)
 {
   auto ValT = Val->getType();
-  if (isa<AllocaInst>(Val)) ValT = Val->getType()->getPointerElementType();
+  if (auto ValA = dyn_cast<AllocaInst>(Val))
+    ValT = ValA->getAllocatedType();
   return ValT;
 }
 
@@ -193,11 +203,11 @@ Type* BuilderHelper::getAllocatedType(Value* Val)
 //==============================================================================
 Value* BuilderHelper::getTypeSize(Type* ValT, Type* ResultT)
 {
-  auto TheBlock = Builder_.GetInsertBlock();
+  auto TheBlock = Builder_->GetInsertBlock();
   auto PtrT = ValT->getPointerTo();
-  auto Index = ConstantInt::get(TheContext_, APInt(32, 1, true));
+  auto Index = ConstantInt::get(*TheContext_, APInt(32, 1, true));
   auto Null = Constant::getNullValue(PtrT);
-  auto SizeGEP = Builder_.CreateGEP(ValT, Null, Index, "size");
+  auto SizeGEP = Builder_->CreateGEP(ValT, Null, Index, "size");
   auto DataSize = CastInst::Create(
       Instruction::PtrToInt,
       SizeGEP,
@@ -205,6 +215,14 @@ Value* BuilderHelper::getTypeSize(Type* ValT, Type* ResultT)
       "sizei",
       TheBlock);
   return DataSize;
+}
+
+Value* BuilderHelper::getTypeSize(Value* Val, Type* ResultT)
+{
+  auto ValT = Val->getType();
+  if (auto ValA = dyn_cast<AllocaInst>(Val))
+    ValT = ValA->getAllocatedType();
+  return getTypeSize(ValT, ResultT);
 }
 
 std::size_t BuilderHelper::getTypeSizeInBits(const Module & TheModule, Type* Ty)
@@ -220,7 +238,7 @@ AllocaInst* BuilderHelper::createEntryBlockAlloca(
     Type* Ty,
     const Twine & Name)
 {
-  auto TheFunction = Builder_.GetInsertBlock()->getParent();
+  auto TheFunction = Builder_->GetInsertBlock()->getParent();
   return createEntryBlockAlloca(TheFunction, Ty, Name);
 }
 AllocaInst* BuilderHelper::createEntryBlockAlloca(
@@ -241,15 +259,28 @@ Value* BuilderHelper::load(
     const std::string & Name)
 {
   auto ValT = ValA->getAllocatedType();
-  return Builder_.CreateLoad(ValT, ValA, Name);
+  return Builder_->CreateLoad(ValT, ValA, Name);
 }
 
 Value* BuilderHelper::load(
     Value* ValA,
     const std::string & Name)
 {
-  auto ValT = ValA->getType()->getPointerElementType();
-  return Builder_.CreateLoad(ValT, ValA, Name);
+  auto ValT = ValA->getType();
+
+  if (isa<AllocaInst>(ValA))
+    ValT = cast<AllocaInst>(ValA)->getAllocatedType();
+  else {
+    // Pretty-print the type
+    std::string TypeStr;
+    llvm::raw_string_ostream RSO(TypeStr);
+    ValA->print(RSO);
+    llvm::outs() << "Pretty-printed type: " << RSO.str() << "\n";
+    llvm::outs() << "Should not get here\n";
+    abort();
+  }
+
+  return Builder_->CreateLoad(ValT, ValA, Name);
 }
 
 
@@ -257,15 +288,24 @@ Value* BuilderHelper::load(
 // increment a counter
 //============================================================================  
 void BuilderHelper::increment(
-    Value* OffsetA,
+    Type* OffsetT,
+    Value* OffsetPtr,
     Value* Incr,
     const std::string & Name)
 {
   std::string Str = Name.empty() ? "" : Name + ".";
-  auto OffsetV = load(OffsetA);
+  auto OffsetV = Builder_->CreateLoad(OffsetT, OffsetPtr);
   auto IncrV = getAsValue(Incr);
-  auto NewOffsetV = Builder_.CreateAdd(OffsetV, IncrV, Str+"add");
-  Builder_.CreateStore( NewOffsetV, OffsetA );
+  auto NewOffsetV = Builder_->CreateAdd(OffsetV, IncrV, Str+"add");
+  Builder_->CreateStore( NewOffsetV, OffsetPtr );
+}
+
+void BuilderHelper::increment(
+    AllocaInst* OffsetA,
+    Value* Incr,
+    const std::string & Name)
+{
+  increment(OffsetA->getAllocatedType(), OffsetA, Incr, Name);
 }
 
 //============================================================================  
@@ -280,16 +320,13 @@ Instruction* BuilderHelper::createMalloc(
   auto SizeT = SizeV->getType();
 
   // not needed but InsertAtEnd doesnt work
-  auto TmpA = Builder_.CreateAlloca(Ty, nullptr);
-  auto MallocI = CallInst::CreateMalloc(
-      TmpA,
+  auto MallocI = Builder_->CreateMalloc(
       SizeT,
       Ty,
       SizeV,
       nullptr,
       nullptr,
       Name );
-  TmpA->eraseFromParent();
   return MallocI;
 }
 
@@ -298,12 +335,7 @@ Instruction* BuilderHelper::createMalloc(
 //============================================================================  
 void BuilderHelper::createFree(Value* Val)
 {
-  auto Ty = Val->getType();
-
-  // not needed but InsertAtEnd doesnt work
-  auto TmpA = Builder_.CreateAlloca(Ty, nullptr);
-  CallInst::CreateFree(Val, TmpA);
-  TmpA->eraseFromParent();
+  Builder_->CreateFree(Val);
 }
   
 //============================================================================  
@@ -316,7 +348,7 @@ FunctionCallee BuilderHelper::createFunction(
     const std::vector<Type*> & ArgTypes)
 {
   if (ArgTypes.empty()) {
-    auto FunT = FunctionType::get(ReturnT, None, false);
+    auto FunT = FunctionType::get(ReturnT, false);
     auto FunF = TheModule.getOrInsertFunction(Name, FunT);
     return FunF;
   }
@@ -344,15 +376,15 @@ CallInst* BuilderHelper::callFunction(
 
   if (ArgVs.empty()) {
     if (ReturnT->isVoidTy())
-      return Builder_.CreateCall(FunF);
+      return Builder_->CreateCall(FunF);
     else
-      return Builder_.CreateCall(FunF, None, Str);
+      return Builder_->CreateCall(FunF, std::nullopt, Str);
   }
   else {
     if (ReturnT->isVoidTy())
-      return Builder_.CreateCall(FunF, ArgVs);
+      return Builder_->CreateCall(FunF, ArgVs);
     else
-      return Builder_.CreateCall(FunF, ArgVs, Str);
+      return Builder_->CreateCall(FunF, ArgVs, Str);
   }
 }
 
@@ -364,7 +396,7 @@ CallInst* BuilderHelper::memCopy(
     Value* Src,
     Value* Size)
 {
-  return Builder_.CreateMemCpy(Dest, MaybeAlign(1), Src, MaybeAlign(1), Size);
+  return Builder_->CreateMemCpy(Dest, MaybeAlign(1), Src, MaybeAlign(1), Size);
 }
 
 //==============================================================================
@@ -375,7 +407,7 @@ CallInst* BuilderHelper::memSet(
     Value* Src,
     unsigned Size)
 {
-  return Builder_.CreateMemSet(Dest, Src, Size, MaybeAlign(1));
+  return Builder_->CreateMemSet(Dest, Src, Size, MaybeAlign(1));
 }
 
 //==============================================================================
@@ -391,7 +423,7 @@ Value* BuilderHelper::createMinimum(
   assert(Ty == RHS->getType());
     
   auto F = Intrinsic::getDeclaration(&M, Intrinsic::minnum, {Ty});
-  return Builder_.CreateCall(F, {LHS, RHS}, Name);
+  return Builder_->CreateCall(F, {LHS, RHS}, Name);
 }
 
 //==============================================================================
@@ -407,6 +439,6 @@ Value* BuilderHelper::createMaximum(
   assert(Ty == RHS->getType());
     
   auto F = Intrinsic::getDeclaration(&M, Intrinsic::maxnum, {Ty});
-  return Builder_.CreateCall(F, {LHS, RHS}, Name);
+  return Builder_->CreateCall(F, {LHS, RHS}, Name);
 }
 } // namespace

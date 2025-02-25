@@ -37,7 +37,7 @@ class Contra : public ErrorVisiter {
   std::unique_ptr<Vizualizer> TheViz_;
   std::unique_ptr<Analyzer> TheAnalyser_;
 
-  SupportedBackends BackendType_ = static_cast<SupportedBackends>(0);
+  SupportedBackends BackendType_ = SupportedBackends::Serial;
 
 public:
 
