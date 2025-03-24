@@ -12,6 +12,9 @@ include(ExternalProject)
 
 project(Contra VERSION 0.1.0)
 
+# enable to export compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # We need C++ 14
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED on)
