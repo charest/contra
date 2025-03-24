@@ -235,6 +235,20 @@ if (BUILD_TESTING)
 endif()
 
 #------------------------------------------------------------------------------#
+# Doxygen
+#------------------------------------------------------------------------------#
+option(BUILD_DOXYGEN "Create and install the HTML based API documentation (requires Doxygen)" OFF)
+if (BUILD_DOXYGEN)
+  find_package(Doxygen)
+  if(NOT DOXYGEN_FOUND)
+    message(FATAL_ERROR "Doxygen is needed to build the documentation.")
+  endif()
+  
+endif()
+
+
+
+#------------------------------------------------------------------------------#
 # Export targets and package.
 #------------------------------------------------------------------------------#
 
