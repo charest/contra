@@ -1,0 +1,11 @@
+digraph {
+node8[label=<AssignStmtAST<BR /><FONT POINT-SIZE="12">=</FONT>>];
+node8 -> node9 [label=Left];
+node9[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">a : i64</FONT>>];
+node8 -> node10 [label=Right];
+node10[label=<BinaryExprAST<BR /><FONT POINT-SIZE="12">+</FONT>>];
+node10 -> node11 [label=Left];
+node11[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">b : i64</FONT>>];
+node10 -> node12 [label=Right];
+node12[label=<VarAccessExprAST<BR /><FONT POINT-SIZE="12">c : i64</FONT>>];
+}
