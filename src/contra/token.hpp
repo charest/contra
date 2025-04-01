@@ -58,6 +58,8 @@ enum Token {
   tok_asgmt_sub,
   tok_asgmt_mul,
   tok_asgmt_div,
+
+  tok_comment = '#',
   
   // file seperators
   tok_eof = -1,

@@ -108,8 +108,8 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
     std::unique_ptr<Identifier> VarTypeId;
     if (CurTok_ == tok_identifier && isType(Id.getName())) {
       VarTypeId = std::make_unique<Identifier>(Id);
-      getNextToken();  // eat the type
       Id = getIdentifier();
+      getNextToken();  // eat the type
     }
 
     

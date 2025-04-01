@@ -14,6 +14,18 @@
 
 namespace contra {
 
+/*
+struct parse_tree_t {
+  std::vector<int> node_to_token;
+  
+  std::vector<int> children_ids;
+  std::vector<size_t> children_offsets;
+};
+
+parse_tree_t parse(const lex_results_t & tokens)
+*/
+
+
 class Parser {
 
   // A lexer object
@@ -46,7 +58,7 @@ public:
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
   int getNextToken() {
-    CurTok_ = TheLex_.gettok();
+    CurTok_ = TheLex_.gettok().token;
     return CurTok_;
   }
 

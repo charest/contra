@@ -38,7 +38,9 @@ set(THREADS_PREFER_PTHREAD_FLAG)
 # configure targets
 #------------------------------------------------------------------------------#
 
-add_executable( contra )
+add_executable(contra_exe)
+add_library(contra)
+target_link_libraries(contra_exe PUBLIC contra)
 
 # Set the ENABLE_EXPORTS property to TRUE
 set_target_properties(contra PROPERTIES ENABLE_EXPORTS TRUE)
@@ -62,8 +64,10 @@ target_compile_definitions(contra PUBLIC ${LLVM_DEFINITIONS})
 # that we wish to use
 if (BUILD_SHARED_LIBS)
   llvm_config(contra USE_SHARED all)
+  llvm_config(contra_exe USE_SHARED all)
 else()
   llvm_config(contra all)
+  llvm_config(contra_exe all)
 endif()
 
 #------------------------------------------------------------------------------#
@@ -76,7 +80,7 @@ if (MPI_FOUND)
   endif()
   MESSAGE(STATUS "MPI Include Dirs: ${MPI_C_INCLUDE_DIRS}")
   MESSAGE(STATUS "MPI Libraries: ${MPI_C_LIBRARIES}")
-  target_link_libraries(contra PUBLIC MPI::MPI_C)
+  target_link_libraries(contra PUBLIC MPI::MPI_C MPI::MPI_CXX)
   list(APPEND SUPPORTED_BACKENDS "mpi")
 endif()
 
@@ -208,6 +212,8 @@ MESSAGE(STATUS "Supported backends: ${SUPPORTED_BACKENDS}")
 
 target_include_directories(contra PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(contra PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
+target_include_directories(contra_exe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(contra_exe PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
 
 add_subdirectory(src)
 
@@ -226,6 +232,42 @@ endif ()
 if(BUILD_TESTING AND NOT Python_Interpreter_FOUND)
   message(FATAL_ERROR "Testing requested, but python was not found")
 endif()
+
+#------------------------------------------------------------------------------#
+# Google test
+#------------------------------------------------------------------------------#
+if (BUILD_TESTING)
+
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG "main"
+  )
+  # For Windows: Prevent overriding the parent project's compiler/linker settings
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+  
+  add_executable(test_main)
+
+  target_link_libraries(
+    test_main
+    contra
+    GTest::gtest_main
+    GTest::gmock_main
+  )
+
+  target_include_directories(test_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_include_directories(test_main PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
+   
+  include(GoogleTest)
+
+  add_subdirectory(unit)
+
+  gtest_discover_tests(test_main)
+endif()
+
+
 
 #------------------------------------------------------------------------------#
 # Add examples

@@ -8,8 +8,33 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace contra {
+
+//==============================================================================
+/// The lexer return datatype
+//==============================================================================
+struct token_pos_t {
+  std::ios::pos_type begin, end;
+};
+
+struct lexer_results_t {
+  std::vector<int> tokens;
+  std::vector<token_pos_t> token_pos;
+
+  std::string identifier_chars;
+  std::vector<size_t> identifier_offsets;
+  std::vector<int> identifier_to_token;
+};
+
+lexer_results_t lex(std::istream& stream);
+
+struct token_info_t {
+  int token;
+  std::ios::pos_type begin, end;
+  std::string identifier;
+};
 
 //==============================================================================
 /// The lexer turns the text into tokens
@@ -31,11 +56,18 @@ class Lexer {
 
   std::stringstream Tee_;
   std::string FileName_ = "<stdin>";
+  
+  /// private helper function to get token and identifier
+  int gettok(std::string & IdentifierStr);
 
 public:
 
   // constructor for reading from stdin
   Lexer() = default;
+  
+  // constructor from a stream
+  Lexer( std::istream & s ) : In_(&s)
+  {}
 
   // constructor cor reading from file
   Lexer( const std::string & filename ) : FileName_(filename)
@@ -58,7 +90,7 @@ public:
   int eof() { return In_->eof(); }
 
   /// gettok - Return the next token from standard input.
-  int gettok();
+  token_info_t gettok();
 
   // get the next character
   int advance();

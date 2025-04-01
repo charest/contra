@@ -8,6 +8,32 @@
 #include <iostream>
 
 namespace contra {
+
+//==============================================================================
+// Main function to generate tokens from a stream
+//==============================================================================
+lexer_results_t lex(std::istream & in)
+{
+  Lexer TheLex(in); 
+
+  lexer_results_t res;
+  res.identifier_offsets.push_back(0);
+
+  token_info_t ti;
+  while (ti = TheLex.gettok(), ti.token!=tok_eof)
+  {
+    if (ti.identifier.size()) {
+      res.identifier_chars += ti.identifier;
+      res.identifier_offsets.push_back( res.identifier_chars.size() );
+      res.identifier_to_token.emplace_back( res.tokens.size() );
+    }
+    res.tokens.push_back(ti.token);
+    res.token_pos.emplace_back( token_pos_t{ti.begin, ti.end} );
+  }
+
+  return res;
+}
+
     
 //==============================================================================
 // Read the rest of the line
@@ -33,29 +59,28 @@ int Lexer::advance() {
   return LastChar;
 }
 
-
+  
 //==============================================================================
 /// gettok - Return the next token from standard input.
 //==============================================================================
-int Lexer::gettok() {
+int Lexer::gettok(std::string & IdentifierStr) {
 
-  // Skip any whitespace.
-  while (isspace(LastChar_))
-    LastChar_ = advance();
-  
   auto NextChar = peek();
-  CurLoc_ = LexLoc_;
+  //IdentifierStr.clear();
 
   //----------------------------------------------------------------------------
   // identifier: [a-zA-Z][a-zA-Z0-9]*
   if (isalpha(LastChar_)) {
-    IdentifierStr_ = LastChar_;
-    while (isalnum((LastChar_ = advance())) || LastChar_=='_')
-      IdentifierStr_ += LastChar_;
+    IdentifierStr.clear();
 
-    auto res = Tokens::getTok(IdentifierStr_);
+    std::string str(1, LastChar_);
+    while (isalnum((LastChar_ = advance())) || LastChar_=='_')
+      str += LastChar_;
+
+    auto res = Tokens::getTok(str);
     if (res.found) return res.token;
     
+    IdentifierStr = str;
     return tok_identifier;
   }
   
@@ -69,25 +94,25 @@ int Lexer::gettok() {
     
   if (isdigit(LastChar_) || LastChar_ == '.' /*|| is_signed_number*/) {
 
-    IdentifierStr_.clear();
+    IdentifierStr.clear();
 
     // eat the sign if it has one
     //if (is_signed_number) {
-    //  IdentifierStr_ += LastChar_;    
+    //  IdentifierStr += LastChar_;    
     //  LastChar_ = advance();
     //}
 
     // read first part of number
     bool is_float = (LastChar_ == '.');
     do {
-      IdentifierStr_ += LastChar_;
+      IdentifierStr += LastChar_;
       LastChar_ = advance();
       if (LastChar_ == '.') {
         if (is_float)
           THROW_SYNTAX_ERROR( "Multiple '.' encountered in real", LexLoc_ );
         is_float = true;
         // eat '.'
-        IdentifierStr_ += LastChar_;
+        IdentifierStr += LastChar_;
         LastChar_ = advance();
       }
     } while (isdigit(LastChar_));
@@ -95,17 +120,17 @@ int Lexer::gettok() {
     if (LastChar_ == 'e' || LastChar_ == 'E') {
       is_float = true;
       // eat e/E
-      IdentifierStr_ += LastChar_;
+      IdentifierStr += LastChar_;
       LastChar_ = advance();
       // make sure next character is sign or number
       if (LastChar_ != '+' && LastChar_ != '-' && !isdigit(LastChar_))
         THROW_SYNTAX_ERROR( "Digit or +/- must follow exponent", LexLoc_ );
       // eat sign or number
-      IdentifierStr_ += LastChar_;
+      IdentifierStr += LastChar_;
       LastChar_ = advance();
       // only numbers should follow
       do {
-        IdentifierStr_ += LastChar_;
+        IdentifierStr += LastChar_;
         LastChar_ = advance();
       } while (isdigit(LastChar_) );
     }
@@ -124,7 +149,7 @@ int Lexer::gettok() {
     while (LastChar_ != eof() && LastChar_ != '\n' && LastChar_ != '\r');
 
     if (LastChar_ != eof())
-      return gettok();
+      return tok_comment;
   }
 
   //----------------------------------------------------------------------------
@@ -133,7 +158,7 @@ int Lexer::gettok() {
     std::string quoted;
     while ((LastChar_ = advance()) != '\"')
       quoted += LastChar_;
-    IdentifierStr_ = utils::unescape(quoted);
+    IdentifierStr = utils::unescape(quoted);
     LastChar_ = advance();
     return tok_string_literal;
   }
@@ -171,6 +196,30 @@ int Lexer::gettok() {
   int ThisChar = LastChar_;
   LastChar_ = advance();
   return ThisChar;
+}
+
+//==============================================================================
+/// gettok - Return the next token from standard input.
+//==============================================================================
+token_info_t Lexer::gettok() {
+ 
+  int tok;
+  std::ios::pos_type start_pos, end_pos;
+  do {
+
+    // Skip any whitespace.
+    while (isspace(LastChar_))
+      LastChar_ = advance();
+  
+    CurLoc_ = LexLoc_;
+
+    start_pos = In_->tellg();
+    tok = gettok(IdentifierStr_);
+    end_pos = In_->tellg();
+  
+  } while (tok == tok_comment);
+  
+  return {tok, start_pos, end_pos, IdentifierStr_};
 }
 
 //==============================================================================
