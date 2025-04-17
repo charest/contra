@@ -819,7 +819,7 @@ void CodeGen::visit(UnaryExprAST & e) {
     }
   }
 
-  auto F = getFunction(std::string("unary") + e.getOperand()).first;
+  auto F = getFunction(std::string("unary") /*TODO + e.getOperand()*/).first;
   ValueResult_ = getBuilder().CreateCall(F, OperandV, "unop");
 }
 
@@ -912,7 +912,7 @@ void CodeGen::visit(BinaryExprAST& e) {
 
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = getFunction(std::string("binary") + e.getOperand()).first;
+  auto F = getFunction(std::string("binary") /*TODO + e.getOperand()*/).first;
 
   Value *Ops[] = { L, R };
   ValueResult_ = getBuilder().CreateCall(F, Ops, "binop");

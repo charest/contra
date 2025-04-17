@@ -2,6 +2,7 @@
 #define CONTRA_LEXER_HPP
 
 #include "sourceloc.hpp"
+#include "token.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -12,13 +13,17 @@
 
 namespace contra {
 
+
 //==============================================================================
-/// The lexer return datatype
+/// Token position info
 //==============================================================================
 struct token_pos_t {
   std::ios::pos_type begin, end;
 };
 
+//==============================================================================
+/// The lexer return datatype
+//==============================================================================
 struct lexer_results_t {
   std::vector<int> tokens;
   std::vector<token_pos_t> token_pos;
@@ -26,10 +31,23 @@ struct lexer_results_t {
   std::string identifier_chars;
   std::vector<size_t> identifier_offsets;
   std::vector<int> identifier_to_token;
+
+  size_t numTokens() const { return tokens.size(); }
+  size_t numIdentifiers() const { return identifier_to_token.size(); }
+
+  int findIdentifier(int tok) const;
+  std::string getIdentifierString(int i) const;
 };
 
-lexer_results_t lex(std::istream& stream);
+/// Main lexer function
+lexer_results_t lex(const Tokens & toks, std::istream& stream);
+  
+/// Dump lexer results
+void print(std::ostream& os, const Tokens & toks, const lexer_results_t & res);
 
+//==============================================================================
+/// Return type for Lexer::gettok
+//==============================================================================
 struct token_info_t {
   int token;
   std::ios::pos_type begin, end;
@@ -43,51 +61,35 @@ class Lexer {
 
   /// The last character read
   int LastChar_ = ' ';
-  /// Keep track of the location in the file
-  SourceLocation LexLoc_;
 
-  std::ifstream InputStream_;
   std::istream *In_ = &std::cin;
 
-  // Where the identifier started (lags LexLoc)
+  Tokens Tokens_; // TODO REF
+
+  /// TODO Keep track of the location in the file
+  SourceLocation LexLoc_;
+  // TODO Where the identifier started (lags LexLoc)
   SourceLocation CurLoc_;
-  // Filled in if tok_identifier
-  std::string IdentifierStr_;
 
   std::stringstream Tee_;
-  std::string FileName_ = "<stdin>";
   
   /// private helper function to get token and identifier
-  int gettok(std::string & IdentifierStr);
+  int gettok(int & LastChar, std::string & IdentifierStr);
 
 public:
-
+  
   // constructor for reading from stdin
   Lexer() = default;
-  
+
   // constructor from a stream
-  Lexer( std::istream & s ) : In_(&s)
+  Lexer( const Tokens & toks, std::istream & s ) : In_(&s), Tokens_(toks)
   {}
 
-  // constructor cor reading from file
-  Lexer( const std::string & filename ) : FileName_(filename)
-  {
-    InputStream_.open(filename.c_str());
-    if (!InputStream_.good()) {
-      std::stringstream ss;
-      ss << "File '" << filename << "' does not exists" << std::endl;
-      throw std::runtime_error( ss.str() );
-    }
-    In_ = &InputStream_; 
-  }
-
-  ~Lexer() { if (InputStream_) InputStream_.close(); }
-
   /// read the next character
-  int readchar() { return In_->get(); };
+  char readchar() { return In_->get(); };
   std::string readline();
-  int peek() { return In_->peek(); };
-  int eof() { return In_->eof(); }
+  char peek() { return In_->peek(); };
+  bool eof() { return In_->eof(); }
 
   /// gettok - Return the next token from standard input.
   token_info_t gettok();
@@ -103,10 +105,6 @@ public:
   LocationRange getIdentifierLoc() const
   { return LocationRange(CurLoc_, LexLoc_); }
 
-
-  // get the identifier string
-  const std::string & getIdentifierStr() const
-  { return IdentifierStr_; }
 
   // print out current line
   std::ostream & barf(std::ostream& out, const LocationRange & Loc);

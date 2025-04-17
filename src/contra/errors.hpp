@@ -117,6 +117,23 @@ public:
   } while(0)
 
 ////////////////////////////////////////////////////////////////////////////////
+//! \brief Raise a lexer error.
+////////////////////////////////////////////////////////////////////////////////
+#define THROW_LEXER_ERROR(msg,loc)                                             \
+  do {                                                                         \
+    throw ::contra::SyntaxError(::contra::Formatter() << msg, loc );           \
+  } while(0)
+
+////////////////////////////////////////////////////////////////////////////////
+//! \brief Raise a parser error.
+////////////////////////////////////////////////////////////////////////////////
+#define THROW_PARSER_ERROR(msg,loc)                                            \
+  do {                                                                         \
+    throw ::contra::SyntaxError(::contra::Formatter() << msg, SourceLocation{} );\
+  } while(0)
+
+
+////////////////////////////////////////////////////////////////////////////////
 //! \brief Raise a name error.
 ////////////////////////////////////////////////////////////////////////////////
 #define THROW_NAME_ERROR(msg,loc)                                              \

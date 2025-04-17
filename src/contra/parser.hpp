@@ -7,24 +7,54 @@
 #include "precedence.hpp"
 #include "token.hpp"
 
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace contra {
 
-/*
 struct parse_tree_t {
   std::vector<int> node_to_token;
+  std::vector<int> node_ast_type;
   
-  std::vector<int> children_ids;
-  std::vector<size_t> children_offsets;
+  std::vector<int> node_parent;
+ 
+  std::unordered_map<int,int> node_to_type_token;
+
+  size_t size() const { return node_ast_type.size(); }
+
+  int addNode(int tok, int ty, int parent)
+  {
+    auto id = node_ast_type.size();
+    node_to_token.emplace_back(tok);
+    node_ast_type.emplace_back(ty);
+    node_parent.emplace_back(parent);
+    return id;
+  }
+
+  void setType(int node, int tok)
+  { node_to_type_token[node] = tok; }
+  void setParent(int node, int parent)
+  { node_parent[node] = parent; }
+
 };
 
-parse_tree_t parse(const lex_results_t & tokens)
-*/
+/// Parse tokens
+parse_tree_t parse(const std::vector<int> & tokens, const BinopPrecedence & prec);
 
+/// Dump lexer results
+struct graph_t;
+struct lexer_results_t;
+
+void print(std::ostream& os, const parse_tree_t & tree, const graph_t & graph);
+
+void print(
+  std::ostream& os,
+  const Tokens & toks,
+  const lexer_results_t & lex,
+  const parse_tree_t & tree,
+  const graph_t & graph);
 
 class Parser {
 
@@ -48,7 +78,7 @@ public:
 
   Parser(std::shared_ptr<BinopPrecedence> Precedence,
       const std::string & filename ) :
-    TheLex_(filename), BinopPrecedence_(Precedence)
+    BinopPrecedence_(Precedence)
   {}
 
   /// get the current token
@@ -80,7 +110,8 @@ public:
 
   const auto & getCurLoc() const { return TheLex_.getCurLoc(); }
   auto getIdentifierLoc() const { return TheLex_.getIdentifierLoc(); }
-  const auto & getIdentifierStr() const { return TheLex_.getIdentifierStr(); }
+  auto getIdentifierStr() const { return ""; } // FIXME
+  //const auto & getIdentifierStr() const { return TheLex_.getIdentifierStr(); }
 
   auto getIdentifier() const
   { return Identifier(getIdentifierStr(), getIdentifierLoc()); }

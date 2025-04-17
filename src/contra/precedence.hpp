@@ -12,29 +12,15 @@ struct BinopPrecedenceResult {
   int precedence = -1;
 };
 
+
 class BinopPrecedence {
 
-  std::map<char, int> Precedence_;
+  std::map<int, int> Precedence_;
 
 public:
 
-  BinopPrecedence() {
-    // Install standard binary operators.
-    // 1 is lowest precedence.
-    //Precedence_[tok_asgmt] = 2;
-    Precedence_[tok_eq] = 5;
-    Precedence_[tok_ne] = 5;
-    Precedence_[tok_lt] = 10;
-    Precedence_[tok_le] = 10;
-    Precedence_[tok_gt] = 10;
-    Precedence_[tok_ge] = 10;
-    Precedence_[tok_add] = 20;
-    Precedence_[tok_sub] = 20;
-    Precedence_[tok_mul] = 40;
-    Precedence_[tok_div] = 40;
-    Precedence_[tok_mod] = 40;
-    // highest.
-  }
+  void add(int key, int val)
+  { Precedence_[key] = val; }
 
   BinopPrecedenceResult find( char key ) const
   {
@@ -44,16 +30,30 @@ public:
     else
       return {false, -1};
   }
+  
+  int find_v2( int key ) const
+  {
+    auto it = Precedence_.find(key);
+    if ( it != Precedence_.end() )
+      return it->second;
+    return -1;
+  }
 
-  auto count(char key) const
+
+  auto count(int key) const
   { return Precedence_.count(key); }
 
-  int& operator[]( char key ) { return Precedence_[key]; }
-  int& at( char key ) { return Precedence_.at(key); }
-  const int& at( char key ) const { return Precedence_.at(key); }
+  int operator[]( int key ) const { return Precedence_.at(key); }
+  int& operator[]( int key ) { return Precedence_[key]; }
+  int at( int key ) const { return Precedence_.at(key); }
+  int& at( int key ) { return Precedence_.at(key); }
 
   
 };
+
+/// Main precedence builder
+BinopPrecedence make_contra_precedence();
+
 
 } // namespace
 

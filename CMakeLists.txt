@@ -248,23 +248,23 @@ if (BUILD_TESTING)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
   
-  add_executable(test_main)
+  add_executable(test_contra)
 
   target_link_libraries(
-    test_main
+    test_contra
     contra
     GTest::gtest_main
     GTest::gmock_main
   )
 
-  target_include_directories(test_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_include_directories(test_main PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
+  target_include_directories(test_contra PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_include_directories(test_contra PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
    
   include(GoogleTest)
 
-  add_subdirectory(unit)
+  add_subdirectory(testing/unit)
 
-  gtest_discover_tests(test_main)
+  gtest_discover_tests(test_contra)
 endif()
 
 

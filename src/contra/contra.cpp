@@ -2,6 +2,7 @@
 #include "errors.hpp"
 #include "futures.hpp"
 #include "leafs.hpp"
+#include "lexer.hpp"
 #include "loops.hpp"
 
 #include "utils/file_utils.hpp"
@@ -15,39 +16,62 @@ namespace contra {
 //==============================================================================
 //  Main setup function
 //==============================================================================
-void Contra::setup(const std::string & FileName)
+Contra::Contra(ContraBuilder builder) : Builder_(builder)
 {
+  Tokens_ = make_contra_tokens();
+
   ThePrecedence_ = std::make_shared<BinopPrecedence>();
+  
+  auto FileName = getSourceFileName();
+  if (FileName.size()) {
+    InputStream_.open(FileName.c_str());
+    if (!InputStream_.good()) {
+      std::stringstream ss;
+      ss << "File '" << FileName << "' does not exists" << std::endl;
+      throw std::runtime_error( ss.str() );
+    }
+    In_ = &InputStream_;
+  }
 
   if (FileName.empty())
     TheParser_ = std::make_unique<Parser>(ThePrecedence_);
   else
     TheParser_ = std::make_unique<Parser>(ThePrecedence_, FileName);
 
-  TheCG_ = std::make_unique<CodeGen>(BackendType_, IsDebug_);
+  TheCG_ = std::make_unique<CodeGen>(getBackendType(), isDebug());
 
-  if (IRFileName_ == "-") {
+  auto IRFileName = getIRFileName();
+  if (IRFileName == "-") {
     IRFileStream_ = &llvm::outs();
   }
-  else if (!IRFileName_.empty()) {
+  else if (!IRFileName.empty()) {
     std::error_code EC;
-    if (!isOverwrite() && utils::file_exists(IRFileName_))
-      THROW_CONTRA_ERROR("File '" << IRFileName_
+    if (!isOverwrite() && utils::file_exists(IRFileName))
+      THROW_CONTRA_ERROR("File '" << IRFileName
           << "' already exists!  Use -f to overwrite.");
-    IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName_, EC);
+    IRFile_ = std::make_unique<llvm::raw_fd_ostream>(IRFileName, EC);
     IRFileStream_ = IRFile_.get();
   }
 
-  if (DotFileName_ == "-") {
+  auto DotFileName = getDotFileName();
+  if (DotFileName == "-") {
     TheViz_ = std::make_unique<Vizualizer>(std::cout);
   }
-  else if (!DotFileName_.empty()) {
-    TheViz_ = std::make_unique<Vizualizer>(DotFileName_, isOverwrite());
+  else if (!DotFileName.empty()) {
+    TheViz_ = std::make_unique<Vizualizer>(DotFileName, isOverwrite());
   }
   if (TheViz_) TheViz_->start();
 
 
   TheAnalyser_ = std::make_unique<Analyzer>(ThePrecedence_);
+}
+
+//==============================================================================
+//  Main parse function
+//==============================================================================
+void Contra::getNextToken()
+{
+  auto res = lex(Tokens_, *In_);
 }
 
 //==============================================================================
@@ -83,7 +107,7 @@ std::vector<std::unique_ptr<FunctionAST>>
 void Contra::handleFunction()
 {
 
-  if (IsVerbose_) std::cerr << "Handling function" << std::endl;
+  if (isVerbose()) std::cerr << "Handling function" << std::endl;
 
   try {
     auto FnAST = TheParser_->parseFunction();
@@ -95,7 +119,7 @@ void Contra::handleFunction()
 		for (auto & FnAST : FnASTs) {
     	if (dumpDot()) TheViz_->runVisitor(*FnAST);
     	auto FnIR = TheCG_->runFuncVisitor(*FnAST);
-    	if (IsOptimized_) TheCG_->optimize(FnIR);
+    	if (isOptimized()) TheCG_->optimize(FnIR);
     	if (dumpIR()) FnIR->print(*IRFileStream_);
     	if (!isCompiled()) TheCG_->doJIT();
 		}
@@ -104,8 +128,8 @@ void Contra::handleFunction()
   catch (const ContraError & e) {
     reportError(e);
     // Skip token for error recovery.
-    if (!IsInteractive_) throw e;
-    TheParser_->getNextToken();
+    if (!isInteractive()) throw e;
+    getNextToken();
   }
 
 }
@@ -115,14 +139,14 @@ void Contra::handleFunction()
 //==============================================================================
 void Contra::handleTopLevelExpression()
 {
-  if (IsVerbose_) std::cerr << "Handling top level expression" << std::endl;
+  if (isVerbose()) std::cerr << "Handling top level expression" << std::endl;
 
   const std::string Name = "__anon_expr";
 
   // Evaluate a top-level expression into an anonymous function.
   try {
     auto FnAST = TheParser_->parseTopLevelExpr();
-    //if (IsVerbose_) FnAST->accept(viz);
+    //if (isVerbose()) FnAST->accept(viz);
     TheAnalyser_->runFuncVisitor(*FnAST);
     auto FnIR = TheCG_->runFuncVisitor(*FnAST);
     if (dumpIR()) FnIR->print(*IRFileStream_);
@@ -144,23 +168,23 @@ void Contra::handleTopLevelExpression()
       // arguments, returns a double) so we can call it as a native function.
       if (is_real) {
         real_t (*FP)() = ExprSymbol.getAddress().toPtr<real_t (*)()>();
-        if (IsVerbose_) std::cerr << "---Begin Real Result--- " <<  "\n";
+        if (isVerbose()) std::cerr << "---Begin Real Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
-        if (IsVerbose_) std::cerr << "---End Real Result--- " <<  "\n";
+        if (isVerbose()) std::cerr << "---End Real Result--- " <<  "\n";
       }
       else if (is_int) {
         int_t (*FP)() = ExprSymbol.getAddress().toPtr<int_t (*)()>();
-        if (IsVerbose_) std::cerr << "---Begin Int Result--- " <<  "\n";
+        if (isVerbose()) std::cerr << "---Begin Int Result--- " <<  "\n";
         auto ans = FP();
         std::cerr << "Ans = " << ans << "\n";
-        if (IsVerbose_) std::cerr << "---End Int Result--- " <<  "\n";
+        if (isVerbose()) std::cerr << "---End Int Result--- " <<  "\n";
       }
       else if (is_void) {
         void (*FP)() = ExprSymbol.getAddress().toPtr<void(*)()>();
-        if (IsVerbose_) std::cerr << "---Begin Void Result--- " <<  "\n";
+        if (isVerbose()) std::cerr << "---Begin Void Result--- " <<  "\n";
         FP();
-        if (IsVerbose_) std::cerr << "---End Void Result--- " <<  "\n";
+        if (isVerbose()) std::cerr << "---End Void Result--- " <<  "\n";
       }
       else {
         THROW_CONTRA_ERROR("Unknown type of final result!");
@@ -174,7 +198,7 @@ void Contra::handleTopLevelExpression()
   catch (const ContraError & e) {
     reportError(e);
     // Skip token for error recovery.
-    if (IsInteractive_) TheParser_->getNextToken();
+    if (isInteractive()) getNextToken();
     // otherwise keep throwing the error
     else throw e;
   }
@@ -186,28 +210,28 @@ void Contra::handleTopLevelExpression()
 void Contra::mainLoop() {
 
   // Prime the first token.
-  if (IsInteractive_) std::cerr << "contra> " << std::flush;
-  TheParser_->getNextToken();
+  if (isInteractive()) std::cerr << "contra> " << std::flush;
+  getNextToken();
 
   while (true) {
 
     if (TheParser_->getCurTok() == tok_eof) {
-      if (IsInteractive_) std::cerr << std::endl;
+      if (isInteractive()) std::cerr << std::endl;
       return;
     }
 
     switch (TheParser_->getCurTok()) {
     case tok_sep: // ignore top-level semicolons.
-      TheParser_->getNextToken();
+      getNextToken();
       break;
     case tok_task:
     case tok_function:
       handleFunction();
-      if (IsInteractive_) std::cerr << "contra> " << std::flush;
+      if (isInteractive()) std::cerr << "contra> " << std::flush;
       break;
     default:
       handleTopLevelExpression();
-      if (IsInteractive_) std::cerr << "contra> " << std::flush;
+      if (isInteractive()) std::cerr << "contra> " << std::flush;
     }
 
   }

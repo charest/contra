@@ -113,24 +113,24 @@ int main(int argc, char** argv) {
 
 
   // santity checks
-  Contra Interp;
-  Interp.setInteractive( OptionInputFilename.empty() );
-  Interp.setVerbose( OptionVerbose );
-  Interp.setDebug( OptionDebug );
-  Interp.setOverwrite( OptionForce );
-  Interp.setOptimized( OptionOptimizationLevel >= O1 );
-  if (!OptionDumpIR.empty()) Interp.setDumpIR(OptionDumpIR);
-  if (!OptionDumpDot.empty()) Interp.setDumpDot(OptionDumpDot);
-  if (!OptionBackend.empty()) Interp.setBackend(OptionBackend);
+  ContraBuilder Builder;
+  Builder.setVerbose( OptionVerbose );
+  Builder.setDebug( OptionDebug );
+  Builder.setOverwrite( OptionForce );
+  Builder.setOptimized( OptionOptimizationLevel >= O1 );
+  if (!OptionInputFilename.empty()) Builder.setSource(OptionInputFilename);
+  if (!OptionDumpIR.empty())  Builder.setDumpIR(OptionDumpIR);
+  if (!OptionDumpDot.empty()) Builder.setDumpDot(OptionDumpDot);
+  if (!OptionBackend.empty()) Builder.setBackend(OptionBackend);
 
   // if we are not interactive and compiling, open a file
   std::string source_filename;
   std::string output_filename;
 
-  if (!Interp.isInteractive()) {
+  if (!Builder.isInteractive()) {
     
     source_filename = OptionInputFilename;
-    if (Interp.isVerbose())
+    if (Builder.isVerbose())
       std::cout << "Reading source file:" << source_filename << std::endl;
     
     if (OptionCompile) {
@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
           output_filename = source_filename;
         output_filename += ".o";
       }
-      Interp.setCompile( output_filename );
+      Builder.setCompile( output_filename );
     } // compile
 
   } // interactive
@@ -157,7 +157,7 @@ int main(int argc, char** argv) {
   Tokens::setup();
 
   // create the parser
-  Interp.setup(source_filename);
+  Contra Interp(Builder);
 
 
   // Run the main "interpreter loop" now.

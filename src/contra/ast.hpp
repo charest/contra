@@ -21,6 +21,75 @@
 
 namespace contra {
 
+//==============================================================================
+// The lexer returns tokens [0-255] if it is an unknown character, otherwise one
+// of these for known things.
+//==============================================================================
+enum AST {
+  ast_unk,        // unknown type
+  ast_fn_def,     // function definition
+  ast_fn_call,    // function call
+  ast_fn_anon,    // anonymous function call
+  ast_access_var, // Variable access
+  ast_access_arr, // Array element access
+  ast_if,         // if statement
+  ast_if_cond,    // if condition
+  ast_if_body,    // if body
+  ast_elif_cond,  // elif condition
+  ast_elif_body,  // elif body
+  ast_else_body,  // else body
+  ast_for,        // for loop
+  ast_for_range,  // for loop range
+  ast_for_body,   // for loop body
+  ast_foreach,    // foreach loop
+  ast_break,      // break statement
+  ast_value_real,   // real literal
+  ast_value_int,    // int literal
+  ast_value_string, // string literal
+  ast_arr,        // array definition
+  ast_reduce,     // reduction
+  ast_unary,      // unary op
+  ast_binop,      // binary op
+  ast_range,      // range
+  ast_expr_list,  // ast expression list
+  ast_assign,     // assignment statement
+};
+
+/// convert the ast type to a string
+constexpr const char * ast_to_string(int ty)
+{
+  switch (ty) {
+  case ast_unk:        return "Unknown";
+  case ast_fn_def:     return "FunDef";
+  case ast_fn_call:    return "FunCall";
+  case ast_fn_anon:    return "FunAnon";
+  case ast_access_var: return "VarAccess";
+  case ast_access_arr: return "ArrayAccess";
+  case ast_if:         return "IfStmt";
+  case ast_if_cond:    return "IfCond";
+  case ast_if_body:    return "IfBody";
+  case ast_elif_cond:  return "ElifCond";
+  case ast_elif_body:  return "ElifBody";
+  case ast_else_body:  return "ElseBody";
+  case ast_for:        return "For";
+  case ast_for_range:  return "ForRange";
+  case ast_for_body:   return "ForBody";
+  case ast_foreach:    return "Foreach";
+  case ast_break:      return "Break";
+  case ast_value_real: return "RealLit";
+  case ast_value_int:  return "IntLit";
+  case ast_value_string: return "StringLit";
+  case ast_arr:        return "ArrayDef";
+  case ast_reduce:     return "Reduce";
+  case ast_unary:      return "UnaryOp";
+  case ast_binop:      return "BinOp";
+  case ast_range:      return "Range";
+  case ast_expr_list:  return "ExprList";
+  case ast_assign:     return "Assign";
+  default:             return "Undefined";
+  }
+}
+  
 ////////////////////////////////////////////////////////////////////////////////
 /// NodeAST - Base class for all nodes.
 ////////////////////////////////////////////////////////////////////////////////
@@ -384,7 +453,7 @@ public:
 class UnaryExprAST : public ExprAST {
 protected:
 
-  char OpCode_;
+  int OpCode_;
   std::unique_ptr<NodeAST> OpExpr_;
 
 public:
@@ -412,7 +481,7 @@ public:
 class BinaryExprAST : public ExprAST {
 protected:
 
-  char OpCode_;
+  int OpCode_;
   std::unique_ptr<NodeAST> LeftExpr_;
   std::unique_ptr<NodeAST> RightExpr_;
 

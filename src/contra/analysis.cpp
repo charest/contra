@@ -462,7 +462,7 @@ void Analyzer::visit(BinaryExprAST& e)
   
   // If it wasn't a builtin binary operator, it must be a user defined one. Emit
   // a call to it.
-  auto F = getFunction(std::string("binary") + OpCode, Loc);
+  auto F = getFunction(std::string("binary") /*TODO + OpCode*/, Loc);
   TypeResult_ = F->getReturnType();
   e.setType(TypeResult_);
 }
