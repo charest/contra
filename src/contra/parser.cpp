@@ -2,6 +2,7 @@
 #include "identifier.hpp"
 #include "graph.hpp"
 #include "parser.hpp"
+#include "stream.hpp"
 
 #include "utils/string_utils.hpp"
 
@@ -15,8 +16,29 @@
 
 namespace contra {
 
+struct parse_res_t
+{
+  int err=0, node=-1;
+  parse_res_t & operator+=(const parse_res_t & o)
+  { err += o.err; return *this; }
+  
+  parse_res_t & operator+=(int err)
+  { err += err; return *this; }
+};
+
+bool isType(int ty)
+{
+  switch (ty) {
+  case tok_i64:
+  case tok_f64:
+    return true;
+  default:
+    return false;
+  };
+}
+
 //==============================================================================
-/// Dump parser results
+/// Dump parser results in tabular form
 //==============================================================================
 void print(
   std::ostream& os,
@@ -87,19 +109,19 @@ void print(
 }
 
 //==============================================================================
-/// Dump parser results
+/// Dump parser results in sext form
 //==============================================================================
 void print(
   std::ostream& os,
   const Tokens & toks,
-  const lexer_results_t & lex,
+  const lexed_t & lex,
   const parse_tree_t & tree,
-  const graph_t & graph
-)
+  const graph_t & graph)
 {
   auto n = tree.size();
 
   std::stack<std::pair<int,int>> q;
+  bool first = true;
   
   for (auto r : graph.roots) q.push({r,0});
     
@@ -107,76 +129,269 @@ void print(
     auto curr = q.top();
     auto i = curr.first;
     auto depth = curr.second;
-    auto space = std::string(2*depth, ' ');
     q.pop();
+    
+    if (depth == -1) {
+      os << ")";
+      continue;
+    }
 
     auto ty = tree.node_ast_type[i];
     auto tid = tree.node_to_token[i];
     auto tok = lex.tokens[tid];
-    os << space << ast_to_string(ty) << "(Id = " << i;
+    
+    auto space = std::string(2*depth, ' ');
+    if (first) first = false;
+    else       os << std::endl;
+    os << space << "(" << ast_to_string(ty);
 
     switch (ty) {
     case ast_fn_def:
     case ast_fn_call:
-    case ast_access_var:
-    case ast_access_arr:
-    case ast_value_real:
-    case ast_value_int:
-    case ast_value_string:
+    case ast_var:
+    case ast_arr_index:
+    case ast_lit_real:
+    case ast_lit_int:
+    case ast_lit_string:
     case ast_arr: {
       auto id = lex.findIdentifier(tid);
-      os << ", Ident = \"" << lex.getIdentifierString(id) << "\"";
+      os << " " << lex.getIdentifierString(id);
       break;
     }
+    
     case ast_assign:
     case ast_unary:
     case ast_binop: {
-      os << ", Op = \'" << toks.findInAll(tok) << "\'";
+      os << " " << toks.findInAll(tok);
       break;
-    }}
-    
-    os << ")" << std::endl;
+    }
 
+    case ast_reduce_op: {
+      if (tok == tok_ident) {
+        auto id = lex.findIdentifier(tid);
+        os << " " << lex.getIdentifierString(id);
+      }
+      else {
+        os << toks.findInAll(tok);
+      }
+      break;
+    }
+    }
+
+    q.push({i, -1});
     auto nc = graph.size(i);
     for (int c=nc; c-->0; ) q.push({graph(i,c), depth+1});
   }
   os << std::endl;
 
 }
+    
 
 //==============================================================================
-int parse_primary_expr(
+/// Compare two ast tree nodes
+//==============================================================================
+bool compare_ast_node(
+  const Tokens & toka,
+  const lexed_t & lxa,
+  const parse_tree_t & tra,
+  const Tokens & tokb,
+  const lexed_t & lxb,
+  const parse_tree_t & trb,
+  int na,
+  int nb)
+{
+  // ast types
+  auto ast_tya = tra.node_ast_type[na];
+  auto ast_tyb = trb.node_ast_type[nb];
+  if (ast_tya != ast_tyb) {
+    std::cerr << "Node types differ : ";
+    std::cerr << "{" << na << ", " << ast_to_string(ast_tya);
+    std::cerr << "} vs {";
+    std::cerr << nb << ", " << ast_to_string(ast_tyb) << "}";
+    std::cerr << std::endl;
+    return false;
+  }
+  
+  // token types
+  auto ta = tra.node_to_token[na];
+  auto tb = trb.node_to_token[nb];
+  auto tya = lxa.tokens[ta];
+  auto tyb = lxb.tokens[tb];
+  auto ida = lxa.findIdentifier(ta);
+  auto idb = lxb.findIdentifier(tb);
+  auto stra = lxa.getIdentifierString(ida);
+  auto strb = lxb.getIdentifierString(idb);
+
+  switch (ast_tya) {
+
+  case (ast_unary):
+  case (ast_binop):
+  case (ast_assign):
+    if (tya != tyb) {
+      std::cerr << "Operators don't match. ";
+      std::cerr << "{" << na << ", " << toka.findInAll(tya);
+      std::cerr << "} vs {";
+      std::cerr << nb << ", " << tokb.findInAll(tyb) << "}";
+      std::cerr << std::endl;
+      return false;
+    }
+    break;
+  
+  case (ast_fn_call):
+  case (ast_var):
+  case (ast_arr_index):
+  case (ast_lit_int):
+  case (ast_lit_real):
+  case (ast_lit_string):
+  
+    if (ida == -1 || idb == -1) {
+      std::cerr << "Expected identifiers in both. ";
+      std::cerr << std::endl;
+      std::cerr << "{" << na << ", " << stra;
+      std::cerr << "} vs {";
+      std::cerr << nb << ", " << strb << "}";
+      std::cerr << std::endl;
+      return false;
+    }
+    if (stra != strb) {
+      std::cerr << "Identifiers don't match. ";
+      std::cerr << std::endl;
+      std::cerr << "{" << na << ", " << stra;
+      std::cerr << "} vs {";
+      std::cerr << nb << ", " << strb << "}";
+      std::cerr << std::endl;
+      return false;
+    }
+    
+    break;
+  
+  case (ast_reduce_op):
+
+    if (tya != tyb || stra != strb) {
+      std::cerr << "Operators or identifiers don't match. ";
+      std::cerr << "{" << na << ", " << toka.findInAll(tya) << ", " << stra;
+      std::cerr << "} vs {";
+      std::cerr << nb << ", " << tokb.findInAll(tyb) << ", " << strb << "}";
+      std::cerr << std::endl;
+      return false;
+    }
+    break;
+
+  }
+
+  return true;
+}
+
+//==============================================================================
+/// Compare two trees
+//==============================================================================
+bool compare(
+  stream_t & isa,
+  const Tokens & toka,
+  const lexed_t & lxa,
+  const parse_tree_t & tra,
+  const graph_t & gra,
+  stream_t & isb,
+  const Tokens & tokb,
+  const lexed_t & lxb,
+  const parse_tree_t & trb,
+  const graph_t & grb)
+{
+
+  auto nr = gra.roots.size();
+  if (nr != grb.roots.size()) {
+    std::cerr << "Roots: " << nr << " vs " << grb.roots.size() << std::endl;
+    return false;
+  }
+
+  std::stack<std::pair<int,int>> q;
+  for (int i=0; i<nr; ++i)
+    q.push({gra.roots[i], grb.roots[i]});
+    
+  while (q.size()) {
+    auto curr = q.top();
+    auto ia = curr.first;
+    auto ib = curr.second;
+    q.pop();
+
+    if (!compare_ast_node(toka, lxa, tra, tokb, lxb, trb, ia, ib))
+    {
+      auto ta = tra.node_to_token[ia];
+      auto tb = trb.node_to_token[ib];
+      error(isa, "Left tree is:", lxa.token_pos[ta]);
+      error(isb, "Right tree is:", lxb.token_pos[tb]);
+      return false;
+    }
+
+
+    // children
+    auto na = gra.size(ia);
+    auto nb = grb.size(ib);
+    if (na != nb) {
+      auto ta = tra.node_to_token[ia];
+      auto tb = trb.node_to_token[ib];
+      std::cerr << "Number of children differ: " << na << " vs " << nb << std::endl;
+      error(isa, "Left tree is:", lxa.token_pos[ta]);
+      error(isb, "Right tree is:", lxb.token_pos[tb]);
+      return false;
+    }
+
+    for (int c=na; c-->0; )
+      q.push({gra(ia,c), grb(ib,c)});
+  }
+  
+  return true;
+}
+
+//==============================================================================
+parse_res_t parse_primary_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok);
+
+parse_res_t parse_binop_expr(
+  int parent,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree,
+  int & tok,
+  int MinPrec);
 
 //==============================================================================
 // unary
 //   ::= primary
 //   ::= '!' unary
 //==============================================================================
-int parse_unary_expr(
+parse_res_t parse_unary_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
-  // If the current token is not an operator, it must be a primary expr.
-  if ((prec.find_v2(tokens[tok]) == -1) ||
-      tokens[tok] == tok_lparens ||
-      tokens[tok] == tok_comma) 
-  {
-    return parse_primary_expr(parent, tokens, prec, tree, tok);
-  }
+  auto ty = lx.tokens[tok];
+  auto Prec = prec.findUnary(ty);
+
   // If this is a unary operator, read it.
-  else {
-    auto op_node = tree.addNode(tok, ast_unary, parent);
+  if (Prec != -1) {
+    auto new_node = tree.addNode(tok, ast_unary, parent);
     ++tok;
-    parse_unary_expr(op_node, tokens, prec, tree, tok);
-    return op_node;
+    auto ret = parse_binop_expr(new_node, is, lx, prec, tree, tok, Prec);
+    return {ret.err, new_node};
+  }
+  // If the current token is not an operator, it must be a primary expr.
+  else if (prec.findBinary(ty) == -1)
+  {
+    return parse_primary_expr(parent, is, lx, prec, tree, tok);
+  }
+  // unknown unary operator.  Give back the parent in hopes of recovery
+  else {
+    return { error(is, "Unknown unary operator.", lx.token_pos[tok]), parent };
   }
 }
 
@@ -184,66 +399,51 @@ int parse_unary_expr(
 // binoprhs
 //   ::= ('+' primary)*
 //==============================================================================
-int parse_binop_expr(
+parse_res_t parse_binop_expr(
   int parent,
-  int lhs,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok,
-  int ExprPrec)
+  int MinPrec)
 {
+  auto lhs = parse_unary_expr(parent, is, lx, prec, tree, tok);
 
   // If this is a binop, find its precedence.
   while (true) {
-    int TokPrec = prec.find_v2(tokens[tok]);
+  
+    // check left precedence
+    auto op = lx.tokens[tok];
+    auto TokPrec = prec.findLeft(op);
+    bool isLeft = (TokPrec != -1);
+    // otherwise, check right
+    if (!isLeft) TokPrec = prec.findRight(op);
     
     // If this is a binop that binds at least as tightly as the current binop,
     // consume it, otherwise we are done.
-    if (TokPrec < ExprPrec)
-      return lhs;
+    if (TokPrec < MinPrec) break;
 
     // Okay, we know this is a binop.
     auto binop = tree.addNode(tok, ast_binop, parent);
-    tree.setParent(lhs, binop); // repoint the left
+    tree.setParent(lhs.node, binop); // repoint the left
     
     ++tok; // eat binop
     
     // Parse the unary expression after the binary operator.
-    auto rhs = parse_unary_expr(binop, tokens, prec, tree, tok);
-  
-
     // If BinOp binds less tightly with RHS than the operator after RHS, let
     // the pending operator take RHS as its LHS.
-    int NextPrec = prec.find_v2(tokens[tok]);
-
-    if (TokPrec < NextPrec)
-      rhs = parse_binop_expr(binop, rhs, tokens, prec, tree, tok, TokPrec+1);
+    auto NextPrec = isLeft ? TokPrec+1 : TokPrec;
+    lhs += parse_binop_expr(binop, is, lx, prec, tree, tok, NextPrec);
     
     // Move the binop to the left
-    lhs = binop;
+    lhs.node = binop;
 
   }
   
-  return -1; // shouldnt get here
+  return lhs;
 }
 
-
-
-//==============================================================================
-// expression
-//   ::= primary binoprhs
-//==============================================================================
-int parse_single_expr(
-  int parent,
-  const std::vector<int> & tokens,
-  const BinopPrecedence & prec,
-  parse_tree_t & tree,
-  int & tok)
-{
-  auto lhs = parse_unary_expr(parent, tokens, prec, tree, tok);
-  return parse_binop_expr(parent, lhs, tokens, prec, tree, tok, 0);
-}
 
 
 //==============================================================================
@@ -252,29 +452,33 @@ int parse_single_expr(
 //   ::= primary binoprhs : primary binoprhs
 //   ::= primary binoprhs = primary binoprhs
 //==============================================================================
-int parse_expr(
+parse_res_t parse_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
+  auto & tokens = lx.tokens;
+
   // parse first expr
-  auto lhs = parse_single_expr(parent, tokens, prec, tree, tok);
+  auto [err, lhs] = parse_binop_expr(parent, is, lx, prec, tree, tok, 0);
   
   // hit a list
   if (tokens[tok] == tok_comma) {
     // create new root node
-    auto list_expr = tree.addNode(tok, ast_expr_list, parent);
+    auto expr_list = tree.addNode(tok, ast_expr_list, parent);
     // repoint the old root
-    tree.setParent(lhs, list_expr);
+    tree.setParent(lhs, expr_list);
     // add to the list
     while (tokens[tok] == tok_comma) {
       ++tok; // eat ,
-      parse_single_expr(list_expr, tokens, prec, tree, tok);
+      auto ret = parse_binop_expr(expr_list, is, lx, prec, tree, tok, 0);
+      err += ret.err;
     }
     // set new lhs
-    lhs = list_expr;
+    lhs = expr_list;
   }
   else if (tokens[tok] == tok_colon) {
     // create new root node
@@ -285,14 +489,16 @@ int parse_expr(
     int num_exprs = 1;
     while (tokens[tok] == tok_colon) {
       ++tok; // eat :
-      parse_single_expr(range_expr, tokens, prec, tree, tok);
+      auto res = parse_binop_expr(range_expr, is, lx, prec, tree, tok, 0);
+      err += res.err;
       num_exprs++;
     }
     // validate the number of expressions found
-    if (num_exprs > 3 || num_exprs < 2)
-      THROW_PARSER_ERROR(
-          "Only 'begin':'end':['step'] specification supported for ranges." ,
-          tok);
+    if (num_exprs > 3 || num_exprs < 2) {
+      err += error(
+        is, "Only 'begin':'end':['step'] specification supported for ranges." ,
+        lx.token_pos[tok]);
+    }
     // set new lhs
     lhs = range_expr;
   }
@@ -304,12 +510,13 @@ int parse_expr(
     // repoint the old root
     tree.setParent(lhs, assign_expr);
     // parse the rhs
-    parse_expr(assign_expr, tokens, prec, tree, tok);
+    auto res = parse_expr(assign_expr, is, lx, prec, tree, tok);
+    err += res.err;
     // set new lhs
     lhs = assign_expr;
   }
 
-  return lhs;
+  return {err, lhs};
 }
 
 //==============================================================================
@@ -317,37 +524,57 @@ int parse_expr(
 // breakexpr
 //==============================================================================
 // BreakStmtAST - ast_break
-// ValueExprAST - ast_value_int, ast_value_real, ast_value_string
+// ValueExprAST - ast_lit_int, ast_lit_real, ast_lit_string
 template<int Ty>
-int parse_simple_expr(
+parse_res_t parse_simple_expr(
   int parent,
-  const std::vector<int> & tokens,
   parse_tree_t & tree,
-  int & tok) 
+  int & tok)
 {
   // add token
-  return tree.addNode(tok++, Ty, parent);
+  return { 0, tree.addNode(tok++, Ty, parent) };
+}
+
+//==============================================================================
+// Return expression
+//==============================================================================
+parse_res_t parse_return(
+  int parent,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree,
+  int & tok)
+{ 
+  auto node = tree.addNode(tok, ast_return, parent);
+
+  // eat return
+  ++tok;
+  
+  return parse_expr(node, is, lx, prec, tree, tok);
 }
 
 //==============================================================================
 // parenexpr ::= '(' expression ')'
 //==============================================================================
-int parse_parens_expr(
+parse_res_t parse_parens_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
-  int & tok) 
+  int & tok)
 { 
   // eat (
   ++tok;
   // add expression in parens, parent passes through
-  auto ret = parse_expr(parent, tokens, prec, tree, tok);
+  auto res = parse_expr(parent, is, lx, prec, tree, tok);
   // eat )
-  if (tokens[tok] != ')')
-    THROW_PARSER_ERROR("Expected ')' after expression", tok);
+  if (lx.tokens[tok] != tok_rparens) {
+    res += error(is, "Expected ')' after expression", lx.token_pos[tok]);
+  }
   ++tok;
-  return ret;
+  return res;
 }
 
 
@@ -356,81 +583,124 @@ int parse_parens_expr(
 //   ::= 
 //   ::= identifier '(' expression* ')'
 //==============================================================================
-int parse_identifier_expr(
+parse_res_t parse_identifier_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
-  int & tok) 
+  int & tok)
 {
   // store identifier token
-  auto ident_tok = tok;
+  auto first_tok = tok;
 
   ++tok; // eat identifier.
+
+  auto & tokens = lx.tokens;
   
   //----------------------------------------------------------------------------
   // Call.
-  if (tokens[tok] == '(') {
-    auto call_node = tree.addNode(ident_tok, ast_fn_call, parent);
+  if (tokens[tok] == tok_lparens) {
+    auto node = tree.addNode(first_tok, ast_fn_call, parent);
+    parse_res_t ret{0, node};
     ++tok; // eat (
-    if (tokens[tok] != ')') parse_expr(call_node, tokens, prec, tree, tok);
-    if (tokens[tok] != ')') THROW_PARSER_ERROR("Expected ')'.", tok);
+    if (tokens[tok] != tok_rparens)
+      ret += parse_expr(node, is, lx, prec, tree, tok);
+    if (tokens[tok] != tok_rparens)
+      ret += error(is, "Expected ')'.", lx.token_pos[tok]);
     ++tok; // Eat the ')'.
-    return call_node;
+    return ret;
   }
 
   //----------------------------------------------------------------------------
   // Variable reference
   else {
+
+    parse_res_t ret;
       
     // Has a type, so we know its a decl
     bool has_type = false;
     int type_tok = -1;
-    if (tokens[tok] == tok_identifier) {
-      type_tok = tok;
-      has_type = true;
-      ++tok;  // eat the type
-    }
+    auto ident_tok = first_tok;
 
-    int var_node;
+    auto tok_ty = tokens[first_tok];
+    if (isType(tok_ty)) 
+    {
+      ident_tok = tok;
+      type_tok = first_tok;
+      has_type = true;
+      if (tokens[tok] != tok_ident)
+        ret += error(is, "Expected identifier.", lx.token_pos[tok]);
+      ++tok;  // eat the identifier
+    }
+    else if (tok_ty != tok_ident) 
+      ret += error(is, "Expected identifier or type.", lx.token_pos[first_tok]);
 
     //----------------------------------
     // Array
-    if (tokens[tok] == '[') {
-      var_node = tree.addNode(ident_tok, ast_access_arr, parent);
+    if (tokens[tok] == tok_lbrack) {
+      ret.node = tree.addNode(ident_tok, ast_arr_index, parent);
       ++tok; // eat [
-      parse_expr(var_node, tokens, prec, tree, tok);
-      if (tokens[tok] != ']')
-        THROW_PARSER_ERROR("Expected ']'  in array access/declaration.", tok);
+      ret += parse_expr(ret.node, is, lx, prec, tree, tok);
+      if (tokens[tok] != tok_rbrack)
+        ret += error(is, "Expected ']'  in array access/declaration.", lx.token_pos[tok]);
       ++tok; // eat ]
     }
     
     //----------------------------------
     // scalar
     else {
-      var_node = tree.addNode(ident_tok, ast_access_var, parent);
+      ret.node = tree.addNode(ident_tok, ast_var, parent);
     }
 
     // add type info if any
-    if (has_type) tree.setType(var_node, type_tok);
+    if (has_type) {
+      auto ty = tree.installType(tokens[type_tok]);
+      tree.setType(ret.node, ty, type_tok);
+    }
 
-    return var_node;
+    return ret;
 
   } // variable reference
 
+}
+    
+
+//==============================================================================
+// Parse basic block until a token is found
+//==============================================================================
+int parse_until(
+  int parent,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree,
+  int & tok,
+  int to_tok)
+{
+  int err = 0;
+  while (lx.tokens[tok] != to_tok) {
+    err += parse_expr(parent, is, lx, prec, tree, tok).err;
+    if (lx.tokens[tok] == tok_sep) ++tok;
+  }
+  return err;
 }
 
 //==============================================================================
 // ifexpr ::= 'if' expression 'then' expression 'else' expression
 //==============================================================================
-int parse_if_expr(
+parse_res_t parse_if_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
-  int & tok) 
+  int & tok)
 {
+  auto & tokens = lx.tokens;
+  
   auto if_node = tree.addNode(tok, ast_if, parent);
+  parse_res_t ret{0, if_node};
 
   // TODO if, elseif, else is repeated
   // TODO drop semicolons in lexer
@@ -443,25 +713,22 @@ int parse_if_expr(
 
     // 1 - condition.
     auto cond_node = tree.addNode(tok, ast_if_cond, if_node);
-    parse_expr(cond_node, tokens, prec, tree, tok);
+    ret += parse_expr(cond_node, is, lx, prec, tree, tok);
     
     // 2 - body.
     auto body_node = tree.addNode(tok, ast_if_body, if_node);
       
     //------------------------------------
     // Multi-liner TODO LIFT OUT BASIC BLOCK
-    if (tokens[tok] == '{') {
+    if (tokens[tok] == tok_lbrace) {
       ++tok; // eat {
-      while (tokens[tok] != '}') {
-        parse_expr(body_node, tokens, prec, tree, tok);
-        if (tokens[tok] == tok_sep) ++tok;
-      }
+      ret.err += parse_until(body_node, is, lx, prec, tree, tok, tok_rbrace);
       ++tok; // eat }
     }
     //------------------------------------
     // One-liner
     else {
-      parse_expr(body_node, tokens, prec, tree, tok);
+      ret += parse_expr(body_node, is, lx, prec, tree, tok);
     }
 
   }
@@ -475,25 +742,22 @@ int parse_if_expr(
 
     // 1 - condition.
     auto cond_node = tree.addNode(tok, ast_elif_cond, if_node);
-    parse_expr(cond_node, tokens, prec, tree, tok);
+    ret += parse_expr(cond_node, is, lx, prec, tree, tok);
 
     // 2 - body
     auto body_node = tree.addNode(tok, ast_elif_body, if_node);
   
     //------------------------------------
     // Multi-liner
-    if (tokens[tok] == '{') {
+    if (tokens[tok] == tok_lbrace) {
       ++tok; // eat {
-      while (tokens[tok] != '}') {
-        parse_expr(body_node, tokens, prec, tree, tok);
-        if (tokens[tok] == tok_sep) ++tok;
-      }
+      ret.err += parse_until(body_node, is, lx, prec, tree, tok, tok_rbrace);
       ++tok; // eat }
     }
     //------------------------------------
     // One-liner
     else {
-      parse_expr(body_node, tokens, prec, tree, tok);
+      ret += parse_expr(body_node, is, lx, prec, tree, tok);
     }
 
   }
@@ -510,146 +774,155 @@ int parse_if_expr(
     
     //------------------------------------
     // Multi-liner
-    if (tokens[tok] == '{') {
+    if (tokens[tok] == tok_lbrace) {
       ++tok; // eat {
-      while (tokens[tok] != '}') {
-        parse_expr(body_node, tokens, prec, tree, tok);
-        if (tokens[tok] == tok_sep) ++tok;
-      }
+      ret.err += parse_until(body_node, is, lx, prec, tree, tok, tok_rbrace);
       ++tok; // eat }
     }
     //------------------------------------
     // One-liner
     else {
-      parse_expr(body_node, tokens, prec, tree, tok);
+      ret += parse_expr(body_node, is, lx, prec, tree, tok);
     }
 
   }
 
-  return if_node;
+  return ret;
 }
 
 //==============================================================================
 // forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
 //==============================================================================
-int parse_for_expr(
+parse_res_t parse_for_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
-  
+  auto & tokens = lx.tokens;
+
   int ast_for_type = (tokens[tok] == tok_foreach) ? ast_foreach : ast_for;
-  
+ 
+  // Top for node
   auto for_node = tree.addNode(tok, ast_for_type, parent);
+  parse_res_t ret{0, for_node};
 
   ++tok; // eat the for.
 
-  if (tokens[tok] != tok_identifier)
-    THROW_PARSER_ERROR("Expected identifier after 'for'", tok);
+  if (tokens[tok] != tok_ident)
+    ret += error(is, "Expected identifier after 'for'", lx.token_pos[tok]);
 
-  auto ident_tok = tok;
+  // variable node
+  tree.addNode(tok, ast_var, for_node);
+  
   ++tok; // eat identifier.
 
   if (tokens[tok] != tok_asgmt)
-    THROW_PARSER_ERROR("Expected '=' after 'for'", tok);
+    ret += error(is, "Expected '=' after 'for'", lx.token_pos[tok]);
+  
   ++tok; // eat =
   
-  
-  auto start_node = tree.addNode(ident_tok, ast_for_range, for_node);
-  parse_expr(start_node, tokens, prec, tree, ident_tok);
+  // range node
+  ret += parse_expr(for_node, is, lx, prec, tree, tok);
 
-  // add statements
-  auto body_node = tree.addNode(ident_tok, ast_for_body, for_node);
+  // body node
+  auto body_node = tree.addNode(tok, ast_for_body, for_node);
 
   //------------------------------------
   // Multi-liner
-  if (tokens[tok] == '{') {
+  if (tokens[tok] == tok_lbrace) {
     ++tok; // eat {
-    while (tokens[tok] != '}') {
-      parse_expr(body_node, tokens, prec, tree, tok);
-      if (tokens[tok] == tok_sep) ++tok;
-    }
+    ret.err += parse_until(body_node, is, lx, prec, tree, tok, tok_rbrace);
     ++tok; // eat }
   }
   //------------------------------------
   // One-liner
   else {
-    parse_expr(body_node, tokens, prec, tree, tok);
+    ret += parse_expr(body_node, is, lx, prec, tree, tok);
   }
 
-  return for_node;
+  return ret;
   
 }
 
 //==============================================================================
 // Array expression parser
 //==============================================================================
-int parse_array_expr(
+parse_res_t parse_array_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
 
-  
+  auto & tokens = lx.tokens;
+
   auto arr_node = tree.addNode(tok, ast_arr, parent);
+  parse_res_t ret{0, arr_node};
 
   tok++; // eat [.
 
-  parse_expr(arr_node, tokens, prec, tree, tok);
+  ret += parse_expr(arr_node, is, lx, prec, tree, tok);
     
-  if (tokens[tok] == ';') {
+  if (tokens[tok] == tok_sep) {
     ++tok; // eat ;
-    parse_expr(arr_node, tokens, prec, tree, tok);
+    ret += parse_expr(arr_node, is, lx, prec, tree, tok);
   }
 
-  if (tokens[tok] != ']')
-    THROW_PARSER_ERROR("Expected ']'", tok);
+  if (tokens[tok] != tok_rbrack) {
+    ret += error(is, "Expected ']'", lx.token_pos[tok]);
+  }
  
   // eat ]
   ++tok;
 
-  return arr_node;
+  return ret;
 
 }
 
 //==============================================================================
 // reduction
 //==============================================================================
-int parse_reduce_expr(
+parse_res_t parse_reduce_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
+  auto & tokens = lx.tokens;
+  int err = 0;
+  
+  auto node = tree.addNode(tok, ast_reduce, parent);
 
   ++tok;  // eat the reduce
     
-  std::vector<int> idents; // TODO what do with idents
-
-  while (tokens[tok] != ':') {
-    if (tokens[tok] != tok_identifier)
-      THROW_PARSER_ERROR("Expected an identifier after keyword 'reduce'.", tok);
-    idents.emplace_back(tok);
+  while (tokens[tok] != tok_colon) {
+    if (tokens[tok] != tok_ident)
+      err += error(is, "Expected an identifier after keyword 'reduce'.", lx.token_pos[tok]);
+    tree.addNode(tok, ast_var, node);  
     ++tok; // eat identifier.
-    if (tokens[tok] == ',') ++tok; // eat ,
+    if (tokens[tok] == tok_comma) ++tok; // eat ,
   }
 
-  if (tokens[tok] != ':')
-    THROW_PARSER_ERROR("Expected ':'.", tok);
+  if (tokens[tok] != tok_colon)
+    err += error(is, "Expected ':'.", lx.token_pos[tok]);
   ++tok; // eat ":".
 
-  if (tok != tok_identifier)
-    THROW_PARSER_ERROR("Expected identifier or operator after ':'.", tok);
+  auto ty = tokens[tok];
+  if ( (prec.findBinary(ty) == -1) && (ty != tok_ident) )
+    err += error(is, "Expected identifier or operator after ':'.", lx.token_pos[tok]);
 
-  auto ret = tree.addNode(tok, ast_reduce, parent);
+  tree.addNode(tok, ast_reduce_op, node);
 
   ++tok; // eat identifier
 
-  return ret;
+  return {err, node};
 
 }
 
@@ -657,38 +930,39 @@ int parse_reduce_expr(
 // varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
 //==============================================================================
-int parse_part_expr(
+parse_res_t parse_part_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
+  auto & tokens = lx.tokens;
+  int err = 0;
 
-
-  ++tok;  // eat the use
+  auto node = tree.addNode(tok, ast_use, parent);
     
-  std::vector<int> idents; // TODO what to do with idents?
-
-  while (tokens[tok] != ':') {
-    if (tokens[tok] != tok_identifier)
-      THROW_PARSER_ERROR("Expected an identifier after keyword 'use'.", tok);
-    idents.emplace_back( tok );
+  ++tok;  // eat the use
+  
+  while (tokens[tok] != tok_colon) {
+    if (tokens[tok] != tok_ident)
+      err += error(is, "Expected an identifier after keyword 'use'.", lx.token_pos[tok]);
+    tree.addNode(tok, ast_var, node);  
     ++tok; // eat identifier.
-    if (tokens[tok] == ',') ++tok; // eat ,
+    if (tokens[tok] == tok_comma) ++tok; // eat ,
   }
 
-  if (tokens[tok] != ':')
-    THROW_PARSER_ERROR("Expected ':'.", tok);
+  if (tokens[tok] != tok_colon)
+    err += error(is, "Expected ':'.", lx.token_pos[tok]);
   ++tok; // eat ":".
 
-  if (tokens[tok] != tok_identifier)
-    THROW_PARSER_ERROR("Expected identifier after ':'.", tok);
+  if (tokens[tok] != tok_ident)
+    err += error(is, "Expected identifier after ':'.", lx.token_pos[tok]);
+    
+  auto [err2, child] = parse_expr(node, is, lx, prec, tree, tok);
 
-  auto node = tree.addNode(tok, ast_reduce, parent);
-  parse_expr(node, tokens, prec, tree, tok);
-
-  return node;
+  return {err+err2, node};
 }
 
 //==============================================================================
@@ -700,97 +974,521 @@ int parse_part_expr(
 //   ::= forexpr
 //   ::= varexpr
 //==============================================================================
-int parse_primary_expr(
+parse_res_t parse_primary_expr(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
   int & tok)
 {
- 
-  switch (tokens[tok]) {
-  case tok_identifier:
-    return parse_identifier_expr(parent, tokens, prec, tree, tok);
-  case tok_real_literal:
-    return parse_simple_expr<ast_value_real>(parent, tokens, tree, tok);
-  case tok_int_literal:
-    return parse_simple_expr<ast_value_int>(parent, tokens, tree, tok);
-  case '(':
-    return parse_parens_expr(parent, tokens, prec, tree, tok);
-  case '[':
-    return parse_array_expr(parent, tokens, prec, tree, tok);
+  switch (lx.tokens[tok]) {
+  case tok_ident:
+  case tok_i64:
+  case tok_f64:
+    return parse_identifier_expr(parent, is, lx, prec, tree, tok);
+  case tok_real_lit:
+    return parse_simple_expr<ast_lit_real>(parent, tree, tok);
+  case tok_int_lit:
+    return parse_simple_expr<ast_lit_int>(parent, tree, tok);
+  case tok_lparens:
+    return parse_parens_expr(parent, is, lx, prec, tree, tok);
+  case tok_lbrack:
+    return parse_array_expr(parent, is, lx, prec, tree, tok);
   case tok_if:
-    return parse_if_expr(parent, tokens, prec, tree, tok);
+    return parse_if_expr(parent, is, lx, prec, tree, tok);
   case tok_for:
   case tok_foreach:
-    return parse_for_expr(parent, tokens, prec, tree, tok);
+    return parse_for_expr(parent, is, lx, prec, tree, tok);
   case tok_use:
-    return parse_part_expr(parent, tokens, prec, tree, tok);
+    return parse_part_expr(parent, is, lx, prec, tree, tok);
   case tok_reduce:
-    return parse_reduce_expr(parent, tokens, tree, tok);
-  case tok_string_literal:
-    return parse_simple_expr<ast_value_string>(parent, tokens, tree, tok);
+    return parse_reduce_expr(parent, is, lx, prec, tree, tok);
+  case tok_string_lit:
+    return parse_simple_expr<ast_lit_string>(parent, tree, tok);
   case tok_break:
-    return parse_simple_expr<ast_break>(parent, tokens, tree, tok);
-  default:
-    THROW_PARSER_ERROR("Unknown token '" <<  Tokens::getName(tokens[tok])
-        << "' when expecting an expression", tok);
+    return parse_simple_expr<ast_break>(parent, tree, tok);
+  case tok_return:
+    return parse_return(parent, is, lx, prec, tree, tok);
   }
+      
+  // return parent and hope for recovery
+  auto old_tok = tok;
+  tok++;
+  return {
+    error(is, "Unknown token when expecting an expression", lx.token_pos[old_tok]),
+    parent
+  };
 }
 
+#if 0
 //==============================================================================
-// toplevelexpr ::= expression
+// prototype
 //==============================================================================
-void parse_top_level(
+parse_res_t parse_prototype(
   int parent,
-  const std::vector<int> & tokens,
+  stream_t & is,
+  const lexed_t & lx,
   const BinopPrecedence & prec,
   parse_tree_t & tree,
-  int tok)
+  int & tok)
 {
-  auto node = tree.addNode(tok, ast_fn_anon, -1);
-  parse_expr(node, tokens, prec, tree, tok);
-  // TODO Make an anonymous proto.
-  //auto Proto = std::make_unique<PrototypeAST>( Identifier{"__anon_expr", FnLoc} );
+
+  int err = 0;
+  auto & tokens = lx.tokens;
+  auto ntok = tokens.size();
+
+  std::vector<int> ReturnTypes;
+  int proto = -1;
+
+  // know it has specified type
+  if (isType(tokens[tok])) {
+
+    while ((tokens[tok]!=tok_ident) && (tok<ntok)) {
+      auto tok_ty = tokens[tok];
+      if (!isType(tok_ty))
+        err += error(is, "Expected type.", lx.token_pos[tok]);
+      auto ty = tree.installType(tok_ty);
+      ReturnTypes.emplace_back(ty);
+      ++tok; // eat type
+      if (tokens[tok] == tok_comma) ++tok; // eat comma
+    }
+
+    if (tokens[tok] != tok_ident)
+      err += error(is, "Expected function name specification.", lx.token_pos[tok]);
+    
+    // create the node
+    proto = tree.addNode(parent, ast_fn_def, tok);
+    
+    // add final type and set node
+    auto fun_ty = tree.installType( ReturnTypes );  
+    tree.setType(proto, fun_ty);
+
+    ++tok; // eat identifier
+  }
+  // no specified type
+  else {
+    proto = tree.addNode(parent, ast_fn_def, first_tok);
+  }
+
+  
+  if (tokens[tok] != tok_lparens)
+    err += error(is, "Expected '(' in prototype", lx.token_pos[tok]);
+
+  ++tok; // eat "("
+
+  std::vector<Identifier> Args;
+  std::vector<Identifier> ArgTypes;
+  std::vector<bool> ArgIsArray;
+
+  while ((tokens[tok]!=tok_rparens) && (tok<ntok)) {
+
+    bool IsArray = false;
+    auto type_tok = tok;
+
+    // token must be a type
+    if (!isType(tokens[tok]))
+      err += error(is, "Type expected.", lx.token_pos[tok]);
+
+    ++tok; // eat type
+  
+    if (tokens[tok] != tok_ident)
+      err += error(is, "Mising type or variable name in prototype.", lx.token_pos[tok]);
+   
+    auto arg = tree.addNode(proto, ast_var, tok);
+    auto arg_ty = tree.installType(type_tok);
+    tree.setType(arg, arg_ty, type_tok);
+    
+    ++tok; // eat identifier
+    
+    if (tokens[tok] == tok_lbrack) {
+      IsArray = true;
+      ++tok; // eat the '['.
+      if (tokens[tok] != tok_rbrack)
+        err += error(is, "Expected ']'", lx.token_pos[tok]);
+      ++tok; // eat the ']'
+    }
+    ArgIsArray.push_back( IsArray );
+   
+    if (tokens[tok] == tok_comma) ++tok; // eat ','
+  }
+
+  if (CurTok_ != tok_rparens)
+    THROW_SYNTAX_ERROR(
+        "Expected ')' in prototype",
+        getIdentifierLoc());
+
+  // success.
+  getNextToken(); // eat ')'.
+
+  // Verify right number of names for operator.
+  if (Kind && Args.size() != Kind)
+    THROW_SYNTAX_ERROR(
+        "Invalid number of operands for operator: "
+        << Kind << " expected, but got " << Args.size(),
+        getIdentifierLoc());
+
+  return std::make_unique<PrototypeAST>(
+      Identifier{FnName, FnLoc},
+      std::move(Args),
+      std::move(ArgTypes),
+      std::move(ArgIsArray),
+      std::move(ReturnTypes),
+      Kind != 0,
+      BinaryPrecedence);
 }
+#endif
 
 
+//==============================================================================
+// Toplevel function parser
+//==============================================================================
+parse_res_t parse_function(
+  int parent,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree,
+  int & tok)
+{
+  int err = 0;
+
+  const auto & tokens = lx.tokens;
+  
+  bool IsTask = (tokens[tok] == tok_task);
+  auto ast_ty = IsTask ? ast_tsk_def : ast_fn_def;
+
+  ++tok; // eat 'function' / 'task'
+
+  //---------------------------------------------------------------------------
+  // Return types
+  
+  std::vector<int> ReturnTypes;
+  int fn_node = -1;
+
+  // know it has specified type
+  if (isType(tokens[tok])) {
+
+    while (tokens[tok] != tok_ident) {
+      auto tok_ty = tokens[tok];
+      if (!isType(tok_ty))
+        err += error(is, "Expected type.", lx.token_pos[tok]);
+      auto ty = tree.installType(tok_ty);
+      ReturnTypes.emplace_back(ty);
+      ++tok; // eat type
+      if (tokens[tok] == tok_comma) ++tok; // eat comma
+    }
+
+    if (tokens[tok] != tok_ident)
+      err += error(is, "Expected function name specification.", lx.token_pos[tok]);
+    
+    // create the node
+    fn_node = tree.addNode(tok, ast_ty, parent);
+    
+    // add final type and set node
+    auto fun_ty = tree.installType( ReturnTypes );  
+    tree.setType(fn_node, fun_ty);
+
+  }
+  // no specified type
+  else {
+    fn_node = tree.addNode(tok, ast_ty, parent);
+  }
+
+  ++tok; // eat identifier
+  
+  if (tokens[tok] != tok_lparens)
+    err += error(is, "Expected '(' in prototype", lx.token_pos[tok]);
+
+  ++tok; // eat "("
+  
+  //---------------------------------------------------------------------------
+  // Arguments
+
+  std::vector<Identifier> Args;
+  std::vector<Identifier> ArgTypes;
+  std::vector<bool> ArgIsArray;
+
+  auto args_node = tree.addNode(tok, ast_fn_args, fn_node);
+
+  while (tokens[tok] != tok_rparens) {
+
+    bool IsArray = false;
+    auto type_tok = tok;
+
+    // token must be a type
+    if (!isType(tokens[tok]))
+      err += error(is, "Type expected.", lx.token_pos[tok]);
+
+    ++tok; // eat type
+  
+    if (tokens[tok] != tok_ident)
+      err += error(is, "Mising type or variable name in prototype.", lx.token_pos[tok]);
+   
+    auto arg = tree.addNode(tok, ast_var, args_node);
+    auto arg_ty = tree.installType(type_tok);
+    tree.setType(arg, arg_ty, type_tok);
+    
+    ++tok; // eat identifier
+    
+    if (tokens[tok] == tok_lbrack) {
+      IsArray = true;
+      ++tok; // eat the '['.
+      if (tokens[tok] != tok_rbrack)
+        err += error(is, "Expected ']'", lx.token_pos[tok]);
+      ++tok; // eat the ']'
+    }
+    ArgIsArray.push_back( IsArray );
+   
+    if (tokens[tok] == tok_comma) ++tok; // eat ','
+  }
+
+  if (tokens[tok] != tok_rparens)
+    err += error(is, "Expected ')' in prototype", lx.token_pos[tok]);
+
+  // success.
+  ++tok; // eat ')'.
+
+#if 0
+  // Verify right number of names for operator.
+  if (Kind && Args.size() != Kind)
+    THROW_SYNTAX_ERROR(
+        "Invalid number of operands for operator: "
+        << Kind << " expected, but got " << Args.size(),
+        getIdentifierLoc());
+
+  return std::make_unique<PrototypeAST>(
+      Identifier{FnName, FnLoc},
+      std::move(Args),
+      std::move(ArgTypes),
+      std::move(ArgIsArray),
+      std::move(ReturnTypes),
+      Kind != 0,
+      BinaryPrecedence);
+#endif
+
+  //---------------------------------------------------------------------------
+  // Function body
+
+  //------------------------------------
+  // Multi-liner
+  if (tokens[tok] == tok_lbrace) {
+    auto body_node = tree.addNode(tok, ast_fn_body, fn_node);
+    ++tok; // eat {
+    parse_until(body_node, is, lx, prec, tree, tok, tok_rbrace);
+    if (tokens[tok] != tok_rbrace)
+      err += error(is, "Expected '}'.", lx.token_pos[tok] );
+    ++tok; // eat }
+  }
+  //------------------------------------
+  // One-liner
+  else {
+    err += parse_expr(fn_node, is, lx, prec, tree, tok).err;
+  }
+
+  return {err, fn_node};
+}
 
 //==============================================================================
 // Main parse function
 //==============================================================================
-parse_tree_t parse(
-  const std::vector<int> & tokens,
-  const BinopPrecedence & prec)
+int parse(
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree)
 {
-  parse_tree_t res;
+  auto ntokens = lx.tokens.size();
+  int i=0;
+  int err = 0;
 
+  while (i < ntokens) {
+
+    auto tok = lx.tokens[i];
+
+    switch (tok) {
+    case tok_eof:
+      goto exit_loop; // don't hate
+    case tok_sep:
+      ++i;
+      break;
+    case tok_task:
+    case tok_function:
+      err += parse_function(-1, is, lx, prec, tree, i).err;
+      break;
+    default:
+      err += parse_expr(-1, is, lx, prec, tree, i).err;
+
+    }
+
+  }
+  exit_loop:;
+
+  return err;
+}
+
+
+//==============================================================================
+// Parse a node
+//==============================================================================
+parse_res_t parse_sext_node(
+  int parent,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree,
+  int & tok)
+{
+  auto & tokens = lx.tokens;
+  
+  int node = -1;
+  int err = 0;
+
+  auto ast_tok = tok;
+  auto ast_ty = tokens[tok];
+  auto ast_pos = lx.token_pos[tok];
+  ++tok;
+  auto tok_ty = tokens[tok];
+  auto tok_pos = lx.token_pos[tok];
+
+  switch (ast_ty) {
+  case (ast_unary):
+  
+    if (prec.findUnary(tok_ty) == -1)
+      err += error(is, "Expected a unary operator.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_binop):
+
+    if (prec.findBinary(tok_ty) == -1)
+      err += error(is, "Expected a binary operator.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_reduce_op):
+
+    if (prec.findBinary(tok_ty) == -1 && tok_ty != tok_ident)
+      err += error(is, "Expected an identifier or a binary operator.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_assign):
+
+    if (tok_ty != tok_asgmt)
+      err += error(is, "Expected assignment operator.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_fn_call):
+  case (ast_var):
+  case (ast_arr_index):
+
+    if (tok_ty != tok_ident)
+      err += error(is, "Expected an identifier.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_lit_int):
+    
+    if (tok_ty != tok_int_lit)
+      err += error(is, "Expected an integer literal.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_lit_real):
+    
+    if (tok_ty != tok_real_lit)
+      err += error(is, "Expected a real literal.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+
+  case (ast_lit_string):
+    
+    if (tok_ty != tok_string_lit)
+      err += error(is, "Expected a string literal.", tok_pos);
+    node = tree.addNode(tok, ast_ty, parent);
+    break;
+    
+  case (ast_if):
+  case (ast_if_cond):
+  case (ast_if_body):
+  case (ast_elif_cond):
+  case (ast_elif_body):
+  case (ast_else_body):
+  case (ast_for):
+  case (ast_foreach):
+  case (ast_for_body):
+  case (ast_range):
+  case (ast_use):
+  case (ast_reduce):
+  case (ast_arr):
+  case (ast_expr_list):
+  case (ast_fn_def):
+  case (ast_fn_args):
+  case (ast_fn_body):
+  case (ast_return):
+    node = tree.addNode(ast_tok, ast_ty, parent);
+    break;
+
+  default:
+    err += error(is, "Unknown node", ast_pos);
+  }
+
+  // scan to next )
+  while(tok<tokens.size() && tokens[tok] != tok_rparens && tokens[tok] != tok_lparens) 
+  { ++tok; }
+
+  return {err, node};
+}
+
+//==============================================================================
+// Main sext parse function
+//==============================================================================
+int parse_sext(
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & res)
+{
+  const auto & tokens = lx.tokens;
   auto ntokens = tokens.size();
-  size_t i=0;
+  int i=0;
+  auto err = 0;
+
+  std::stack<int> q;
+  int current = -1, root = -1;
 
   while (i < ntokens) {
 
     auto tok = tokens[i];
-    ++i;
 
     if (tok == tok_eof)
-      return res;
-
-    switch (tok) {
-    case tok_sep: // ignore top-level semicolons.
-      continue;
-    case tok_task:
-    case tok_function:
-      //parse_function(tokens);
-      return res;
-    default:
-      parse_top_level(i, tokens, prec, res, i-1);
-      return res;
+      break;
+    else if (tok == tok_lparens) {
+      ++i;
+      auto [e, node] = parse_sext_node(current, is, lx, prec, res, i);
+      err += e;
+      if (current == -1) root = node;
+      q.push(current);
+      current = node;
     }
-
+    else if (tok == tok_rparens) {
+      if (!q.size()) {
+        err += error(is, "Unmatched closing paren, ')'.", lx.token_pos[i]);
+      }
+      current = q.top();
+      q.pop();
+      ++i;
+    }
+    
   }
-
-  return res;
+      
+  if (q.size()) {
+    err += error(is, "Unmatched opening paren, '('.", lx.token_pos[i]);
+  }
+      
+  return err;
 }
 
 //==============================================================================
@@ -847,7 +1545,7 @@ std::unique_ptr<NodeAST> Parser::parseParenExpr() {
   getNextToken(); // eat (.
   auto V = parseExpression();
 
-  if (CurTok_ != ')') {
+  if (CurTok_ != tok_rparens) {
     THROW_SYNTAX_ERROR(
         "Expected ')' after expression", 
         getLocationRange(BeginLoc) );
@@ -870,12 +1568,12 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
   
   //----------------------------------------------------------------------------
   // Call.
-  if (CurTok_ == '(') {
+  if (CurTok_ == tok_lparens) {
     auto ArgsBeginLoc = getCurLoc();
     getNextToken(); // eat (
     std::unique_ptr<NodeAST> Args;
-    if (CurTok_ != ')') Args = parseExpression();
-    if (CurTok_ != ')')
+    if (CurTok_ != tok_rparens) Args = parseExpression();
+    if (CurTok_ != tok_rparens)
       THROW_NAME_ERROR("Expected ')'.", getLocationRange(ArgsBeginLoc));
     getNextToken(); // Eat the ')'.
     return std::make_unique<CallExprAST>(
@@ -890,7 +1588,7 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
   
     // Has a type, so we know its a decl
     std::unique_ptr<Identifier> VarTypeId;
-    if (CurTok_ == tok_identifier && isType(Id.getName())) {
+    if (CurTok_ == tok_ident && isType(Id.getName())) {
       VarTypeId = std::make_unique<Identifier>(Id);
       Id = getIdentifier();
       getNextToken();  // eat the type
@@ -903,7 +1601,7 @@ std::unique_ptr<NodeAST> Parser::parseIdentifierExpr() {
       auto ArrayLoc = getCurLoc();
       getNextToken(); // eat [
       auto IndexExpr = parseExpression();
-      if (CurTok_ != ']')
+      if (CurTok_ != tok_rbrack)
         THROW_SYNTAX_ERROR(
             "Expected ']'  in array access/declaration.",
             getLocationRange(ArrayLoc));
@@ -952,9 +1650,9 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
   
     //------------------------------------
     // Multi-liner
-    if (CurTok_ == '{') {
+    if (CurTok_ == tok_lbrace) {
       getNextToken(); // eat {
-      while (CurTok_ != '}') {
+      while (CurTok_ != tok_rbrace) {
         auto E = parseExpression();
         Then->emplace_back( std::move(E) );
         if (CurTok_ == tok_sep) getNextToken();
@@ -987,9 +1685,9 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
 
     //------------------------------------
     // Multi-liner
-    if (CurTok_ == '{') {
+    if (CurTok_ == tok_lbrace) {
       getNextToken(); // eat {
-      while (CurTok_ != '}') {
+      while (CurTok_ != tok_rbrace) {
         auto E = parseExpression();
         Then->emplace_back( std::move(E) );
         if (CurTok_ == tok_sep) getNextToken();
@@ -1018,9 +1716,9 @@ std::unique_ptr<NodeAST> Parser::parseIfExpr() {
 
     //------------------------------------
     // Multi-liner
-    if (CurTok_ == '{') {
+    if (CurTok_ == tok_lbrace) {
       getNextToken(); // eat {
-      while (CurTok_ != '}') {
+      while (CurTok_ != tok_rbrace) {
         auto E = parseExpression();
         Else->emplace_back( std::move(E) );
         if (CurTok_ == tok_sep) getNextToken();
@@ -1053,7 +1751,7 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
 
   getNextToken(); // eat the for.
 
-  if (CurTok_ != tok_identifier)
+  if (CurTok_ != tok_ident)
     THROW_SYNTAX_ERROR("Expected identifier after 'for'", getIdentifierLoc());
   std::string IdName = getIdentifierStr();
   auto IdentLoc = getIdentifierLoc();
@@ -1072,9 +1770,9 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
 
   //------------------------------------
   // Multi-liner
-  if (CurTok_ == '{') {
+  if (CurTok_ == tok_lbrace) {
     getNextToken(); // eat {
-    while (CurTok_ != '}') {
+    while (CurTok_ != tok_rbrace) {
       auto E = parseExpression();
       Body.emplace_back( std::move(E) );
       if (CurTok_ == tok_sep) getNextToken();
@@ -1120,13 +1818,13 @@ std::unique_ptr<NodeAST> Parser::parseForExpr() {
 std::unique_ptr<NodeAST> Parser::parsePrimary() {
  
   switch (CurTok_) {
-  case tok_identifier:
+  case tok_ident:
     return parseIdentifierExpr();
-  case tok_real_literal:
+  case tok_real_lit:
     return parseRealExpr();
-  case tok_int_literal:
+  case tok_int_lit:
     return parseIntegerExpr();
-  case '(':
+  case tok_lparens:
     return parseParenExpr();
   case '[':
     return parseArrayExpr();
@@ -1139,7 +1837,7 @@ std::unique_ptr<NodeAST> Parser::parsePrimary() {
     return parsePartitionExpr();
   case tok_reduce:
     return parseReductionExpr();
-  case tok_string_literal:
+  case tok_string_lit:
     return parseStringExpr();
   case tok_break:
     return parseBreakExpr();
@@ -1201,10 +1899,10 @@ std::unique_ptr<NodeAST> Parser::parseExpression() {
   std::unique_ptr<NodeAST> LHS = parseUnary();
   LHS = parseBinOpRHS(0, std::move(LHS));
 
-  if (CurTok_ == ',') {
+  if (CurTok_ == tok_comma) {
     ASTBlock Exprs;
     Exprs.emplace_back( std::move(LHS) );
-    while (CurTok_ == ',') {
+    while (CurTok_ == tok_comma) {
       getNextToken(); // eat ,
       std::unique_ptr<NodeAST> LHS = parseUnary();
       LHS = parseBinOpRHS(0, std::move(LHS));
@@ -1214,10 +1912,10 @@ std::unique_ptr<NodeAST> Parser::parseExpression() {
         getLocationRange(BeginLoc),
         std::move(Exprs));
   }
-  else if (CurTok_ == ':') {
+  else if (CurTok_ == tok_colon) {
     ASTBlock Exprs;
     Exprs.emplace_back( std::move(LHS) );
-    while (CurTok_ == ':') {
+    while (CurTok_ == tok_colon) {
       getNextToken(); // eat :
       std::unique_ptr<NodeAST> LHS = parseUnary();
       LHS = parseBinOpRHS(0, std::move(LHS));
@@ -1264,7 +1962,7 @@ std::unique_ptr<FunctionAST> Parser::parseTopLevelExpr() {
 std::unique_ptr<NodeAST> Parser::parseUnary() {
 
   // If the current token is not an operator, it must be a primary expr.
-  if (!isTokOperator() || CurTok_ == '(' || CurTok_ == ',') {
+  if (!isTokOperator() || CurTok_ == tok_lparens || CurTok_ == tok_comma) {
     auto P = parsePrimary();
     return P;
   }
@@ -1290,23 +1988,23 @@ std::unique_ptr<NodeAST> Parser::parsePartitionExpr() {
     
   std::vector<Identifier> RangeIds;
 
-  while (CurTok_ != ':') {
+  while (CurTok_ != tok_colon) {
     auto RangeLoc = getIdentifierLoc();
-    if (CurTok_ != tok_identifier)
+    if (CurTok_ != tok_ident)
       THROW_SYNTAX_ERROR("Expected an identifier after keyword 'use'.", RangeLoc);
     RangeIds.emplace_back( getIdentifierStr(), RangeLoc );
     getNextToken(); // eat identifier.
-    if (CurTok_ == ',') getNextToken(); // eat ,
+    if (CurTok_ == tok_comma) getNextToken(); // eat ,
   }
 
   auto ColonLoc = getCurLoc();
-  if (CurTok_ != ':')
+  if (CurTok_ != tok_colon)
     THROW_SYNTAX_ERROR(
         "Expected ':'.",
         getIdentifierLoc());
   getNextToken(); // eat ":".
 
-  if (CurTok_ != tok_identifier)
+  if (CurTok_ != tok_ident)
     THROW_SYNTAX_ERROR(
         "Expected identifier after ':'.",
         getLocationRange(ColonLoc));
@@ -1328,22 +2026,22 @@ std::unique_ptr<NodeAST> Parser::parseReductionExpr() {
     
   std::vector<Identifier> VarIds;
 
-  while (CurTok_ != ':') {
+  while (CurTok_ != tok_colon) {
     auto VarLoc = getIdentifierLoc();
-    if (CurTok_ != tok_identifier)
+    if (CurTok_ != tok_ident)
       THROW_SYNTAX_ERROR("Expected an identifier after keyword 'reduce'.", VarLoc);
     VarIds.emplace_back( getIdentifierStr(), VarLoc );
     getNextToken(); // eat identifier.
-    if (CurTok_ == ',') getNextToken(); // eat ,
+    if (CurTok_ == tok_comma) getNextToken(); // eat ,
   }
 
-  if (CurTok_ != ':')
+  if (CurTok_ != tok_colon)
     THROW_SYNTAX_ERROR(
         "Expected ':'.",
         getIdentifierLoc());
   getNextToken(); // eat ":".
 
-  if (!isTokOperator() && (CurTok_ != tok_identifier))
+  if (!isTokOperator() && (CurTok_ != tok_ident))
     THROW_SYNTAX_ERROR(
         "Expected identifier or operator after ':'.",
         getIdentifierLoc());
@@ -1385,12 +2083,12 @@ std::unique_ptr<NodeAST> Parser::parseArrayExpr()
   std::unique_ptr<NodeAST> SizeExpr;
   auto ValExprs = parseExpression();
     
-  if (CurTok_ == ';') {
+  if (CurTok_ == tok_sep) {
     getNextToken(); // eat ;
     SizeExpr = parseExpression();
   }
 
-  if (CurTok_ != ']')
+  if (CurTok_ != tok_rbrack)
     THROW_SYNTAX_ERROR(
         "Expected ']'",
         LocationRange(BeginLoc, getCurLoc()) );
@@ -1420,9 +2118,9 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
 
   //------------------------------------
   // Multi-liner
-  if (CurTok_ == '{') {
+  if (CurTok_ == tok_lbrace) {
     getNextToken(); // eat {
-    while (CurTok_ != '}') {
+    while (CurTok_ != tok_rbrace) {
       if (CurTok_ == tok_return) {
         getNextToken(); // eat return
         Return = parseExpression();
@@ -1432,7 +2130,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
       Body.emplace_back( std::move(E) );
       if (CurTok_ == tok_sep) getNextToken();
     }
-    if (CurTok_ != '}')
+    if (CurTok_ != tok_rbrace)
       THROW_SYNTAX_ERROR(
           "Only one return statement allowed for a function.",
           getIdentifierLoc() );
@@ -1483,7 +2181,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     THROW_SYNTAX_ERROR(
         "Expected function name in prototype", 
         FnLoc);
-  case tok_identifier:
+  case tok_ident:
     FnName = getIdentifierStr();
     Kind = 0;
     getNextToken();
@@ -1511,7 +2209,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     getNextToken();
 
     // Read the precedence if present.
-    if (CurTok_ == tok_int_literal) {
+    if (CurTok_ == tok_int_lit) {
       auto NumVal = std::stoi(getIdentifierStr());
       if (NumVal < 1 || NumVal > 100)
         THROW_SYNTAX_ERROR(
@@ -1532,11 +2230,11 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   std::vector<Identifier> ReturnTypes;
 
   // know it has specified arguments
-  if (CurTok_ == ',' || CurTok_ == tok_identifier) {
+  if (CurTok_ == tok_comma || CurTok_ == tok_ident) {
     ReturnTypes.emplace_back(FnName, FnLoc);
-    while (CurTok_ == ',') {
+    while (CurTok_ == tok_comma) {
       getNextToken(); // eat ,
-      if (CurTok_ != tok_identifier)
+      if (CurTok_ != tok_ident)
         THROW_SYNTAX_ERROR(
             "Expected identifier in return type specification.",
             getLocationRange(BeginLoc));
@@ -1544,7 +2242,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
       getNextToken(); // eat identifier
     }
       
-    if (CurTok_ != tok_identifier) {
+    if (CurTok_ != tok_ident) {
         THROW_SYNTAX_ERROR(
             "Expected function name specification.",
             getLocationRange(BeginLoc));
@@ -1555,7 +2253,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   }
 
   
-  if (CurTok_ != '(')
+  if (CurTok_ != tok_lparens)
     THROW_SYNTAX_ERROR(
         "Expected '(' in prototype",
         getIdentifierLoc());
@@ -1566,13 +2264,13 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   std::vector<Identifier> ArgTypes;
   std::vector<bool> ArgIsArray;
 
-  while (CurTok_ == tok_identifier) {
+  while (CurTok_ == tok_ident) {
 
     bool IsArray = false;
 
     auto BeginLoc = getCurLoc();
 
-    if (CurTok_ != tok_identifier)
+    if (CurTok_ != tok_ident)
       THROW_SYNTAX_ERROR(
           "Identifier expected n prototype for function '" << FnName << "'",
           getLocationRange(BeginLoc));
@@ -1583,7 +2281,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
     getNextToken(); // eat identifier
     
-    if (CurTok_ != tok_identifier)
+    if (CurTok_ != tok_ident)
       THROW_SYNTAX_ERROR(
           "Mising type or variable name in prototype for function '" 
           << FnName << "'",
@@ -1595,11 +2293,11 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     
     getNextToken(); // eat identifier
     
-    if (CurTok_ == '[') {
+    if (CurTok_ == tok_lbrack) {
       IsArray = true;
       auto BeginLoc = getCurLoc();
       getNextToken(); // eat the '['.
-      if (CurTok_ != ']')
+      if (CurTok_ != tok_rbrack)
         THROW_SYNTAX_ERROR(
             "Expected ']'",
             getLocationRange(BeginLoc));
@@ -1607,10 +2305,10 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     }
     ArgIsArray.push_back( IsArray );
    
-    if (CurTok_ == ',') getNextToken(); // eat ','
+    if (CurTok_ == tok_comma) getNextToken(); // eat ','
   }
 
-  if (CurTok_ != ')')
+  if (CurTok_ != tok_rparens)
     THROW_SYNTAX_ERROR(
         "Expected ')' in prototype",
         getIdentifierLoc());

@@ -1,4 +1,5 @@
 #include <contra/token.hpp>
+#include <contra/toks.hpp>
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -21,6 +22,17 @@ public:
 
 Tokens TokenTestF::toks_;
 
+void test_set(const Tokens& toks, const token_set_t & tset) {
+  for (auto tok : tset.tokens) {
+    auto as_str = std::string(1, tok);
+    std::cout << "Processing " << tok << std::endl;
+    EXPECT_EQ( tset.find(tok), tok );
+    EXPECT_EQ( toks.findInAll(tok), as_str );
+    EXPECT_EQ( toks.findInAll(as_str), tok );
+  }
+}
+
+
 void test_map(const Tokens& toks, const token_map_t & tmap) {
   for (auto t : tmap.enum_to_str) {
     auto tok = t.first;
@@ -42,7 +54,7 @@ void test_map(const Tokens& toks, const token_map_t & tmap) {
   }
 }
 
-void test_one_char(char c) {
+void test_exact_symbols(char c) {
   token_map_t test;
   test.add(c);
   auto str = std::string(1,c);
@@ -59,14 +71,14 @@ void test_str(int tok, const std::string & str) {
 
 TEST(tokens, map)
 {
-  test_one_char('a');
+  test_exact_symbols('a');
   test_str(1, "a");
 }
 
 TEST_F(TokenTestF, contra)
 {
-  test_map(toks_, toks_.one_char);
-  test_map(toks_, toks_.multi_char);
+  test_set(toks_, toks_.exact_symbols);
+  test_map(toks_, toks_.inexact_symbols);
   test_map(toks_, toks_.keywords);
   test_map(toks_, toks_.types);
   test_map(toks_, toks_.tags);

@@ -14,17 +14,23 @@
 
 namespace contra {
 
+struct stream_t;
+struct graph_t;
+struct lexed_t;
+
 struct parse_tree_t {
   std::vector<int> node_to_token;
   std::vector<int> node_ast_type;
   
   std::vector<int> node_parent;
  
+  std::map<std::vector<int>, int> types;
+  std::unordered_map<int,int> node_to_type;
   std::unordered_map<int,int> node_to_type_token;
 
   size_t size() const { return node_ast_type.size(); }
 
-  int addNode(int tok, int ty, int parent)
+  int addNode(int tok, int ty, int parent = -1)
   {
     auto id = node_ast_type.size();
     node_to_token.emplace_back(tok);
@@ -33,28 +39,68 @@ struct parse_tree_t {
     return id;
   }
 
-  void setType(int node, int tok)
-  { node_to_type_token[node] = tok; }
+  int installType(int ty)
+  {
+    auto n = types.size();
+    auto it = types.emplace(std::vector<int>{ty}, n);
+    return it.first->second;
+  }
+  int installType(const std::vector<int> & tys)
+  {
+    auto n = types.size();
+    auto it = types.emplace(tys, n);
+    return it.first->second;
+  }
+
+  void setType(int node, int ty)
+  { node_to_type[node] = ty; }
+  
+  void setType(int node, int ty, int tok)
+  {
+    node_to_type[node] = ty;
+    node_to_type_token[node] = tok;
+  }
+
   void setParent(int node, int parent)
   { node_parent[node] = parent; }
 
 };
 
 /// Parse tokens
-parse_tree_t parse(const std::vector<int> & tokens, const BinopPrecedence & prec);
+int parse(
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & res);
+int parse_sext(
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & res);
 
-/// Dump lexer results
-struct graph_t;
-struct lexer_results_t;
-
+/// Dump results in tabular form
 void print(std::ostream& os, const parse_tree_t & tree, const graph_t & graph);
 
+/// Dump results in sext form
 void print(
   std::ostream& os,
   const Tokens & toks,
-  const lexer_results_t & lex,
+  const lexed_t & lex,
   const parse_tree_t & tree,
   const graph_t & graph);
+
+/// Compare two trees
+bool compare(
+  stream_t & isa,
+  const Tokens & toka,
+  const lexed_t & lxa,
+  const parse_tree_t &tra,
+  const graph_t & gra,
+  stream_t & isb,
+  const Tokens & tokb,
+  const lexed_t & lxb,
+  const parse_tree_t &trb,
+  const graph_t & grb);
 
 class Parser {
 
@@ -88,7 +134,7 @@ public:
   /// token the parser is looking at.  getNextToken reads another token from the
   /// lexer and updates CurTok with its results.
   int getNextToken() {
-    CurTok_ = TheLex_.gettok().token;
+    //CurTok_ = TheLex_.gettok().token;
     return CurTok_;
   }
 

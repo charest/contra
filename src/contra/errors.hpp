@@ -12,6 +12,15 @@ namespace contra {
 
 class ContraError;
 class CodeError;
+struct stream_t;
+struct stream_pos_t;
+
+/// dump out the current line
+int error(stream_t & is, const std::string & msg);
+int error(
+  stream_t & is,
+  const std::string & msg,
+  stream_pos_t pos);
 
 //==============================================================================
 // Abstrct visitor for errors
@@ -121,7 +130,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 #define THROW_LEXER_ERROR(msg,loc)                                             \
   do {                                                                         \
-    throw ::contra::SyntaxError(::contra::Formatter() << msg, loc );           \
+    throw ::contra::SyntaxError(::contra::Formatter() << msg, SourceLocation{} ); \
   } while(0)
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -12,12 +12,16 @@ struct BinopPrecedenceResult {
   int precedence = -1;
 };
 
-
 class BinopPrecedence {
 
   std::map<int, int> Precedence_;
 
 public:
+  
+  std::map<int, int> binary_left;
+  std::map<int, int> binary_right;
+  std::map<int, int> unary;
+
 
   void add(int key, int val)
   { Precedence_[key] = val; }
@@ -31,15 +35,6 @@ public:
       return {false, -1};
   }
   
-  int find_v2( int key ) const
-  {
-    auto it = Precedence_.find(key);
-    if ( it != Precedence_.end() )
-      return it->second;
-    return -1;
-  }
-
-
   auto count(int key) const
   { return Precedence_.count(key); }
 
@@ -48,12 +43,36 @@ public:
   int at( int key ) const { return Precedence_.at(key); }
   int& at( int key ) { return Precedence_.at(key); }
 
+  int findLeft(int tok) const
+  {
+    auto it = binary_left.find(tok);
+    if (it != binary_left.end()) return it->second;
+    else return -1;
+  }
+  int findRight(int tok) const
+  {
+    auto it = binary_right.find(tok);
+    if (it != binary_right.end()) return it->second;
+    else return -1;
+  }
+  
+  int findBinary(int tok) const
+  {
+    auto res = findLeft(tok);
+    if (res!=-1) return res;
+    res = findRight(tok);
+    if (res!=-1) return res;
+    return -1;
+  }
+
+  int findUnary(int tok) const
+  {
+    auto it = unary.find(tok);
+    if (it != unary.end()) return it->second;
+    else return -1;
+  }
   
 };
-
-/// Main precedence builder
-BinopPrecedence make_contra_precedence();
-
 
 } // namespace
 

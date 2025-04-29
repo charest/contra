@@ -4,6 +4,7 @@
 #include "leafs.hpp"
 #include "lexer.hpp"
 #include "loops.hpp"
+#include "stream.hpp"
 
 #include "utils/file_utils.hpp"
 
@@ -71,7 +72,9 @@ Contra::Contra(ContraBuilder builder) : Builder_(builder)
 //==============================================================================
 void Contra::getNextToken()
 {
-  auto res = lex(Tokens_, *In_);
+  lexed_t lx;
+  stream_t is(*In_);
+  lex(Tokens_, is, lx);
 }
 
 //==============================================================================

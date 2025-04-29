@@ -1,5 +1,7 @@
 #include <contra/lexer.hpp>
 #include <contra/token.hpp>
+#include <contra/toks.hpp>
+#include <contra/stream.hpp>
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -7,7 +9,10 @@
 using namespace contra;
 using testing::ElementsAre;
 
-// Parameterized test case
+
+//=============================================================================
+/// Parameterized test case
+//=============================================================================
 class LexerTestF : public ::testing::TestWithParam<std::tuple<std::string, int>>
 {
 public:
@@ -22,6 +27,9 @@ public:
 
 Tokens LexerTestF::toks_;
 
+//=============================================================================
+// Parameterized Tests
+//=============================================================================
 TEST_P(LexerTestF, OneTok) {
   auto tok = std::get<1>(GetParam());
   std::cout << "testing tok="<< tok << std::flush;
@@ -29,9 +37,12 @@ TEST_P(LexerTestF, OneTok) {
   std::cout << ", str='" << str << "'" << std::endl;
   ASSERT_GT(str.size(), 0);
   std::istringstream in(str);
-  auto res = lex(toks_, in);
+  stream_t is(in);
+  lexed_t res;
+  auto err = lex(toks_, is, res);
   std::cout << "... got " << toks_.findInAll(res.tokens[0]) << std::endl;
   ASSERT_EQ(res.tokens[0], tok);
+  ASSERT_FALSE(err);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -54,6 +65,8 @@ INSTANTIATE_TEST_SUITE_P(
       std::make_tuple( "rparens",  tok_rparens ),
       std::make_tuple( "lbrack",   tok_lbrack ),
       std::make_tuple( "rbrack",   tok_rbrack ),
+      std::make_tuple( "lbrace",   tok_lbrace ),
+      std::make_tuple( "rbrace",   tok_rbrace ),
       std::make_tuple( "eq",       tok_eq ),
       std::make_tuple( "ne",       tok_ne ),
       std::make_tuple( "le",       tok_le ),
@@ -82,37 +95,50 @@ INSTANTIATE_TEST_SUITE_P(
 
 
 
-TEST(lexer, function_add)
+//=============================================================================
+// Individual tests
+//=============================================================================
+
+TEST_F(LexerTestF, function_add)
 {
-  auto toks = make_contra_tokens();
   std::stringstream ss;
   ss << "fn sum(i64 a, i64 b) return a+b";
- 
-  auto res = lex(toks, ss);
-  print(std::cout, toks, res);
+
+  stream_t is(ss);
+  lexed_t res;
+  auto err = lex(toks_, is, res);
+  print(std::cout, toks_, res);
   EXPECT_THAT( res.tokens, ElementsAre(
     tok_function,
-    tok_identifier,
+    tok_ident,
     tok_lparens,
-    tok_identifier,
-    tok_identifier,
+    tok_i64,
+    tok_ident,
     tok_comma,
-    tok_identifier,
-    tok_identifier,
+    tok_i64,
+    tok_ident,
     tok_rparens,
     tok_return,
-    tok_identifier,
+    tok_ident,
     tok_add,
-    tok_identifier,
+    tok_ident,
     tok_eof));
+  ASSERT_FALSE(err);
   
 
-  EXPECT_EQ(res.numIdentifiers(), 7);
+  EXPECT_EQ(res.numIdentifiers(), 3);
   EXPECT_EQ(res.getIdentifierString(0), "sum");
-  EXPECT_EQ(res.getIdentifierString(1), "i64");
-  EXPECT_EQ(res.getIdentifierString(2), "a");
-  EXPECT_EQ(res.getIdentifierString(3), "i64");
-  EXPECT_EQ(res.getIdentifierString(4), "b");
-  EXPECT_EQ(res.getIdentifierString(5), "a");
-  EXPECT_EQ(res.getIdentifierString(6), "b");
+  EXPECT_EQ(res.getIdentifierString(1), "a");
+  EXPECT_EQ(res.getIdentifierString(2), "b");
+}
+
+TEST_F(LexerTestF, error)
+{
+  std::stringstream ss;
+  ss << "0..1";
+ 
+  stream_t is(ss);
+  lexed_t res;
+  auto err = lex(toks_, is, res);
+  ASSERT_TRUE(err);
 }
