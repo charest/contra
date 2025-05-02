@@ -2,9 +2,9 @@
 #include <contra/lexer.hpp>
 #include <contra/parser.hpp>
 #include <contra/precedence.hpp>
-#include <contra/sext.hpp>
 #include <contra/stream.hpp>
 #include <contra/token.hpp>
+#include <contra/toks.hpp>
 
 #include <gtest/gtest.h>
 
@@ -18,7 +18,7 @@ using namespace contra;
 class ParseTestF : public ::testing::Test
 {
 public:
-  static Tokens toks_, sext_toks_;
+  static token_map_t toks_, sext_toks_;
   static BinopPrecedence prec_;
 
   static void SetUpTestSuite()
@@ -41,14 +41,14 @@ public:
     stream_t is(ss);
     lexed_t lx;
     parse_tree_t tree;
-    ASSERT_FALSE( lex(toks_, is, lx) );
+    ASSERT_FALSE( lex(is, toks_, lx) );
     ASSERT_FALSE( parse(is, lx, prec_, tree) );
     auto gr = graph(tree.node_parent);
 
     std::cout << "| AST" << std::endl;
     std::cout << std::string(80, '-') << std::endl;
     
-    print(std::cout, toks_, lx);
+    print(std::cout, lx);
     print(std::cout, tree, gr);
     print(std::cout, toks_, lx, tree, gr);
     
@@ -62,7 +62,7 @@ public:
     stream_t sext_is(in);
     lexed_t sext_lx;
     parse_tree_t sext_tree;
-    ASSERT_FALSE( lex(sext_toks_, sext_is, sext_lx) );
+    ASSERT_FALSE( lex(sext_is, sext_toks_, sext_lx) );
     ASSERT_FALSE( parse_sext(sext_is, sext_lx, prec_, sext_tree) );
     auto sext_gr = graph(sext_tree.node_parent);
     
@@ -70,7 +70,7 @@ public:
     std::cout << "| SEXT" << std::endl;
     std::cout << std::string(80, '-') << std::endl;
     
-    print(std::cout, sext_toks_, sext_lx);
+    print(std::cout, sext_lx);
     print(std::cout, sext_tree, sext_gr);
     print(std::cout, sext_toks_, sext_lx, sext_tree, sext_gr);
 
@@ -82,8 +82,8 @@ public:
  
 };
 
-Tokens ParseTestF::toks_;
-Tokens ParseTestF::sext_toks_;
+token_map_t ParseTestF::toks_;
+token_map_t ParseTestF::sext_toks_;
 BinopPrecedence ParseTestF::prec_;
 
 //=============================================================================
@@ -189,9 +189,8 @@ TEST_F(ParseTestF, call)
   "   (Var a)) ");
   test("test(a, b)",
   " (FunCall test "
-  "   (ExprList "
-  "     (Var a) "
-  "     (Var b)))");
+  "   (Var a) "
+  "   (Var b))");
 }
 
 TEST_F(ParseTestF, var)
@@ -210,13 +209,13 @@ TEST_F(ParseTestF, array)
   test("a = [1; 2]",
   " (Assign = "
   "   (Var a) "
-  "   (ArrDef "
+  "   (ArrInit "
   "     (IntLit 1) "
   "     (IntLit 2))) ");
   test("a = [1, 2, 3]",
   " (Assign = "
   "   (Var a) "
-  "   (ArrDef "
+  "   (ArrInit "
   "     (ExprList "
   "       (IntLit 1) "
   "       (IntLit 2) "
@@ -226,7 +225,7 @@ TEST_F(ParseTestF, array)
   "   (ExprList "
   "     (Var a) "
   "     (Var b)) "
-  "   (ArrDef "
+  "   (ArrInit "
   "     (ExprList "
   "       (IntLit 1) "
   "       (IntLit 2) "
@@ -236,7 +235,7 @@ TEST_F(ParseTestF, array)
 TEST_F(ParseTestF, ifstmt)
 {
   test("if (a==b) x=2", 
-  "  (IfStmt \n"
+  "  (If \n"
   "    (IfCond \n"
   "      (Binary == \n"
   "        (Var a) \n"
@@ -246,7 +245,7 @@ TEST_F(ParseTestF, ifstmt)
   "        (Var x) \n"
   "        (IntLit 2))))");
   test("if (a==b) x=2 elif (a==c) x=1", 
-  " (IfStmt \n"
+  " (If \n"
   "   (IfCond \n"
   "     (Binary == \n"
   "       (Var a) \n"
@@ -264,7 +263,7 @@ TEST_F(ParseTestF, ifstmt)
   "       (Var x) \n"
   "       (IntLit 1))))");
   test("if (a==b) x=2 else x=1", 
-  " (IfStmt \n"
+  " (If \n"
   "   (IfCond \n"
   "     (Binary == \n"
   "       (Var a) \n"
@@ -278,7 +277,7 @@ TEST_F(ParseTestF, ifstmt)
   "       (Var x) \n"
   "       (IntLit 1))))");
   test("if (a==b) x=1 elif (a==c) x=2 elif (a==d) x=3 else x=4", 
-  " (IfStmt \n"
+  " (If \n"
   "   (IfCond \n"
   "     (Binary == \n"
   "       (Var a) \n"
@@ -317,7 +316,7 @@ TEST_F(ParseTestF, forstmt)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Assign = \n"
   "       (Var x) \n"
   "       (Var i))))");
@@ -327,7 +326,7 @@ TEST_F(ParseTestF, forstmt)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Assign = \n"
   "       (Var x) \n"
   "       (Var a)) \n"
@@ -344,7 +343,7 @@ TEST_F(ParseTestF, foreach)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Assign = \n"
   "       (Var x) \n"
   "       (Var i))))");
@@ -358,7 +357,7 @@ TEST_F(ParseTestF, use)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Use \n"
   "       (Var part) \n"
   "       (Var b)) \n"
@@ -371,7 +370,7 @@ TEST_F(ParseTestF, use)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Use \n"
   "       (Var p1) \n"
   "       (Var p2) \n"
@@ -389,7 +388,7 @@ TEST_F(ParseTestF, reduce)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Reduce \n"
   "       (Var x) \n"
   "       (ReduceOp +)) \n"
@@ -402,7 +401,7 @@ TEST_F(ParseTestF, reduce)
   "   (Range \n"
   "     (IntLit 1) \n"
   "     (IntLit 2)) \n"
-  "   (ForBody \n"
+  "   (Block \n"
   "     (Reduce \n"
   "       (Var x) \n"
   "       (Var y) \n"
@@ -435,8 +434,8 @@ TEST_F(ParseTestF, func)
   "  (FunDef sum \n"
   "    (FunArgs \n"
   "      (Var a) \n"
-  "      (Arr b)) \n"
-  "    (FunBody \n"
+  "      (Var b)) \n"
+  "    (Block \n"
   "      (Assign = \n"
   "        (Var a) \n"
   "        (Binary + \n"

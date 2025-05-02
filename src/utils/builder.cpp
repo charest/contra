@@ -3,6 +3,8 @@
 #include "llvm_utils.hpp"
 #include "contra/errors.hpp"
 
+#include "llvm/IR/Module.h"
+
 namespace utils {
 
 using namespace llvm;

@@ -1,8 +1,6 @@
 #ifndef CONTRA_LEXER_HPP
 #define CONTRA_LEXER_HPP
 
-#include "sourceloc.hpp"
-
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -13,9 +11,9 @@
 
 namespace contra {
 
-struct Tokens;
 struct stream_t;
 struct stream_pos_t;
+struct token_map_t;
 
 //==============================================================================
 /// The lexer return datatype
@@ -38,60 +36,10 @@ struct lexed_t {
 };
 
 /// Main lexer function
-int lex(const Tokens & toks, stream_t & stream, lexed_t & lx);
+int lex(stream_t & stream, const token_map_t & toks, lexed_t & lx);
   
 /// Dump lexer results
-void print(std::ostream& os, const Tokens & toks, const lexed_t & res);
-
-
-//==============================================================================
-/// The lexer turns the text into tokens
-//==============================================================================
-class Lexer {
-
-  /// The last character read
-  int LastChar_ = ' ';
-
-  std::istream *In_ = &std::cin;
-
-  /// private helper function to get token and identifier
-  int gettok(int & LastChar, std::string & IdentifierStr) { return 0; }
-
-public:
-  
-  // constructor for reading from stdin
-  Lexer() = default;
-
-  // constructor from a stream
-  Lexer( const Tokens & toks, std::istream & s ) : In_(&s)
-  {}
-
-  /// read the next character
-  char advance() { return In_->get(); };
-  std::string readline() { return ""; }
-  char peek() { return In_->peek(); };
-  bool eof() { return In_->eof(); }
-
-  // TODO DELETE ALL THIS
-  /// TODO Keep track of the location in the file
-  SourceLocation LexLoc_;
-  // TODO Where the identifier started (lags LexLoc)
-  SourceLocation CurLoc_;
-
-  std::stringstream Tee_;
-  
-  // get the source location
-  const SourceLocation & getLexLoc() const { return LexLoc_; }
-  // get the current location
-  const SourceLocation & getCurLoc() const { return CurLoc_; }
-  // get both locations as a range
-  LocationRange getIdentifierLoc() const
-  { return LocationRange(CurLoc_, LexLoc_); }
-
-
-  // print out current line
-  std::ostream & barf(std::ostream& out, const LocationRange & Loc);
-};
+void print(std::ostream& os, const lexed_t & res);
 
 } // namespace
 

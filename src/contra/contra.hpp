@@ -89,10 +89,9 @@ class Contra : public ErrorVisiter {
   std::ifstream InputStream_;
   std::istream *In_ = &std::cin;
 
-  Tokens Tokens_;
+  token_map_t Tokens_;
 
   std::shared_ptr<BinopPrecedence> ThePrecedence_;
-  std::unique_ptr<Parser> TheParser_;
   std::unique_ptr<CodeGen> TheCG_;
   
   std::unique_ptr<Vizualizer> TheViz_;
@@ -143,7 +142,7 @@ private:
   void visit(const CodeError & e) const {
     std::cerr << e.what() << std::endl;
     std::cerr << std::endl;
-    TheParser_->barf(std::cerr, e.getLoc());
+    //TheParser_->barf(std::cerr, e.getLoc());
     std::cerr << std::endl;
   }
   

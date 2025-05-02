@@ -2,6 +2,7 @@
 #include "lexer.hpp"
 #include "stream.hpp"
 #include "token.hpp"
+#include "toks.hpp"
 
 #include "utils/string_utils.hpp"
 
@@ -47,7 +48,7 @@ void lexed_t::add(int token, stream_pos_t pos, const std::string & identifier)
 //==============================================================================
 // Lexer output operator
 //==============================================================================
-void print(std::ostream& os, const Tokens & toks, const lexed_t & res)
+void print(std::ostream& os, const lexed_t & res)
 {
   using utils::printRight, utils::printLeft;
   auto n = res.tokens.size();
@@ -83,8 +84,8 @@ void print(std::ostream& os, const Tokens & toks, const lexed_t & res)
   for (size_t i=0; i<n; ++i) {
     auto id = res.findIdentifier(i);
     auto tyid = res.tokens[i];
-    auto tystr = toks.findInAll(tyid);
-    
+    auto tystr = tok_to_string(tyid);
+
     std::stringstream ss;
     if (id>=0)
       ss << "\"" << res.getIdentifierString(id) << "\"";
@@ -111,13 +112,42 @@ void print(std::ostream& os, const Tokens & toks, const lexed_t & res)
 //==============================================================================
 int advance(std::istream & in)
 { return in.get(); }
+    
+
+//==============================================================================
+/// Read until a specified position
+//==============================================================================
+int get_until(std::istream & in, int c, std::string & str)
+{
+  int LastChar;
+  while ((LastChar = advance(in)) != c)
+    str += LastChar;
+  return LastChar;
+}
+    
+int a_or_ab(
+  std::istream & in,
+  int LastChar,
+  int NextChar,
+  int NextSym,
+  int NextLabel,
+  int & tok)
+{
+  if (NextChar == NextSym) {
+    tok = NextLabel;
+    advance(in);
+  }
+  else
+    tok = LastChar;
+  return advance(in);
+}
   
 //==============================================================================
 /// gettok - Return the next token from standard input.
 //==============================================================================
 int gettok(
-  const Tokens & toks,
   stream_t & is,
+  const token_map_t & toks,
   int & LastChar,
   int & tok,
   std::string & IdentifierStr)
@@ -125,43 +155,32 @@ int gettok(
 
   auto & in = is.in;
   auto NextChar = in.peek();
-  IdentifierStr.clear();
   int err = 0;
-
+  IdentifierStr.clear();
+  tok = TOK_UNK;
+  
   //----------------------------------------------------------------------------
   // identifier: [a-zA-Z][a-zA-Z0-9]*
-  if (isalpha(LastChar)) {
+  if (std::isalpha(LastChar)) {
 
-    std::string str(1, LastChar);
-    while (isalnum((LastChar = advance(in))) || LastChar=='_')
-      str += LastChar;
+    IdentifierStr += LastChar;
+    while (std::isalnum((LastChar = advance(in))) || LastChar=='_')
+      IdentifierStr += LastChar;
 
-    tok = toks.keywords.find(str);
-    if (tok!=TOKEN_NOT_FOUND) return err;
-    
-    tok = toks.types.find(str);
-    if (tok!=TOKEN_NOT_FOUND) return err;
-    
-    IdentifierStr = str;
-    tok = toks.identifier;
+    tok = toks.find(IdentifierStr);
+    if (tok!=TOKEN_NOT_FOUND) {
+      IdentifierStr.clear();
+      return err;
+    }
+
+    tok = TOK_IDENT;
     return err;
   }
   
   //----------------------------------------------------------------------------
   // Number: [0-9.]+
 
-  // check if there is a sign in from of a number
-  //bool is_signed_number = false;
-  //if (LastChar == '+' || LastChar == '-')
-  //  is_signed_number = isdigit(NextChar) || NextChar == '.';
-    
-  if (isdigit(LastChar) || LastChar == '.' /*|| is_signed_number*/) {
-
-    // eat the sign if it has one
-    //if (is_signed_number) {
-    //  IdentifierStr += LastChar;    
-    //  LastChar = advance(in);
-    //}
+  if (std::isdigit(LastChar) || (LastChar == '.' && std::isdigit(NextChar))) {
 
     // read first part of number
     int numDec = (LastChar == '.');
@@ -182,78 +201,90 @@ int gettok(
       IdentifierStr += LastChar;
       LastChar = advance(in);
       // make sure next character is sign or number
-      if (LastChar != '+' && LastChar != '-' && !isdigit(LastChar)) {
+      auto isSign = (LastChar == '+') || (LastChar == '-');
+      if (!isSign && !std::isdigit(LastChar))
         err += error( is, "Digit or +/- must follow exponent" );
-      }
-      else {
-        // eat sign or number
+      // eat sign or number
+      IdentifierStr += LastChar;
+      LastChar = advance(in);
+      // if it was a sign, there has to be a number
+      if (isSign && !std::isdigit(LastChar))
+        err += error( is, "Digit must follow exponent sign" );
+      // only numbers should follow
+      while (std::isdigit(LastChar)) {
         IdentifierStr += LastChar;
         LastChar = advance(in);
-        // only numbers should follow
-        do {
-          IdentifierStr += LastChar;
-          LastChar = advance(in);
-        } while (isdigit(LastChar) );
       }
     }
-    tok = is_float ? toks.real_literal : toks.int_literal;
+    tok = is_float ? TOK_REAL_LIT : TOK_INT_LIT;
     return err;
   }
 
+  switch (LastChar) {
+
   //----------------------------------------------------------------------------
   // Comment until end of line.
-  if (LastChar == toks.comment) {
+  case '#':
+  
     do
       LastChar = advance(in);
     while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
 
-    tok = toks.comment;
+    tok = TOK_COMMENT;
     return err;
-  }
-
+  
+  
   //----------------------------------------------------------------------------
   // string literal
-  if (LastChar == toks.quote) {
-    std::string quoted;
-    while ((LastChar = advance(in)) != toks.quote)
-      quoted += LastChar;
-    IdentifierStr = utils::unescape(quoted);
+  case '\"':
+
+    LastChar = get_until(in, '\"', IdentifierStr);
     LastChar = advance(in);
-    tok = toks.string_literal;
+    tok = TOK_STRING_LIT;
     return err;
-  }
   
   //----------------------------------------------------------------------------
   // Operators
 
-  // two character operators
-  auto char_as_str = std::string(1,LastChar);
-  {
-    auto str = char_as_str + static_cast<char>(NextChar);
-    tok = toks.inexact_symbols.find(str);
-
-    if (tok != TOKEN_NOT_FOUND) {
-      advance(in); // eat next =
-      LastChar = advance(in);
-      return err;
-    }
-  } 
+  case '+':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_ADD_EQ, tok);
+    return err;
   
-  // single character operators
-  {
-    tok = toks.inexact_symbols.find(char_as_str);
-
-    if (tok != TOKEN_NOT_FOUND) {
-      LastChar = advance(in);
-      return err;
-    }
-  }
-
+  case '-':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_SUB_EQ, tok);
+    return err;
+  
+  case '*':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_MUL_EQ, tok);
+    return err;
+  
+  case '/':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_DIV_EQ, tok);
+    return err;
+  
+  case '=':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_EQUIV, tok);
+    return err;
+  
+  case '!':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_NE, tok);
+    return err;
+  
+  case '<':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_LE, tok);
+    return err;
+  
+  case '>':
+    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_GE, tok);
+    return err;
+  
   //----------------------------------------------------------------------------
   // Check for end of file.  Don't eat the EOF.
-  if (LastChar == EOF) {
-    tok = toks.eof;
+  case EOF:
+
+    tok = TOK_EOF;
     return err;
+  
   }
 
   //----------------------------------------------------------------------------
@@ -267,8 +298,8 @@ int gettok(
 /// gettok - Return the next token from standard input.
 //==============================================================================
 int gettok(
-  const Tokens & toks,
   stream_t & is,
+  const token_map_t & toks,
   int & last_char,
   int & tok,
   stream_pos_t & pos,
@@ -281,7 +312,7 @@ int gettok(
     last_char = advance(in);
 
   pos.begin = in.tellg();
-  auto err = gettok(toks, is, last_char, tok, identifier);
+  auto err = gettok(is, toks, last_char, tok, identifier);
   pos.end = in.tellg();
   
   return err;
@@ -290,7 +321,7 @@ int gettok(
 //==============================================================================
 // Main function to generate tokens from a stream
 //==============================================================================
-int lex(const Tokens & toks, stream_t & in, lexed_t & res)
+int lex(stream_t & in, const token_map_t & toks, lexed_t & res)
 {
   int err = 0;
   std::string identifier;
@@ -299,45 +330,11 @@ int lex(const Tokens & toks, stream_t & in, lexed_t & res)
   stream_pos_t pos;
   do
   {
-    err += gettok(toks, in, last_char, tok, pos, identifier);
+    err += gettok(in, toks, last_char, tok, pos, identifier);
     res.add( tok, pos, identifier );
-  } while (tok!=toks.eof);
+  } while (tok!=TOK_EOF);
     
   return err;
 }
-
-
-//==============================================================================
-/// dump out the current line
-//==============================================================================
-std::ostream & Lexer::barf(std::ostream& out, const LocationRange & Loc)
-{
-  auto max = std::numeric_limits<std::streamsize>::max();
-  // finish the line
-  Tee_ << readline(); 
-  // check begin and end
-  const auto & BegLoc = Loc.getBegin();
-  const auto & EndLoc = Loc.getEnd();
-  // skip lines
-  auto BegLine = BegLoc.getLine(); 
-  auto BegCol = BegLoc.getCol();
-  auto PrevCol = std::max(BegCol - 1, 0);
-  for ( int i=0; i<BegLine-1; ++i ) Tee_.ignore(max, '\n');
-  // get relevant line
-  std::string tmp;
-  std::getline(Tee_, tmp);
-  // start output
-  out << "Line " << BegLine << " : Col " << BegCol << ":" << std::endl;
-  out << tmp << std::endl;
-  out << std::string(PrevCol, ' ') << "^";
-  if (BegLine == EndLoc.getLine()) {
-    auto EndCol = EndLoc.getCol();
-    auto Len = std::max(EndCol-1 - PrevCol-1, 0);
-    out << std::string(Len-1, '~');
-  }
-  out << std::endl;
-  return out;
-}
-
 
 } // namespace

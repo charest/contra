@@ -7,41 +7,11 @@
 
 namespace contra {
 
-struct BinopPrecedenceResult {
-  bool found = false;
-  int precedence = -1;
-};
+struct BinopPrecedence {
 
-class BinopPrecedence {
-
-  std::map<int, int> Precedence_;
-
-public:
-  
   std::map<int, int> binary_left;
   std::map<int, int> binary_right;
   std::map<int, int> unary;
-
-
-  void add(int key, int val)
-  { Precedence_[key] = val; }
-
-  BinopPrecedenceResult find( char key ) const
-  {
-    auto it = Precedence_.find(key);
-    if ( it != Precedence_.end() )
-      return {true, it->second};
-    else
-      return {false, -1};
-  }
-  
-  auto count(int key) const
-  { return Precedence_.count(key); }
-
-  int operator[]( int key ) const { return Precedence_.at(key); }
-  int& operator[]( int key ) { return Precedence_[key]; }
-  int at( int key ) const { return Precedence_.at(key); }
-  int& at( int key ) { return Precedence_.at(key); }
 
   int findLeft(int tok) const
   {

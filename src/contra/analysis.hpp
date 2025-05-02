@@ -7,6 +7,7 @@
 #include "recursive.hpp"
 #include "precedence.hpp"
 #include "symbols.hpp"
+#include "toks.hpp"
 
 #include <deque>
 #include <iostream>

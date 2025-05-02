@@ -2,6 +2,8 @@
 
 #include "args.hpp"
 
+#include "llvm/IR/Module.h"
+
 using namespace utils;
 using namespace llvm;
 

@@ -5,6 +5,7 @@
 #include "librt/dopevector.hpp"
 #include "utils/llvm_utils.hpp"
 
+#include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <mpi.h>

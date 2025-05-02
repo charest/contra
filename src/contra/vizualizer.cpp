@@ -153,8 +153,8 @@ void Vizualizer::visit(UnaryExprAST& e)
 void Vizualizer::visit(BinaryExprAST& e)
 {
   auto my_ind = ind_;
-  std::string Op = Tokens::getName(e.getOperand());
-  labelNode(my_ind, makeLabel(e.getClassName(), Op));
+  //std::string Op = Tokens::getName(e.getOperand());
+  //labelNode(my_ind, makeLabel(e.getClassName(), Op));
   createLink(my_ind, "Left" );
   runVisitor(*e.getLeftExpr());
   createLink(my_ind, "Right" );

@@ -19,8 +19,8 @@ Analyzer::Analyzer(std::shared_ptr<BinopPrecedence> Prec) :
 
   std::vector< std::tuple<std::string, VariableType, std::vector<VariableType>> >
     fun = {
-      {I64Type_.getBaseType()->getName(), I64Type_, {F64Type_}},
-      {F64Type_.getBaseType()->getName(), F64Type_, {I64Type_}},
+      //{I64Type_.getBaseType()->getName(), I64Type_, {F64Type_}},
+      //{F64Type_.getBaseType()->getName(), F64Type_, {I64Type_}},
       {"len", I64Type_, {RangeType_}},
       {"part", setPartition(I64Type_), {RangeType_, setArray(I64Type_)}},
       {"part", setPartition(I64Type_), {RangeType_, setPartition(I64Type_), setField(I64Type_)}},
@@ -405,8 +405,8 @@ void Analyzer::visit(UnaryExprAST& e)
   switch (OpCode) {
   default:
     THROW_NAME_ERROR( "Unknown unary operator '" << OpCode << "'", Loc);
-  case tok_sub:
-  case tok_add:
+  case '-':
+  case '+':
     TypeResult_ = OpType;
   };
   
@@ -441,20 +441,20 @@ void Analyzer::visit(BinaryExprAST& e)
   }
 
   switch (OpCode) {
-  case tok_add:
-  case tok_sub:
-  case tok_mul:
-  case tok_div:
-  case tok_mod:
+  case '+':
+  case '-':
+  case '*':
+  case '/':
+  case '%':
     TypeResult_ = CommonType;
     e.setType(TypeResult_);
     return;
-  case tok_eq:
-  case tok_ne:
-  case tok_lt:
-  case tok_le:
-  case tok_gt:
-  case tok_ge:
+  case TOK_EQUIV:
+  case TOK_NE:
+  case '<':
+  case TOK_LE:
+  case '>':
+  case TOK_GE:
     TypeResult_ = BoolType_;
     e.setType(TypeResult_);
     return;
@@ -796,16 +796,16 @@ void Analyzer::visit(ReductionStmtAST& e)
   if (e.isOperator()) {
     auto OpCode = e.getOperatorCode();
     switch (OpCode) {
-      case tok_add:
-      case tok_sub:
-      case tok_mul:
-      case tok_div:
-      case tok_mod:
+      case '+':
+      case '-':
+      case '*':
+      case '/':
+      case '%':
         break;
-      default:
-        THROW_NAME_ERROR(
-            "Unsupported reduction operator" << Tokens::getName(OpCode),
-            OpLoc);
+      //default:
+      //  THROW_NAME_ERROR(
+      //      "Unsupported reduction operator" << Tokens::getName(OpCode),
+      //      OpLoc);
     }
   }
   //------------------------------------
@@ -906,8 +906,8 @@ void Analyzer::visit(FunctionAST& e)
   if (e.isTask()) FunDef->setTask();
 
   // If this is an operator, install it.
-  if (ProtoExpr.isBinaryOp())
-    BinopPrecedence_->operator[](ProtoExpr.getOperatorName()) = ProtoExpr.getBinaryPrecedence();
+  //if (ProtoExpr.isBinaryOp())
+  //  BinopPrecedence_->operator[](ProtoExpr.getOperatorName()) = ProtoExpr.getBinaryPrecedence();
 
   // Record the function arguments in the NamedValues map.
   for (unsigned i=0; i<NumArgs; ++i) {

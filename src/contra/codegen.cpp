@@ -15,6 +15,7 @@
 #include "serial.hpp"
 #include "threads.hpp"
 #include "token.hpp"
+#include "toks.hpp"
 #include "variable.hpp"
 
 #include "librt/librt.hpp"
@@ -805,7 +806,7 @@ void CodeGen::visit(UnaryExprAST & e) {
   if (OperandV->getType()->isFloatingPointTy()) {
   
     switch (e.getOperand()) {
-    case tok_sub:
+    case '-':
       ValueResult_ = getBuilder().CreateFNeg(OperandV, "negtmp");
       return;
     }
@@ -813,7 +814,7 @@ void CodeGen::visit(UnaryExprAST & e) {
   }
   else {
     switch (e.getOperand()) {
-    case tok_sub:
+    case '-':
       ValueResult_ = getBuilder().CreateNeg(OperandV, "negtmp");
       return;
     }
@@ -837,74 +838,74 @@ void CodeGen::visit(BinaryExprAST& e) {
 
   if (is_real) {
     switch (e.getOperand()) {
-    case tok_add:
+    case '+':
       ValueResult_ = getBuilder().CreateFAdd(L, R, "addtmp");
       return;
-    case tok_sub:
+    case '-':
       ValueResult_ = getBuilder().CreateFSub(L, R, "subtmp");
       return;
-    case tok_mul:
+    case '*':
       ValueResult_ = getBuilder().CreateFMul(L, R, "multmp");
       return;
-    case tok_div:
+    case '/':
       ValueResult_ = getBuilder().CreateFDiv(L, R, "divtmp");
       return;
-    case tok_mod:
+    case '%':
       ValueResult_ = getBuilder().CreateFRem(L, R, "remtmp");
       return;
-    case tok_lt:
+    case '<':
       ValueResult_ = getBuilder().CreateFCmpULT(L, R, "cmptmp");
       return;
-    case tok_le:
+    case TOK_LE:
       ValueResult_ = getBuilder().CreateFCmpULE(L, R, "cmptmp");
       return;
-    case tok_gt:
+    case '>':
       ValueResult_ = getBuilder().CreateFCmpUGT(L, R, "cmptmp");
       return;
-    case tok_ge:
+    case TOK_GE:
       ValueResult_ = getBuilder().CreateFCmpUGE(L, R, "cmptmp");
       return;
-    case tok_eq:
+    case TOK_EQUIV:
       ValueResult_ = getBuilder().CreateFCmpUEQ(L, R, "cmptmp");
       return;
-    case tok_ne:
+    case TOK_NE:
       ValueResult_ = getBuilder().CreateFCmpUNE(L, R, "cmptmp");
       return;
     } 
   }
   else {
     switch (e.getOperand()) {
-    case tok_add:
+    case '+':
       ValueResult_ = getBuilder().CreateAdd(L, R, "addtmp");
       return;
-    case tok_sub:
+    case '-':
       ValueResult_ = getBuilder().CreateSub(L, R, "subtmp");
       return;
-    case tok_mul:
+    case '*':
       ValueResult_ = getBuilder().CreateMul(L, R, "multmp");
       return;
-    case tok_div:
+    case '/':
       ValueResult_ = getBuilder().CreateSDiv(L, R, "divtmp");
       return;
-    case tok_mod:
+    case '%':
       ValueResult_ = getBuilder().CreateSRem(L, R, "divtmp");
       return;
-    case tok_lt:
+    case '<':
       ValueResult_ = getBuilder().CreateICmpSLT(L, R, "cmptmp");
       return;
-    case tok_le:
+    case TOK_LE:
       ValueResult_ = getBuilder().CreateICmpSLE(L, R, "cmptmp");
       return;
-    case tok_gt:
+    case '>':
       ValueResult_ = getBuilder().CreateICmpSGT(L, R, "cmptmp");
       return;
-    case tok_ge:
+    case TOK_GE:
       ValueResult_ = getBuilder().CreateICmpSGE(L, R, "cmptmp");
       return;
-    case tok_eq:
+    case TOK_EQUIV:
       ValueResult_ = getBuilder().CreateICmpEQ(L, R, "cmptmp");
       return;
-    case tok_ne:
+    case TOK_NE:
       ValueResult_ = getBuilder().CreateICmpNE(L, R, "cmptmp");
       return;
     }

@@ -34,10 +34,10 @@ Contra::Contra(ContraBuilder builder) : Builder_(builder)
     In_ = &InputStream_;
   }
 
-  if (FileName.empty())
-    TheParser_ = std::make_unique<Parser>(ThePrecedence_);
-  else
-    TheParser_ = std::make_unique<Parser>(ThePrecedence_, FileName);
+  //if (FileName.empty())
+  //  TheParser_ = std::make_unique<Parser>(ThePrecedence_);
+  //else
+  //  TheParser_ = std::make_unique<Parser>(ThePrecedence_, FileName);
 
   TheCG_ = std::make_unique<CodeGen>(getBackendType(), isDebug());
 
@@ -74,7 +74,7 @@ void Contra::getNextToken()
 {
   lexed_t lx;
   stream_t is(*In_);
-  lex(Tokens_, is, lx);
+  //lex(Tokens_, is, lx);
 }
 
 //==============================================================================
@@ -111,7 +111,7 @@ void Contra::handleFunction()
 {
 
   if (isVerbose()) std::cerr << "Handling function" << std::endl;
-
+#if 0
   try {
     auto FnAST = TheParser_->parseFunction();
     auto Name = FnAST->getName();
@@ -134,7 +134,7 @@ void Contra::handleFunction()
     if (!isInteractive()) throw e;
     getNextToken();
   }
-
+#endif
 }
 
 //==============================================================================
@@ -145,7 +145,7 @@ void Contra::handleTopLevelExpression()
   if (isVerbose()) std::cerr << "Handling top level expression" << std::endl;
 
   const std::string Name = "__anon_expr";
-
+#if 0
   // Evaluate a top-level expression into an anonymous function.
   try {
     auto FnAST = TheParser_->parseTopLevelExpr();
@@ -205,20 +205,21 @@ void Contra::handleTopLevelExpression()
     // otherwise keep throwing the error
     else throw e;
   }
+  #endif
 }
 
 //==============================================================================
 /// top ::= definition | external | expression | ';'
 //==============================================================================
 void Contra::mainLoop() {
-
+#if 0
   // Prime the first token.
   if (isInteractive()) std::cerr << "contra> " << std::flush;
   getNextToken();
 
   while (true) {
 
-    if (TheParser_->getCurTok() == tok_eof) {
+    if (TheParser_->getCurTok() == TOK_EOF) {
       if (isInteractive()) std::cerr << std::endl;
       return;
     }
@@ -238,6 +239,7 @@ void Contra::mainLoop() {
     }
 
   }
+#endif
 }
 
 

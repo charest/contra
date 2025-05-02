@@ -153,12 +153,8 @@ int main(int argc, char** argv) {
   // initialize llvm
   startLLVM();
 
-  // install tokens
-  Tokens::setup();
-
   // create the parser
   Contra Interp(Builder);
-
 
   // Run the main "interpreter loop" now.
   Interp.mainLoop();

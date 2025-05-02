@@ -3,7 +3,6 @@
 
 #include "visiter.hpp"
 #include "config.hpp"
-#include "toks.hpp"
 #include "errors.hpp"
 #include "identifier.hpp"
 #include "sourceloc.hpp"
@@ -21,87 +20,6 @@
 #include <vector>
 
 namespace contra {
-
-//==============================================================================
-// The lexer returns tokens [0-255] if it is an unknown character, otherwise one
-// of these for known things.
-//==============================================================================
-enum AST {
-  ast_unk = tok_last, // unknown type
-  ast_fn_def,     // function definition
-  ast_fn_call,    // function call
-  ast_fn_anon,    // anonymous function call
-  ast_fn_args,    // function args
-  ast_fn_body,    // function body
-  ast_tsk_def,    // task definition
-  ast_var,        // Variable access
-  ast_arr,        // array definition
-  ast_arr_index,  // Array element access
-  ast_if,         // if statement
-  ast_if_cond,    // if condition
-  ast_if_body,    // if body
-  ast_elif_cond,  // elif condition
-  ast_elif_body,  // elif body
-  ast_else_body,  // else body
-  ast_for,        // for loop
-  ast_for_body,   // for loop body
-  ast_foreach,    // foreach loop
-  ast_break,      // break statement
-  ast_lit_real,   // real literal
-  ast_lit_int,    // int literal
-  ast_lit_string, // string literal
-  ast_reduce,     // reduction
-  ast_reduce_var, // reduction
-  ast_reduce_op,  // reduction
-  ast_use,        // use
-  ast_use_var,    // use
-  ast_unary,      // unary op
-  ast_binop,      // binary op
-  ast_range,      // range
-  ast_assign,     // assignment statement
-  ast_expr_list,  // ast expression list
-  ast_return,     // return statement
-};
-
-/// convert the ast type to a string
-constexpr const char * ast_to_string(int ty)
-{
-  switch (ty) {
-  case ast_unk:        return "Unknown";
-  case ast_fn_def:     return "FunDef";
-  case ast_fn_call:    return "FunCall";
-  case ast_fn_anon:    return "FunAnon";
-  case ast_fn_args:    return "FunArgs";
-  case ast_fn_body:    return "FunBody";
-  case ast_tsk_def:    return "TskDef";
-  case ast_var:        return "Var";
-  case ast_arr:        return "ArrDef";
-  case ast_arr_index:  return "ArrIndex";
-  case ast_if:         return "IfStmt";
-  case ast_if_cond:    return "IfCond";
-  case ast_if_body:    return "IfBody";
-  case ast_elif_cond:  return "ElifCond";
-  case ast_elif_body:  return "ElifBody";
-  case ast_else_body:  return "ElseBody";
-  case ast_for:        return "For";
-  case ast_for_body:   return "ForBody";
-  case ast_foreach:    return "Foreach";
-  case ast_break:      return "Break";
-  case ast_lit_real: return "RealLit";
-  case ast_lit_int:  return "IntLit";
-  case ast_lit_string: return "StringLit";
-  case ast_reduce:     return "Reduce";
-  case ast_reduce_op:  return "ReduceOp";
-  case ast_use:        return "Use";
-  case ast_unary:      return "Unary";
-  case ast_binop:      return "Binary";
-  case ast_range:      return "Range";
-  case ast_expr_list:  return "ExprList";
-  case ast_assign:     return "Assign";
-  case ast_return:     return "Return";
-  default:             return "Undefined";
-  }
-}
   
 ////////////////////////////////////////////////////////////////////////////////
 /// NodeAST - Base class for all nodes.
