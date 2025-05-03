@@ -50,18 +50,13 @@
 #define FOR_AST_NODES(DO) \
   DO( AST_FN_DEF,    "FunDef" ) \
   DO( AST_FN_CALL,   "FunCall" ) \
-  DO( AST_FN_ARGS,   "FunArgs" ) \
+  DO( AST_FN_ARG,    "FunArg" ) \
   DO( AST_BLOCK,     "Block" ) \
   DO( AST_TSK_DEF,   "TskDef" ) \
   DO( AST_VAR,       "Var" ) \
-  DO( AST_ARR,       "ArrInit" ) \
+  DO( AST_ARR_INIT,  "ArrInit" ) \
   DO( AST_ARR_INDEX, "ArrIndex" ) \
   DO( AST_IF,        "If") \
-  DO( AST_IF_COND,   "IfCond") \
-  DO( AST_IF_BODY,   "IfBody") \
-  DO( AST_ELIF_COND, "ElifCond") \
-  DO( AST_ELIF_BODY, "ElifBody") \
-  DO( AST_ELSE_BODY, "ElseBody") \
   DO( AST_FOR,       "For") \
   DO( AST_FOREACH,   "Foreach") \
   DO( AST_BREAK,     "Break") \

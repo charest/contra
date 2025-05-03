@@ -140,12 +140,13 @@ void print(
     switch (ty) {
     case AST_FN_DEF:
     case AST_FN_CALL:
+    case AST_FN_ARG:
     case AST_VAR:
     case AST_ARR_INDEX:
     case AST_LIT_REAL:
     case AST_LIT_INT:
     case AST_LIT_STRING:
-    case AST_ARR: {
+    case AST_ARR_INIT: {
       auto id = lex.findIdentifier(tid);
       os << " " << lex.getIdentifierString(id);
       break;
@@ -335,10 +336,10 @@ bool compare(
   return true;
 }
   
-void consume(size_t ntok, int & tok)
+void consume(const lexed_t & lx, int & tok)
 {
   tok++;
-  if (tok >= ntok) 
+  if (tok >= lx.tokens.size()) 
     throw std::runtime_error("Ran out of tokens!");
 }
   
@@ -393,7 +394,7 @@ parse_res_t parse_unary_expr(
   // If this is a unary operator, read it.
   if (Prec != -1) {
     auto new_node = tree.addNode(tok, AST_UNARY, parent);
-    consume(lx.tokens.size(), tok);
+    consume(lx, tok);
     auto ret = parse_binop_expr(new_node, is, lx, prec, tree, tok, Prec);
     return {ret.err, new_node};
   }
@@ -441,7 +442,7 @@ parse_res_t parse_binop_expr(
     auto binop = tree.addNode(tok, AST_BINOP, parent);
     tree.setParent(lhs.node, binop); // repoint the left
     
-    consume(lx.tokens.size(), tok); // eat binop
+    consume(lx, tok); // eat binop
     
     // Parse the unary expression after the binary operator.
     // If BinOp binds less tightly with RHS than the operator after RHS, let
@@ -487,7 +488,7 @@ parse_res_t parse_expr(
     tree.setParent(lhs, expr_list);
     // add to the list
     while (tokens[tok] == ',') {
-      consume(lx.tokens.size(), tok); // eat ,
+      consume(lx, tok); // eat ,
       err += parse_binop_expr(expr_list, is, lx, prec, tree, tok, 0).err;
     }
     // set new lhs
@@ -501,7 +502,7 @@ parse_res_t parse_expr(
     // add to the list
     int num_exprs = 1;
     while (tokens[tok] == ':') {
-      consume(lx.tokens.size(), tok); // eat :
+      consume(lx, tok); // eat :
       err += parse_binop_expr(range_expr, is, lx, prec, tree, tok, 0).err;
       num_exprs++;
     }
@@ -518,7 +519,7 @@ parse_res_t parse_expr(
   if (tokens[tok] == '=') {
     // create a new root node
     auto assign_expr = tree.addNode(tok, AST_ASSIGN, parent);
-    consume(lx.tokens.size(), tok); // eat =
+    consume(lx, tok); // eat =
     // repoint the old root
     tree.setParent(lhs, assign_expr);
     // parse the rhs
@@ -546,7 +547,7 @@ parse_res_t parse_simple_expr(
 {
   // add token
   auto node = tree.addNode(tok, Ty, parent);
-  consume(lx.tokens.size(), tok);
+  consume(lx, tok);
   return {0, node};
 }
 
@@ -564,7 +565,7 @@ parse_res_t parse_return(
   auto node = tree.addNode(tok, AST_RETURN, parent);
 
   // eat return
-  consume(lx.tokens.size(), tok);
+  consume(lx, tok);
   
   return parse_expr(node, is, lx, prec, tree, tok);
 }
@@ -581,7 +582,7 @@ parse_res_t parse_parens_expr(
   int & tok)
 { 
   // eat (
-  consume(lx.tokens.size(), tok);
+  consume(lx, tok);
   // add expression in parens, parent passes through
   auto res = parse_expr(parent, is, lx, prec, tree, tok);
   // eat )
@@ -608,14 +609,14 @@ parse_res_t parse_identifier_expr(
   
   auto & tokens = lx.tokens;
   
-  consume(tokens.size(), tok); // eat identifier.
+  consume(lx, tok); // eat identifier.
 
   //----------------------------------------------------------------------------
   // Call.
   if (tokens[tok] == '(') {
     auto node = tree.addNode(first_tok, AST_FN_CALL, parent);
     parse_res_t ret{0, node};
-    consume(lx.tokens.size(), tok); // eat (
+    consume(lx, tok); // eat (
     if (tokens[tok] != ')')
       ret += parse_expr(node, is, lx, prec, tree, tok);
     ret += consume(is, lx, tok, ')', "Expected ')'."); // Eat the ')'.
@@ -648,7 +649,7 @@ parse_res_t parse_identifier_expr(
     // Array
     if (tokens[tok] == '[') {
       ret.node = tree.addNode(ident_tok, AST_ARR_INDEX, parent);
-      consume(lx.tokens.size(), tok); // eat [
+      consume(lx, tok); // eat [
       ret += parse_expr(ret.node, is, lx, prec, tree, tok);
       ret += consume(is, lx, tok, ']', "Expected ']'  in array access/declaration."); // eat ]
     }
@@ -687,9 +688,31 @@ int parse_until(
   int err = 0;
   while (lx.tokens[tok] != to_tok) {
     err += parse_expr(parent, is, lx, prec, tree, tok).err;
-    if (lx.tokens[tok] == ';') consume(lx.tokens.size(), tok);
+    if (lx.tokens[tok] == ';') consume(lx, tok);
   }
   return err;
+}
+    
+parse_res_t parse_block(
+  int parent,
+  stream_t & is,
+  const lexed_t & lx,
+  const BinopPrecedence & prec,
+  parse_tree_t & tree,
+  int & tok)
+{ 
+  // Multi-liner 
+  if (lx.tokens[tok] == '{') {
+    auto node = tree.addNode(tok, AST_BLOCK, parent);  
+    consume(lx, tok); // eat {
+    auto err = parse_until(node, is, lx, prec, tree, tok, '}');
+    consume(lx, tok); // eat }
+    return {err, node};
+  }
+  // One-liner
+  else {
+    return parse_expr(parent, is, lx, prec, tree, tok);
+  }
 }
 
 //==============================================================================
@@ -713,58 +736,27 @@ parse_res_t parse_if_expr(
 
   //---------------------------------------------------------------------------
   // If
-  {
 
-    consume(tokens.size(), tok); // eat the if.
+  consume(lx, tok); // eat the if.
 
-    // 1 - condition.
-    auto cond_node = tree.addNode(tok, AST_IF_COND, if_node);
-    ret += parse_expr(cond_node, is, lx, prec, tree, tok);
-    
-    // 2 - body.
-    auto body_node = tree.addNode(tok, AST_IF_BODY, if_node);
-      
-    //------------------------------------
-    // Multi-liner TODO LIFT OUT BASIC BLOCK
-    if (tokens[tok] == '{') {
-      consume(tokens.size(), tok); // eat {
-      ret.err += parse_until(body_node, is, lx, prec, tree, tok, '}');
-      consume(tokens.size(), tok); // eat }
-    }
-    //------------------------------------
-    // One-liner
-    else {
-      ret += parse_expr(body_node, is, lx, prec, tree, tok);
-    }
-
-  }
+  // 1 - condition.
+  ret += parse_expr(if_node, is, lx, prec, tree, tok);
+  
+  // 2 - body.
+  ret += parse_block(if_node, is, lx, prec, tree, tok);
   
   //---------------------------------------------------------------------------
   // Else if
 
   while (tokens[tok] == TOK_ELIF) {
   
-    consume(tokens.size(), tok); // eat elif
+    consume(lx, tok); // eat elif
 
     // 1 - condition.
-    auto cond_node = tree.addNode(tok, AST_ELIF_COND, if_node);
-    ret += parse_expr(cond_node, is, lx, prec, tree, tok);
+    ret += parse_expr(if_node, is, lx, prec, tree, tok);
 
     // 2 - body
-    auto body_node = tree.addNode(tok, AST_ELIF_BODY, if_node);
-  
-    //------------------------------------
-    // Multi-liner
-    if (tokens[tok] == '{') {
-      consume(tokens.size(), tok); // eat {
-      ret.err += parse_until(body_node, is, lx, prec, tree, tok, '}');
-      consume(tokens.size(), tok); // eat }
-    }
-    //------------------------------------
-    // One-liner
-    else {
-      ret += parse_expr(body_node, is, lx, prec, tree, tok);
-    }
+    ret += parse_block(if_node, is, lx, prec, tree, tok);
 
   }
 
@@ -774,22 +766,8 @@ parse_res_t parse_if_expr(
 
   if (tokens[tok] == TOK_ELSE) {
 
-    consume(tokens.size(), tok); // eat else
-    
-    auto body_node = tree.addNode(tok, AST_ELSE_BODY, if_node);
-    
-    //------------------------------------
-    // Multi-liner
-    if (tokens[tok] == '{') {
-      consume(tokens.size(), tok); // eat {
-      ret.err += parse_until(body_node, is, lx, prec, tree, tok, '}');
-      consume(tokens.size(), tok); // eat }
-    }
-    //------------------------------------
-    // One-liner
-    else {
-      ret += parse_expr(body_node, is, lx, prec, tree, tok);
-    }
+    consume(lx, tok); // eat else
+    ret += parse_block(if_node, is, lx, prec, tree, tok);
 
   }
 
@@ -815,7 +793,7 @@ parse_res_t parse_for_expr(
   auto for_node = tree.addNode(tok, ast_for_type, parent);
   parse_res_t ret{0, for_node};
 
-  consume(tokens.size(), tok); // eat the for.
+  consume(lx, tok); // eat the for.
 
   if (tokens[tok] != TOK_IDENT)
     ret += error(is, "Expected identifier after 'for'", lx.token_pos[tok]);
@@ -823,7 +801,7 @@ parse_res_t parse_for_expr(
   // variable node
   tree.addNode(tok, AST_VAR, for_node);
   
-  consume(tokens.size(), tok); // eat identifier.
+  consume(lx, tok); // eat identifier.
 
   ret += consume(is, lx, tok, '=', "Expected '=' after 'for'"); // eat =
   
@@ -831,20 +809,7 @@ parse_res_t parse_for_expr(
   ret += parse_expr(for_node, is, lx, prec, tree, tok);
 
   // body node
-  auto body_node = tree.addNode(tok, AST_BLOCK, for_node);
-
-  //------------------------------------
-  // Multi-liner
-  if (tokens[tok] == '{') {
-    consume(tokens.size(), tok); // eat {
-    ret.err += parse_until(body_node, is, lx, prec, tree, tok, '}');
-    consume(tokens.size(), tok); // eat }
-  }
-  //------------------------------------
-  // One-liner
-  else {
-    ret += parse_expr(body_node, is, lx, prec, tree, tok);
-  }
+  ret += parse_block(for_node, is, lx, prec, tree, tok);
 
   return ret;
   
@@ -864,15 +829,15 @@ parse_res_t parse_array_expr(
 
   auto & tokens = lx.tokens;
 
-  auto arr_node = tree.addNode(tok, AST_ARR, parent);
+  auto arr_node = tree.addNode(tok, AST_ARR_INIT, parent);
   parse_res_t ret{0, arr_node};
 
-  consume(tokens.size(), tok); // eat [.
+  consume(lx, tok); // eat [.
 
   ret += parse_expr(arr_node, is, lx, prec, tree, tok);
     
   if (tokens[tok] == ';') {
-    consume(tokens.size(), tok); // eat ;
+    consume(lx, tok); // eat ;
     ret += parse_expr(arr_node, is, lx, prec, tree, tok);
   }
 
@@ -898,14 +863,14 @@ parse_res_t parse_reduce_expr(
   
   auto node = tree.addNode(tok, AST_REDUCE, parent);
 
-  consume(tokens.size(), tok);;  // eat the reduce
+  consume(lx, tok);;  // eat the reduce
     
   while (tokens[tok] != ':') {
     if (tokens[tok] != TOK_IDENT)
       err += error(is, "Expected an identifier after keyword 'reduce'.", lx.token_pos[tok]);
     tree.addNode(tok, AST_VAR, node);  
-    consume(tokens.size(), tok); // eat identifier.
-    if (tokens[tok] == ',') consume(tokens.size(), tok); // eat ,
+    consume(lx, tok); // eat identifier.
+    if (tokens[tok] == ',') consume(lx, tok); // eat ,
   }
 
   err += consume(is, lx, tok, ':', "Expected ':'."); // eat ":".
@@ -916,7 +881,7 @@ parse_res_t parse_reduce_expr(
 
   tree.addNode(tok, AST_REDUCE_OP, node);
 
-  consume(tokens.size(), tok);; // eat identifier
+  consume(lx, tok);; // eat identifier
 
   return {err, node};
 
@@ -939,14 +904,14 @@ parse_res_t parse_part_expr(
 
   auto node = tree.addNode(tok, AST_USE, parent);
     
-  consume(tokens.size(), tok);  // eat the use
+  consume(lx, tok);  // eat the use
   
   while (tokens[tok] != ':') {
     if (tokens[tok] != TOK_IDENT)
       err += error(is, "Expected an identifier after keyword 'use'.", lx.token_pos[tok]);
     tree.addNode(tok, AST_VAR, node);  
-    consume(tokens.size(), tok); // eat identifier.
-    if (tokens[tok] == ',') consume(tokens.size(), tok); // eat ,
+    consume(lx, tok); // eat identifier.
+    if (tokens[tok] == ',') consume(lx, tok); // eat ,
   }
 
   err += consume(is, lx, tok, ':', "Expected ':'."); // eat ":".
@@ -1008,130 +973,12 @@ parse_res_t parse_primary_expr(
       
   // return parent and hope for recovery
   auto old_tok = tok;
-  consume(lx.tokens.size(), tok);
+  consume(lx, tok);
   return {
     error(is, "Unknown token when expecting an expression", lx.token_pos[old_tok]),
     parent
   };
 }
-
-#if 0
-//==============================================================================
-// prototype
-//==============================================================================
-parse_res_t parse_prototype(
-  int parent,
-  stream_t & is,
-  const lexed_t & lx,
-  const BinopPrecedence & prec,
-  parse_tree_t & tree,
-  int & tok)
-{
-
-  int err = 0;
-  auto & tokens = lx.tokens;
-  auto ntok = tokens.size();
-
-  std::vector<int> ReturnTypes;
-  int proto = -1;
-
-  // know it has specified type
-  if (isType(tokens[tok])) {
-
-    while ((tokens[tok]!=tok_ident) && (tok<ntok)) {
-      auto tok_ty = tokens[tok];
-      if (!isType(tok_ty))
-        err += error(is, "Expected type.", lx.token_pos[tok]);
-      auto ty = tree.installType(tok_ty);
-      ReturnTypes.emplace_back(ty);
-      ++tok; // eat type
-      if (tokens[tok] == ',') ++tok; // eat comma
-    }
-
-    if (tokens[tok] != tok_ident)
-      err += error(is, "Expected function name specification.", lx.token_pos[tok]);
-    
-    // create the node
-    proto = tree.addNode(parent, AST_FN_DEF, tok);
-    
-    // add final type and set node
-    auto fun_ty = tree.installType( ReturnTypes );  
-    tree.setType(proto, fun_ty);
-
-    ++tok; // eat identifier
-  }
-  // no specified type
-  else {
-    proto = tree.addNode(parent, AST_FN_DEF, first_tok);
-  }
-
-  
-  if (tokens[tok] != '(')
-    err += error(is, "Expected '(' in prototype", lx.token_pos[tok]);
-
-  ++tok; // eat "("
-
-  std::vector<Identifier> Args;
-  std::vector<Identifier> ArgTypes;
-  std::vector<bool> ArgIsArray;
-
-  while ((tokens[tok]!=')') && (tok<ntok)) {
-
-    bool IsArray = false;
-    auto type_tok = tok;
-
-    // token must be a type
-    if (!isType(tokens[tok]))
-      err += error(is, "Type expected.", lx.token_pos[tok]);
-
-    ++tok; // eat type
-  
-    if (tokens[tok] != tok_ident)
-      err += error(is, "Mising type or variable name in prototype.", lx.token_pos[tok]);
-   
-    auto arg = tree.addNode(proto, ast_var, tok);
-    auto arg_ty = tree.installType(type_tok);
-    tree.setType(arg, arg_ty, type_tok);
-    
-    ++tok; // eat identifier
-    
-    if (tokens[tok] == '[') {
-      IsArray = true;
-      ++tok; // eat the '['.
-      if (tokens[tok] != ']')
-        err += error(is, "Expected ']'", lx.token_pos[tok]);
-      ++tok; // eat the ']'
-    }
-    ArgIsArray.push_back( IsArray );
-   
-    if (tokens[tok] == ',') ++tok; // eat ','
-  }
-
-  if (CurTok_ != ')')
-    THROW_SYNTAX_ERROR(
-        "Expected ')' in prototype",
-        getIdentifierLoc());
-
-  // success.
-  getNextToken(); // eat ')'.
-
-  // Verify right number of names for operator.
-  if (Kind && Args.size() != Kind)
-    THROW_SYNTAX_ERROR(
-        "Invalid number of operands for operator: "
-        << Kind << " expected, but got " << Args.size(),
-        getIdentifierLoc());
-
-  return std::make_unique<PrototypeAST>(
-      Identifier{FnName, FnLoc},
-      std::move(Args),
-      std::move(ArgTypes),
-      std::move(ArgIsArray),
-      std::move(ReturnTypes),
-      Kind != 0,
-      BinaryPrecedence);
-}
-#endif
 
 
 //==============================================================================
@@ -1152,7 +999,7 @@ parse_res_t parse_function(
   bool IsTask = (tokens[tok] == TOK_TASK);
   auto ast_ty = IsTask ? AST_TSK_DEF : AST_FN_DEF;
 
-  consume(tokens.size(), tok);; // eat 'function' / 'task'
+  consume(lx, tok);; // eat 'function' / 'task'
 
   //---------------------------------------------------------------------------
   // Return types
@@ -1169,8 +1016,8 @@ parse_res_t parse_function(
         err += error(is, "Expected type.", lx.token_pos[tok]);
       auto ty = tree.installType(tok_ty);
       ReturnTypes.emplace_back(ty);
-      consume(tokens.size(), tok); // eat type
-      if (tokens[tok] == ',') consume(tokens.size(), tok); // eat comma
+      consume(lx, tok); // eat type
+      if (tokens[tok] == ',') consume(lx, tok); // eat comma
     }
 
     if (tokens[tok] != TOK_IDENT)
@@ -1189,7 +1036,7 @@ parse_res_t parse_function(
     fn_node = tree.addNode(tok, ast_ty, parent);
   }
 
-  consume(tokens.size(), tok); // eat identifier
+  consume(lx, tok); // eat identifier
   
   err += consume(is, lx, tok, '(', "Expected '(' in prototype"); // eat "("
   
@@ -1200,8 +1047,6 @@ parse_res_t parse_function(
   std::vector<Identifier> ArgTypes;
   std::vector<bool> ArgIsArray;
 
-  auto args_node = tree.addNode(tok, AST_FN_ARGS, fn_node);
-
   while (tokens[tok] != ')') {
 
     bool IsArray = false;
@@ -1211,67 +1056,37 @@ parse_res_t parse_function(
     if (!tok_is_type(tokens[tok]))
       err += error(is, "Type expected.", lx.token_pos[tok]);
 
-    consume(tokens.size(), tok); // eat type
+    consume(lx, tok); // eat type
   
     if (tokens[tok] != TOK_IDENT)
       err += error(is, "Mising type or variable name in prototype.", lx.token_pos[tok]);
    
-    auto arg = tree.addNode(tok, AST_VAR, args_node);
+    auto arg = tree.addNode(tok, AST_FN_ARG, fn_node);
     auto arg_ty = tree.installType(type_tok);
     tree.setType(arg, arg_ty, type_tok);
     
-    consume(tokens.size(), tok); // eat identifier
+    consume(lx, tok); // eat identifier
     
     if (tokens[tok] == '[') {
       IsArray = true;
-      consume(tokens.size(), tok); // eat the '['.
+      consume(lx, tok); // eat the '['.
       err += consume(is, lx, tok, ']', "Expected ']'"); // eat the ']'
     }
     ArgIsArray.push_back( IsArray );
    
-    if (tokens[tok] == ',') consume(tokens.size(), tok); // eat ','
+    if (tokens[tok] == ',') consume(lx, tok); // eat ','
   }
 
   if (tokens[tok] != ')')
     err += error(is, "Expected ')' in prototype", lx.token_pos[tok]);
 
   // success.
-  consume(tokens.size(), tok); // eat ')'.
-
-#if 0
-  // Verify right number of names for operator.
-  if (Kind && Args.size() != Kind)
-    THROW_SYNTAX_ERROR(
-        "Invalid number of operands for operator: "
-        << Kind << " expected, but got " << Args.size(),
-        getIdentifierLoc());
-
-  return std::make_unique<PrototypeAST>(
-      Identifier{FnName, FnLoc},
-      std::move(Args),
-      std::move(ArgTypes),
-      std::move(ArgIsArray),
-      std::move(ReturnTypes),
-      Kind != 0,
-      BinaryPrecedence);
-#endif
+  consume(lx, tok); // eat ')'.
 
   //---------------------------------------------------------------------------
   // Function body
 
-  //------------------------------------
-  // Multi-liner
-  if (tokens[tok] == '{') {
-    auto body_node = tree.addNode(tok, AST_BLOCK, fn_node);
-    consume(tokens.size(), tok); // eat {
-    parse_until(body_node, is, lx, prec, tree, tok, '}');
-    err += consume(is, lx, tok, '}', "Expected '}'."); // eat }
-  }
-  //------------------------------------
-  // One-liner
-  else {
-    err += parse_expr(fn_node, is, lx, prec, tree, tok).err;
-  }
+  err += parse_block(fn_node, is, lx, prec, tree, tok).err;
 
   return {err, fn_node};
 }
@@ -1334,7 +1149,7 @@ parse_res_t parse_sext_node(
   auto ast_tok = tok;
   auto ast_ty = tokens[tok];
   auto ast_pos = lx.token_pos[tok];
-  consume(tokens.size(), tok);
+  consume(lx, tok);
   auto tok_ty = tokens[tok];
   auto tok_pos = lx.token_pos[tok];
 
@@ -1370,6 +1185,7 @@ parse_res_t parse_sext_node(
   case (AST_FN_CALL):
   case (AST_VAR):
   case (AST_ARR_INDEX):
+  case (AST_FN_ARG):
 
     if (tok_ty != TOK_IDENT)
       err += error(is, "Expected an identifier.", tok_pos);
@@ -1398,20 +1214,14 @@ parse_res_t parse_sext_node(
     break;
     
   case (AST_IF):
-  case (AST_IF_COND):
-  case (AST_IF_BODY):
-  case (AST_ELIF_COND):
-  case (AST_ELIF_BODY):
-  case (AST_ELSE_BODY):
   case (AST_FOR):
   case (AST_FOREACH):
   case (AST_RANGE):
   case (AST_USE):
   case (AST_REDUCE):
-  case (AST_ARR):
+  case (AST_ARR_INIT):
   case (AST_EXPR_LIST):
   case (AST_FN_DEF):
-  case (AST_FN_ARGS):
   case (AST_BLOCK):
   case (AST_RETURN):
     node = tree.addNode(ast_tok, ast_ty, parent);
@@ -1423,7 +1233,7 @@ parse_res_t parse_sext_node(
 
   // scan to next )
   while(tok<tokens.size() && tokens[tok] != ')' && tokens[tok] != '(') 
-  { consume(tokens.size(), tok); }
+  { consume(lx, tok); }
 
   return {err, node};
 }

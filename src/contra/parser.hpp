@@ -39,6 +39,9 @@ struct parse_tree_t {
     return id;
   }
 
+  void setParent(int node, int parent)
+  { node_parent[node] = parent; }
+
   int installType(int ty)
   {
     auto n = types.size();
@@ -61,9 +64,17 @@ struct parse_tree_t {
     node_to_type_token[node] = tok;
   }
 
-  void setParent(int node, int parent)
-  { node_parent[node] = parent; }
+  int findType(int n) {
+    auto it = node_to_type.find(n);
+    if (it != node_to_type.end()) return it->second;
+    return -1;
+  }
 
+  int addFunc(int tid)
+  {
+    auto id = lx.findIdentifier(tid);
+    ident_to_func[id] = ident_to_func.size();
+  }
 };
 
 /// Parse tokens
