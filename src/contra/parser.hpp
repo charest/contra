@@ -41,6 +41,9 @@ struct parse_tree_t {
 
   void setParent(int node, int parent)
   { node_parent[node] = parent; }
+  
+  void setNodeType(int node, int ty)
+  { node_ast_type[node] = ty; }
 
   int installType(int ty)
   {
@@ -70,11 +73,11 @@ struct parse_tree_t {
     return -1;
   }
 
-  int addFunc(int tid)
-  {
-    auto id = lx.findIdentifier(tid);
-    ident_to_func[id] = ident_to_func.size();
-  }
+  //int addFunc(int tid)
+  //{
+  //  auto id = lx.findIdentifier(tid);
+  //  ident_to_func[id] = ident_to_func.size();
+  //}
 };
 
 /// Parse tokens
@@ -95,20 +98,18 @@ void print(std::ostream& os, const parse_tree_t & tree, const graph_t & graph);
 /// Dump results in sext form
 void print(
   std::ostream& os,
-  const token_map_t & toks,
+  const stream_t & stream,
   const lexed_t & lex,
   const parse_tree_t & tree,
   const graph_t & graph);
 
 /// Compare two trees
 bool compare(
-  stream_t & isa,
-  const token_map_t & toka,
+  const stream_t & isa,
   const lexed_t & lxa,
   const parse_tree_t &tra,
   const graph_t & gra,
-  stream_t & isb,
-  const token_map_t & tokb,
+  const stream_t & isb,
   const lexed_t & lxb,
   const parse_tree_t &trb,
   const graph_t & grb);

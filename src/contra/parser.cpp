@@ -105,7 +105,7 @@ void print(
 //==============================================================================
 void print(
   std::ostream& os,
-  const token_map_t & toks,
+  const stream_t & stream,
   const lexed_t & lex,
   const parse_tree_t & tree,
   const graph_t & graph)
@@ -147,8 +147,8 @@ void print(
     case AST_LIT_INT:
     case AST_LIT_STRING:
     case AST_ARR_INIT: {
-      auto id = lex.findIdentifier(tid);
-      os << " " << lex.getIdentifierString(id);
+      auto pos = lex.token_pos[tid];
+      os << " " << stream.at(pos);
       break;
     }
     
@@ -161,8 +161,8 @@ void print(
 
     case AST_REDUCE_OP: {
       if (tok == TOK_IDENT) {
-        auto id = lex.findIdentifier(tid);
-        os << " " << lex.getIdentifierString(id);
+        auto pos = lex.token_pos[tid];
+        os << " " << stream.at(pos);
       }
       else {
         os << tok_to_string(tok);
@@ -184,10 +184,10 @@ void print(
 /// Compare two ast tree nodes
 //==============================================================================
 bool compare_ast_node(
-  const token_map_t & toka,
+  const stream_t & isa,
   const lexed_t & lxa,
   const parse_tree_t & tra,
-  const token_map_t & tokb,
+  const stream_t & isb,
   const lexed_t & lxb,
   const parse_tree_t & trb,
   int na,
@@ -210,10 +210,10 @@ bool compare_ast_node(
   auto tb = trb.node_to_token[nb];
   auto tya = lxa.tokens[ta];
   auto tyb = lxb.tokens[tb];
-  auto ida = lxa.findIdentifier(ta);
-  auto idb = lxb.findIdentifier(tb);
-  auto stra = lxa.getIdentifierString(ida);
-  auto strb = lxb.getIdentifierString(idb);
+  auto posa = lxa.token_pos[ta];
+  auto posb = lxb.token_pos[tb];
+  auto stra = isa.at(posa);
+  auto strb = isb.at(posb);
 
   switch (ast_tya) {
 
@@ -237,15 +237,6 @@ bool compare_ast_node(
   case (AST_LIT_REAL):
   case (AST_LIT_STRING):
   
-    if (ida == -1 || idb == -1) {
-      std::cerr << "Expected identifiers in both. ";
-      std::cerr << std::endl;
-      std::cerr << "{" << na << ", " << stra;
-      std::cerr << "} vs {";
-      std::cerr << nb << ", " << strb << "}";
-      std::cerr << std::endl;
-      return false;
-    }
     if (stra != strb) {
       std::cerr << "Identifiers don't match. ";
       std::cerr << std::endl;
@@ -279,13 +270,11 @@ bool compare_ast_node(
 /// Compare two trees
 //==============================================================================
 bool compare(
-  stream_t & isa,
-  const token_map_t & toka,
+  const stream_t & isa,
   const lexed_t & lxa,
   const parse_tree_t & tra,
   const graph_t & gra,
-  stream_t & isb,
-  const token_map_t & tokb,
+  const stream_t & isb,
   const lexed_t & lxb,
   const parse_tree_t & trb,
   const graph_t & grb)
@@ -307,7 +296,7 @@ bool compare(
     auto ib = curr.second;
     q.pop();
 
-    if (!compare_ast_node(toka, lxa, tra, tokb, lxb, trb, ia, ib))
+    if (!compare_ast_node(isa, lxa, tra, isb, lxb, trb, ia, ib))
     {
       auto ta = tra.node_to_token[ia];
       auto tb = trb.node_to_token[ib];

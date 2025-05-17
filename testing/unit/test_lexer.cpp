@@ -28,14 +28,13 @@ public:
     std::cout << "Testing: " << ans << std::endl;
   
     std::stringstream ss(ans);
-    stream_t is(ss);
+    auto is = make_stream(ss);
     lexed_t res;
-    auto err = lex(is, toks_, res);
+    auto err = lex(is, res);
     
-    if (!isBad) EXPECT_EQ(res.numTokens(), 2);
+    EXPECT_EQ(res.size(), 2);
     auto tok = res.tokens[0];
-    if (!isBad) EXPECT_EQ(tok, ans_tok);
-    if (!isBad) EXPECT_EQ(res.tokens[1], TOK_EOF);
+    EXPECT_EQ(tok, ans_tok);
     std::cout << "... Expected: " << tok_to_string(tok);
     std::cout << " Got: " << tok_to_string(tok) << std::endl;
     
@@ -43,33 +42,6 @@ public:
     else       ASSERT_FALSE(err);
   }
   
-  
-  //---------------------------------------------------------------------------
-  void test_w_ident(const std::string & ans, int ans_tok, bool isBad=false)
-  {
-    std::cout << "Testing: " << ans << std::endl;
-  
-    std::stringstream ss(ans);
-    stream_t is(ss);
-    lexed_t res;
-    auto err = lex(is, toks_, res);
-    
-    if (!isBad) EXPECT_EQ(res.numTokens(), 2);
-    auto tok = res.tokens[0];
-    if (!isBad) EXPECT_EQ(tok, ans_tok);
-    if (!isBad) EXPECT_EQ(res.tokens[1], TOK_EOF);
-    std::cout << "... Expected: " << tok_to_string(tok);
-    std::cout << " Got: " << tok_to_string(tok) << std::endl;
-    
-    if (!isBad) EXPECT_EQ(res.numIdentifiers(), 1);
-    auto id = res.findIdentifier(0);
-    auto str = res.getIdentifierString(id);
-    std::cout << "... Ident: " << str << std::endl;
-  
-    EXPECT_EQ(str, ans);
-    if (isBad) ASSERT_TRUE(err);
-    else       ASSERT_FALSE(err);
-  }
   
   //---------------------------------------------------------------------------
   void test_w_ident(
@@ -80,24 +52,23 @@ public:
     std::cout << "Testing: " << inp << std::endl;
   
     std::stringstream ss(inp);
-    stream_t is(ss);
+    auto is = make_stream(ss);
     lexed_t res;
-    auto err = lex(is, toks_, res);
+    auto err = lex(is, res);
     
     auto nans = ans.size();
-    if (!isBad) EXPECT_EQ(res.numTokens(), nans+1);
-    if (!isBad) EXPECT_EQ(res.tokens.back(), TOK_EOF);
+    EXPECT_EQ(res.size(), nans+1);
     
     for (int i=0; i<nans; ++i) {
       auto exp_tok = ans[i].first;
       auto & exp_id = ans[i].second;
       auto tok = res.tokens[i];
-      if (!isBad) EXPECT_EQ(tok, exp_tok);
+      EXPECT_EQ(tok, exp_tok);
       std::cout << "... [" << i << "] Expected: " << tok_to_string(tok);
       std::cout << " Got: " << tok_to_string(tok) << std::endl;
-      auto id = res.findIdentifier(i);
-      auto str = res.getIdentifierString(id);
-      if (!isBad) EXPECT_EQ(str, exp_id);
+      auto pos = res.token_pos[i];
+      auto str = is.buffer.substr(pos.begin, pos.length());
+      EXPECT_EQ(str, exp_id);
       std::cout << "... [" << i << "] Expected: " << exp_id;
       std::cout << " Got: " << str << std::endl;
     }
@@ -116,38 +87,38 @@ token_map_t LexerTestF::toks_;
 //=============================================================================
 
 TEST_F(LexerTestF, ident) {
-  test_w_ident("ident", TOK_IDENT);
-  test_w_ident("id1ent", TOK_IDENT);
+  test_w_ident("ident",  {{TOK_IDENT, "ident"}});
+  test_w_ident("id1ent", {{TOK_IDENT, "id1ent"}});
   test_w_ident("1ident", {{TOK_INT_LIT, "1"}, {TOK_IDENT, "ident"}});
 }
 
 
 TEST_F(LexerTestF, quote) {
-  test_w_ident("\"Quoted\"", {{TOK_STRING_LIT, "Quoted"}});
+  test_w_ident("\"Quoted\"", {{TOK_STRING_LIT, "\"Quoted\""}});
 }
 
 TEST_F(LexerTestF, comment) {
-  test_w_ident("# test", {{TOK_COMMENT, ""}});
-  test_w_ident("# test\nident", {{TOK_COMMENT, ""}, {TOK_IDENT, "ident"}});
+  test_w_ident("# test", {{TOK_COMMENT, "# test"}});
+  test_w_ident("# test\nident", {{TOK_COMMENT, "# test"}, {TOK_IDENT, "ident"}});
 }
 
 TEST_F(LexerTestF, number) {
-  test_w_ident("1"      , TOK_INT_LIT);
-  test_w_ident("12"     , TOK_INT_LIT);
-  test_w_ident("1.2"    , TOK_REAL_LIT);
-  test_w_ident(".2"     , TOK_REAL_LIT);
-  test_w_ident("0.2"    , TOK_REAL_LIT);
-  test_w_ident("1.2e5"  , TOK_REAL_LIT);
-  test_w_ident("1.2E5"  , TOK_REAL_LIT);
-  test_w_ident("1.2e-5" , TOK_REAL_LIT);
-  test_w_ident("1.2e+5" , TOK_REAL_LIT);
-  test_w_ident("1.2e+55", TOK_REAL_LIT);
+  test_w_ident("1"      , {{TOK_INT_LIT , "1"      }});
+  test_w_ident("12"     , {{TOK_INT_LIT , "12"     }});
+  test_w_ident("1.2"    , {{TOK_REAL_LIT, "1.2"    }});
+  test_w_ident(".2"     , {{TOK_REAL_LIT, ".2"     }});
+  test_w_ident("0.2"    , {{TOK_REAL_LIT, "0.2"    }});
+  test_w_ident("1.2e5"  , {{TOK_REAL_LIT, "1.2e5"  }});
+  test_w_ident("1.2E5"  , {{TOK_REAL_LIT, "1.2E5"  }});
+  test_w_ident("1.2e-5" , {{TOK_REAL_LIT, "1.2e-5" }});
+  test_w_ident("1.2e+5" , {{TOK_REAL_LIT, "1.2e+5" }});
+  test_w_ident("1.2e+55", {{TOK_REAL_LIT, "1.2e+55"}});
   
-  test_w_ident("1..2",  TOK_REAL_LIT, true);
-  test_w_ident("1...2", TOK_REAL_LIT, true);
-  test_w_ident("1.2e+", TOK_REAL_LIT, true);
-  test_w_ident("1.2ee", TOK_REAL_LIT, true);
-  test_w_ident("1.2e ", TOK_REAL_LIT, true);
+  test_w_ident("1..2" , {{TOK_REAL_LIT,"1..2" }}, true);
+  test_w_ident("1...2", {{TOK_REAL_LIT,"1...2"}}, true);
+  test_w_ident("1.2e+", {{TOK_REAL_LIT,"1.2e+"}}, true);
+  test_w_ident("1.2ee", {{TOK_REAL_LIT,"1.2ee"}}, true);
+  test_w_ident("1.2e ", {{TOK_REAL_LIT,"1.2e "}}, true);
 }
 
 TEST_F(LexerTestF, ops) {
@@ -179,10 +150,11 @@ TEST_F(LexerTestF, function_add)
   std::stringstream ss;
   ss << "fn sum(i64 a, i64 b) return a+b";
 
-  stream_t is(ss);
+  auto is = make_stream(ss);
   lexed_t res;
-  auto err = lex(is, toks_, res);
-  print(std::cout, res);
+  auto err = lex(is, res);
+  recognize(is, toks_, res);
+  print(std::cout, is, res);
   EXPECT_THAT( res.tokens, ElementsAre(
     TOK_FUNC,
     TOK_IDENT,
@@ -199,12 +171,6 @@ TEST_F(LexerTestF, function_add)
     TOK_IDENT,
     TOK_EOF));
   ASSERT_FALSE(err);
-  
-
-  EXPECT_EQ(res.numIdentifiers(), 3);
-  EXPECT_EQ(res.getIdentifierString(0), "sum");
-  EXPECT_EQ(res.getIdentifierString(1), "a");
-  EXPECT_EQ(res.getIdentifierString(2), "b");
 }
 
 TEST_F(LexerTestF, error)
@@ -212,8 +178,8 @@ TEST_F(LexerTestF, error)
   std::stringstream ss;
   ss << "0..1";
  
-  stream_t is(ss);
+  auto is = make_stream(ss);
   lexed_t res;
-  auto err = lex(is, toks_, res);
+  auto err = lex(is, res);
   ASSERT_TRUE(err);
 }

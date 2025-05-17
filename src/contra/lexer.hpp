@@ -1,6 +1,8 @@
 #ifndef CONTRA_LEXER_HPP
 #define CONTRA_LEXER_HPP
 
+#include "stream.hpp"
+
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -11,9 +13,14 @@
 
 namespace contra {
 
-struct stream_t;
-struct stream_pos_t;
 struct token_map_t;
+  
+//std::vector<std::string_view> identifiers;
+//std::unordered_map<int, int> token_to_identifier;
+//size_t numIdentifiers() const { return identifiers.size(); }
+
+//int findIdentifier(int tok) const;
+//std::string_view getIdentifierString(int i) const;
 
 //==============================================================================
 /// The lexer return datatype
@@ -23,23 +30,22 @@ struct lexed_t {
   std::vector<stream_pos_t> token_pos;
 
   std::unordered_map<std::string, int> identifier_map;
-  std::vector<std::string_view> identifiers;
-  std::unordered_map<int, int> token_to_identifier;
 
-  void add(int tok, stream_pos_t pos, const std::string & str = "");
+  void add(int tok, stream_pos_t pos)
+  {
+    tokens.push_back( tok );
+    token_pos.emplace_back( pos );
+  }
 
-  size_t numTokens() const { return tokens.size(); }
-  size_t numIdentifiers() const { return identifiers.size(); }
-
-  int findIdentifier(int tok) const;
-  std::string_view getIdentifierString(int i) const;
+  size_t size() const { return tokens.size(); }
 };
 
 /// Main lexer function
-int lex(stream_t & stream, const token_map_t & toks, lexed_t & lx);
+int lex(const stream_t & stream, lexed_t & lx);
+void recognize(const stream_t & stream, const token_map_t & tmap, lexed_t & lx);
   
 /// Dump lexer results
-void print(std::ostream& os, const lexed_t & res);
+void print(std::ostream& os, const stream_t & stream, const lexed_t & res);
 
 } // namespace
 

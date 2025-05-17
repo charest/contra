@@ -73,7 +73,7 @@ Contra::Contra(ContraBuilder builder) : Builder_(builder)
 void Contra::getNextToken()
 {
   lexed_t lx;
-  stream_t is(*In_);
+  auto is = make_stream(*In_);
   //lex(Tokens_, is, lx);
 }
 

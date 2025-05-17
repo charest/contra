@@ -3,6 +3,7 @@
 
 #include <istream>
 #include <string>
+#include <vector>
 
 namespace contra {
 
@@ -10,20 +11,23 @@ namespace contra {
 /// Stream position
 //==============================================================================
 struct stream_pos_t {
-  std::ios::pos_type begin, end;
+  size_t begin, end;
+  auto length() const { return end - begin; }
 };
 
 
 struct stream_t {
 
-  std::istream & in;
+  std::string buffer;
   std::string name;
+  std::vector<size_t> newlines;
 
-  stream_t(std::istream & s, const std::string & name="")
-    : in(s) {}
-
+  std::string at(stream_pos_t pos) const
+  { return buffer.substr( pos.begin, pos.length() ); }
 
 };
+
+stream_t make_stream(std::istream & in, const std::string & name = "");
 
 } // namespace
 

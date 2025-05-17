@@ -8,6 +8,11 @@
 
 namespace utils {
 
+std::string extract_to_newline(const std::string& input, size_t start);
+
+std::vector<size_t> newline_positions(const std::string & text);
+
+
 //! \brief Get a file name.
 //! \param [in] str  the input string
 //! \return the base of the file name

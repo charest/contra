@@ -11,44 +11,11 @@
 #include <iomanip>
 
 namespace contra {
-  
-/// Get an identifier string
-std::string_view lexed_t::getIdentifierString(int i) const
-{ 
-  if (i<0 || i >= identifiers.size()) return {};
-  return identifiers[i];
-}
-
-/// Find an identifier from a token
-int lexed_t::findIdentifier(int tok) const
-{
-  auto it = token_to_identifier.find(tok);
-  if (it != token_to_identifier.end()) return it->second;
-  return -1;
-}
-
-/// Add the identifier string
-void lexed_t::add(int token, stream_pos_t pos, const std::string & identifier)
-{
-    if (identifier.size()) {
-      auto nidents = identifiers.size();
-      auto ntoks = tokens.size();
-      // try to insert the identifier
-      auto res = identifier_map.try_emplace( identifier, nidents );
-      // if new, add it to the vector as well
-      if (res.second) identifiers.emplace_back( res.first->first );
-      // add the token mapping
-      token_to_identifier[ntoks] = res.first->second;
-    }
-    tokens.push_back( token );
-    token_pos.emplace_back( pos );
-}
-
 
 //==============================================================================
 // Lexer output operator
 //==============================================================================
-void print(std::ostream& os, const lexed_t & res)
+void print(std::ostream& os, const stream_t & stream, const lexed_t & res)
 {
   using utils::printRight, utils::printLeft;
   auto n = res.tokens.size();
@@ -56,7 +23,6 @@ void print(std::ostream& os, const lexed_t & res)
   auto aw = std::max(digits+1, 7);
   auto bw = 6;
   auto cw = 14;
-  auto dw = std::max(bw, 8);
   auto ew = 4*aw;
 
   printRight(os, aw, ' ', "TokenId");
@@ -64,8 +30,6 @@ void print(std::ostream& os, const lexed_t & res)
   printRight(os, bw, ' ', "TypeId");
   printRight(os, 2, ' ');
   printRight(os, cw, ' ', "TypeString");
-  printRight(os, 2, ' ');
-  printRight(os, dw, ' ', "IndentId");
   printRight(os, 2, ' ');
   printLeft (os, ew, ' ', "IdentString");
   os << std::endl;
@@ -76,19 +40,22 @@ void print(std::ostream& os, const lexed_t & res)
   printRight(os, 2, ' ');
   printRight(os, cw, '-');
   printRight(os, 2, ' ');
-  printRight(os, dw, '-');
-  printRight(os, 2, ' ');
-  printLeft (os, ew, '-');
+  printRight(os, ew, '-');
   os << std::endl;
 
   for (size_t i=0; i<n; ++i) {
-    auto id = res.findIdentifier(i);
     auto tyid = res.tokens[i];
+    auto pos = res.token_pos[i];
     auto tystr = tok_to_string(tyid);
 
     std::stringstream ss;
-    if (id>=0)
-      ss << "\"" << res.getIdentifierString(id) << "\"";
+    switch (tyid) {
+    case (TOK_IDENT):
+    case (TOK_INT_LIT):
+    case (TOK_REAL_LIT):
+    case (TOK_STRING_LIT):
+      ss << "\"" << stream.at(pos) << "\"";
+    }
 
     printRight(os, aw, ' ', i);
     printRight(os, 2, ' ');
@@ -96,100 +63,61 @@ void print(std::ostream& os, const lexed_t & res)
     printRight(os, 2, ' ');
     printRight(os, cw, ' ', tystr);
     printRight(os, 2, ' ');
-    if (id>=0)
-      printRight(os, dw, ' ', id);
-    else
-      printRight(os, dw, ' ');
-    printRight(os, 2, ' ');
     printLeft (os, ew, ' ', ss.str());
     os << std::endl;
   }
 
 }
  
-//==============================================================================
-/// Advance the file position
-//==============================================================================
-int advance(std::istream & in)
-{ return in.get(); }
-    
-
-//==============================================================================
-/// Read until a specified position
-//==============================================================================
-int get_until(std::istream & in, int c, std::string & str)
-{
-  int LastChar;
-  while ((LastChar = advance(in)) != c)
-    str += LastChar;
-  return LastChar;
-}
-    
-int a_or_ab(
-  std::istream & in,
-  int LastChar,
-  int NextChar,
+std::tuple<int,size_t,int>
+a_or_ab(
+  const std::string & buffer,
+  size_t cur,
   int NextSym,
   int NextLabel,
-  int & tok)
+  int err)
 {
-  if (NextChar == NextSym) {
-    tok = NextLabel;
-    advance(in);
-  }
+  auto tok = buffer[cur];
+  auto LastChar = buffer[++cur];
+  if (LastChar == NextSym)
+    return {NextLabel, ++cur, err};
   else
-    tok = LastChar;
-  return advance(in);
+    return {tok, cur, err};
 }
   
 //==============================================================================
 /// gettok - Return the next token from standard input.
 //==============================================================================
-int gettok(
-  stream_t & is,
-  const token_map_t & toks,
-  int & LastChar,
-  int & tok,
-  std::string & IdentifierStr)
+std::tuple<int,size_t,int>
+gettok( const stream_t & is, size_t cur )
 {
-
-  auto & in = is.in;
-  auto NextChar = in.peek();
+  auto & buffer = is.buffer;
+  auto LastChar = buffer[cur];
   int err = 0;
-  IdentifierStr.clear();
-  tok = TOK_UNK;
   
   //----------------------------------------------------------------------------
   // identifier: [a-zA-Z][a-zA-Z0-9]*
   if (std::isalpha(LastChar)) {
+     
+    do {
+      LastChar = buffer[++cur];
+    } while (std::isalnum(LastChar) || LastChar=='_');
 
-    IdentifierStr += LastChar;
-    while (std::isalnum((LastChar = advance(in))) || LastChar=='_')
-      IdentifierStr += LastChar;
-
-    tok = toks.find(IdentifierStr);
-    if (tok!=TOKEN_NOT_FOUND) {
-      IdentifierStr.clear();
-      return err;
-    }
-
-    tok = TOK_IDENT;
-    return err;
+    return {TOK_IDENT, cur, err};
   }
   
   //----------------------------------------------------------------------------
   // Number: [0-9.]+
 
-  if (std::isdigit(LastChar) || (LastChar == '.' && std::isdigit(NextChar))) {
+  if (std::isdigit(LastChar) || (LastChar == '.' && std::isdigit(buffer[cur+1]))) {
 
     // read first part of number
     int numDec = (LastChar == '.');
     do {
-      IdentifierStr += LastChar;
-      LastChar = advance(in);
+      LastChar = buffer[++cur];
       auto has_dec = (LastChar == '.');
       if (numDec == 1 && has_dec)
-        err += error( is, "Multiple '.' encountered in real" );
+        err += error( is, "Multiple '.' encountered in real", cur );
       numDec += has_dec;
     } while (std::isdigit(LastChar) || LastChar == '.');
 
@@ -198,26 +126,23 @@ int gettok(
     if (LastChar == 'e' || LastChar == 'E') {
       is_float = true;
       // eat e/E
-      IdentifierStr += LastChar;
-      LastChar = advance(in);
+      LastChar = buffer[++cur];
       // make sure next character is sign or number
       auto isSign = (LastChar == '+') || (LastChar == '-');
       if (!isSign && !std::isdigit(LastChar))
-        err += error( is, "Digit or +/- must follow exponent" );
+        err += error( is, "Digit or +/- must follow exponent", cur );
       // eat sign or number
-      IdentifierStr += LastChar;
-      LastChar = advance(in);
+      LastChar = buffer[++cur];
       // if it was a sign, there has to be a number
       if (isSign && !std::isdigit(LastChar))
-        err += error( is, "Digit must follow exponent sign" );
+        err += error( is, "Digit must follow exponent sign", cur );
       // only numbers should follow
       while (std::isdigit(LastChar)) {
-        IdentifierStr += LastChar;
-        LastChar = advance(in);
+        LastChar = buffer[++cur];
       }
     }
-    tok = is_float ? TOK_REAL_LIT : TOK_INT_LIT;
-    return err;
+    auto tok = is_float ? TOK_REAL_LIT : TOK_INT_LIT;
+    return {tok, cur, err};
   }
 
   switch (LastChar) {
@@ -226,115 +151,105 @@ int gettok(
   // Comment until end of line.
   case '#':
   
-    do
-      LastChar = advance(in);
-    while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+    do {
+      LastChar = buffer[++cur];
+    } while (LastChar != '\0' && LastChar != '\n' && LastChar != '\r');
 
-    tok = TOK_COMMENT;
-    return err;
+    return {TOK_COMMENT, cur, err};
   
   
   //----------------------------------------------------------------------------
   // string literal
   case '\"':
+      
+    LastChar = buffer[++cur];
 
-    LastChar = get_until(in, '\"', IdentifierStr);
-    LastChar = advance(in);
-    tok = TOK_STRING_LIT;
-    return err;
+    while (LastChar != '\"')
+      LastChar = buffer[++cur];
+
+    return {TOK_STRING_LIT, ++cur, err};
   
   //----------------------------------------------------------------------------
   // Operators
 
-  case '+':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_ADD_EQ, tok);
-    return err;
-  
-  case '-':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_SUB_EQ, tok);
-    return err;
-  
-  case '*':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_MUL_EQ, tok);
-    return err;
-  
-  case '/':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_DIV_EQ, tok);
-    return err;
-  
-  case '=':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_EQUIV, tok);
-    return err;
-  
-  case '!':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_NE, tok);
-    return err;
-  
-  case '<':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_LE, tok);
-    return err;
-  
-  case '>':
-    LastChar = a_or_ab(in, LastChar, NextChar, '=', TOK_GE, tok);
-    return err;
-  
-  //----------------------------------------------------------------------------
-  // Check for end of file.  Don't eat the EOF.
-  case EOF:
-
-    tok = TOK_EOF;
-    return err;
+  case '+': return a_or_ab(buffer, cur, '=', TOK_ADD_EQ, err);
+  case '-': return a_or_ab(buffer, cur, '=', TOK_SUB_EQ, err);
+  case '*': return a_or_ab(buffer, cur, '=', TOK_MUL_EQ, err);
+  case '/': return a_or_ab(buffer, cur, '=', TOK_DIV_EQ, err);
+  case '=': return a_or_ab(buffer, cur, '=', TOK_EQUIV, err);
+  case '!': return a_or_ab(buffer, cur, '=', TOK_NE, err);
+  case '<': return a_or_ab(buffer, cur, '=', TOK_LE, err);
+  case '>': return a_or_ab(buffer, cur, '=', TOK_GE, err);
   
   }
 
   //----------------------------------------------------------------------------
   // Otherwise, just return the character as its ascii value.
-  tok = LastChar;
-  LastChar = advance(in);
-  return err;
-}
-
-//==============================================================================
-/// gettok - Return the next token from standard input.
-//==============================================================================
-int gettok(
-  stream_t & is,
-  const token_map_t & toks,
-  int & last_char,
-  int & tok,
-  stream_pos_t & pos,
-  std::string & identifier)
-{
-  auto & in = is.in;
-
-  // Skip any whitespace.
-  while (isspace(last_char))
-    last_char = advance(in);
-
-  pos.begin = in.tellg();
-  auto err = gettok(is, toks, last_char, tok, identifier);
-  pos.end = in.tellg();
-  
-  return err;
+  return {LastChar, ++cur, err};
 }
 
 //==============================================================================
 // Main function to generate tokens from a stream
 //==============================================================================
-int lex(stream_t & in, const token_map_t & toks, lexed_t & res)
+int lex(const stream_t & in, lexed_t & lx)
 {
   int err = 0;
-  std::string identifier;
-  int tok;
-  int last_char = ' ';
-  stream_pos_t pos;
-  do
+  size_t cur = 0;
+  auto & buffer = in.buffer;
+  auto bufsize = in.buffer.size();
+  stream_pos_t pos{0, 0};
+    
+  
+  while (cur < bufsize)
   {
-    err += gettok(in, toks, last_char, tok, pos, identifier);
-    res.add( tok, pos, identifier );
-  } while (tok!=TOK_EOF);
+    // Skip any whitespace.
+    while (isspace(buffer[cur])) cur++;
+
+    if (cur >= bufsize) break;
+
+    // get the next token
+    pos.begin = cur;
+    int e, tok;
+    std::tie(tok, cur, e) = gettok(in, cur);
+    err += e;
+    pos.end = cur;
+
+    switch (tok) {
+    #define TOKS_CASE(name, str, ...) case name:
+    FOR_LEX_STATES(TOKS_CASE)
+    #undef TOKS_CASE
+    
+    case 0 ... 255:
+      lx.add(tok, pos);
+      break;
+    }
+  }
+
+  lx.add(TOK_EOF, {pos.end, pos.end+1});
     
   return err;
+}
+
+
+//==============================================================================
+// Remap identifiers
+//==============================================================================
+void recognize(const stream_t & stream, const token_map_t & toks, lexed_t & lx)
+{
+  auto & token_pos = lx.token_pos;
+  auto & tokens = lx.tokens;
+  auto ntok = tokens.size();
+  const auto & tmap = toks.str_to_enum;
+  const auto & buffer = stream.buffer;
+
+  for (size_t i=0; i<ntok; ++i) {
+    const auto & pos = token_pos[i];
+    auto len = pos.length();
+    if (tokens[i] == TOK_IDENT) {
+      auto it = tmap.find( buffer.substr(pos.begin, len) );
+      if (it != tmap.end()) tokens[i] = it->second;
+    }
+  }
 }
 
 } // namespace

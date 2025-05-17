@@ -38,19 +38,20 @@ public:
     std::cout << std::string(80, '=') << std::endl;
 
     // build the contra ast and graph
-    stream_t is(ss);
+    auto is = make_stream(ss);
     lexed_t lx;
     parse_tree_t tree;
-    ASSERT_FALSE( lex(is, toks_, lx) );
+    ASSERT_FALSE( lex(is, lx) );
+    recognize(is, toks_, lx);
     ASSERT_FALSE( parse(is, lx, prec_, tree) );
     auto gr = graph(tree.node_parent);
 
     std::cout << "| AST" << std::endl;
     std::cout << std::string(80, '-') << std::endl;
     
-    print(std::cout, lx);
+    print(std::cout, is, lx);
     print(std::cout, tree, gr);
-    print(std::cout, toks_, lx, tree, gr);
+    print(std::cout, is, lx, tree, gr);
     
     
     //std::cout << std::string(80, '-') << std::endl;
@@ -59,10 +60,11 @@ public:
     
     // build ast/graph from provided sext
     std::istringstream in(ans);
-    stream_t sext_is(in);
+    auto sext_is = make_stream(in);
     lexed_t sext_lx;
     parse_tree_t sext_tree;
-    ASSERT_FALSE( lex(sext_is, sext_toks_, sext_lx) );
+    ASSERT_FALSE( lex(sext_is, sext_lx) );
+    recognize(sext_is, sext_toks_, sext_lx);
     ASSERT_FALSE( parse_sext(sext_is, sext_lx, prec_, sext_tree) );
     auto sext_gr = graph(sext_tree.node_parent);
     
@@ -70,13 +72,11 @@ public:
     std::cout << "| SEXT" << std::endl;
     std::cout << std::string(80, '-') << std::endl;
     
-    print(std::cout, sext_lx);
+    print(std::cout, sext_is, sext_lx);
     print(std::cout, sext_tree, sext_gr);
-    print(std::cout, sext_toks_, sext_lx, sext_tree, sext_gr);
+    print(std::cout, sext_is, sext_lx, sext_tree, sext_gr);
 
-    ASSERT_TRUE( 
-      compare(is, toks_, lx, tree, gr,
-        sext_is, sext_toks_, sext_lx, sext_tree, sext_gr) );
+    ASSERT_TRUE( compare(is, lx, tree, gr, sext_is, sext_lx, sext_tree, sext_gr) );
   }
 
  
@@ -196,6 +196,10 @@ TEST_F(ParseTestF, call)
 TEST_F(ParseTestF, var)
 {
   test("i64 a = 1",
+  " (Assign = "
+  "   (Var a) "
+  "   (IntLit 1))");
+  test("a = 1",
   " (Assign = "
   "   (Var a) "
   "   (IntLit 1))");
